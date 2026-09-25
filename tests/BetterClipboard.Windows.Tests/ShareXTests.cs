@@ -114,12 +114,16 @@ public sealed class ShareXFolderRuleTests
         Assert.Equal(root, ShareXLocator.FixedPrefix(pattern));
     }
 
-    /// <summary>Special folders (any case) and environment variables expand; name tokens stay.</summary>
+    /// <summary>
+    /// Special folders (any case) and environment variables expand; name tokens stay. Uses
+    /// LocalApplicationData because it exists for every profile — GetFolderPath returns "" for a known
+    /// folder that does not exist (Pictures can be missing on a CI runner's profile).
+    /// </summary>
     [Fact]
     public void ExpandFolderVariables_LikeShareX()
     {
-        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-        Assert.Equal(Path.Combine(pictures, "%y"), ShareXLocator.ExpandFolderVariables(@"%mypictures%\%y"));
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        Assert.Equal(Path.Combine(local, "%y"), ShareXLocator.ExpandFolderVariables(@"%localapplicationdata%\%y"));
         Assert.Equal(Environment.GetEnvironmentVariable("USERPROFILE") + @"\Shots", ShareXLocator.ExpandFolderVariables(@"%USERPROFILE%\Shots"));
         Assert.Equal("", ShareXLocator.ExpandFolderVariables(""));
     }
@@ -318,14 +322,17 @@ public sealed class ShareXLocatorTests : IDisposable
         Assert.Equal([new ShareXFolderRule(Path.Combine(personal, "Screenshots"), "%y-%mo")], found.Folders);
     }
 
-    /// <summary>Special folders in a custom path expand (the folder need not exist without a fallback).</summary>
+    /// <summary>
+    /// Special folders in a custom path expand (the folder need not exist without a fallback). Only the
+    /// path is computed — nothing is created or watched in the real profile.
+    /// </summary>
     [Fact]
     public void Resolve_ExpandsSpecialFolders()
     {
         var personal = Directory.CreateDirectory(Path.Combine(documents, "ShareX")).FullName;
-        WriteJson(Path.Combine(personal, "ApplicationConfig.json"), """{ "UseCustomScreenshotsPath": true, "CustomScreenshotsPath": "%MyPictures%\\BC-TEST-ShareX" }""");
+        WriteJson(Path.Combine(personal, "ApplicationConfig.json"), """{ "UseCustomScreenshotsPath": true, "CustomScreenshotsPath": "%LocalApplicationData%\\BC-TEST-ShareX" }""");
         Assert.Equal(
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "BC-TEST-ShareX"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BC-TEST-ShareX"),
             ShareXLocator.Resolve(Inputs()).Folders.Single().Root);
     }
 
