@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using BetterClipboard.App.Views;
 using BetterClipboard.Core;
+using BetterClipboard.Core.Cli;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Model;
@@ -10,6 +11,7 @@ using BetterClipboard.Core.Security;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Storage;
+using BetterClipboard.Windows.Cli;
 using BetterClipboard.Windows.Clipboard;
 using BetterClipboard.Windows.Imaging;
 using BetterClipboard.Windows.Import;
@@ -53,6 +55,12 @@ public sealed class AppController
     private (string Hotkey, bool HookFallback) appliedHotkey;
     private bool exiting;
 
+    /// <summary>The bclip pipe server while command-line access is on; <see langword="null"/> otherwise.</summary>
+    private CliPipeServer? commandLine;
+
+    /// <summary>Serializes starting/stopping <see cref="commandLine"/> (toggling quickly must not race two servers).</summary>
+    private readonly SemaphoreSlim commandLineGate = new(1, 1);
+
     /// <summary>
     /// Creates the controller; nothing starts until <see cref="Start"/>.
     /// </summary>
@@ -69,6 +77,9 @@ public sealed class AppController
 
     /// <summary>Raised on the UI thread after the global shortcut was (re)applied.</summary>
     public event EventHandler? HotkeyStatusChanged;
+
+    /// <summary>Raised on the UI thread after command-line access was switched on or off (or failed to start).</summary>
+    public event EventHandler? CommandLineStatusChanged;
 
     /// <summary>Data locations (database, settings, logs).</summary>
     public AppPaths Paths => paths;
@@ -93,6 +104,18 @@ public sealed class AppController
 
     /// <summary>Current state of the global shortcut.</summary>
     public HotkeyRegistration HotkeyStatus => hotkeys?.Current ?? new HotkeyRegistration(default, HotkeyMode.None, 0);
+
+    /// <summary>Whether the bclip pipe is being served right now.</summary>
+    public bool IsCommandLineActive => commandLine is not null;
+
+    /// <summary>Why command-line access could not start (e.g. the pipe name is taken), or <see langword="null"/>.</summary>
+    public string? CommandLineError { get; private set; }
+
+    /// <summary>Where <c>bclip.exe</c> ships: next to the app (release builds; absent in a dev build's bin folder).</summary>
+    public static string CommandLinePath => Path.Combine(AppContext.BaseDirectory, "bclip.exe");
+
+    /// <summary>The folder to put on PATH so <c>bclip</c> runs by name.</summary>
+    public static string CommandLineDirectory => Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
 
     /// <summary>Path of the running executable (for the Run key).</summary>
     public static string ExecutablePath => Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "BetterClipboard.exe");
@@ -128,6 +151,11 @@ public sealed class AppController
         monitor = new ClipboardMonitor(CreateCaptureOptions, new SourceAppResolver());
         monitor.Captured += (_, capture) => history.TryEnqueueCapture(capture);
         monitor.Start();
+
+        if (settings.Current.EnableCommandLine)
+        {
+            _ = SetCommandLineAsync(enabled: true);
+        }
 
         hotkeys = new HotkeyService();
         hotkeys.Pressed += (_, context) => ui.TryEnqueue(() => OnHotkey(context));
@@ -241,7 +269,16 @@ public sealed class AppController
             HotkeyGesture.TryParse("Win+V", out gesture);
         }
 
-        var result = await hotkeys.ApplyAsync(gesture, current.UseKeyboardHookFallback);
+        // An isolated dev/test instance must never steal the shortcut from the installed app: a keyboard
+        // hook installed later is called first and would swallow Win+V before the user's instance sees it.
+        bool allowHook = current.UseKeyboardHookFallback;
+        if (allowHook && paths.InstanceScope is not null && SingleInstance.IsRunning(AppPaths.DefaultInstanceName))
+        {
+            allowHook = false;
+            AppLog.Info("Isolated instance while the installed BetterClipboard runs: not intercepting shortcuts with a keyboard hook.");
+        }
+
+        var result = await hotkeys.ApplyAsync(gesture, allowHook);
         HotkeyStatusChanged?.Invoke(this, EventArgs.Empty);
         tray?.SetTooltip(TrayTooltip(current));
         return result;
@@ -311,6 +348,9 @@ public sealed class AppController
         AppLog.Info("Exiting.");
         // Release the shortcut first so Win+V instantly belongs to Windows again.
         hotkeys?.Dispose();
+
+        // Stop answering bclip before the history it reads from is drained and disposed.
+        await SetCommandLineAsync(enabled: false);
         tray?.Dispose();
         monitor?.Dispose();
         if (history is not null)
@@ -413,8 +453,80 @@ public sealed class AppController
             {
                 await History.PruneAsync();
             }
+
+            if (next.EnableCommandLine != IsCommandLineActive && !exiting)
+            {
+                await SetCommandLineAsync(next.EnableCommandLine);
+            }
         });
     }
+
+    /// <summary>
+    /// Adds the app folder (which holds <c>bclip.exe</c>) to the user PATH, so new terminals and AI tools
+    /// can run <c>bclip</c> by name.
+    /// </summary>
+    /// <returns><see langword="true"/> when the PATH changed; <see langword="false"/> when it was already there.</returns>
+    /// <exception cref="UnauthorizedAccessException">The user environment is locked by policy.</exception>
+    /// <exception cref="System.Security.SecurityException">The user environment is not accessible.</exception>
+    public bool AddCommandLineToPath()
+    {
+        bool changed = UserPath.Add(CommandLineDirectory);
+        AppLog.Info(changed ? $"Added {CommandLineDirectory} to the user PATH." : "bclip's folder was already on the user PATH.");
+        return changed;
+    }
+
+    /// <summary>
+    /// Starts or stops the bclip pipe server (idempotent, serialized). Failures are logged and surfaced
+    /// through <see cref="CommandLineError"/> rather than thrown: the rest of the app keeps working.
+    /// </summary>
+    /// <param name="enabled">Desired state.</param>
+    /// <returns>A task completing once the server is in the desired state (or failed to start).</returns>
+    private async Task SetCommandLineAsync(bool enabled)
+    {
+        await commandLineGate.WaitAsync();
+        try
+        {
+            if (enabled && commandLine is null && history is not null && monitor is not null)
+            {
+                var processor = new CliCommandProcessor(history, monitor, new WicImageExporter(), () => Settings.Current, CaptureStatisticsForCli, Version);
+                var sid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("No user SID.");
+                var server = new CliPipeServer(CliEndpoint.PipeName(sid, Process.GetCurrentProcess().SessionId, paths.InstanceScope), processor.ExecuteAsync);
+                try
+                {
+                    server.Start();
+                    commandLine = server;
+                    CommandLineError = null;
+                    AppLog.Info("Command-line access is on (bclip).");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // FirstPipeInstance failed: someone else holds the name. Never share it.
+                    CommandLineError = $"The bclip pipe is already in use by another program ({ex.Message}).";
+                    AppLog.Warn(CommandLineError);
+                    await server.DisposeAsync();
+                }
+            }
+            else if (!enabled && commandLine is not null)
+            {
+                var server = commandLine;
+                commandLine = null;
+                await server.DisposeAsync();
+                AppLog.Info("Command-line access is off.");
+            }
+        }
+        finally
+        {
+            commandLineGate.Release();
+        }
+
+        ui.TryEnqueue(() => CommandLineStatusChanged?.Invoke(this, EventArgs.Empty));
+    }
+
+    /// <summary>The listener accounting in the command line's wire shape.</summary>
+    /// <returns>The statistics, or <see langword="null"/> before capture started.</returns>
+    private CliCaptureStats? CaptureStatisticsForCli() => monitor?.Statistics is { } s
+        ? new CliCaptureStats(s.Notifications, s.Read, s.Captured, s.Superseded, s.SelfWrites, s.LockedOut, s.Recovered)
+        : null;
 
     /// <summary>Builds the tray menu (tray thread).</summary>
     /// <returns>The items.</returns>

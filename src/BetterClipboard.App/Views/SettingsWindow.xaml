@@ -328,6 +328,26 @@
                     </ComboBox>
                 </controls:SettingsCard>
                 <controls:SettingsCard
+                    Description="Lets scripts and AI assistants list, search, read and copy your clipboard history with the bclip command. While this is on, any program running as you can read your history, so it is off by default."
+                    Glyph="&#xE756;"
+                    Header="Command line (bclip)">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.EnableCommandLine, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                IsTextSelectionEnabled="True"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.CommandLineStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <Button
+                                Click="AddCommandLineToPath_Click"
+                                Content="Add bclip to PATH"
+                                IsEnabled="{x:Bind ViewModel.CanAddCommandLineToPath, Mode=OneWay}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+                <controls:SettingsCard
                     Description="{x:Bind ViewModel.DataFolder}"
                     Glyph="&#xE8B7;"
                     Header="Data folder">

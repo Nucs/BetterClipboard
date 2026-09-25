@@ -75,6 +75,37 @@ public sealed class SettingsStore
     }
 
     /// <summary>
+    /// Reads a settings file <b>without any side effects</b> — for other processes (the <c>bclip</c>
+    /// command line) that must never quarantine, rewrite or log about the app's own file.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="Load"/>, a missing, unreadable or corrupt file is not renamed aside: a reader in
+    /// another process can race the app's atomic save (the rename window) and must not mistake that for
+    /// corruption. Callers treat <see langword="null"/> as "unknown" and fall back to defaults.
+    /// </remarks>
+    /// <param name="path">Settings file path.</param>
+    /// <returns>The normalized settings, the defaults when the file does not exist, or <see langword="null"/> when it could not be read.</returns>
+    public static AppSettings? TryReadSnapshot(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        try
+        {
+            if (!File.Exists(path))
+            {
+                return new AppSettings().Normalize();
+            }
+
+            // FileShare.ReadWrite | Delete: never block the app's save (temp file + replace).
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return (JsonSerializer.Deserialize<AppSettings>(stream, JsonOptions) ?? new AppSettings()).Normalize();
+        }
+        catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Applies a change, persists it and raises <see cref="Changed"/>.
     /// </summary>
     /// <param name="mutate">Returns the new settings from the old ones, typically <c>s =&gt; s with { ... }</c>.</param>

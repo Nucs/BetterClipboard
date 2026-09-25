@@ -45,6 +45,7 @@ public sealed partial class SettingsWindow : Window
 
         controller.HotkeyStatusChanged += OnHotkeyStatusChanged;
         controller.HistoryChanged += OnHistoryChanged;
+        controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
     }
@@ -84,8 +85,19 @@ public sealed partial class SettingsWindow : Window
     {
         controller.HotkeyStatusChanged -= OnHotkeyStatusChanged;
         controller.HistoryChanged -= OnHistoryChanged;
+        controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
         controller.Settings.Changed -= OnSettingsChanged;
     }
+
+    /// <summary>The bclip pipe started, stopped or failed: refresh its card.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnCommandLineStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshCommandLineStatus();
+
+    /// <summary>"Add to PATH" on the command-line card.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Event data.</param>
+    private void AddCommandLineToPath_Click(object sender, RoutedEventArgs e) => ViewModel.AddCommandLineToPath();
 
     /// <summary>Shortcut re-applied.</summary>
     /// <param name="sender">Controller.</param>

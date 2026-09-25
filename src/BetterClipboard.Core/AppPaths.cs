@@ -14,6 +14,13 @@ public sealed class AppPaths
     /// <summary>Environment variable that overrides the data directory.</summary>
     public const string DataDirectoryVariable = "BETTERCLIPBOARD_DATA_DIR";
 
+    /// <summary>Instance name of the installed app (default data directory): single-instance lock, commands, bclip pipe.</summary>
+    public const string DefaultInstanceName = "BetterClipboard";
+
+    /// <summary>The data directory used when <see cref="DataDirectoryVariable"/> is not set.</summary>
+    public static string DefaultDataDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BetterClipboard");
+
     /// <summary>
     /// Creates paths rooted at <paramref name="dataDirectory"/>.
     /// </summary>
@@ -32,13 +39,34 @@ public sealed class AppPaths
     public static AppPaths ResolveDefault()
     {
         var overridden = Environment.GetEnvironmentVariable(DataDirectoryVariable);
-        return new AppPaths(!string.IsNullOrWhiteSpace(overridden)
-            ? overridden
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BetterClipboard"));
+        return new AppPaths(!string.IsNullOrWhiteSpace(overridden) ? overridden : DefaultDataDirectory);
     }
 
     /// <summary>Root data directory.</summary>
     public string DataDirectory { get; }
+
+    /// <summary>
+    /// <see langword="null"/> for the installed app's own data directory; otherwise a short, stable id of
+    /// the directory (e.g. <c>dir-3fa2c1d09b7e</c>) that separates this instance from the installed one.
+    /// </summary>
+    /// <remarks>
+    /// A dev or test run with <see cref="DataDirectoryVariable"/> set used to share the installed app's
+    /// single-instance lock, command events and bclip pipe: it could not start next to it, and its
+    /// <c>--exit</c> closed the <i>user's</i> app. Scoping every per-session name by data directory makes an
+    /// isolated run truly isolated. The default location keeps the unscoped names, so installed versions
+    /// keep finding each other across updates.
+    /// </remarks>
+    public string? InstanceScope =>
+        string.Equals(Path.TrimEndingDirectorySeparator(DataDirectory), Path.TrimEndingDirectorySeparator(Path.GetFullPath(DefaultDataDirectory)), StringComparison.OrdinalIgnoreCase)
+            ? null
+            : "dir-" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(Path.TrimEndingDirectorySeparator(DataDirectory).ToUpperInvariant())).AsSpan(0, 6));
+
+    /// <summary>
+    /// Name for this instance's per-session objects: <see cref="DefaultInstanceName"/>, or that name plus
+    /// <see cref="InstanceScope"/> for an overridden data directory.
+    /// </summary>
+    public string InstanceName => InstanceScope is { } scope ? $"{DefaultInstanceName}.{scope}" : DefaultInstanceName;
 
     /// <summary>
     /// Where v0.1 pre-releases kept the <b>plaintext</b> history database. Only read once, to adopt it into

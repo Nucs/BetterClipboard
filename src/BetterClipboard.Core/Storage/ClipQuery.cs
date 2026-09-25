@@ -52,4 +52,11 @@ public sealed record ClipQuery
 
     /// <summary>Whether pinned entries sort before unpinned ones (otherwise pure recency).</summary>
     public bool PinnedFirst { get; init; } = true;
+
+    /// <summary>
+    /// Only entries last copied or pasted at or after this instant (e.g. "what did I copy in the last
+    /// hour" from the command line); <see langword="null"/> = no time limit. Compared against
+    /// <see cref="Model.ClipEntry.LastUsedUtc"/>, so an old item copied again counts as recent.
+    /// </summary>
+    public DateTimeOffset? UsedSince { get; init; }
 }

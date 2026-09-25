@@ -37,8 +37,6 @@ public sealed record WindowsImportResult(IReadOnlyList<ClipCapture> Captures, bo
 /// </remarks>
 public sealed class WindowsHistoryImporter
 {
-    /// <summary>Source attribution used for imported items (the original app is not recorded by Windows).</summary>
-    public static readonly SourceAppInfo WindowsSource = new("Windows", null, "Windows clipboard history");
 
     private readonly WindowsPinnedStore pinnedStore;
 
@@ -168,7 +166,11 @@ public sealed class WindowsHistoryImporter
             {
                 Formats = formats,
                 CapturedAtUtc = item.Timestamp.ToUniversalTime(),
-                Source = WindowsSource,
+
+                // Windows does not record which app produced a history item, so none is claimed: the
+                // panel shows imported items with just their time (v0.1.0 showed a made-up
+                // "Windows clipboard history" source here — ClipStore clears it from old rows).
+                Source = null,
                 Origin = ClipOrigin.WindowsHistory,
                 Pin = pinned,
             };
@@ -218,7 +220,7 @@ public sealed class WindowsHistoryImporter
         {
             Formats = formats,
             CapturedAtUtc = item.Timestamp,
-            Source = WindowsSource,
+            Source = null, // the pinned store does not record the producing app either (see above)
             Origin = ClipOrigin.WindowsPinned,
             Pin = true,
         };

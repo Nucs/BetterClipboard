@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using BetterClipboard.Core.Cli;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Windows.Interop;
@@ -76,7 +77,7 @@ public readonly record struct ClipboardMonitorStatistics(
 /// because a slow handler widens the miss window for the next copy.
 /// </para>
 /// </remarks>
-public sealed class ClipboardMonitor : IDisposable
+public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
 {
     private const nuint RetryTimerId = 1;
     private const nuint WatchdogTimerId = 2;

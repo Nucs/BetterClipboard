@@ -60,6 +60,23 @@ public sealed class SingleInstance : IDisposable
     }
 
     /// <summary>
+    /// Whether an instance with <paramref name="name"/> is running in this session (its lock exists),
+    /// without joining or disturbing it.
+    /// </summary>
+    /// <param name="name">Instance name (see <see cref="Core.AppPaths.InstanceName"/>).</param>
+    /// <returns><see langword="true"/> when that instance holds its lock.</returns>
+    public static bool IsRunning(string name)
+    {
+        if (Mutex.TryOpenExisting($@"Local\{name}.Instance", out var mutex))
+        {
+            mutex.Dispose();
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Sends a command to the primary instance.
     /// </summary>
     /// <param name="command">The command.</param>

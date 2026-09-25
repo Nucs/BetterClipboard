@@ -235,6 +235,23 @@ public sealed class ClipHistoryService : IAsyncDisposable
         Task.Run(() => store.Query(query), cancellationToken);
 
     /// <summary>
+    /// Reads one entry on the thread pool (does not wait behind queued writes).
+    /// </summary>
+    /// <param name="id">Entry id.</param>
+    /// <returns>The entry, or <see langword="null"/> when it does not exist.</returns>
+    public Task<ClipEntry?> GetEntryAsync(long id) => Task.Run(() => store.GetEntry(id));
+
+    /// <summary>
+    /// Reads the search text of the most recent entries on the thread pool, for regular-expression
+    /// scans (see <see cref="ClipStore.GetSearchTexts"/> for what the text contains and where it is cut).
+    /// </summary>
+    /// <param name="filter">The slice to scan.</param>
+    /// <param name="limit">Most recent entries to scan.</param>
+    /// <returns>(Id, Text) pairs, most recently used first.</returns>
+    public Task<IReadOnlyList<(long Id, string Text)>> GetSearchTextsAsync(ClipFilter filter, int limit) =>
+        Task.Run(() => store.GetSearchTexts(filter, limit));
+
+    /// <summary>
     /// Loads an entry's payloads on the thread pool.
     /// </summary>
     /// <param name="id">Entry id.</param>

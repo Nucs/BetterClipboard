@@ -179,6 +179,47 @@ internal sealed class ClipboardProducer : IDisposable
         WriteSession(() => SetClipboardData(CF_UNICODETEXT, 0));
     });
 
+    /// <summary>
+    /// Reads the isolated clipboard's current text (to verify what another component wrote).
+    /// </summary>
+    /// <returns>The text, or <see langword="null"/> when there is none.</returns>
+    public Task<string?> ReadTextAsync() => thread.InvokeAsync(() =>
+    {
+        var deadline = Environment.TickCount64 + 2000;
+        while (!OpenClipboard(thread.Handle))
+        {
+            if (Environment.TickCount64 > deadline)
+            {
+                throw new IOException("The isolated clipboard stayed locked.");
+            }
+
+            Thread.Sleep(1);
+        }
+
+        try
+        {
+            nint handle = GetClipboardData(CF_UNICODETEXT);
+            if (handle == 0)
+            {
+                return null;
+            }
+
+            nint pointer = GlobalLock(handle);
+            try
+            {
+                return Marshal.PtrToStringUni(pointer);
+            }
+            finally
+            {
+                GlobalUnlock(handle);
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    });
+
     /// <summary>Stops the producer thread.</summary>
     public void Dispose() => thread.Dispose();
 

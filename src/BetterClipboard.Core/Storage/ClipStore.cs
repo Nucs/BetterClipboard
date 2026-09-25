@@ -272,6 +272,7 @@ public sealed class ClipStore
         }
 
         transaction.Commit();
+        ApplyDataFixups(connection);
     }
 
     /// <summary>
@@ -495,18 +496,16 @@ public sealed class ClipStore
             command.Parameters.AddWithValue($"$like{i}", likes[i]);
         }
 
-        var filter = query.Filter switch
-        {
-            ClipFilter.Pinned => "c.is_pinned = 1",
-            ClipFilter.Text => $"c.kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText}, {(int)ClipKind.Color})",
-            ClipFilter.Images => $"c.kind = {(int)ClipKind.Image}",
-            ClipFilter.Links => $"c.kind = {(int)ClipKind.Link}",
-            ClipFilter.Files => $"c.kind = {(int)ClipKind.Files}",
-            _ => null,
-        };
+        var filter = FilterPredicate(query.Filter);
         if (filter is not null)
         {
             predicates.Add(filter);
+        }
+
+        if (query.UsedSince is { } since)
+        {
+            predicates.Add("c.last_used_utc >= $since");
+            command.Parameters.AddWithValue("$since", since.ToUnixTimeMilliseconds());
         }
 
         if (predicates.Count > 0)
@@ -525,6 +524,38 @@ public sealed class ClipStore
         while (reader.Read())
         {
             result.Add(ReadEntry(reader));
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Returns the indexed search text of the most recently used entries, for regular-expression scans
+    /// that the trigram index cannot answer (the command line's <c>grep</c>).
+    /// </summary>
+    /// <remarks>
+    /// The search text is the entry's full text (or its file paths) cut at
+    /// <see cref="ContentClassifier.SearchMaxChars"/>; callers that must see past the cap reload the
+    /// payload when a text is exactly that long. Images carry no text and are skipped here.
+    /// </remarks>
+    /// <param name="filter">The slice to scan.</param>
+    /// <param name="limit">Most recent entries to return, clamped to 1–100,000.</param>
+    /// <returns>(Id, Text) pairs, most recently used first.</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public IReadOnlyList<(long Id, string Text)> GetSearchTexts(ClipFilter filter, int limit)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        var predicate = FilterPredicate(filter);
+        command.CommandText =
+            $"SELECT c.id, c.search_text FROM clips c WHERE c.search_text <> ''{(predicate is null ? string.Empty : " AND " + predicate)} " +
+            "ORDER BY c.last_used_utc DESC, c.id DESC LIMIT $limit;";
+        command.Parameters.AddWithValue("$limit", Math.Clamp(limit, 1, 100_000));
+        var result = new List<(long, string)>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            result.Add((reader.GetInt64(0), reader.GetString(1)));
         }
 
         return result;
@@ -759,6 +790,55 @@ public sealed class ClipStore
             throw;
         }
     }
+
+    /// <summary>SQL predicate (over alias <c>c</c>) for a filter pill, or <see langword="null"/> for <see cref="ClipFilter.All"/>.</summary>
+    /// <param name="filter">The filter.</param>
+    /// <returns>The predicate; built from enum constants only, so safe to inline.</returns>
+    private static string? FilterPredicate(ClipFilter filter) => filter switch
+    {
+        ClipFilter.Pinned => "c.is_pinned = 1",
+        ClipFilter.Text => $"c.kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText}, {(int)ClipKind.Color})",
+        ClipFilter.Images => $"c.kind = {(int)ClipKind.Image}",
+        ClipFilter.Links => $"c.kind = {(int)ClipKind.Link}",
+        ClipFilter.Files => $"c.kind = {(int)ClipKind.Files}",
+        _ => null,
+    };
+
+    /// <summary>
+    /// One-time data fix-ups for rows written by earlier builds, each guarded by a <c>meta</c> flag so it
+    /// runs exactly once per database (no schema version bump — older builds can still open the file).
+    /// </summary>
+    /// <remarks>
+    /// <c>fixup.import_source.v1</c>: v0.1.0 stamped every imported item with a made-up source app named
+    /// "Windows clipboard history" (Windows does not report the real one), which the panel then showed on
+    /// every imported card. Imports now carry no source; this clears the stored label from older rows.
+    /// A row that was later re-copied live has a real app path and is left alone.
+    /// </remarks>
+    /// <param name="connection">Open connection (outside any transaction).</param>
+    private static void ApplyDataFixups(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using (var flag = Command(connection, "INSERT OR IGNORE INTO meta (key, value) VALUES ('fixup.import_source.v1', '1');"))
+        {
+            // Zero rows inserted = already applied on an earlier start.
+            if (flag.ExecuteNonQuery() == 0)
+            {
+                return;
+            }
+        }
+
+        Execute(connection,
+            $"""
+            UPDATE clips SET source_app_name = NULL
+            WHERE origin IN ({(int)ClipOrigin.WindowsHistory}, {(int)ClipOrigin.WindowsPinned})
+              AND source_app_path IS NULL
+              AND source_app_name = '{LegacyImportSourceName}';
+            """);
+        transaction.Commit();
+    }
+
+    /// <summary>The synthetic source-app name v0.1.0 gave imported items (see <see cref="ApplyDataFixups"/>).</summary>
+    private const string LegacyImportSourceName = "Windows clipboard history";
 
     /// <summary>Returns whether an import of <paramref name="hash"/> copied at <paramref name="when"/> must be skipped.</summary>
     /// <param name="connection">Open connection inside the caller's transaction.</param>

@@ -100,6 +100,32 @@ public static class ImageCodec
         return [new ClipFormatData(ClipFormatNames.Png, png), new ClipFormatData(ClipFormatNames.DibV5, dib)];
     }
 
+    /// <summary>
+    /// Converts any encoded image to a full-resolution PNG; an input that already is a PNG is returned
+    /// byte-for-byte (no re-encode, no quality or metadata change).
+    /// </summary>
+    /// <param name="encoded">A complete image file (PNG, BMP, …).</param>
+    /// <param name="cancellationToken">Cancels between WinRT steps.</param>
+    /// <returns>PNG bytes.</returns>
+    /// <exception cref="Exception">WIC rejects the data.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public static async Task<byte[]> ToPngAsync(byte[] encoded, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(encoded);
+        if (encoded.Length > 8 && encoded[0] == 0x89 && encoded[1] == (byte)'P' && encoded[2] == (byte)'N' && encoded[3] == (byte)'G')
+        {
+            return encoded;
+        }
+
+        using var input = await ToStreamAsync(encoded).ConfigureAwait(false);
+        var decoder = await BitmapDecoder.CreateAsync(input).AsTask(cancellationToken).ConfigureAwait(false);
+        var pixels = await decoder.GetPixelDataAsync(
+                BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, new BitmapTransform(),
+                ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.ColorManageToSRgb)
+            .AsTask(cancellationToken).ConfigureAwait(false);
+        return await EncodePngAsync(pixels.DetachPixelData(), decoder.PixelWidth, decoder.PixelHeight, BitmapAlphaMode.Straight, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Encodes BGRA8 pixels as PNG.</summary>
     /// <param name="bgra">Top-down BGRA8 pixels.</param>
     /// <param name="width">Width.</param>

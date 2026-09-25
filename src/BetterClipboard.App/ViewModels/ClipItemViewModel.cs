@@ -166,11 +166,20 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <returns>The caption.</returns>
     private string BuildCaption()
     {
-        var parts = new List<string>(3)
+        var parts = new List<string>(3);
+        if (!string.IsNullOrWhiteSpace(Entry.SourceAppName))
         {
-            string.IsNullOrWhiteSpace(Entry.SourceAppName) ? "Unknown app" : Entry.SourceAppName!,
-            RelativeTimeFormatter.Format(Entry.LastUsedUtc, DateTimeOffset.UtcNow),
-        };
+            parts.Add(Entry.SourceAppName!);
+        }
+        else if (Entry.Origin == ClipOrigin.Captured)
+        {
+            // A live copy whose producer could not be identified (protected process, exited too fast).
+            parts.Add("Unknown app");
+        }
+
+        // Imported items (Windows never records their producer) show no source at all rather than a
+        // placeholder label repeated on every card.
+        parts.Add(RelativeTimeFormatter.Format(Entry.LastUsedUtc, DateTimeOffset.UtcNow));
 
         if (Kind == ClipKind.Image && Entry.ImageWidth is > 0 && Entry.ImageHeight is > 0)
         {

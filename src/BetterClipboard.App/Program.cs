@@ -23,7 +23,9 @@ public static class Program
         var options = StartupOptions.Parse(args);
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
-        using var instance = SingleInstance.Acquire("BetterClipboard");
+        // Scoped by data directory: an isolated dev/test run (BETTERCLIPBOARD_DATA_DIR) gets its own lock and
+        // command events, so it neither blocks nor receives the installed app's --exit/--show-flyout.
+        using var instance = SingleInstance.Acquire(Core.AppPaths.ResolveDefault().InstanceName);
         if (!instance.IsPrimary)
         {
             // A second launch (Start menu, double click, script) drives the running app instead of

@@ -275,6 +275,66 @@ public sealed class ClipStoreTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => new ClipStore(temp.DatabasePath).Initialize());
     }
 
+    /// <summary>
+    /// v0.1.0's made-up "Windows clipboard history" source is cleared from imported rows exactly once;
+    /// a live copy that really came from an app with that name keeps it.
+    /// </summary>
+    [Fact]
+    public void Initialize_ClearsLegacyImportSourceOnce()
+    {
+        var legacy = new SourceAppInfo("Windows", null, "Windows clipboard history");
+        var imported = Add(TestData.Text("imported", origin: ClipOrigin.WindowsHistory, source: legacy))!.Entry;
+        var pinned = Add(TestData.Text("pinned import", origin: ClipOrigin.WindowsPinned, pin: true, source: legacy))!.Entry;
+        var live = Add(TestData.Text("live", source: new SourceAppInfo("x", @"C:\x.exe", "Windows clipboard history")))!.Entry;
+
+        // The fix-up already ran when the fixture created this database; forget that to replay an old file.
+        ExecuteRaw("DELETE FROM meta WHERE key = 'fixup.import_source.v1';");
+        new ClipStore(temp.DatabasePath).Initialize();
+        Assert.Null(store.GetEntry(imported.Id)!.SourceAppName);
+        Assert.Null(store.GetEntry(pinned.Id)!.SourceAppName);
+        Assert.Equal("Windows clipboard history", store.GetEntry(live.Id)!.SourceAppName);
+
+        // Once applied it never runs again (a later row keeps whatever it was given).
+        var later = Add(TestData.Text("later import", origin: ClipOrigin.WindowsHistory, source: legacy))!.Entry;
+        new ClipStore(temp.DatabasePath).Initialize();
+        Assert.Equal("Windows clipboard history", store.GetEntry(later.Id)!.SourceAppName);
+    }
+
+    /// <summary>The grep scan returns search text newest first, per filter, skipping text-less images.</summary>
+    [Fact]
+    public void GetSearchTexts_NewestFirstPerFilter()
+    {
+        Add(TestData.Text("older", TestData.Now.AddMinutes(-2)));
+        Add(TestData.Files(@"C:\f.txt"));
+        Add(TestData.Image(9));
+        Add(TestData.Text("newer", TestData.Now.AddMinutes(-1)));
+
+        Assert.Equal(["C:\\f.txt", "newer", "older"], store.GetSearchTexts(ClipFilter.All, 10).Select(t => t.Text));
+        Assert.Equal(["newer", "older"], store.GetSearchTexts(ClipFilter.Text, 10).Select(t => t.Text));
+        Assert.Single(store.GetSearchTexts(ClipFilter.All, 1));
+    }
+
+    /// <summary>UsedSince keeps only entries used at or after the instant.</summary>
+    [Fact]
+    public void Query_UsedSince()
+    {
+        Add(TestData.Text("two hours ago", TestData.Now.AddHours(-2)));
+        Add(TestData.Text("just now", TestData.Now));
+        Assert.Equal("just now", store.Query(new ClipQuery { UsedSince = TestData.Now.AddHours(-1) }).Single().Preview);
+        Assert.Equal(2, store.Query(new ClipQuery { UsedSince = TestData.Now.AddHours(-2) }).Count);
+    }
+
+    /// <summary>Runs SQL directly against the (plaintext test) database.</summary>
+    /// <param name="sql">Statement.</param>
+    private void ExecuteRaw(string sql)
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={temp.DatabasePath}");
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
     /// <summary>Classifies and stores a capture as a live copy (or import, per its origin).</summary>
     /// <param name="capture">The capture.</param>
     /// <returns>The upsert result.</returns>

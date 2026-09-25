@@ -7,6 +7,10 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 [![Release](https://img.shields.io/github/v/release/Nucs/BetterClipboard?sort=semver)](https://github.com/Nucs/BetterClipboard/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+<p align="center">
+  <img src="docs/images/flyout.png" width="384" alt="The BetterClipboard panel opened with Win+V: a search box, filters (All, Pinned, Text, Images, Links, Files) and recent copies as cards, one of them pinned">
+</p>
+
 | | Windows' Win+V | BetterClipboard |
 |---|---|---|
 | History size | 25 items | 10,000 items (configurable, plus a size budget) |
@@ -39,6 +43,7 @@ Options (pass them through a script block):
 | Option | Effect |
 |---|---|
 | `-TakeOverWinV` | Tell Explorer to release Win+V (see [Taking over Win+V](#taking-over-winv)) and restart Explorer once. |
+| `-AddToPath` | Put the install folder on your user PATH so terminals can run `bclip` (see [Command line](#command-line-for-scripts-and-ai-agents)). |
 | `-Version 0.1.0` | Install a specific release instead of the latest. |
 | `-InstallDir <path>` | Install somewhere else. |
 | `-NoStartup` / `-NoShortcut` / `-NoLaunch` | Skip starting with Windows / the Start menu shortcut / launching after install. |
@@ -65,8 +70,8 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | `Esc` | Clear the search, then close — focus returns to where you were |
 
 The tray icon opens the panel and Settings: shortcut, retention (items, days, size), what to record,
-ignored apps (e.g. your password manager), pause, theme, start with Windows, and **Import from Windows**,
-which pulls in everything Win+V still remembers — including its pinned items.
+ignored apps (e.g. your password manager), pause, theme, start with Windows, the command line, and
+**Import from Windows**, which pulls in everything Win+V still remembers — including its pinned items.
 
 ## Taking over Win+V
 
@@ -80,6 +85,43 @@ Explorer owns Win+V. BetterClipboard supports two ways to take it:
   nothing. Uninstalling gives Win+V back to Windows.
 
 Any other shortcut works too (Settings › Shortcut).
+
+## Command line for scripts and AI agents
+
+`bclip` lets terminals, scripts and AI coding agents (Claude Code, Codex, Copilot CLI, …) work with your
+history: list, search and grep it, read any item exactly as it was copied, put something back on the
+clipboard, or wait for your next copy. It ships next to the app and asks the running BetterClipboard —
+it never opens the encrypted history itself — and starts BetterClipboard in the background if needed.
+
+**It is off by default.** Turn it on in *Settings › Command line (bclip)* and click *Add bclip to PATH*
+(or install with `-AddToPath`). While it is on, any program running as you can read your clipboard history
+through it — the same trust you already give those programs with your files. Other Windows accounts and
+the network cannot connect, and each command is logged by name only, never with content.
+
+| Command | What it does |
+|---|---|
+| `bclip list [-n 20] [-f pinned\|text\|images\|links\|files] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line |
+| `bclip search <words…>` | Items containing all the words (substring, any language) |
+| `bclip grep [-i] <regex>` | Matching lines as `id:line: text`, like `grep -n` |
+| `bclip get [ID \| -r N] [--format text\|html\|rtf\|files\|png] [-o FILE]` | An item's content, byte for byte (default: the latest); images need `-o file.png` |
+| `bclip copy [ID] [--plain]` | Put an item back on the clipboard, like picking it in the panel |
+| `bclip put <text>` or `… \| bclip put` | Copy text (or standard input) to the clipboard and the history |
+| `bclip pin [ID]` · `unpin [ID]` · `delete ID` | Keep an item forever, release it, or delete it |
+| `bclip wait [-t 60]` | Block until you copy something, then print it |
+| `bclip status` | Version, item counts, capture statistics |
+
+Add `--json` to any command for structured output (ids, kinds, times, source app, formats, grep matches).
+Exit codes: `0` ok · `1` nothing found or timed out · `2` bad usage · `3` BetterClipboard unreachable or the
+command line is off · `4` other error. `bclip help <command>` shows every option.
+
+```powershell
+bclip get                                 # what did I just copy?
+bclip grep -i "exception|error" -s 1h     # errors copied in the last hour, as id:line: text
+bclip search invoice --json               # structured results for an agent
+bclip get 42 -o shot.png                  # an image, as a PNG file an agent can open
+bclip wait -t 120                         # "copy the stack trace and I'll read it"
+git diff | bclip put                      # hand text back to you on the clipboard
+```
 
 ## How it works
 

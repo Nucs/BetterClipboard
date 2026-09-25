@@ -5,9 +5,10 @@
 
 .DESCRIPTION
     For every architecture: `dotnet publish` of the WinUI app as a self-contained, unpackaged build
-    (no .NET or Windows App SDK runtime needed on the target PC), plus install.ps1 (the Installed-apps
-    uninstall entry runs it from the install folder), LICENSE and THIRD-PARTY-NOTICES.md at the zip
-    root. Then writes SHA256SUMS.txt in `sha256sum` format, which install.ps1 verifies before installing.
+    (no .NET or Windows App SDK runtime needed on the target PC) and of bclip.exe (the command line)
+    into the same folder, plus install.ps1 (the Installed-apps uninstall entry runs it from the install
+    folder), LICENSE and THIRD-PARTY-NOTICES.md at the zip root. Then writes SHA256SUMS.txt in
+    `sha256sum` format, which install.ps1 verifies before installing.
 
 .PARAMETER Version
     Semantic version without the leading 'v' (e.g. 0.1.0); stamped into the assemblies and the file names.
@@ -38,6 +39,7 @@ $ErrorActionPreference = 'Stop'
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $project = Join-Path $root 'src\BetterClipboard.App\BetterClipboard.App.csproj'
+$cliProject = Join-Path $root 'src\BetterClipboard.Cli\BetterClipboard.Cli.csproj'
 $output = [IO.Path]::GetFullPath((Join-Path $root $OutputDirectory))
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 
@@ -52,6 +54,13 @@ foreach ($arch in $Architectures) {
     & dotnet publish $project -c Release -r "win-$arch" --self-contained true "-p:Platform=$($platforms[$arch])" `
         "-p:Version=$Version" -p:DebugType=none -o $publish --nologo -v q
     if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for win-$arch (exit $LASTEXITCODE)." }
+
+    # bclip (the command line) goes into the same folder: it is self-contained too and shares the app's
+    # identical runtime files, so it adds only its own few hundred KB. The Settings "Add to PATH" button
+    # and install.ps1 -AddToPath put exactly this folder on PATH.
+    & dotnet publish $cliProject -c Release -r "win-$arch" --self-contained true `
+        "-p:Version=$Version" -p:DebugType=none -o $publish --nologo -v q
+    if ($LASTEXITCODE -ne 0) { throw "dotnet publish of bclip failed for win-$arch (exit $LASTEXITCODE)." }
 
     foreach ($file in 'install.ps1', 'LICENSE', 'THIRD-PARTY-NOTICES.md') {
         Copy-Item (Join-Path $root $file) $publish

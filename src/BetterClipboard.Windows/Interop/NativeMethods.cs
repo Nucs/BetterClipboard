@@ -863,6 +863,37 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static unsafe partial bool QueryFullProcessImageName(nint hProcess, uint dwFlags, char* lpExeName, ref uint lpdwSize);
 
+    /// <summary>Process id of the client connected to a named pipe instance (for the command-line audit log).</summary>
+    /// <param name="pipe">Server end of a connected pipe.</param>
+    /// <param name="clientProcessId">The client's process id.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetNamedPipeClientProcessId(Microsoft.Win32.SafeHandles.SafePipeHandle pipe, out uint clientProcessId);
+
+    // ───── Environment ─────
+
+    /// <summary><c>WM_SETTINGCHANGE</c>: broadcast after editing the user environment so Explorer (and new processes it starts) pick it up.</summary>
+    internal const uint WM_SETTINGCHANGE = 0x001A;
+
+    /// <summary><c>HWND_BROADCAST</c>: all top-level windows.</summary>
+    internal const nint HWND_BROADCAST = 0xFFFF;
+
+    /// <summary><c>SMTO_ABORTIFHUNG</c>: don't wait on hung windows during a broadcast.</summary>
+    internal const uint SMTO_ABORTIFHUNG = 0x0002;
+
+    /// <summary>Sends a message with a timeout (a plain broadcast <c>SendMessage</c> would hang on any unresponsive window).</summary>
+    /// <param name="hWnd">Target (or <see cref="HWND_BROADCAST"/>).</param>
+    /// <param name="msg">Message.</param>
+    /// <param name="wParam">Parameter.</param>
+    /// <param name="lParam">String parameter (e.g. <c>"Environment"</c>).</param>
+    /// <param name="flags"><c>SMTO_*</c>.</param>
+    /// <param name="timeout">Per-window timeout in ms.</param>
+    /// <param name="result">Message result.</param>
+    /// <returns>Non-zero on success.</returns>
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial nint SendMessageTimeout(nint hWnd, uint msg, nint wParam, string lParam, uint flags, uint timeout, out nint result);
+
     // ───── DPAPI-NG (CNG data protection) ─────
 
     /// <summary><c>NCRYPT_SILENT_FLAG</c>: never show UI (e.g. for descriptors that could prompt).</summary>

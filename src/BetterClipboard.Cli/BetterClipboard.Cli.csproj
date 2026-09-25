@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    bclip: BetterClipboard's command line for scripts and AI agents. A thin console client that sends one
+    JSON request over a per-user named pipe to the running app (which owns the encrypted history) and
+    prints the answer. Parsing, protocol and rendering live in Core (unit-tested); this project only does
+    console I/O, connecting and starting the app.
+    Plain net10.0-windows (no WinRT projection): it ships inside the app's self-contained folder and adds
+    only its own few hundred KB.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName>bclip</AssemblyName>
+    <RootNamespace>BetterClipboard.Cli</RootNamespace>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BetterClipboard.Core\BetterClipboard.Core.csproj" />
+  </ItemGroup>
+</Project>

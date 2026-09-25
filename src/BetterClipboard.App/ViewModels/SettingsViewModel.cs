@@ -138,6 +138,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool LaunchAtStartup { get; set; }
 
+    /// <summary>See <see cref="AppSettings.EnableCommandLine"/> (off by default).</summary>
+    [ObservableProperty]
+    public partial bool EnableCommandLine { get; set; }
+
     // ───── Status ─────
 
     /// <summary>How the shortcut is wired right now.</summary>
@@ -183,6 +187,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string HotkeyError { get; set; } = string.Empty;
 
+    /// <summary>Where bclip is, whether it is on PATH, and whether the pipe is being served (or why not).</summary>
+    [ObservableProperty]
+    public partial string CommandLineStatus { get; set; } = string.Empty;
+
+    /// <summary>Whether "Add to PATH" makes sense (bclip.exe exists and its folder is not on PATH yet).</summary>
+    [ObservableProperty]
+    public partial bool CanAddCommandLineToPath { get; set; }
+
     /// <summary>
     /// Copies a settings snapshot into the properties without persisting anything.
     /// </summary>
@@ -210,12 +222,44 @@ public sealed partial class SettingsViewModel : ObservableObject
             PlacementIndex = (int)settings.Placement;
             ThemeIndex = (int)settings.Theme;
             LaunchAtStartup = StartupRegistration.IsEnabled(AppController.ExecutablePath);
+            EnableCommandLine = settings.EnableCommandLine;
             RefreshHotkeyStatus();
+            RefreshCommandLineStatus();
         }
         finally
         {
             loading = false;
         }
+    }
+
+    /// <summary>Re-reads bclip's location, PATH state and whether the pipe is live.</summary>
+    public void RefreshCommandLineStatus()
+    {
+        bool exists = File.Exists(AppController.CommandLinePath);
+        bool onPath = exists && UserPath.Contains(AppController.CommandLineDirectory);
+        CanAddCommandLineToPath = exists && !onPath;
+        var where = exists
+            ? $"{AppController.CommandLinePath}{(onPath ? " · on your PATH (new terminals run it as bclip)" : " · not on your PATH")}"
+            : "bclip.exe is not next to the app (development build) — release builds include it.";
+        var state = controller.CommandLineError is { } error ? $"Could not start: {error}"
+            : controller.IsCommandLineActive ? "Serving bclip now."
+            : "Off — bclip is refused.";
+        CommandLineStatus = $"{state}\n{where}";
+    }
+
+    /// <summary>Adds bclip's folder to the user PATH and refreshes the status text.</summary>
+    public void AddCommandLineToPath()
+    {
+        try
+        {
+            controller.AddCommandLineToPath();
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            AppLog.Warn($"Adding bclip to PATH failed: {ex.Message}");
+        }
+
+        RefreshCommandLineStatus();
     }
 
     /// <summary>Re-reads the shortcut registration state.</summary>
@@ -482,6 +526,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>
     partial void OnIsCapturePausedChanged(bool value) => Update(s => s with { IsCapturePaused = value });
+
+    /// <summary>Persists the change; the controller starts or stops the pipe when it sees the new settings.</summary>
+    /// <param name="value">New value.</param>
+    partial void OnEnableCommandLineChanged(bool value) => Update(s => s with { EnableCommandLine = value });
 
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>

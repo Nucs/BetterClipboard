@@ -102,6 +102,17 @@ public sealed record AppSettings
     public AppTheme Theme { get; init; } = AppTheme.System;
 
     /// <summary>
+    /// Serve the <c>bclip</c> command line (scripts, AI assistants): list, search, read, copy and add
+    /// history items over a named pipe restricted to this Windows account.
+    /// </summary>
+    /// <remarks>
+    /// <b>Off by default, on purpose:</b> while on, <i>any</i> program running as the user can read the
+    /// whole (otherwise encrypted) history through the pipe. The pipe only exists while this is on, so
+    /// turning it off is a real barrier, not just a flag the client checks.
+    /// </remarks>
+    public bool EnableCommandLine { get; init; }
+
+    /// <summary>
     /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
     /// into a broken state (e.g. a negative item cap).
     /// </summary>

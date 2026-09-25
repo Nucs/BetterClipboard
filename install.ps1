@@ -15,6 +15,8 @@
          setting uses) and an entry in Settings > Apps > Installed apps (uninstall button).
       5. Optionally (-TakeOverWinV) tells Explorer to release Win+V so BetterClipboard can register it
          directly, and restarts Explorer (the taskbar blinks once).
+      6. Optionally (-AddToPath) puts the install folder on your user PATH, so terminals can run bclip,
+         BetterClipboard's command line for scripts and AI agents.
 
     Your clipboard history lives in %LOCALAPPDATA%\BetterClipboard (encrypted, bound to this PC and
     your Windows account) and is never touched by install or update; -Uninstall keeps it unless
@@ -30,6 +32,12 @@
     Release Win+V from Explorer (HKCU ...\Explorer\Advanced\DisabledHotkeys gets 'V') and restart
     Explorer. Without it BetterClipboard still owns Win+V through a keyboard hook while it runs; with
     it, Win+V also works over elevated windows, but does nothing while BetterClipboard is not running.
+
+.PARAMETER AddToPath
+    Add the install folder to your user PATH so new terminals (and this PowerShell window) can run
+    bclip. bclip still answers only after you turn on Settings > Command line in the app - it is off by
+    default because, while on, any program running as you can read your clipboard history through it.
+    -Uninstall removes the PATH entry again.
 
 .PARAMETER NoStartup
     Do not start BetterClipboard when you sign in.
@@ -64,6 +72,11 @@
     Same, and releases Win+V from Explorer.
 
 .EXAMPLE
+    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AddToPath
+
+    Installs or updates, and makes bclip runnable by name.
+
+.EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
 
     Removes the app but keeps the history.
@@ -77,6 +90,9 @@ param(
 
     [Parameter(ParameterSetName = 'Install')]
     [switch] $TakeOverWinV,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [switch] $AddToPath,
 
     [Parameter(ParameterSetName = 'Install')]
     [switch] $NoStartup,
@@ -109,6 +125,9 @@ $ExeName = 'BetterClipboard.exe'
 $RunKeyPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $UninstallKeyPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$AppName"
 $ExplorerAdvancedPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+# HKCU subkey holding the user environment (the user PATH). A variable only so tests can point the PATH
+# helpers at a scratch key instead of the real PATH.
+$UserEnvironmentKey = 'Environment'
 $ShortcutPath = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName.lnk"
 
 # Same resolution as the app (AppPaths.ResolveDefault): the override variable exists so tests and dev
@@ -245,6 +264,77 @@ function Test-WinVReleased {
     return (Get-DisabledHotkeys).ToUpperInvariant().Contains('V')
 }
 
+# User PATH helpers - the same rules as the app's "Add bclip to PATH" button (Shell\UserPath.cs), so the
+# two never disagree about whether the folder is listed.
+
+function Get-UserPathEntries {
+    # Raw value: reading it expanded and writing it back would freeze every %USERPROFILE%-style entry.
+    # Callers wrap the result in @() - PowerShell unrolls a returned array (none -> $null, one -> a string).
+    $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($UserEnvironmentKey)
+    if (-not $key) { return @() }
+    try {
+        $raw = [string] $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    }
+    finally {
+        $key.Dispose()
+    }
+
+    return @($raw -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function Test-SamePath([string] $Entry, [string] $Directory) {
+    # Entries may be spelled with variables, other casing or a trailing slash; compare what they name.
+    $a = [Environment]::ExpandEnvironmentVariables($Entry).TrimEnd('\', '/')
+    return [string]::Equals($a, $Directory.TrimEnd('\', '/'), [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Set-UserPathEntries([string[]] $Entries) {
+    # REG_EXPAND_SZ like Windows' own value. [Environment]::SetEnvironmentVariable(..., 'User') would
+    # write REG_SZ and silently stop every %VAR% entry from expanding.
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($UserEnvironmentKey)
+    try {
+        $key.SetValue('Path', ($Entries -join ';'), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    }
+    finally {
+        $key.Dispose()
+    }
+
+    # Explorer re-reads the user environment only when told; without this, terminals started from it
+    # would not see the change until the next sign-in.
+    if (-not ('BetterClipboardInstaller.NativeMethods' -as [type])) {
+        Add-Type -Namespace BetterClipboardInstaller -Name NativeMethods -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);'
+    }
+
+    $ignored = [UIntPtr]::Zero
+    # HWND_BROADCAST, WM_SETTINGCHANGE "Environment", SMTO_ABORTIFHUNG + 2 s: a hung window cannot stall us.
+    [void] [BetterClipboardInstaller.NativeMethods]::SendMessageTimeout([IntPtr] 0xFFFF, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 2000, [ref] $ignored)
+}
+
+function Test-InUserPath([string] $Directory) {
+    return @(@(Get-UserPathEntries) | Where-Object { Test-SamePath $_ $Directory }).Count -gt 0
+}
+
+function Add-ToUserPath([string] $Directory) {
+    $entries = @(Get-UserPathEntries)
+    if (@($entries | Where-Object { Test-SamePath $_ $Directory }).Count -gt 0) {
+        return $false
+    }
+
+    Set-UserPathEntries ($entries + $Directory.TrimEnd('\', '/'))
+    return $true
+}
+
+function Remove-FromUserPath([string] $Directory) {
+    $entries = @(Get-UserPathEntries)
+    $kept = @($entries | Where-Object { -not (Test-SamePath $_ $Directory) })
+    if ($kept.Count -eq $entries.Count) {
+        return $false
+    }
+
+    Set-UserPathEntries $kept
+    return $true
+}
+
 function Test-Elevated {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -371,6 +461,17 @@ function Install-BetterClipboard {
     Set-ItemProperty -Path $UninstallKeyPath -Name NoRepair -Value 1 -Type DWord
     Set-ItemProperty -Path $UninstallKeyPath -Name EstimatedSize -Value $sizeKb -Type DWord
 
+    if ($AddToPath) {
+        Write-Step 'Adding the install folder to your user PATH (for bclip, the command line)'
+        if (-not (Add-ToUserPath $InstallDir)) { Write-Note 'It was already on your PATH.' }
+
+        # This window too: "irm ... | iex" runs the installer inside the caller's own PowerShell process,
+        # which keeps the PATH it started with - without this, bclip would only work in new terminals.
+        if (@($env:Path -split ';' | Where-Object { $_ -and (Test-SamePath $_ $InstallDir) }).Count -eq 0) {
+            $env:Path = "$($env:Path.TrimEnd(';'));$InstallDir"
+        }
+    }
+
     $releasedByUs = $false
     if ($TakeOverWinV) {
         $releasedByUs = Set-WinVReleased $true
@@ -395,6 +496,7 @@ function Install-BetterClipboard {
         version      = $semver
         installDir   = $InstallDir
         releasedWinV = $releasedByUs -or $previouslyReleased
+        onUserPath   = Test-InUserPath $InstallDir
         installedUtc = (Get-Date).ToUniversalTime().ToString('o')
     }
     $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
@@ -411,6 +513,13 @@ function Install-BetterClipboard {
     if (-not $TakeOverWinV) {
         Write-Note 'Optional: re-run with -TakeOverWinV to release Win+V from Explorer (works over elevated windows too).'
     }
+
+    if ($AddToPath) {
+        Write-Note 'bclip is on your PATH. Turn it on in Settings > Command line (off by default), then: bclip help'
+    }
+    else {
+        Write-Note 'Optional: re-run with -AddToPath to use bclip, the command line for scripts and AI agents.'
+    }
 }
 
 function Uninstall-BetterClipboard {
@@ -421,6 +530,12 @@ function Uninstall-BetterClipboard {
     Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
     Remove-Item -Path $ShortcutPath -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $UninstallKeyPath -Recurse -Force -ErrorAction SilentlyContinue
+
+    # The folder is about to disappear; a PATH entry for it (from -AddToPath or the app's "Add bclip to
+    # PATH" button - either way) would leave every shell probing a missing directory.
+    if (Remove-FromUserPath $InstallDir) {
+        Write-Note "Removed $InstallDir from your user PATH."
+    }
 
     # Without BetterClipboard, a released Win+V would do nothing at all - give it back to Windows.
     if (-not $KeepWinVReleased -and (Test-WinVReleased)) {

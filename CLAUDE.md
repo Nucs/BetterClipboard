@@ -241,11 +241,12 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing (`Content/`), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), settings, logging, presentation helpers. **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings), `Security/` (MachineGuid + SID, DPAPI key protector). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing (`Content/`), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), settings, logging, presentation helpers. **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server). **CS1591 = error.** |
+| [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (120 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), opt-in real-clipboard round trip (48 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (150 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, opt-in real-clipboard round trip (58 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -267,6 +268,10 @@ UI thread (WinUI DispatcherQueue) ── AppController, ClipboardFlyout, Setting
    │ TryEnqueueCapture
    ▼
 History worker (single consumer Channel) ── classify → WIC analyze (thumbnail + pixel hash) → SQLite upsert → prune → Changed event
+
+"Cli" named pipe (only while Settings › Command line is on) ── accept loop + ≤ 8 connections on the thread
+ pool → CliCommandProcessor → reads via ClipHistoryService, writes via the worker, clipboard writes via
+ ClipboardMonitor (IClipboardWriter)
 ```
 
 Rules: nothing heavy on the hook thread (Windows silently drops slow LL hooks); the clipboard thread only
@@ -373,15 +378,71 @@ DEK (hex passphrase → MDS Password → PRAGMA key) ──SQLite3MC ChaCha20-Po
 At startup (setting, default on) and on demand: WinRT `GetHistoryItemsAsync` (text/HTML/RTF/bitmap/files;
 bitmaps re-encoded as PNG + DIBV5) + decrypted on-disk pins (`WindowsPinnedStore` + `DpapiNg`); WinRT
 items are marked pinned when their timestamp (second precision) matches a pin. Deduped by hash,
-never reorders existing history.
+never reorders existing history. Imported items carry **no source app** (Windows does not record the
+producer): v0.1.0 labelled them "Windows clipboard history", which the cards showed as if it were an app;
+`ClipStore.ApplyDataFixups` clears that label once per store (marker `meta` key `fixup.import_source.v1`,
+only rows with origin import, no source path and exactly that name), and the card caption shows no
+source for imports ("Unknown app" is reserved for live copies whose producer could not be identified).
 
 ### 2.8 Data & privacy decisions
 
 Data dir: `%LOCALAPPDATA%\BetterClipboard\` (`stores\{id}\history.db` + `history.key`, `settings.json`,
 `logs\betterclipboard-*.log` with 14-day retention, `installer.json` from `install.ps1`); override with env
 `BETTERCLIPBOARD_DATA_DIR` (tests, dev runs; the installer honors it too — **always use it when
-experimenting** so the real history stays clean). Everything is encrypted at rest (§2.6.1); Windows itself
+experimenting** so the real history stays clean). An override also **scopes the instance** (§2.9): its own
+single-instance lock, `--exit`/`--show-flyout` events and pipe, so an isolated run coexists with the
+user's installed app instead of signalling it. Everything is encrypted at rest (§2.6.1); Windows itself
 encrypts only pins. Logs never contain clipboard content, keys, the binding or the identifiers.
+
+### 2.9 Command line (`bclip`) — `Core/Cli`, `Windows/Cli/CliPipeServer`, `src/BetterClipboard.Cli`
+
+Purpose: let terminals, scripts and AI agents list/search/grep the history, read an item exactly, put an
+item (or new text) on the clipboard, and wait for the next copy. **Off by default** (`AppSettings.EnableCommandLine`):
+while on, any process running as the user can read the whole history through it — Settings says so.
+
+- **Client/server, never a second DB opener.** The store is single-writer (history worker) and its key is
+  DPAPI-sealed; `bclip` asks the running app over a named pipe and the app stays the only process holding
+  the key. The pipe exists only while the setting is on (toggled live from `OnSettingsChanged`).
+- **Pipe security.** Name `BetterClipboard.Cli.<hex(SHA-256("BetterClipboard/CliPipe/v1:" + SID upper))[..16]>.<session>[.<scope>]`
+  (per user and session, SID not readable from it). Server: owner = user, allow the user
+  ReadWrite|CreateNewInstance|Synchronize, **deny NETWORK**, `FirstPipeInstance` on the first instance (if
+  someone squatted the name, `Start` throws and Settings shows the error). Client: `PipeOptions.CurrentUserOnly`
+  (a pipe owned by another account ⇒ `UnauthorizedAccessException` ⇒ exit 3). ≤ 8 instances, 64 KB buffers.
+- **Protocol v1.** One request line, one response line: newline-delimited JSON (source-generated
+  System.Text.Json, camelCase, nulls omitted), each line bounded at 64 MB (`CliWire.ReadLineAsync` refuses
+  more instead of buffering). Client deadline = `wait` timeout + 30 s, else 2 min. A pending 1-byte read
+  detects the client hanging up (Ctrl+C on `bclip wait`) and cancels the handler.
+- **Commands** (`CliCommandProcessor`, pure over `ClipHistoryService` + `IClipboardWriter` + `IImageExporter`, unit-tested):
+  `list`/`search` (`QueryAsync`, not pinned-first, 1–1000, `--since` = `UsedSince`); `grep` (.NET regex,
+  CultureInvariant, **250 ms match timeout** ⇒ bad_request, newest 10,000 items' search text, full text
+  reloaded when the indexed copy hit the 32 K cap, ≤ 20 matches/item, lines cut at 400 chars); `get`
+  (auto/text/html = CF_HTML fragment by byte offsets/rtf/files/png = stored PNG or DIB → WIC/formats);
+  `copy` (`ReplayFormats.Prepare` like a paste, then MarkUsed when MoveToTopOnPaste); `put` (UnicodeText to
+  the clipboard + `AddAsync` with source "bclip"; not recorded while paused); `pin`/`unpin`/`delete`
+  (latest by default; delete needs an id or `-r`); `wait` (`Changed`: Added, or Updated with LastUsed ≥ the
+  start — a re-copy of an existing item; 1–3600 s); `status` (version, counts, capture statistics).
+  Ids are the numbers `list` shows, or `-r N`; no `#1` syntax (`#` starts a comment in bash/PowerShell).
+- **Output.** `get`/`wait` print the payload byte-exact (a final newline only for a human's terminal);
+  everything else is line-terminated. Images never go to stdout (exit 2 with a hint; `-o file.png`).
+  `--json` everywhere. Exit codes 0 ok · 1 nothing found/timeout · 2 usage · 3 unreachable/off/not ours ·
+  4 other · 130 Ctrl+C. Terminal: `Console.OutputEncoding = Unicode` (⇒ `WriteConsoleW`, console code page
+  untouched); redirected: UTF-8 without BOM; stdin UTF-8 with BOM detection, `put` trims one trailing newline.
+- **Gate + auto-start.** `bclip` reads `settings.json` with `SettingsStore.TryReadSnapshot` (read-only,
+  never quarantines — unlike `Load`) and exits 3 when the setting is off. If the pipe does not answer in
+  800 ms and the instance's mutex does not exist, it starts `BetterClipboard.exe --background` from its own
+  folder via **ShellExecute** and retries for 20 s. (With `UseShellExecute=false` the long-lived app
+  inherited bclip's stdout, so `bclip status | grep` hung until the app exited — found in the e2e run.)
+- **Instance scoping** (`AppPaths.InstanceScope`): null for the default data dir, else
+  `dir-<hex(SHA-256(UPPER(path)))[..12]>`; scopes the mutex, command events and pipe name. A scoped instance
+  does not install the LL hook while the default instance runs (it would steal Win+V from the real app).
+  Lesson (2026-09-25): before scoping existed, an e2e script's `--exit` shut down the user's installed app.
+- **Audit + PATH.** Each command logs `Command line: <command> (client <process> pid N)` — never arguments or
+  content. Settings › *Add bclip to PATH* (`Shell/UserPath`: REG_EXPAND_SZ read/written unexpanded,
+  `WM_SETTINGCHANGE "Environment"`) or `install.ps1 -AddToPath`; uninstall removes the entry.
+- **Race lesson.** The accept loop once did `Task.Run(() => ServeAsync(listener))` and then reassigned
+  `listener` to the next, unconnected instance — the lambda captured the *variable*, so ~1 in 3 test runs
+  served the wrong pipe and a client write blocked forever. Found with `dotnet-dump analyze` → `dumpasync`;
+  fixed by capturing a local; `ManyConnections_AreAllServed` fails with the bug reintroduced.
 
 ---
 
@@ -389,7 +450,7 @@ encrypts only pins. Logs never contain clipboard content, keys, the binding or t
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 168 tests (1 opt-in skipped)
+dotnet test --solution BetterClipboard.sln                     # 208 tests (1 opt-in skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 ```
 
@@ -401,13 +462,24 @@ The solution build puts the app in `src/BetterClipboard.App/bin/x64/Debug/net10.
 Run: plain launch = start + open Settings (or activate the running instance); `--background` = tray only
 (used by "Start with Windows"); `--show-flyout` = open the flyout in the running instance; `--exit` =
 graceful quit (drains queued captures). **The exe is locked while running — `--exit` before rebuilding.**
-Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe --background`.
+Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe --background` — a scoped
+instance (§2.9), so `--exit` with the same variable set stops only it; **without** the variable, `--exit`
+stops the user's installed app.
+
+`bclip` from the solution build: `src/BetterClipboard.Cli/bin/Debug/net10.0-windows/bclip.exe`
+(framework-dependent; it can auto-start only a `BetterClipboard.exe` in its own folder, so start a dev app
+yourself). CLI end-to-end next to the user's app (2026-09-25): publish, seed an isolated store with
+`BC-TEST` items only (settings: `EnableCommandLine` on, `ImportWindowsHistoryOnStartup` off,
+`IsCapturePaused` on), export `BETTERCLIPBOARD_DATA_DIR`, run the published `bclip` (it auto-starts the
+scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and compare the list of
+`BetterClipboard.exe` PIDs before/after — the user's must be unchanged.
 
 ### 3.1 Release & install
 
 - **Package:** [`tools/release/package.ps1`](tools/release/package.ps1) `-Version X.Y.Z` → for win-x64 and
   win-arm64: `dotnet publish -c Release -r win-<arch> --self-contained true -p:Platform=<x64|ARM64>
-  -p:DebugType=none` (no .NET or WinAppSDK runtime needed on the target) + `install.ps1`, `LICENSE`,
+  -p:DebugType=none` (no .NET or WinAppSDK runtime needed on the target), then `bclip` published
+  self-contained into the same folder (it shares the app's runtime files: the x64 zip grew by 0.17 MB) + `install.ps1`, `LICENSE`,
   `THIRD-PARTY-NOTICES.md` at the zip root → `BetterClipboard-X.Y.Z-win-<arch>.zip` (~70 MB, ~180 MB
   unpacked) + `SHA256SUMS.txt` (sha256sum format, LF). The same script runs in CI and in the release job.
 - **Release:** push an **annotated** tag `vX.Y.Z` whose message is the release notes (`git tag -a vX.Y.Z -F
@@ -422,16 +494,23 @@ Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe -
   (failure puts the old version back) → Start-menu shortcut, Run entry in exactly the app's own format
   (`"<exe>" --background`), HKCU `Uninstall\BetterClipboard` entry (runs `install.ps1 -Uninstall` from the
   install folder) → `installer.json` in the data dir → launch (via `explorer.exe` when elevated, so the app
-  never runs elevated). `-TakeOverWinV` sets `DisabledHotkeys` + restarts Explorer. `-Uninstall` removes
-  everything but the history (`-RemoveData` for that) and gives Win+V back to Explorer when released.
+  never runs elevated). `-TakeOverWinV` sets `DisabledHotkeys` + restarts Explorer. `-AddToPath` puts the
+  install folder on the user PATH (same rules as `Shell/UserPath`: raw REG_EXPAND_SZ, `%VAR%` entries kept,
+  `WM_SETTINGCHANGE` via `Add-Type`, and `$env:Path` of the calling window because `irm | iex` runs in it).
+  `-Uninstall` removes everything but the history (`-RemoveData` for that), removes the PATH entry (whoever
+  added it) and gives Win+V back to Explorer when released.
 - **Installer tests (offline):** shadow `Invoke-RestMethod`/`Invoke-WebRequest` with functions that serve
   the local `artifacts/release` zips (PowerShell resolves functions before cmdlets, also inside the called
   script; share state via `$global:`, not `$script:`). Verified 2026-09-25: fresh install (5.1), update over
   a running instance (7), tampered checksum refused with the install untouched, uninstall launched from
   *inside* the install folder (needed `[Environment]::CurrentDirectory` — `Set-Location` alone keeps the
-  folder's process-CWD handle open), DisabledHotkeys helpers against a scratch key. When invoking Windows
-  PowerShell 5.1 from this bash, clear `PSModulePath` (`env -u PSModulePath …`), or 5.1 picks up
-  PowerShell 7's modules and even `Get-FileHash` is "not recognized".
+  folder's process-CWD handle open), DisabledHotkeys helpers against a scratch key. PATH helpers
+  (2026-09-25, 15 checks, PS 5.1 + 7): load only those functions from the script's AST
+  (`Parser::ParseFile` → `FunctionDefinitionAst`) and point `$UserEnvironmentKey` at a scratch HKCU key — the
+  real PATH is compared before/after. **Now that the user has a real install, never run the full installer
+  as a test:** it `--exit`s every BetterClipboard in the session and rewrites the Run key, shortcut and
+  Installed-apps entry. When invoking Windows PowerShell 5.1 from this bash, clear `PSModulePath`
+  (`env -u PSModulePath …`), or 5.1 picks up PowerShell 7's modules and even `Get-FileHash` is "not recognized".
 
 ---
 
@@ -459,6 +538,13 @@ Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe -
   (private window station, see §1.9) and drive them with `ClipboardProducer`. Writing unmarked content to
   the real clipboard pushes items out of the user's RAM-only Win+V history — that loss is unrecoverable.
 - **Gaps in timing tests:** busy-wait on a `Stopwatch` — `Thread.Sleep(n)` rounds up to the 15.6 ms tick.
+- **Never disturb the user's installed app** (it runs in the same session as every experiment): test
+  instances get their own `BETTERCLIPBOARD_DATA_DIR` (⇒ scoped lock/events/pipe, no LL hook), `--exit` is
+  only ever sent with that variable set, and scripts record the `BetterClipboard.exe` PIDs before and
+  check them after.
+- **Starting long-lived processes from a console tool:** `UseShellExecute = true` — with `false` the child
+  inherits the tool's stdout/stderr pipes and whoever reads them (a shell pipe, an AI agent) waits for EOF
+  until that child exits.
 - **Quote-dense scripts:** write them to a scratch file and run the file; big inline heredocs break the
   Bash tool's `eval` wrapper (`unexpected EOF while looking for matching '`).
 - **E2E harness ([`tools/e2e/`](tools/e2e)) injects real keystrokes.**
@@ -475,7 +561,11 @@ Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe -
 
 | Feature | How | Result |
 |---|---|---|
-| Unit tests | `dotnet test --solution` | 167 pass + 1 opt-in |
+| Unit tests | `dotnet test --solution` | 207 pass + 1 opt-in (5/5 repeated runs green) |
+| `bclip` published build next to the user's running app: status (auto-starts the scoped instance), list, search, grep, get (exact bytes, Hebrew/✓, HTML fragment, file list), image → exit 2 without `-o` / PNG with `-o`, `--json`, pin + pinned filter, `--since`, wait timeout (1), not found (1), usage (2), access off (3, starts nothing); audit log; no LL hook; user's PID unchanged | isolated seeded store + `run.sh` | ✅ (after the ShellExecute fix) |
+| `put`/`copy` write the clipboard, `wait` sees the next copy | CLI end-to-end tests in the isolated window station | ✅ |
+| `install.ps1 -AddToPath` / uninstall PATH helpers | AST-loaded functions on a scratch key, PS 5.1 + 7 | ✅ (15/15) |
+| "Windows clipboard history" source label gone (importer, caption, one-time fix-up of v0.1.0 rows) | tests | ✅ (the running v0.1.0 install still shows it until updated) |
 | Encryption at rest: no plaintext in db/WAL, wrong key ⇒ unreadable, in-place migration, quarantine | tests + real app on a copy of a v0.1 dir | ✅ (0 of 16 entries lost) |
 | Capture: 25 copies 20 ms apart all captured; 100 copies ≥ 0.5 ms apart all captured; bursts accounted | isolated window station | ✅ (10/10 runs green) |
 | Watchdog recovers a deaf listener; own writes ignored; delayed rendering | isolated window station | ✅ |
@@ -505,5 +595,7 @@ Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe -
 - Smaller release: trim the 26 MB `Microsoft.Windows.SDK.NET.dll` projection (needs a trim-safe audit of
   reflection-based JSON first).
 - Delete-through to Windows history (`Clipboard.DeleteItemFromHistory`) when deleting here.
+- An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out
+  to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms
   (trim, case, JSON pretty), large preview pane, drag-out, sync between PCs, MSIX packaging.
