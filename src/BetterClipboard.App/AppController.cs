@@ -85,6 +85,12 @@ public sealed class AppController
     /// </summary>
     public MachineBoundHistoryResult? StorageInfo { get; private set; }
 
+    /// <summary>
+    /// Capture accounting of the clipboard listener since startup (notifications, reads, superseded,
+    /// watchdog recoveries); <see langword="null"/> before <see cref="Start"/>. Cheap to read from any thread.
+    /// </summary>
+    public ClipboardMonitorStatistics? CaptureStatistics => monitor?.Statistics;
+
     /// <summary>Current state of the global shortcut.</summary>
     public HotkeyRegistration HotkeyStatus => hotkeys?.Current ?? new HotkeyRegistration(default, HotkeyMode.None, 0);
 

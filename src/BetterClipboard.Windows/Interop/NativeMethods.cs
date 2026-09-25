@@ -366,6 +366,17 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool GetCursorPos(out POINT lpPoint);
 
+    /// <summary>
+    /// Binds the calling thread to a desktop (used only to run clipboard tests inside a private window
+    /// station). Fails with <c>ERROR_BUSY</c> once the thread owns any window or hook — including COM's
+    /// hidden STA window.
+    /// </summary>
+    /// <param name="hDesktop">Desktop handle from <c>CreateDesktop</c>/<c>OpenDesktop</c>.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetThreadDesktop(nint hDesktop);
+
     // ───── Clipboard ─────
 
     /// <summary>Starts sending <see cref="WM_CLIPBOARDUPDATE"/> to a window.</summary>

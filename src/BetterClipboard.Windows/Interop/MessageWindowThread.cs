@@ -48,6 +48,9 @@ public sealed class MessageWindowThread : IDisposable
     private readonly Thread thread;
     private readonly string name;
     private readonly bool messageOnly;
+
+    /// <summary>Desktop the thread moves to before creating its window (0 = inherit the process's). Tests only.</summary>
+    private readonly nint desktop;
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WndProc? wndProc;
     private string? className;
@@ -61,12 +64,31 @@ public sealed class MessageWindowThread : IDisposable
     /// <param name="name">Diagnostic name (thread name, window title, class name prefix).</param>
     /// <param name="messageOnly"><see langword="true"/> for a message-only window; <see langword="false"/> for a hidden top-level window that also receives broadcasts.</param>
     /// <param name="sta">Run the thread in a single-threaded COM apartment (needed by OLE clipboard consumers).</param>
-    /// <exception cref="Win32Exception">The window class or window could not be created.</exception>
-    public MessageWindowThread(string name, bool messageOnly = true, bool sta = false)
+    /// <param name="priority">
+    /// Scheduling priority of the window thread. Raise it only for loops whose <i>latency</i> matters and
+    /// whose work is short (the clipboard listener: every millisecond between a change notification and
+    /// the read is a chance for the producer to overwrite the content); a busy high-priority loop starves
+    /// the rest of the app.
+    /// </param>
+    /// <param name="desktop">
+    /// Test isolation only: a desktop handle (in a private window station) the thread moves to before
+    /// creating its window, so clipboard tests never touch the user's clipboard. Must be 0 when
+    /// <paramref name="sta"/> is set — STA initialization creates COM's hidden window, after which
+    /// <c>SetThreadDesktop</c> fails with <c>ERROR_BUSY</c>.
+    /// </param>
+    /// <exception cref="Win32Exception">The window class or window could not be created, or the thread could not move to <paramref name="desktop"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="desktop"/> was combined with <paramref name="sta"/>.</exception>
+    public MessageWindowThread(string name, bool messageOnly = true, bool sta = false, ThreadPriority priority = ThreadPriority.Normal, nint desktop = 0)
     {
+        if (sta && desktop != 0)
+        {
+            throw new ArgumentException("A desktop override requires an MTA thread (STA threads already own a COM window).", nameof(desktop));
+        }
+
         this.name = name;
         this.messageOnly = messageOnly;
-        thread = new Thread(Run) { IsBackground = true, Name = $"BetterClipboard.{name}" };
+        this.desktop = desktop;
+        thread = new Thread(Run) { IsBackground = true, Name = $"BetterClipboard.{name}", Priority = priority };
         if (sta)
         {
             thread.SetApartmentState(ApartmentState.STA);
@@ -188,6 +210,14 @@ public sealed class MessageWindowThread : IDisposable
         try
         {
             NativeThreadId = GetCurrentThreadId();
+
+            // Must precede every other user32 call: the first one binds the thread to a desktop, and a
+            // thread that owns windows can no longer switch.
+            if (desktop != 0 && !SetThreadDesktop(desktop))
+            {
+                throw new Win32Exception(Marshal.GetLastPInvokeError(), $"SetThreadDesktop failed for {name}.");
+            }
+
             instance = GetModuleHandle(null);
             wndProc = WindowProcedure;
             className = $"BetterClipboard.{name}.{Guid.NewGuid():N}";

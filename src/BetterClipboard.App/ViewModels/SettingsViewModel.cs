@@ -1,5 +1,6 @@
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Settings;
+using BetterClipboard.Windows.Clipboard;
 using BetterClipboard.Windows.Input;
 using BetterClipboard.Windows.Shell;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -151,6 +152,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string StatsText { get; set; } = "…";
 
+    /// <summary>
+    /// "Since start: 523 copies read · none missed …" — the listener's accounting, so a missed copy is
+    /// visible instead of silent.
+    /// </summary>
+    [ObservableProperty]
+    public partial string CaptureReliabilityText { get; set; } = "…";
+
     /// <summary>Last import result.</summary>
     [ObservableProperty]
     public partial string ImportStatus { get; set; } = string.Empty;
@@ -246,6 +254,35 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             AppLog.Warn($"Stats failed: {ex.Message}");
         }
+
+        CaptureReliabilityText = DescribeCapture(controller.CaptureStatistics);
+    }
+
+    /// <summary>Turns the listener accounting into one honest sentence for the settings page.</summary>
+    /// <param name="stats">Statistics, or <see langword="null"/> when capture has not started.</param>
+    /// <returns>The description.</returns>
+    private static string DescribeCapture(ClipboardMonitorStatistics? stats)
+    {
+        if (stats is not { } s)
+        {
+            return "Not watching the clipboard.";
+        }
+
+        var text = $"Since start: {s.Read:N0} clipboard change{(s.Read == 1 ? "" : "s")} read the moment Windows announced them";
+        text += s.Superseded == 0
+            ? " — none overwritten before they could be read."
+            : $" — {s.Superseded:N0} replaced by a newer one within a fraction of a millisecond (usually one app updating the same copy twice).";
+        if (s.LockedOut > 0)
+        {
+            text += $" {s.LockedOut:N0} skipped because another app kept the clipboard locked.";
+        }
+
+        if (s.Recovered > 0)
+        {
+            text += $" The watchdog recovered {s.Recovered:N0} change{(s.Recovered == 1 ? "" : "s")} Windows never announced.";
+        }
+
+        return text;
     }
 
     /// <summary>
