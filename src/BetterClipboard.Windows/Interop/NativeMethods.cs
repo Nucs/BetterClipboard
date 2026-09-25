@@ -894,6 +894,59 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     internal static partial nint SendMessageTimeout(nint hWnd, uint msg, nint wParam, string lParam, uint flags, uint timeout, out nint result);
 
+    // ───── Pointer input (dragging the flyout) ─────
+
+    /// <summary>
+    /// Common data of one pointer input frame (<c>POINTER_INFO</c>). Only <see cref="ptPixelLocation"/> is
+    /// read; the rest is declared so the layout — and thus that field's offset — matches the native struct.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINTER_INFO
+    {
+        /// <summary>Pointer type (<c>PT_TOUCH</c>, <c>PT_PEN</c>, <c>PT_MOUSE</c>…).</summary>
+        public uint pointerType;
+        /// <summary>Pointer id.</summary>
+        public uint pointerId;
+        /// <summary>Input frame id.</summary>
+        public uint frameId;
+        /// <summary><c>POINTER_FLAG_*</c>.</summary>
+        public uint pointerFlags;
+        /// <summary>Source device handle.</summary>
+        public nint sourceDevice;
+        /// <summary>Window the input was targeted at.</summary>
+        public nint hwndTarget;
+        /// <summary>Predicted screen position in physical pixels.</summary>
+        public POINT ptPixelLocation;
+        /// <summary>Position in HIMETRIC units.</summary>
+        public POINT ptHimetricLocation;
+        /// <summary>Raw screen position in pixels.</summary>
+        public POINT ptPixelLocationRaw;
+        /// <summary>Raw position in HIMETRIC units.</summary>
+        public POINT ptHimetricLocationRaw;
+        /// <summary>Message time.</summary>
+        public uint dwTime;
+        /// <summary>Coalesced history frames.</summary>
+        public uint historyCount;
+        /// <summary>Wheel/hwheel delta for mouse pointers.</summary>
+        public int InputData;
+        /// <summary>Modifier key state (<c>POINTER_MOD_*</c>).</summary>
+        public uint dwKeyStates;
+        /// <summary>High-resolution timestamp.</summary>
+        public ulong PerformanceCount;
+        /// <summary>Button transition of this frame.</summary>
+        public int ButtonChangeType;
+    }
+
+    /// <summary>
+    /// Reads the current frame of a pointer (the one whose message this thread is processing).
+    /// </summary>
+    /// <param name="pointerId">System pointer id.</param>
+    /// <param name="pointerInfo">Receives the frame.</param>
+    /// <returns><see langword="false"/> when the id is unknown to this thread (e.g. not a WM_POINTER pointer).</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetPointerInfo(uint pointerId, out POINTER_INFO pointerInfo);
+
     // ───── DPAPI-NG (CNG data protection) ─────
 
     /// <summary><c>NCRYPT_SILENT_FLAG</c>: never show UI (e.g. for descriptors that could prompt).</summary>

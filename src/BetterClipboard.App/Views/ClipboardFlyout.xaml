@@ -3,6 +3,9 @@
   The Win+V replacement: an acrylic, caption-less, always-on-top panel that opens next to the caret.
   Layout: header (title + actions) / search / filter pills / history cards / keyboard hints.
   Keyboard handling lives in Root_PreviewKeyDown so it works while focus stays in the search box.
+  Root's Transparent background is load-bearing: it makes the empty areas hit-testable, so dragging the
+  background moves the window like a title bar (Root_PointerPressed); a null background would let those
+  presses fall through to nothing.
 -->
 <Window
     x:Class="BetterClipboard.App.Views.ClipboardFlyout"
@@ -16,6 +19,7 @@
     <Grid
         x:Name="Root"
         Padding="12,10,12,8"
+        Background="Transparent"
         PreviewKeyDown="Root_PreviewKeyDown"
         RowSpacing="8">
         <Grid.RowDefinitions>

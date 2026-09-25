@@ -68,6 +68,7 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | `Ctrl+F` | Back to the search box |
 | `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, open link / show in Explorer, delete |
 | `Esc` | Clear the search, then close — focus returns to where you were |
+| Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens by your cursor again next time. |
 
 The tray icon opens the panel and Settings: shortcut, retention (items, days, size), what to record,
 ignored apps, pause, theme, start with Windows, the command line, and **Import from Windows**, which pulls

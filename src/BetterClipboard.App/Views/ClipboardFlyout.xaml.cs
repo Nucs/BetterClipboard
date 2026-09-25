@@ -37,6 +37,14 @@ namespace BetterClipboard.App.Views;
 /// <b>Dismissal.</b> Like a flyout it hides when it loses activation, except while one of its own popups
 /// (context menu, clear confirmation) is open — those take activation briefly.
 /// </para>
+/// <para>
+/// <b>Moving.</b> Having no title bar, it moves by dragging its background: anything that is not a
+/// control (header, gaps, footer, the list's empty space; for touch and pen not the list, which they pan).
+/// The drag runs on pointer capture + <see cref="WindowDragTracker"/> with Win32 screen coordinates, and
+/// Esc during a drag puts the window back — like a title-bar drag. Windows' own move loop is not used:
+/// in a WinUI window it never sees the button-up and the window sticks to the cursor (see
+/// <see cref="ScreenPointer"/>). The next summon anchors the flyout at the caret again, like Win+V.
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
 {
@@ -49,12 +57,24 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>Gap between caret and flyout, in DIPs.</summary>
     private const double GapDip = 8;
 
+    /// <summary>Finger travel before a touch drag moves the window: fingers wobble more than a mouse, and a tap must stay a tap.</summary>
+    private const double TouchDragThresholdDip = 10;
+
+    /// <summary>Mouse/pen travel before a drag moves the window — the system's drag threshold (4 px at 100 %), so a click stays a click.</summary>
+    private const double DragThresholdDip = 4;
+
     private readonly AppController controller;
     private readonly nint hwnd;
     private ScrollViewer? scrollViewer;
     private int openPopups;
     private bool closingForExit;
     private bool reloadPending;
+
+    /// <summary>The background drag in progress, or <see langword="null"/>.</summary>
+    private WindowDragTracker? drag;
+
+    /// <summary>Pointer that owns <see cref="drag"/> (a second finger or the mouse must not hijack it).</summary>
+    private uint dragPointerId;
 
     /// <summary>
     /// Creates the (hidden) flyout window.
@@ -72,6 +92,15 @@ public sealed partial class ClipboardFlyout : Window
         AppWindow.Closing += OnClosing;
         controller.HistoryChanged += OnHistoryChanged;
         ItemsList.Loaded += (_, _) => HookScrollViewer();
+
+        // Background drags move the window (see class remarks). handledEventsToo: a control may mark a
+        // press on its empty space as handled although that space looks like background, so IsDragSurface
+        // decides what is background instead of relying on whoever handled the press.
+        Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler(Root_PointerPressed), handledEventsToo: true);
+        Root.PointerMoved += Root_PointerMoved;
+        Root.PointerReleased += Root_PointerEnded;
+        Root.PointerCanceled += Root_PointerEnded;
+        Root.PointerCaptureLost += Root_PointerEnded;
 
         // Like Win+V, the top item is always "armed": after every (re)load — typing a search, switching
         // a filter — select the first card so Enter pastes the best match immediately.
@@ -103,6 +132,9 @@ public sealed partial class ClipboardFlyout : Window
     {
         try
         {
+            // A drag interrupted by hiding normally ends through capture loss; never let one survive into
+            // a new summon, where the next pointer move would jump the window.
+            EndDrag();
             controller.ApplyTheme(Root);
             ViewModel.ResetForShow();
             SelectFilter(ClipFilter.All);
@@ -305,6 +337,12 @@ public sealed partial class ClipboardFlyout : Window
                 }
 
                 break;
+            case VirtualKey.Escape when drag is { IsMoving: true } moving:
+                // Mid-drag, Esc cancels the move like it does for a title-bar drag — and only that; the
+                // flyout stays open and the search is kept.
+                AppWindow.Move(new PointInt32(moving.WindowStart.X, moving.WindowStart.Y));
+                EndDrag();
+                break;
             case VirtualKey.Escape:
                 if (!string.IsNullOrEmpty(ViewModel.SearchText))
                 {
@@ -355,6 +393,142 @@ public sealed partial class ClipboardFlyout : Window
 
         e.Handled = true;
     }
+
+    /// <summary>
+    /// A primary-button press (or touch/pen contact) on the background starts a <see cref="drag"/>;
+    /// presses on controls are left alone.
+    /// </summary>
+    /// <param name="sender">Root grid.</param>
+    /// <param name="e">Pointer data.</param>
+    private void Root_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        var device = e.Pointer.PointerDeviceType;
+        if (drag is not null || e.OriginalSource is not DependencyObject source || !IsDragSurface(source, device))
+        {
+            return;
+        }
+
+        // Right- and middle-clicks on the background keep doing nothing (XAML reports the logical,
+        // swap-aware primary button as "left").
+        if (device == PointerDeviceType.Mouse && !e.GetCurrentPoint(Root).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        // Capture keeps the moves coming when a fast drag leaves the window, and guarantees the release
+        // (or a capture-lost) arrives — so the drag always ends. No screen position (secure desktop,
+        // unknown pointer) means no drag rather than a guessed one.
+        if (PointerOnScreen(e) is not { } pointer || !Root.CapturePointer(e.Pointer))
+        {
+            return;
+        }
+
+        double threshold = device == PointerDeviceType.Touch ? TouchDragThresholdDip : DragThresholdDip;
+        drag = new WindowDragTracker((int)Math.Round(threshold * Scale));
+        dragPointerId = e.Pointer.PointerId;
+        drag.Begin(pointer, new ScreenPoint(AppWindow.Position.X, AppWindow.Position.Y));
+        e.Handled = true;
+    }
+
+    /// <summary>Moves the window with the drag once it passed the threshold.</summary>
+    /// <param name="sender">Root grid.</param>
+    /// <param name="e">Pointer data.</param>
+    private void Root_PointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (drag is null || e.Pointer.PointerId != dragPointerId)
+        {
+            return;
+        }
+
+        if (PointerOnScreen(e) is { } pointer && drag.Update(pointer) is { } next)
+        {
+            AppWindow.Move(new PointInt32(next.X, next.Y));
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>Ends the drag on release, cancel or capture loss (e.g. the flyout was dismissed mid-drag).</summary>
+    /// <param name="sender">Root grid.</param>
+    /// <param name="e">Pointer data.</param>
+    private void Root_PointerEnded(object sender, PointerRoutedEventArgs e)
+    {
+        if (drag is not null && e.Pointer.PointerId == dragPointerId)
+        {
+            EndDrag();
+        }
+    }
+
+    /// <summary>
+    /// Ends the current drag, if any: releases the capture and gives the search box its focus back — a
+    /// press on the list's empty space focused the list, and typing must keep filtering.
+    /// </summary>
+    private void EndDrag()
+    {
+        if (drag is null)
+        {
+            return;
+        }
+
+        // Clear the field first: releasing the capture raises PointerCaptureLost, which re-enters here.
+        drag.End();
+        drag = null;
+        Root.ReleasePointerCaptures();
+        if (IsOpen)
+        {
+            SearchBox.Focus(FocusState.Programmatic);
+        }
+    }
+
+    /// <summary>
+    /// Whether a press on <paramref name="source"/> is on the flyout's background, which moves the
+    /// window, rather than on something that reacts to it.
+    /// </summary>
+    /// <remarks>
+    /// Walks from the pressed element up to <see cref="Root"/>. Any control on the way (buttons, the search
+    /// box, filter pills, cards, scroll bars) means "not background". Plain visuals — the title, icons,
+    /// the paused chip, the footer, gaps, the list's and the filter bar's empty space — are background.
+    /// Touch and pen inside the list are not, because a finger drag there must keep scrolling the list.
+    /// A source outside Root's tree (popups) is never background.
+    /// </remarks>
+    /// <param name="source">The element that received the press (<see cref="RoutedEventArgs.OriginalSource"/>).</param>
+    /// <param name="device">Pointer type.</param>
+    /// <returns><see langword="true"/> when a drag from here should move the window.</returns>
+    private bool IsDragSurface(DependencyObject source, PointerDeviceType device)
+    {
+        for (DependencyObject? current = source; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, Root))
+            {
+                return true;
+            }
+
+            switch (current)
+            {
+                case ButtonBase or TextBox or AutoSuggestBox or PasswordBox or RichEditBox
+                    or SelectorItem or SelectorBarItem or RangeBase or Thumb or ToggleSwitch:
+                    return false;
+                case ListViewBase when device != PointerDeviceType.Mouse:
+                    return false;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Screen position of the pointer behind <paramref name="e"/>, independent of the window's own
+    /// position (see <see cref="ScreenPointer"/> for why positions inside the moving window won't do).
+    /// </summary>
+    /// <param name="e">Pointer data.</param>
+    /// <returns>The position in physical screen pixels, or <see langword="null"/> when Windows cannot say.</returns>
+    private static ScreenPoint? PointerOnScreen(PointerRoutedEventArgs e) =>
+        e.Pointer.PointerDeviceType == PointerDeviceType.Mouse
+            ? ScreenPointer.Cursor()
+            : ScreenPointer.TryGetPointer(e.Pointer.PointerId, out var point) ? point : null;
+
+    /// <summary>Current DIP-to-pixel scale of the flyout's monitor (1.0 before the content is loaded).</summary>
+    private double Scale => Root.XamlRoot?.RasterizationScale ?? 1.0;
 
     /// <summary>Click on a card pastes it.</summary>
     /// <param name="sender">List.</param>

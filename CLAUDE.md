@@ -246,7 +246,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (157 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, opt-in real-clipboard round trip (59 tests). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, opt-in real-clipboard round trip (62 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -325,6 +325,30 @@ into the app below), then list reloads and the first card is selected → Enter/
 "cut" drop effect is rewritten to "copy") → write clipboard while still foreground → **re-activate the
 target while we still own the foreground, then hide** (hiding first loses the right to set focus) →
 wait for foreground → release held modifiers (mask-key first for Win/Alt) → inject Ctrl+V.
+
+**Moving the flyout** (2026-09-25, on request: dragging the background should move it like a regular
+window). It has no title bar, so any background press can drag it.
+- **What counts as background** (`ClipboardFlyout.IsDragSurface`): walk from the pressed element up to
+  `Root`. Buttons, text boxes, `AutoSuggestBox`, `SelectorItem` (cards), `SelectorBarItem`, `RangeBase`,
+  `Thumb` and `ToggleSwitch` are not background. Everything else is: title, icons, chip, footer, gaps, and
+  the empty space of the list and the filter bar. For touch and pen the whole list is excluded, because
+  there they pan it.
+- **Setup:** `Root` needs `Background="Transparent"`, or its empty areas aren't hit-testable. The press
+  handler is registered with `handledEventsToo`.
+- **The drag itself:** `CapturePointer` + `WindowDragTracker` (pure, unit-tested: 4-DIP threshold, 10 for
+  touch; full offset after the threshold) + `AppWindow.Move`. Esc mid-drag moves the window back and only
+  ends the drag. `ShowAt` ends any leftover drag. The next summon re-anchors at the caret.
+- **Pitfall 1, the system move loop:** in a WinUI window, the classic `ReleaseCapture` +
+  `SendMessage(WM_NCLBUTTONDOWN, HTCAPTION)` **never ends**. WinUI takes mouse input as pointer messages,
+  so the loop never sees the button-up and the window stays glued to the cursor until the next click.
+  Verified live: after a header drag, a plain cursor move of (−50, +44) plus a (+100, 0) drag moved the
+  window by (+50, +44).
+- **Pitfall 2, window-relative positions:** a pointer position inside the moving window feeds the window's
+  own movement back into the drag. Screen positions come from Win32 instead (`ScreenPointer`:
+  `GetCursorPos` for the mouse, `GetPointerInfo(pointerId)` for touch and pen). No screen position means
+  no drag, never a guessed one.
+- **Verified:** `tools/e2e/drag.py` on an isolated instance, 4/4 checks in 4 consecutive runs. Touch and
+  pen are untested (no hardware here).
 
 ### 2.6 Storage (`Storage/ClipStore`, SQLite3 Multiple Ciphers via Microsoft.Data.Sqlite.Core, `stores\{id}\history.db`)
 
@@ -485,7 +509,7 @@ while on, any process running as the user can read the whole history through it 
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 216 tests (1 opt-in skipped)
+dotnet test --solution BetterClipboard.sln                     # 219 tests (1 opt-in skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 ```
 
@@ -587,6 +611,12 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
   switched to a game mid-run and test keys/Ctrl+V landed in it). Recipe: isolated data dir →
   `PasteTarget.cs` with a unique output file → `activate.py BC-PasteTarget` → `keys.py win+v "type=…" enter`
   → `shot.py out.png fg` → afterwards `cleanup_history.cs -- <start time>` and restore the clipboard.
+  Mouse tests (`drag.py`) must guard every injected press with `WindowFromPoint` → `GetAncestor(GA_ROOT)`
+  and only click when that root is the test window (else SKIP). They send keys only while the test
+  window is the foreground window, and they restore the cursor.
+  Lesson (2026-09-25): the test flyout opens near the cursor and can end up *under* another always-on-top
+  window. One unguarded run's presses (and an Esc) landed in whatever window covered it, and the flyout
+  closed on deactivation. The failure looked like a product bug but wasn't.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -596,7 +626,8 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 
 | Feature | How | Result |
 |---|---|---|
-| Unit tests | `dotnet test --solution` | 215 pass + 1 opt-in locally (non-elevated); the CLI pipe fix also passed on CI (elevated runner) |
+| Unit tests | `dotnet test --solution` | 218 pass + 1 opt-in locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
 | Settings › Ignored apps: scrollable list + *Add known password managers* | XAML builds | ⚠️ not visually verified (opening Settings would steal the user's focus) |
 | `bclip` published build next to the user's running app: status (auto-starts the scoped instance), list, search, grep, get (exact bytes, Hebrew/✓, HTML fragment, file list), image → exit 2 without `-o` / PNG with `-o`, `--json`, pin + pinned filter, `--since`, wait timeout (1), not found (1), usage (2), access off (3, starts nothing); audit log; no LL hook; user's PID unchanged | isolated seeded store + `run.sh` | ✅ (after the ShellExecute fix) |
