@@ -21,7 +21,7 @@ strings/registrations, not proven by execution.
 | Reverse-engineerable? | Yes, for **interoperability** (registry, WinRT registrations, on-disk format, strings, public PDBs on the Microsoft symbol server). The Windows EULA forbids RE beyond what law permits, and copying their code would be pointless anyway. We did black-box/interop observation only (no disassembly) and re-implement on **public** Win32/WinRT APIs. |
 | Why does it forget on restart? | By design: unpinned items live in the service's **memory** (`ClipboardHistoryBuffer`); only **pinned** items are written to disk (DPAPI-NG encrypted) **[verified]**. After this morning's boot the WinRT history held just 3 new items + 1 pinned one. |
 | Can we take over? | **Yes.** (1) Capture ourselves via `AddClipboardFormatListener`; (2) persist in SQLite; (3) hijack `Win+V` with a low-level keyboard hook (or `DisabledHotkeys=V` + Explorer restart); (4) import Windows' current history (WinRT API works from a **background unpackaged** process **[verified]**) and its pinned items (decryptable with `NCryptUnprotectSecret` as the same user **[verified]**). |
-| Is there an "atomic", never-miss clipboard subscription? | **No — none exists in user mode [verified, §1.9].** Win+V's service, WinRT `Clipboard.ContentChanged` and Chromium's new web `clipboardchange` event all sit on the same `WM_CLIPBOARDUPDATE` notification we use; every consumer reads the clipboard *after* being told. The legacy viewer chain is **not** synchronous either (producer's `CloseClipboard` returned in 0.01 ms while the viewer slept 150 ms). What we control: read immediately (no debounce) → copies ≥ 0.5 ms apart are all captured; faster bursts are counted, not silently lost. |
+| Is there an "atomic", never-miss clipboard subscription? | **No — none exists in user mode [verified, §1.9].** Win+V's service, WinRT `Clipboard.ContentChanged` and Chromium's new web `clipboardchange` event all sit on the same `WM_CLIPBOARDUPDATE` notification we use; every consumer reads the clipboard *after* being told. The legacy viewer chain is **not** synchronous either (producer's `CloseClipboard` returned in 0.01 ms while the viewer slept 150 ms). What we control: read immediately (no debounce) → copies ≥ 2 ms apart are all captured (1 ms: usually; below: mostly overwritten before anyone can read them); overwritten copies are counted, never silently lost, and the last copy of a burst is always captured. |
 | Can Win+V be replaced for good? | **Yes, both ways [verified 2026-09-25]:** default LL-hook interception (no system change), or `DisabledHotkeys=V` + Explorer restart → Win+V becomes free and BetterClipboard gets it via plain `RegisterHotKey`. Original state restored afterwards (value absent, Explorer owns Win+V again). |
 
 ---
@@ -225,9 +225,22 @@ use it instead of Win+V's mechanism? Findings:
   (owner adds formats without emptying) gets its own notification. A delayed render (`WM_RENDERFORMAT` →
   `SetClipboardData`) neither bumps the number nor notifies.
 - **Capture rate vs gap** (real `ClipboardMonitor`, 100 copies with busy-waited gaps — `Thread.Sleep`
-  rounds up to the 15.6 ms tick): 0 ms → 1 captured (the whole burst takes ~2 ms); ~0.1–0.3 ms → 3–47;
-  **≥ 0.5 ms → 100/100** (99–100 at 1 ms); 15 ms → 100/100. The old 60 ms debounce would have merged
-  anything < 60 ms apart into one item.
+  rounds up to the 15.6 ms tick). The old 60 ms debounce would have merged anything < 60 ms apart into
+  one item.
+  - **Re-measured 2026-09-25** (evening, the explicit test `ClipboardCaptureTests.CaptureRate_BySpeedOfCopying`,
+    `-explicit only`; 4 sweeps × 3 rounds of 100 per gap, on a machine busy with builds). Captured of 100:
+
+    | gap | 0 ms | 0.05 | 0.1 | 0.25 | 0.5 | 0.75 | 1 ms | **2 ms** | 5 ms |
+    |---|---|---|---|---|---|---|---|---|---|
+    | captured | 1–3 | 2–7 | 3–77 | 4–97 | 37–100 | 79–100 | 62–100 (mostly 100) | **100 every round** | 100 every round |
+
+  - The morning's single run ("≥ 0.5 ms → 100/100") was optimistic: below 2 ms the rate swings with
+    scheduling. That swing is a 0.2–0.5 ms read racing the producer's next write.
+  - In every round every notification was read or counted as overwritten (locked out: 0), and the final
+    copy was captured. That is the real guarantee: at any speed, nothing disappears unaccounted, and the
+    latest state is never lost.
+  - Honest one-liner: humans and scripts that pause ≥ 2 ms between copies lose nothing; a tight loop of
+    copies loses the intermediate ones — for every reader, Win+V included — and we say how many.
 - **Isolation trick for tests/probes:** `CreateWindowStation(NULL, …)` (named stations need elevation) →
   `SetProcessWindowStation` → `CreateDesktop` → MTA threads call `SetThreadDesktop` before any other user32
   call (STA fails with `ERROR_BUSY`: COM's hidden window). The station has its own clipboard; the user's
@@ -246,7 +259,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (157 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, opt-in real-clipboard round trip (62 tests). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, opt-in real-clipboard round trip, explicit capture-rate measurement (63 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -509,8 +522,11 @@ while on, any process running as the user can read the whole history through it 
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 219 tests (1 opt-in skipped)
+dotnet test --solution BetterClipboard.sln                     # 220 tests (218 run; 1 opt-in + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
+tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
+  -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
+                                                               # capture rate by gap (§1.9), private window station
 ```
 
 Do **not** add `-v q` to `dotnet test --solution` (Microsoft.Testing.Platform then reports "Zero tests
@@ -626,7 +642,7 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 
 | Feature | How | Result |
 |---|---|---|
-| Unit tests | `dotnet test --solution` | 218 pass + 1 opt-in locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 218 pass + 1 opt-in + 1 explicit (measurement) locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
 | Settings › Ignored apps: scrollable list + *Add known password managers* | XAML builds | ⚠️ not visually verified (opening Settings would steal the user's focus) |
@@ -635,7 +651,7 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 | `install.ps1 -AddToPath` / uninstall PATH helpers | AST-loaded functions on a scratch key, PS 5.1 + 7 | ✅ (15/15) |
 | "Windows clipboard history" source label gone (importer, caption, one-time fix-up of v0.1.0 rows) | tests | ✅ (the running v0.1.0 install still shows it until updated) |
 | Encryption at rest: no plaintext in db/WAL, wrong key ⇒ unreadable, in-place migration, quarantine | tests + real app on a copy of a v0.1 dir | ✅ (0 of 16 entries lost) |
-| Capture: 25 copies 20 ms apart all captured; 100 copies ≥ 0.5 ms apart all captured; bursts accounted | isolated window station | ✅ (10/10 runs green) |
+| Capture: 25 copies 20 ms apart all captured; bursts fully accounted (tests, 10/10 runs); capture rate by gap (explicit measurement): 100 of 100 at ≥ 2 ms in all 12 rounds, 62–100 at 1 ms, mostly overwritten below 0.5 ms | isolated window station | ✅ (corrected 2026-09-25: the earlier "≥ 0.5 ms → 100/100" was one lucky run) |
 | Watchdog recovers a deaf listener; own writes ignored; delayed rendering | isolated window station | ✅ |
 | `DisabledHotkeys=V` ⇒ `RegisterHotKey` path; restore ⇒ Explorer owns Win+V again | real Explorer restarts | ✅ |
 | Release zips (x64 + ARM64 native DLLs), published app starts (WinUI window) and exits | `package.ps1` + launch | ✅ |

@@ -135,9 +135,13 @@ git diff | bclip put                      # hand text back to you on the clipboa
 - **Capture.** BetterClipboard listens with `AddClipboardFormatListener` — the same change notification
   Windows' own clipboard-history service uses (there is no "atomic, never miss" clipboard API in
   Windows; every consumer reads the clipboard right after being told it changed). It reads each change
-  immediately on a high-priority thread, so copies made even half a millisecond apart are captured
-  (measured), and it keeps an exact tally of anything a program overwrote faster than that (shown in
-  Settings › Capture reliability). A watchdog re-arms the listener if Windows ever stops delivering.
+  immediately on a high-priority thread.
+  - **What was measured:** copies 2 ms apart or more are all captured, and at 1 ms nearly all. A program
+    that copies in a tight loop overwrites its intermediate copies before anyone, Win+V included, can
+    read them.
+  - **What happens then:** BetterClipboard still gets the last copy and keeps an exact tally of the
+    overwritten ones, shown in Settings › Capture reliability.
+  - **Safety net:** a watchdog re-arms the listener if Windows ever stops delivering.
 - **Privacy markers.** Copies flagged by apps as private (`ExcludeClipboardContentFromMonitorProcessing`,
   `CanIncludeInClipboardHistory = 0`, `Clipboard Viewer Ignore` — used by password managers) are never
   recorded. Many managers, Electron-based ones especially, don't set these flags. The ignored-apps list

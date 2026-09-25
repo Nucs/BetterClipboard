@@ -70,6 +70,43 @@ public sealed class ClipboardCaptureTests : IDisposable
     }
 
     /// <summary>
+    /// Measurement, not a default test (run with <c>-explicit only</c>): how many of 100 programmatic copies
+    /// are captured at each gap between copies, three rounds per gap. Prints the table behind CLAUDE.md
+    /// §1.9. It asserts only the invariants that hold at every speed — every notification is either read or
+    /// counted as overwritten, and the final copy is always captured — because the capture rate itself
+    /// depends on the machine and its load.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact(Explicit = true)]
+    public async Task CaptureRate_BySpeedOfCopying()
+    {
+        double[] gapsMs = [0, 0.05, 0.1, 0.25, 0.5, 0.75, 1, 2, 5];
+        var output = TestContext.Current.TestOutputHelper;
+        output?.WriteLine("gap (ms) | captured of 100, per round | overwritten before read | locked out");
+        foreach (var gapMs in gapsMs)
+        {
+            var rounds = new List<ClipboardMonitorStatistics>();
+            for (int round = 0; round < 3; round++)
+            {
+                captured.Clear();
+                using var monitor = StartMonitor();
+                using var producer = new ClipboardProducer(isolation);
+                var copies = Enumerable.Range(1, 100).Select(i => $"rate {gapMs} {round} {i}").ToArray();
+
+                await producer.WriteBurstAsync(copies, TimeSpan.FromMilliseconds(gapMs));
+                await WaitUntil(monitor, () => monitor.Statistics.Notifications == copies.Length && Balanced(monitor.Statistics));
+
+                var stats = monitor.Statistics;
+                Assert.Equal(copies.Length, stats.Read + stats.Superseded + stats.LockedOut);
+                Assert.Equal(copies[^1], captured.Last());
+                rounds.Add(stats);
+            }
+
+            output?.WriteLine($"{gapMs,8} | {string.Join(", ", rounds.Select(r => r.Captured)),-26} | {string.Join(", ", rounds.Select(r => r.Superseded)),-22} | {string.Join(", ", rounds.Select(r => r.LockedOut))}");
+        }
+    }
+
+    /// <summary>
     /// When the listener silently stops delivering, the watchdog finds the change, captures it and
     /// re-registers — the next copy arrives through a normal notification again.
     /// </summary>
