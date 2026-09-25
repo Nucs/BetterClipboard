@@ -28,12 +28,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     public SettingsViewModel(AppController controller)
     {
         this.controller = controller;
-        HotkeyPresets = ["Win+V", "Win+Alt+V", "Ctrl+Shift+V", "Ctrl+Alt+V", "Ctrl+`", "Alt+Insert"];
+
+        // Written in the saved (canonical) form: a preset labelled "Win+Alt+V" would come back as
+        // "Alt+Win+V" once saved, so the box would change under the user right after picking it.
+        HotkeyPresets = new[] { "Win+V", "Win+Alt+V", "Ctrl+Shift+V", "Ctrl+Alt+V", "Ctrl+`", "Alt+Insert" }
+            .Select(preset => HotkeyGesture.TryParse(preset, out var gesture) ? gesture.ToString() : preset)
+            .ToArray();
         Load(controller.Settings.Current);
         RefreshSystemStatus();
     }
 
-    /// <summary>Suggested shortcuts for the editable combo box.</summary>
+    /// <summary>Suggested shortcuts for the presets menu next to the shortcut box, in canonical form.</summary>
     public IReadOnlyList<string> HotkeyPresets { get; }
 
     /// <summary>Version string for the About card.</summary>

@@ -103,11 +103,34 @@
                     Glyph="&#xE765;"
                     Header="Open BetterClipboard">
                     <StackPanel Spacing="4">
-                        <ComboBox
-                            MinWidth="200"
-                            IsEditable="True"
-                            ItemsSource="{x:Bind ViewModel.HotkeyPresets}"
-                            Text="{x:Bind ViewModel.OpenHotkey, Mode=TwoWay}" />
+                        <!--
+                          A TextBox + presets menu, not an editable ComboBox: an editable ComboBox fills its
+                          inner text box from SelectedItem when its template loads, so a bound Text value
+                          (the saved shortcut) showed up blank. TextBox.Text binds reliably; the two-way
+                          binding commits on focus loss, and Enter commits too (HotkeyBox_KeyDown).
+                        -->
+                        <Grid ColumnSpacing="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBox
+                                x:Name="HotkeyBox"
+                                MinWidth="160"
+                                AutomationProperties.Name="Shortcut that opens BetterClipboard"
+                                KeyDown="HotkeyBox_KeyDown"
+                                PlaceholderText="Win+V"
+                                Text="{x:Bind ViewModel.OpenHotkey, Mode=TwoWay}" />
+                            <DropDownButton
+                                Grid.Column="1"
+                                VerticalAlignment="Stretch"
+                                AutomationProperties.Name="Suggested shortcuts"
+                                ToolTipService.ToolTip="Suggested shortcuts">
+                                <DropDownButton.Flyout>
+                                    <MenuFlyout x:Name="HotkeyPresetsMenu" Placement="BottomEdgeAlignedRight" />
+                                </DropDownButton.Flyout>
+                            </DropDownButton>
+                        </Grid>
                         <TextBlock
                             MaxWidth="220"
                             Foreground="{ThemeResource SystemFillColorCriticalBrush}"

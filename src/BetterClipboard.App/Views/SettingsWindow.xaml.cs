@@ -48,6 +48,7 @@ public sealed partial class SettingsWindow : Window
         controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
+        BuildHotkeyPresetsMenu();
     }
 
     /// <summary>View model bound by the XAML.</summary>
@@ -103,6 +104,36 @@ public sealed partial class SettingsWindow : Window
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
     private void OnHotkeyStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshHotkeyStatus();
+
+    /// <summary>
+    /// Fills the presets menu next to the shortcut box (<see cref="MenuFlyout"/> has no ItemsSource). Picking
+    /// one goes through <see cref="SettingsViewModel.OpenHotkey"/> — validated and saved exactly like typed
+    /// text — and the two-way binding shows it in the box.
+    /// </summary>
+    private void BuildHotkeyPresetsMenu()
+    {
+        foreach (var preset in ViewModel.HotkeyPresets)
+        {
+            var item = new MenuFlyoutItem { Text = preset };
+            item.Click += (_, _) => ViewModel.OpenHotkey = preset;
+            HotkeyPresetsMenu.Items.Add(item);
+        }
+    }
+
+    /// <summary>
+    /// Enter commits the typed shortcut right away (the binding alone commits only when focus leaves the box,
+    /// so without this nothing would happen on Enter).
+    /// </summary>
+    /// <param name="sender">The shortcut box.</param>
+    /// <param name="e">Key data.</param>
+    private void HotkeyBox_KeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == global::Windows.System.VirtualKey.Enter)
+        {
+            ViewModel.OpenHotkey = HotkeyBox.Text;
+            e.Handled = true;
+        }
+    }
 
     /// <summary>History changed: refresh the counters.</summary>
     /// <param name="sender">Controller.</param>

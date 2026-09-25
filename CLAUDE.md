@@ -602,6 +602,15 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
   escape WndProc/hook callbacks (they are wrapped).
 - **XAML build errors cascade:** `WMC1509 No LocalAssembly…` + dozens of "Unknown type" errors mean a C#
   error broke the XAML pre-compile — fix the first `CS####` error, not the XAML.
+- **No editable `ComboBox` bound through `Text`.**
+  - What went wrong: when its template loads, WinUI fills the inner text box from `SelectedItem`, so a
+    value bound before that shows blank. In v0.2.0 the Settings shortcut box was empty for both custom
+    and preset shortcuts (reported 2026-09-25).
+  - What we use instead: a `TextBox` (two-way `Text`, commits on focus loss) + Enter-to-commit + a
+    `DropDownButton` with a `MenuFlyout` of presets.
+  - Preset labels are run through `HotkeyGesture` so they match the saved canonical form
+    (Ctrl, Alt, Shift, Win, key); otherwise "Win+Alt+V" turns into "Alt+Win+V" right after picking.
+  - Checked by screenshots and a guarded input script on an isolated instance.
 - **Glyphs:** Segoe Fluent Icons via `\uE8xx` escapes in C# and `&#xE8xx;` in XAML (raw PUA characters are
   invisible in diffs). Code points used: Paste E77F, Copy E8C8, Pin E718, Unpin E77A, PinnedFill E842,
   Delete E74D, Setting E713, Link E71B, Photo E91B, Folder E8B7, Font E8D2, FontColor E8D3, Color E790,
@@ -643,6 +652,7 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 | Feature | How | Result |
 |---|---|---|
 | Unit tests | `dotnet test --solution` | 218 pass + 1 opt-in + 1 explicit (measurement) locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
 | Settings › Ignored apps: scrollable list + *Add known password managers* | XAML builds | ⚠️ not visually verified (opening Settings would steal the user's focus) |
