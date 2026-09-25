@@ -134,6 +134,10 @@ public sealed class HotkeyService : IDisposable
         if (RegisterHotKey(window.Handle, HotkeyId, (uint)gesture.Modifiers | MOD_NOREPEAT, gesture.VirtualKey))
         {
             hotkeyRegistered = true;
+
+            // Logged so "which path is Win+V on?" is answerable from the log alone (e.g. after Explorer
+            // released it via DisabledHotkeys, this is the line to look for instead of the hook one).
+            AppLog.Info($"{gesture} registered with RegisterHotKey (no keyboard hook needed).");
             return Current = new HotkeyRegistration(gesture, HotkeyMode.RegisteredHotKey, 0);
         }
 
