@@ -182,8 +182,9 @@ public sealed class CliPipeServerTests
 
 /// <summary>
 /// End to end in a private window station: bclip client → pipe → processor → real clipboard monitor.
-/// <c>put</c> and <c>copy</c> really write the (isolated) clipboard, and <c>wait</c> sees a copy made by
-/// another program — without ever touching the user's clipboard or Win+V history.
+/// <c>put</c> and <c>copy</c> really write the (isolated) clipboard, <c>wait</c> sees a copy made by
+/// another program, and <c>forget</c> keeps that program's later copies out — without ever touching the
+/// user's clipboard or Win+V history.
 /// </summary>
 [Collection(IsolatedClipboardCollection.Name)]
 public sealed class CliEndToEndTests : IAsyncLifetime
@@ -264,6 +265,32 @@ public sealed class CliEndToEndTests : IAsyncLifetime
         var arrived = await waiting.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.True(arrived.Ok, arrived.Error);
         Assert.Equal("the error message\nat line 42", arrived.Item!.Text);
+    }
+
+    /// <summary>
+    /// Forget forever end to end: after <c>bclip forget</c>, another program copying the same text again — with
+    /// a trailing CRLF, as terminals do — is read by the real listener but never recorded (and counted as kept
+    /// out), while its next, different copy is recorded as usual.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Forget_KeepsRealCopiesOut()
+    {
+        using var producer = new ClipboardProducer(isolation);
+        await producer.WriteBurstAsync(["BC-TEST forgotten secret"]);
+        await WaitUntil(async () => (await history.GetStatsAsync()).Count == 1);
+        var id = (await Send(new CliRequest { Command = CliCommands.List })).Items!.Single().Id;
+        var forget = await Send(new CliRequest { Command = CliCommands.Forget, Id = id });
+        Assert.True(forget.Ok, forget.Error);
+        Assert.Equal(0, (await history.GetStatsAsync()).Count);
+
+        // 50 ms apart: far above the 2 ms at which every copy is read (CLAUDE.md §1.9), so neither is overwritten.
+        await producer.WriteBurstAsync(["BC-TEST forgotten secret\r\n", "BC-TEST allowed copy"], TimeSpan.FromMilliseconds(50));
+
+        // Captures are stored in order, so once the allowed copy is in, the forgotten one was already handled.
+        await WaitUntil(async () => (await history.GetStatsAsync()).Count == 1);
+        Assert.Equal(["BC-TEST allowed copy"], (await Send(new CliRequest { Command = CliCommands.List })).Items!.Select(i => i.Preview));
+        Assert.Equal(1, (await history.GetForgottenAsync()).Single().BlockedCount);
     }
 
     /// <summary>Sends through the real client.</summary>

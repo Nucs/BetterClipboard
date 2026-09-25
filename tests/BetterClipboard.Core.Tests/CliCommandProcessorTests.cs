@@ -211,6 +211,34 @@ public sealed class CliCommandProcessorTests : IAsyncLifetime
         Assert.Equal(CliErrorCodes.NotFound, (await Run(new CliRequest { Command = CliCommands.Get, Id = item.Id })).ErrorCode);
     }
 
+    /// <summary>
+    /// forget refuses without an explicit target, deletes the item with its look-alikes, keeps its text out of
+    /// put (the clipboard is still written), and status counts it.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Forget_NeedsTarget_DeletesAndKeepsOut()
+    {
+        var item = await AddText("BC-TEST api key");
+        var lookAlike = await AddText("BC-TEST api key\r\n", TestData.Now.AddMinutes(1));
+
+        Assert.Equal(CliErrorCodes.BadRequest, (await Run(new CliRequest { Command = CliCommands.Forget })).ErrorCode);
+        var forgotten = await Run(new CliRequest { Command = CliCommands.Forget, Id = item.Id });
+        Assert.True(forgotten.Ok);
+        Assert.Equal(item.Id, forgotten.Item!.Id);
+        Assert.StartsWith($"Forgot item {item.Id} (and 1 look-alike copy) forever", forgotten.Message, StringComparison.Ordinal);
+        Assert.Equal(CliErrorCodes.NotFound, (await Run(new CliRequest { Command = CliCommands.Get, Id = lookAlike.Id })).ErrorCode);
+        Assert.Equal(CliErrorCodes.NotFound, (await Run(new CliRequest { Command = CliCommands.Forget, Id = item.Id })).ErrorCode);
+
+        var put = await Run(new CliRequest { Command = CliCommands.Put, Text = "BC-TEST api key" });
+        Assert.True(put.Ok);
+        Assert.Null(put.Item);
+        Assert.Contains("forgotten forever", put.Message, StringComparison.Ordinal);
+        Assert.Equal("BC-TEST api key", UnicodeTextCodec.Decode(clipboard.Last!.Single().Data));
+
+        Assert.Equal(1, (await Run(new CliRequest { Command = CliCommands.Status })).Status!.Forgotten);
+    }
+
     /// <summary>wait completes with the next copy (full text included) and times out otherwise.</summary>
     /// <returns>A task.</returns>
     [Fact]

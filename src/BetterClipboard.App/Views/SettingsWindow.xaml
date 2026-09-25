@@ -8,6 +8,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:controls="using:BetterClipboard.App.Controls"
+    xmlns:vm="using:BetterClipboard.App.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
@@ -298,6 +299,57 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
+                    Description="Items you forget forever (in the panel: right-click an item › Forget forever) are deleted and never recorded again, whichever app copies them. Line endings and spaces around the text don't matter; everything else has to match. Only a fingerprint of each is kept, encrypted with your history, plus its kind, length and source app so you can tell them apart here."
+                    Glyph="&#xE733;"
+                    Header="Forgotten forever">
+                    <Button
+                        Click="AllowAllForgotten_Click"
+                        Content="Allow all again…"
+                        IsEnabled="{x:Bind ViewModel.HasForgotten, Mode=OneWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="4">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.ForgottenSummary, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <!--  Bounded like the ignored-apps box, so a long list scrolls instead of stretching the page.  -->
+                            <ScrollViewer
+                                MaxHeight="280"
+                                VerticalScrollBarVisibility="Auto"
+                                Visibility="{x:Bind Visible(ViewModel.HasForgotten), Mode=OneWay}">
+                                <ItemsControl ItemsSource="{x:Bind ViewModel.Forgotten}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ForgottenItemViewModel">
+                                            <Grid Padding="0,6,4,6" ColumnSpacing="12">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                                    <TextBlock Text="{x:Bind Title}" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Style="{StaticResource CaptionTextBlockStyle}"
+                                                        Text="{x:Bind Details}"
+                                                        TextWrapping="Wrap" />
+                                                </StackPanel>
+                                                <Button
+                                                    Grid.Column="1"
+                                                    VerticalAlignment="Center"
+                                                    AutomationProperties.Name="{x:Bind AllowAgainName}"
+                                                    Click="AllowAgain_Click"
+                                                    Content="Allow again"
+                                                    Tag="{x:Bind Id}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+                <controls:SettingsCard
                     Description="{x:Bind ViewModel.EncryptionStatus}"
                     Glyph="&#xE72E;"
                     Header="Encrypted history" />
@@ -306,7 +358,7 @@
                     Glyph="&#xE9D9;"
                     Header="Capture reliability" />
                 <controls:SettingsCard
-                    Description="Delete history permanently. Clearing keeps pinned items and items in groups; 'Everything' removes them too (the groups stay, empty)."
+                    Description="Delete history permanently. Clearing keeps pinned items and items in groups; 'Everything' removes them too (the groups stay, empty). Forgotten items stay forgotten either way."
                     Glyph="&#xE74D;"
                     Header="Clear history">
                     <StackPanel Orientation="Horizontal" Spacing="8">

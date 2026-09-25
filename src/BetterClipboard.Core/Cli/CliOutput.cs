@@ -135,6 +135,13 @@ public static class CliOutput
             .Append(CultureInfo.InvariantCulture, $"BetterClipboard {status.Version} (protocol v{status.ProtocolVersion})\n")
             .Append(CultureInfo.InvariantCulture, $"Items:    {status.Items:N0} ({status.Pinned:N0} pinned, {FormatBytes(status.TotalBytes)})\n")
             .Append(CultureInfo.InvariantCulture, $"Capture:  {(status.CapturePaused ? "paused" : "on")}\n");
+
+        // Only when there is something to say: most people never forget anything, and a "0" line is noise.
+        if (status.Forgotten > 0)
+        {
+            builder.Append(CultureInfo.InvariantCulture, $"Forgotten: {status.Forgotten:N0} item{(status.Forgotten == 1 ? string.Empty : "s")} never recorded (Settings › Forgotten forever)\n");
+        }
+
         if (status.Capture is { } c)
         {
             builder.Append(CultureInfo.InvariantCulture,

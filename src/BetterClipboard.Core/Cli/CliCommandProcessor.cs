@@ -23,8 +23,9 @@ namespace BetterClipboard.Core.Cli;
 /// </para>
 /// <para>
 /// <b>Untrusted input.</b> Callers are any program running as the user, e.g. an AI agent: regular
-/// expressions run with a match timeout, sizes and counts are clamped, <c>delete</c> needs an explicit
-/// target, and failures come back as <see cref="CliResponse"/> errors instead of exceptions.
+/// expressions run with a match timeout, sizes and counts are clamped, <c>delete</c> and <c>forget</c> need an
+/// explicit target, and failures come back as <see cref="CliResponse"/> errors instead of exceptions. There is
+/// deliberately no "allow again": undoing a <c>forget</c> is left to the user, in Settings.
 /// </para>
 /// </remarks>
 public sealed class CliCommandProcessor
@@ -116,6 +117,7 @@ public sealed class CliCommandProcessor
                 CliCommands.Pin => await SetPinnedAsync(request, pinned: true, cancellationToken).ConfigureAwait(false),
                 CliCommands.Unpin => await SetPinnedAsync(request, pinned: false, cancellationToken).ConfigureAwait(false),
                 CliCommands.Delete => await DeleteAsync(request, cancellationToken).ConfigureAwait(false),
+                CliCommands.Forget => await ForgetAsync(request, cancellationToken).ConfigureAwait(false),
                 CliCommands.Wait => await WaitAsync(request, cancellationToken).ConfigureAwait(false),
                 CliCommands.Status => await StatusAsync().ConfigureAwait(false),
                 _ => CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown command '{request.Command}'. Run 'bclip help'."),
@@ -417,7 +419,7 @@ public sealed class CliCommandProcessor
         }).ConfigureAwait(false);
 
         return stored is null
-            ? new CliResponse { Ok = true, Message = "Copied to the clipboard (not saved to history: capture is paused or the text exceeds the size limit)." }
+            ? new CliResponse { Ok = true, Message = "Copied to the clipboard (not saved to history: capture is paused, the text exceeds the size limit, or it was forgotten forever)." }
             : new CliResponse { Ok = true, Item = ToItem(stored), Message = $"Copied to the clipboard and saved as item {stored.Id}." };
     }
 
@@ -453,6 +455,43 @@ public sealed class CliCommandProcessor
 
         await history.DeleteAsync(entry.Id).ConfigureAwait(false);
         return new CliResponse { Ok = true, Item = ToItem(entry), Message = $"Deleted item {entry.Id}." };
+    }
+
+    /// <summary>
+    /// <c>forget</c>: "Forget forever" — like <c>delete</c> it needs an explicit id or <c>--recent</c>, because
+    /// its effect outlives the item (the content is never recorded again).
+    /// </summary>
+    /// <param name="request">Request.</param>
+    /// <param name="cancellationToken">Cancellation.</param>
+    /// <returns>The response; its item is the entry as it was before it was deleted.</returns>
+    private async Task<CliResponse> ForgetAsync(CliRequest request, CancellationToken cancellationToken)
+    {
+        var (entry, failure) = await ResolveAsync(request, allowLatest: false, cancellationToken).ConfigureAwait(false);
+        if (entry is null)
+        {
+            return failure!;
+        }
+
+        var result = await history.ForgetAsync(entry.Id).ConfigureAwait(false);
+        if (result is null)
+        {
+            // Deleted (or pruned) between the lookup and the queued forget.
+            return CliResponse.Fail(CliErrorCodes.NotFound, $"There is no history item {entry.Id}.");
+        }
+
+        int lookAlikes = result.RemovedIds.Count - 1;
+        var also = lookAlikes switch
+        {
+            0 => string.Empty,
+            1 => " (and 1 look-alike copy)",
+            _ => $" (and {lookAlikes} look-alike copies)",
+        };
+        return new CliResponse
+        {
+            Ok = true,
+            Item = ToItem(entry),
+            Message = $"Forgot item {entry.Id}{also} forever: deleted, and never recorded again. Undo in Settings › Forgotten forever.",
+        };
     }
 
     /// <summary><c>wait</c>: completes with the next item that lands on top of history (a new copy, a re-copy or a paste from history).</summary>
@@ -507,6 +546,7 @@ public sealed class CliCommandProcessor
                 Items = stats.Count,
                 Pinned = stats.PinnedCount,
                 TotalBytes = stats.TotalBytes,
+                Forgotten = stats.ForgottenCount,
                 CapturePaused = settings().IsCapturePaused,
                 Capture = captureStats(),
             },

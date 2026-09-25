@@ -847,6 +847,9 @@ public sealed partial class ClipboardFlyout : Window
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(MenuItem("Delete", "\uE74D", "Del", () => DeleteItem(item)));
 
+        // Queued like the group menu's follow-ups: the confirmation opens after this menu has closed.
+        menu.Items.Add(MenuItem("Forget forever…", "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
+
         menu.Opened += Popup_Opened;
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });
@@ -880,6 +883,72 @@ public sealed partial class ClipboardFlyout : Window
         if (index >= 0 && ViewModel.Items.Count > 1)
         {
             SelectIndex(Math.Min(index + 1, ViewModel.Items.Count - 1) == index ? index - 1 : index + 1);
+        }
+    }
+
+    /// <summary>
+    /// Confirms "Forget forever" for one card. Worth a click: unlike Delete, the effect outlives the item —
+    /// its content is never recorded again, from any app — and only Settings can undo that.
+    /// </summary>
+    /// <param name="item">The card.</param>
+    private void ShowForgetFlyout(ClipItemViewModel item)
+    {
+        // At the card when it is on screen; a right-click passed the whole list as the menu's target.
+        FrameworkElement anchor = ItemsList.ContainerFromItem(item) as FrameworkElement ?? ItemsList;
+        var forget = new Button
+        {
+            Content = "Forget forever",
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Style = (Style)Application.Current.Resources["AccentButtonStyle"],
+        };
+        var panel = new StackPanel { MaxWidth = 280, Spacing = 12 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = "Forget this forever?",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(new TextBlock
+        {
+            Text = "It is deleted now, and BetterClipboard never records it again, whichever app copies it. " +
+                   "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.",
+            Opacity = 0.8,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(forget);
+
+        var flyout = new Flyout { Content = panel, Placement = FlyoutPlacementMode.Bottom };
+        forget.Click += (_, _) =>
+        {
+            flyout.Hide();
+            _ = ForgetItemAsync(item);
+        };
+        flyout.Opened += Popup_Opened;
+        flyout.Closed += Popup_Closed;
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>
+    /// Forgets a card forever (it and its look-alikes disappear through the history's Removed events), keeping
+    /// the selection on a neighbor like <see cref="DeleteItem"/>.
+    /// </summary>
+    /// <param name="item">The card.</param>
+    /// <returns>A task completing when stored (failures logged: the card then simply stays).</returns>
+    private async Task ForgetItemAsync(ClipItemViewModel item)
+    {
+        int index = ViewModel.Items.IndexOf(item);
+        if (index >= 0 && ViewModel.Items.Count > 1)
+        {
+            SelectIndex(Math.Min(index + 1, ViewModel.Items.Count - 1) == index ? index - 1 : index + 1);
+        }
+
+        try
+        {
+            await controller.History.ForgetAsync(item.Id);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Forgetting entry {item.Id} failed: {ex.Message}");
         }
     }
 

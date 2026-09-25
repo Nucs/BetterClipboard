@@ -56,6 +56,7 @@ public static class CliArguments
         ["put"] = CliCommands.Put, ["set"] = CliCommands.Put,
         ["pin"] = CliCommands.Pin, ["unpin"] = CliCommands.Unpin,
         ["delete"] = CliCommands.Delete, ["rm"] = CliCommands.Delete, ["del"] = CliCommands.Delete,
+        ["forget"] = CliCommands.Forget,
         ["wait"] = CliCommands.Wait, ["watch"] = CliCommands.Wait,
         ["status"] = CliCommands.Status, ["stats"] = CliCommands.Status,
     };
@@ -187,6 +188,12 @@ public static class CliArguments
             bclip delete <ID | -r N>
               Deletes an item for good (a later import from Windows' history does not bring it back).
             """,
+        CliCommands.Forget => """
+            bclip forget <ID | -r N>
+              Forget forever: deletes the item and never records its content again, from any app.
+              Line endings and surrounding spaces don't matter; everything else must match.
+              Undo it in the app's Settings › Forgotten forever (bclip cannot allow it again).
+            """,
         CliCommands.Status => """
             bclip status [--json]
               Version, item count and size, whether capture is paused, and listener statistics.
@@ -225,6 +232,7 @@ public static class CliArguments
               put [TEXT | -]        Copy text (or stdin) to the clipboard and history
               pin [ID] | unpin [ID] Pin or unpin (default: the latest)
               delete <ID>           Delete an item
+              forget <ID>           Delete an item and never record its content again
               wait                  Wait for the next copy and print it
               status                Version, item counts, capture statistics
 
@@ -286,7 +294,7 @@ public static class CliArguments
 
                 break;
 
-            case CliCommands.Get or CliCommands.Copy or CliCommands.Pin or CliCommands.Unpin or CliCommands.Delete:
+            case CliCommands.Get or CliCommands.Copy or CliCommands.Pin or CliCommands.Unpin or CliCommands.Delete or CliCommands.Forget:
                 if (positional.Count > 1)
                 {
                     return Fail($"{command} takes at most one item id.");

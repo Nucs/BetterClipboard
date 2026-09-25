@@ -88,6 +88,12 @@ public sealed class AppController
     /// </summary>
     public event EventHandler? GroupsChanged;
 
+    /// <summary>
+    /// Raised on the UI thread after the "Forget forever" list changed: something was forgotten, allowed again,
+    /// or kept out once more (forwarded from the worker thread); Settings refreshes its list.
+    /// </summary>
+    public event EventHandler? ForgottenChanged;
+
     /// <summary>Raised on the UI thread after command-line access was switched on or off (or failed to start).</summary>
     public event EventHandler? CommandLineStatusChanged;
 
@@ -177,6 +183,7 @@ public sealed class AppController
         history = new ClipHistoryService(store, new WinRtImageAnalyzer(), () => rules);
         history.Changed += (_, e) => ui.TryEnqueue(() => HistoryChanged?.Invoke(this, e));
         history.GroupsChanged += (_, _) => ui.TryEnqueue(() => GroupsChanged?.Invoke(this, EventArgs.Empty));
+        history.ForgottenChanged += (_, _) => ui.TryEnqueue(() => ForgottenChanged?.Invoke(this, EventArgs.Empty));
         history.Start();
         _ = history.PruneAsync();
 

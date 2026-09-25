@@ -38,6 +38,14 @@ public sealed class ClipHistoryService : IAsyncDisposable
     private Task? worker;
 
     /// <summary>
+    /// Whether the "Forget forever" list has entries; <see langword="null"/> = not known yet (read on first
+    /// need). Lets the capture path skip fingerprinting entirely while the list is empty — the usual case —
+    /// so the feature costs nothing until it is used. Worker thread only: every reader and writer of the
+    /// list runs there, so no lock is needed.
+    /// </summary>
+    private bool? anyForgotten;
+
+    /// <summary>
     /// Creates the service. Call <see cref="Start"/> before enqueueing work.
     /// </summary>
     /// <param name="store">An initialized store.</param>
@@ -65,6 +73,12 @@ public sealed class ClipHistoryService : IAsyncDisposable
     /// affected entry, so a card can update its group badges in place.
     /// </summary>
     public event EventHandler? GroupsChanged;
+
+    /// <summary>
+    /// Raised on the worker thread after the "Forget forever" list changed: an entry was added, allowed again,
+    /// or kept out another copy (its counter moved). Same handler rules as <see cref="Changed"/>.
+    /// </summary>
+    public event EventHandler? ForgottenChanged;
 
     /// <summary>The underlying store (for read-only diagnostics such as the database path).</summary>
     public ClipStore Store => store;
@@ -99,7 +113,10 @@ public sealed class ClipHistoryService : IAsyncDisposable
     /// Queues a capture (live or imported) and waits until it has been stored or rejected.
     /// </summary>
     /// <param name="capture">The capture.</param>
-    /// <returns>The stored entry, or <see langword="null"/> when the rules or classification rejected it.</returns>
+    /// <returns>
+    /// The stored entry, or <see langword="null"/> when the rules or classification rejected it, or its content
+    /// was forgotten forever (<see cref="ForgetAsync"/>).
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="capture"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
     /// <exception cref="Microsoft.Data.Sqlite.SqliteException">Persisting failed.</exception>
@@ -199,6 +216,80 @@ public sealed class ClipHistoryService : IAsyncDisposable
         }
 
         return Task.FromResult(true);
+    });
+
+    /// <summary>
+    /// Forgets an entry forever through the worker: it and its stored look-alikes are deleted, and its content
+    /// is never recorded again — from any app, ShareX, <c>bclip put</c> or Windows' history — until the user
+    /// allows it again (<see cref="AllowAgainAsync"/>).
+    /// </summary>
+    /// <remarks>
+    /// Queued like every write, so a copy of the same content that arrives right after the click is kept out
+    /// (it is processed after this). Raises <see cref="ClipChangeKind.Removed"/> for each deleted entry and
+    /// <see cref="ForgottenChanged"/>. Pins and groups do not protect the entry: this is an explicit request.
+    /// </remarks>
+    /// <param name="id">Entry id.</param>
+    /// <returns>What was forgotten and deleted, or <see langword="null"/> when the entry no longer exists.</returns>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<ForgetResult?> ForgetAsync(long id) => EnqueueAsync(() =>
+    {
+        var result = store.Forget(id, time.GetUtcNow());
+        if (result is not null)
+        {
+            anyForgotten = true;
+            foreach (var removedId in result.RemovedIds)
+            {
+                Raise(new ClipChangedEventArgs(ClipChangeKind.Removed, entryId: removedId));
+            }
+
+            RaiseForgottenChanged();
+
+            // Content-free, like every log line: how many entries went, never what they held.
+            AppLog.Info($"Forgot an item forever ({result.RemovedIds.Count} history entr{(result.RemovedIds.Count == 1 ? "y" : "ies")} deleted).");
+        }
+
+        return Task.FromResult(result);
+    });
+
+    /// <summary>
+    /// Reads the "Forget forever" list on the thread pool (most recently forgotten first).
+    /// </summary>
+    /// <returns>The entries.</returns>
+    public Task<IReadOnlyList<ForgottenItem>> GetForgottenAsync() => Task.Run(store.GetForgotten);
+
+    /// <summary>
+    /// "Allow again": takes one entry off the "Forget forever" list, so its content is recorded again from its
+    /// next copy (nothing deleted comes back).
+    /// </summary>
+    /// <param name="forgottenId">The list entry id (<see cref="ForgottenItem.Id"/>).</param>
+    /// <returns>Whether the entry existed.</returns>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<bool> AllowAgainAsync(long forgottenId) => EnqueueAsync(() =>
+    {
+        bool removed = store.RemoveForgotten(forgottenId);
+        if (removed)
+        {
+            // Other entries may remain; the next capture recounts.
+            anyForgotten = null;
+            RaiseForgottenChanged();
+        }
+
+        return Task.FromResult(removed);
+    });
+
+    /// <summary>"Allow all again": empties the "Forget forever" list.</summary>
+    /// <returns>How many entries were removed.</returns>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<int> AllowAllAgainAsync() => EnqueueAsync(() =>
+    {
+        int removed = store.ClearForgotten();
+        anyForgotten = false;
+        if (removed > 0)
+        {
+            RaiseForgottenChanged();
+        }
+
+        return Task.FromResult(removed);
     });
 
     /// <summary>
@@ -498,10 +589,13 @@ public sealed class ClipHistoryService : IAsyncDisposable
         return result?.Entry;
     }
 
-    /// <summary>Applies rules, classifies, analyzes, persists and (optionally) prunes and raises events.</summary>
+    /// <summary>
+    /// Applies rules, classifies, analyzes, checks the "Forget forever" list, persists and (optionally) prunes
+    /// and raises events.
+    /// </summary>
     /// <param name="capture">The capture.</param>
     /// <param name="raiseEvents">Whether to raise per-item events (false inside batch imports).</param>
-    /// <returns>The upsert result, or <see langword="null"/> when rejected.</returns>
+    /// <returns>The upsert result, or <see langword="null"/> when rejected (rules, classification, forgotten, or a suppressed import).</returns>
     private async Task<UpsertResult?> StoreAsync(ClipCapture capture, bool raiseEvents)
     {
         var rules = rulesProvider();
@@ -555,6 +649,28 @@ public sealed class ClipHistoryService : IAsyncDisposable
             }
         }
 
+        // "Forget forever" applies to every channel, imports included: the user asked never to keep this
+        // content, wherever it comes from. It comes after image analysis because an image's fingerprint is its
+        // pixel hash (the same picture as DIB or PNG), and before Upsert so nothing is written — not even a
+        // bumped duplicate. While the list is empty (almost always), no fingerprint is computed at all.
+        anyForgotten ??= store.CountForgotten() > 0;
+        if (anyForgotten.Value)
+        {
+            var fingerprint = ForgetFingerprint.Of(classified);
+            if (store.IsForgotten(fingerprint))
+            {
+                // Only new events count as "kept out" (and are logged, content-free): Windows' history offers
+                // the same old item again at every start, which is not a new copy.
+                if (isNewEvent && store.RecordForgottenBlock(fingerprint, capture.CapturedAtUtc))
+                {
+                    AppLog.Info("Skipped a copy that was forgotten forever.");
+                    RaiseForgottenChanged();
+                }
+
+                return null;
+            }
+        }
+
         // New events (live copies, ShareX screenshots) move an existing duplicate to the top — ShareX often
         // copied the same screenshot to the clipboard a moment earlier, and the pixel hash merges the two.
         var result = store.Upsert(capture, classified, image, bumpIfExists: isNewEvent);
@@ -603,6 +719,19 @@ public sealed class ClipHistoryService : IAsyncDisposable
         catch (Exception ex)
         {
             AppLog.Error("A groups change subscriber threw.", ex);
+        }
+    }
+
+    /// <summary>Raises <see cref="ForgottenChanged"/>, shielding the worker from subscriber exceptions.</summary>
+    private void RaiseForgottenChanged()
+    {
+        try
+        {
+            ForgottenChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("A forgotten-list subscriber threw.", ex);
         }
     }
 }

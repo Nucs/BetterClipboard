@@ -161,7 +161,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsHotkeyActive { get; set; }
 
-    /// <summary>"1,234 items · 56.1 MB · 12 pinned · 30 in groups".</summary>
+    /// <summary>"1,234 items · 56.1 MB · 12 pinned · 30 in groups", plus "· 2 forgotten" once anything is forgotten forever.</summary>
     [ObservableProperty]
     public partial string StatsText { get; set; } = "…";
 
@@ -207,6 +207,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Whether ShareX was found, how, which folders are watched, and how many screenshots came in.</summary>
     [ObservableProperty]
     public partial string ShareXStatus { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The "Forget forever" list, most recently forgotten first (see <see cref="RefreshForgottenAsync"/>).
+    /// Replaced wholesale on refresh; UI thread only.
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<ForgottenItemViewModel> Forgotten { get; } = [];
+
+    /// <summary>One line over the list: "Nothing is forgotten." or "3 items are never recorded.".</summary>
+    [ObservableProperty]
+    public partial string ForgottenSummary { get; set; } = string.Empty;
+
+    /// <summary>Whether the list has entries (shows it, enables "Allow all again").</summary>
+    [ObservableProperty]
+    public partial bool HasForgotten { get; set; }
 
     /// <summary>
     /// Copies a settings snapshot into the properties without persisting anything.
@@ -336,7 +350,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             var stats = await controller.History.GetStatsAsync();
-            StatsText = $"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups";
+            StatsText = $"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups" +
+                        (stats.ForgottenCount > 0 ? $" · {stats.ForgottenCount:N0} forgotten" : string.Empty);
         }
         catch (Exception ex)
         {
@@ -344,6 +359,70 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
 
         CaptureReliabilityText = DescribeCapture(controller.CaptureStatistics);
+    }
+
+    /// <summary>
+    /// Re-reads the "Forget forever" list (rows, summary, and the stats line that counts it).
+    /// </summary>
+    /// <returns>A task completing when updated (failures are logged; the old rows stay).</returns>
+    public async Task RefreshForgottenAsync()
+    {
+        try
+        {
+            var items = await controller.History.GetForgottenAsync();
+            var now = DateTimeOffset.UtcNow;
+            Forgotten.Clear();
+            foreach (var item in items)
+            {
+                Forgotten.Add(ForgottenItemViewModel.From(item, now));
+            }
+
+            HasForgotten = items.Count > 0;
+            ForgottenSummary = items.Count switch
+            {
+                0 => "Nothing is forgotten. To forget something, right-click it in the panel (or press the Menu key) and choose Forget forever.",
+                1 => "1 item is never recorded:",
+                _ => $"{items.Count:N0} items are never recorded:",
+            };
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Reading the forgotten list failed: {ex.Message}");
+        }
+
+        await RefreshStatsAsync();
+    }
+
+    /// <summary>"Allow again" on one row: its content is recorded again from its next copy.</summary>
+    /// <param name="id">The list entry id.</param>
+    /// <returns>A task completing when stored (the list refreshes through <see cref="AppController.ForgottenChanged"/>).</returns>
+    public async Task AllowAgainAsync(long id)
+    {
+        try
+        {
+            await controller.History.AllowAgainAsync(id);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Allowing a forgotten item again failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>"Allow all again": empties the list.</summary>
+    /// <returns>A task completing when stored.</returns>
+    public async Task AllowAllAgainAsync()
+    {
+        try
+        {
+            await controller.History.AllowAllAgainAsync();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Allowing all forgotten items again failed: {ex.Message}");
+        }
+
+        // No event fires when the list was already empty; refresh anyway so the page matches the store.
+        await RefreshForgottenAsync();
     }
 
     /// <summary>Turns the listener accounting into one honest sentence for the settings page.</summary>

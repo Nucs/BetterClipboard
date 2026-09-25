@@ -20,7 +20,8 @@ public sealed record UpsertResult(ClipEntry Entry, bool IsNew, bool Changed);
 /// <param name="PinnedCount">Pinned entries.</param>
 /// <param name="TotalBytes">Sum of stored payload sizes (excludes SQLite overhead, index and thumbnails).</param>
 /// <param name="GroupedCount">Entries in at least one group (kept like pinned ones; may overlap <paramref name="PinnedCount"/>).</param>
-public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0);
+/// <param name="ForgottenCount">Entries of the "Forget forever" list (content never recorded again; not history items).</param>
+public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0, long ForgottenCount = 0);
 
 /// <summary>Outcome of <see cref="ClipStore.RemoveFromGroup"/>.</summary>
 /// <param name="Removed">The entry was in the group and is not anymore.</param>
@@ -51,6 +52,16 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// every <see cref="Initialize"/></b> without bumping <see cref="SchemaVersion"/>: an older build still
 /// opens the file (it ignores the new tables and the nullable column). Only the protection is lost while an
 /// older build runs — its retention does not know about groups.
+/// </para>
+/// <para>
+/// <b>Forget forever.</b> <c>forgotten</c> lists content the user asked never to record again, keyed by its
+/// <see cref="ForgetFingerprint"/> (normalized text, file list or pixels) plus content-free facts for the
+/// Settings list (kind, length, source app, when, how often it was kept out). The history service consults
+/// it for every capture (<see cref="IsForgotten"/>); <see cref="Forget"/> deletes the entry and its stored
+/// look-alikes. Unlike the 30-day <c>deleted_hashes</c> tombstones it never expires, a new live copy does not
+/// lift it, and no clear touches it: only "Allow again" does. Added idempotently like the groups (an older
+/// build opens the file but records forgotten content again while it runs). It lives in the encrypted store,
+/// not in <c>settings.json</c>, because a bare SHA-256 of a short secret can be guessed offline.
 /// </para>
 /// <para>
 /// <b>Threading.</b> Every public method opens its own pooled connection, so the store may be used from
@@ -305,9 +316,18 @@ public sealed class ClipStore
         }
 
         EnsureGroupsSchema(connection);
+        EnsureForgottenSchema(connection);
         transaction.Commit();
         ApplyDataFixups(connection);
     }
+
+    /// <summary>
+    /// Adds the "Forget forever" table when missing (additive and unversioned like the groups, see the class
+    /// remarks).
+    /// </summary>
+    /// <remarks>Idempotent. Runs inside the caller's migration transaction.</remarks>
+    /// <param name="connection">Open connection inside the migration transaction.</param>
+    private static void EnsureForgottenSchema(SqliteConnection connection) => Execute(connection, SchemaForgotten);
 
     /// <summary>
     /// Adds the groups objects when missing (see the class remarks for why this is additive and unversioned):
@@ -650,6 +670,15 @@ public sealed class ClipStore
     public IReadOnlyList<ClipFormatData> GetFormats(long id)
     {
         using var connection = Open();
+        return GetFormats(connection, id);
+    }
+
+    /// <summary>Loads an entry's payloads through an existing connection (e.g. inside a transaction).</summary>
+    /// <param name="connection">Open connection.</param>
+    /// <param name="id">The entry id.</param>
+    /// <returns>The formats in replay order; empty when the entry does not exist.</returns>
+    private static List<ClipFormatData> GetFormats(SqliteConnection connection, long id)
+    {
         using var command = Command(connection, "SELECT name, data FROM clip_formats WHERE clip_id = $id ORDER BY ordinal;");
         command.Parameters.AddWithValue("$id", id);
         var formats = new List<ClipFormatData>();
@@ -831,11 +860,278 @@ public sealed class ClipStore
     {
         using var connection = Open();
         using var command = Command(connection,
-            "SELECT count(*), coalesce(sum(is_pinned), 0), coalesce(sum(size_bytes), 0), (SELECT count(DISTINCT clip_id) FROM clip_groups) FROM clips;");
+            "SELECT count(*), coalesce(sum(is_pinned), 0), coalesce(sum(size_bytes), 0), (SELECT count(DISTINCT clip_id) FROM clip_groups), " +
+            "(SELECT count(*) FROM forgotten) FROM clips;");
         using var reader = command.ExecuteReader();
         reader.Read();
-        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3));
+        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3), reader.GetInt64(4));
     }
+
+    /// <summary>
+    /// Forgets an entry forever: puts its <see cref="ForgetFingerprint"/> on the "never record again" list and
+    /// deletes it — together with stored look-alikes, the same text with other line endings or surrounding
+    /// whitespace, which the cards show identically and which the fingerprint keeps out from now on anyway.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The fingerprint is recomputed from the stored formats, exactly as a capture computes it: the text is
+    /// re-read through <see cref="ContentClassifier"/> (so a file list whose formats also carry text is still
+    /// fingerprinted by its paths), and images use the stored content hash, which is the pixel hash.
+    /// </para>
+    /// <para>
+    /// Already-forgotten content keeps its existing list entry (and counters). Pins and groups do not protect
+    /// anything here — this is an explicit request about this very content. No tombstone is written: the list
+    /// entry is stronger (it also stops live copies) and never expires. One transaction: either the list entry
+    /// and every deletion happen, or nothing does.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">The entry id.</param>
+    /// <param name="now">When it was forgotten.</param>
+    /// <returns>The list entry and the deleted entry ids, or <see langword="null"/> when the entry does not exist (deleted meanwhile).</returns>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public ForgetResult? Forget(long id, DateTimeOffset now)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        var entry = GetEntry(connection, id);
+        if (entry is null)
+        {
+            return null;
+        }
+
+        var formats = GetFormats(connection, id);
+        var classified = formats.Count == 0 ? null : ContentClassifier.Classify(new ClipCapture { Formats = formats });
+        var text = classified?.PlainText;
+
+        // Same rule as ForgetFingerprint.Of, spelled out because both halves are needed below (and hashing a
+        // huge text twice is wasted work).
+        var textFingerprint = text is { Length: > 0 } ? ForgetFingerprint.ForText(text) : null;
+        var fingerprint = textFingerprint ?? entry.ContentHash;
+
+        using (var insert = Command(connection,
+            """
+            INSERT OR IGNORE INTO forgotten (fingerprint, kind, text_length, file_count, image_width, image_height, source_app_name, forgotten_utc)
+            VALUES ($fp, $kind, $textLength, $fileCount, $width, $height, $source, $now);
+            """))
+        {
+            insert.Parameters.AddWithValue("$fp", fingerprint);
+            insert.Parameters.AddWithValue("$kind", (int)entry.Kind);
+            insert.Parameters.AddWithValue("$textLength", text is null ? DBNull.Value : (object)text.Length);
+            insert.Parameters.AddWithValue("$fileCount", classified is { Kind: ClipKind.Files } ? (object)classified.FilePaths.Count : DBNull.Value);
+            insert.Parameters.AddWithValue("$width", (object?)entry.ImageWidth ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$height", (object?)entry.ImageHeight ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$source", string.IsNullOrWhiteSpace(entry.SourceAppName) ? DBNull.Value : (object)entry.SourceAppName);
+            insert.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            insert.ExecuteNonQuery();
+        }
+
+        List<long> removed = [id];
+
+        // Only a text fingerprint can be shared by several rows: every other kind is keyed by the row's own
+        // (unique) content hash.
+        if (textFingerprint is not null)
+        {
+            removed.AddRange(FindTextLookAlikes(connection, id, text!, textFingerprint));
+        }
+
+        using (var delete = Command(connection, "DELETE FROM clips WHERE id = $id;"))
+        {
+            var idParameter = delete.Parameters.Add("$id", SqliteType.Integer);
+            foreach (var removedId in removed)
+            {
+                idParameter.Value = removedId;
+                delete.ExecuteNonQuery();
+            }
+        }
+
+        var item = ReadForgotten(connection, fingerprint)
+            ?? throw new InvalidOperationException("The forgotten entry vanished inside its own transaction.");
+        transaction.Commit();
+        return new ForgetResult(item, removed);
+    }
+
+    /// <summary>
+    /// Whether content with this fingerprint was forgotten forever (the capture path's check).
+    /// </summary>
+    /// <param name="fingerprint">A <see cref="ForgetFingerprint"/>.</param>
+    /// <returns><see langword="true"/> when it must not be recorded.</returns>
+    /// <exception cref="ArgumentException"><paramref name="fingerprint"/> is null or blank.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public bool IsForgotten(string fingerprint)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
+        using var connection = Open();
+        using var command = Command(connection, "SELECT EXISTS (SELECT 1 FROM forgotten WHERE fingerprint = $fp);");
+        command.Parameters.AddWithValue("$fp", fingerprint);
+        return Convert.ToInt64(command.ExecuteScalar()) != 0;
+    }
+
+    /// <summary>
+    /// Counts one more new copy kept out by a forgotten entry (shown in Settings as "kept out N times").
+    /// </summary>
+    /// <param name="fingerprint">The fingerprint that matched.</param>
+    /// <param name="now">When the copy arrived.</param>
+    /// <returns><see langword="true"/> when the entry exists.</returns>
+    /// <exception cref="ArgumentException"><paramref name="fingerprint"/> is null or blank.</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public bool RecordForgottenBlock(string fingerprint, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(fingerprint);
+        using var connection = Open();
+        using var command = Command(connection,
+            "UPDATE forgotten SET blocked_count = blocked_count + 1, last_blocked_utc = max(coalesce(last_blocked_utc, 0), $now) WHERE fingerprint = $fp;");
+        command.Parameters.AddWithValue("$fp", fingerprint);
+        command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// Returns the "Forget forever" list, most recently forgotten first.
+    /// </summary>
+    /// <returns>The entries (possibly empty).</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public IReadOnlyList<ForgottenItem> GetForgotten()
+    {
+        using var connection = Open();
+        using var command = Command(connection, $"SELECT {ForgottenColumns} FROM forgotten ORDER BY forgotten_utc DESC, id DESC;");
+        var items = new List<ForgottenItem>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            items.Add(ReadForgotten(reader));
+        }
+
+        return items;
+    }
+
+    /// <summary>Counts the "Forget forever" list (lets the capture path skip fingerprinting while it is empty).</summary>
+    /// <returns>The number of entries.</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public int CountForgotten()
+    {
+        using var connection = Open();
+        return Convert.ToInt32(Scalar(connection, "SELECT count(*) FROM forgotten;"));
+    }
+
+    /// <summary>
+    /// "Allow again": removes one entry from the list, so that content is recorded again from its next copy.
+    /// Nothing that was deleted comes back.
+    /// </summary>
+    /// <param name="id">The list entry id (<see cref="ForgottenItem.Id"/>).</param>
+    /// <returns><see langword="true"/> when the entry existed.</returns>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public bool RemoveForgotten(long id)
+    {
+        using var connection = Open();
+        using var command = Command(connection, "DELETE FROM forgotten WHERE id = $id;");
+        command.Parameters.AddWithValue("$id", id);
+        return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>"Allow all again": empties the list.</summary>
+    /// <returns>How many entries were removed.</returns>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public int ClearForgotten()
+    {
+        using var connection = Open();
+        using var command = Command(connection, "DELETE FROM forgotten;");
+        return command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Finds stored entries whose text has the same fingerprint as <paramref name="text"/> (other line endings
+    /// or surrounding whitespace), excluding <paramref name="excludeId"/>.
+    /// </summary>
+    /// <remarks>
+    /// SQL narrows the scan and C# decides: <c>instr</c> with the normalized text's first line (it appears
+    /// verbatim in every look-alike, which differs only in newline characters and surrounding whitespace), then
+    /// the same normalization in SQL over <c>search_text</c> (the trim set is exactly .NET's whitespace), then
+    /// the fingerprint of each candidate's full stored text — so only what the capture check would keep out is
+    /// ever deleted. Texts longer than the indexed <c>search_text</c> are not searched for (their look-alikes
+    /// stay until forgotten themselves; new copies are kept out either way).
+    /// </remarks>
+    /// <param name="connection">Open connection inside the caller's transaction.</param>
+    /// <param name="excludeId">The entry being forgotten.</param>
+    /// <param name="text">Its full text.</param>
+    /// <param name="fingerprint">Its text fingerprint.</param>
+    /// <returns>Ids of the look-alikes (possibly empty).</returns>
+    private static List<long> FindTextLookAlikes(SqliteConnection connection, long excludeId, string text, string fingerprint)
+    {
+        var normalized = ForgetFingerprint.NormalizeText(text);
+        if (normalized.Length == 0 || normalized.Length > ContentClassifier.SearchMaxChars)
+        {
+            return [];
+        }
+
+        // Normalized text starts with non-whitespace, so its first line is never empty; 64 characters are
+        // plenty for instr to rule out almost every row cheaply.
+        int newline = normalized.IndexOf('\n');
+        var head = normalized[..Math.Min(newline < 0 ? normalized.Length : newline, 64)];
+
+        var candidates = new List<long>();
+        using (var find = Command(connection,
+            $"""
+            SELECT id FROM clips
+            WHERE id <> $id
+              AND kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText}, {(int)ClipKind.Link}, {(int)ClipKind.Color})
+              AND instr(search_text, $head) > 0
+              AND trim(replace(replace(search_text, char(13) || char(10), char(10)), char(13), char(10)), $ws) = $normalized;
+            """))
+        {
+            find.Parameters.AddWithValue("$id", excludeId);
+            find.Parameters.AddWithValue("$head", head);
+            find.Parameters.AddWithValue("$ws", ForgetFingerprint.WhitespaceCharacters);
+            find.Parameters.AddWithValue("$normalized", normalized);
+            using var reader = find.ExecuteReader();
+            while (reader.Read())
+            {
+                candidates.Add(reader.GetInt64(0));
+            }
+        }
+
+        var lookAlikes = new List<long>();
+        foreach (var candidate in candidates)
+        {
+            var candidateText = ContentClassifier.Classify(new ClipCapture { Formats = GetFormats(connection, candidate) })?.PlainText;
+            if (candidateText is not null && ForgetFingerprint.ForText(candidateText) == fingerprint)
+            {
+                lookAlikes.Add(candidate);
+            }
+        }
+
+        return lookAlikes;
+    }
+
+    /// <summary>Reads one "Forget forever" entry by fingerprint through an existing connection.</summary>
+    /// <param name="connection">Open connection.</param>
+    /// <param name="fingerprint">The fingerprint.</param>
+    /// <returns>The entry or <see langword="null"/>.</returns>
+    private static ForgottenItem? ReadForgotten(SqliteConnection connection, string fingerprint)
+    {
+        using var command = Command(connection, $"SELECT {ForgottenColumns} FROM forgotten WHERE fingerprint = $fp;");
+        command.Parameters.AddWithValue("$fp", fingerprint);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadForgotten(reader) : null;
+    }
+
+    /// <summary>Materializes the current row of a reader selecting <see cref="ForgottenColumns"/>.</summary>
+    /// <param name="reader">A reader positioned on a row.</param>
+    /// <returns>The entry.</returns>
+    private static ForgottenItem ReadForgotten(SqliteDataReader reader) => new(
+        reader.GetInt64(0),
+        (ClipKind)reader.GetInt32(1),
+        reader.IsDBNull(2) ? null : reader.GetInt32(2),
+        reader.IsDBNull(3) ? null : reader.GetInt32(3),
+        reader.IsDBNull(4) ? null : reader.GetInt32(4),
+        reader.IsDBNull(5) ? null : reader.GetInt32(5),
+        reader.IsDBNull(6) ? null : reader.GetString(6),
+        DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
+        reader.GetInt64(8),
+        reader.IsDBNull(9) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(9)));
+
+    /// <summary>Columns of <c>forgotten</c> in the order <see cref="ReadForgotten(SqliteDataReader)"/> reads them (never the fingerprint).</summary>
+    private const string ForgottenColumns =
+        "id, kind, text_length, file_count, image_width, image_height, source_app_name, forgotten_utc, blocked_count, last_blocked_utc";
 
     /// <summary>
     /// Returns all groups in column order, each with its current item count.
@@ -1451,5 +1747,27 @@ public sealed class ClipStore
         ) WITHOUT ROWID;
 
         CREATE INDEX IF NOT EXISTS ix_clip_groups_group ON clip_groups (group_id, clip_id);
+        """;
+
+    /// <summary>
+    /// The "Forget forever" list (added by <see cref="EnsureForgottenSchema"/>, see the class remarks). The
+    /// unique fingerprint serves the per-capture check; everything else is content-free display data.
+    /// AUTOINCREMENT keeps an id from being reused, so a stale "Allow again" can never hit a newer entry.
+    /// </summary>
+    private const string SchemaForgotten =
+        """
+        CREATE TABLE IF NOT EXISTS forgotten (
+            id               INTEGER PRIMARY KEY AUTOINCREMENT,
+            fingerprint      TEXT    NOT NULL UNIQUE,
+            kind             INTEGER NOT NULL,
+            text_length      INTEGER,
+            file_count       INTEGER,
+            image_width      INTEGER,
+            image_height     INTEGER,
+            source_app_name  TEXT,
+            forgotten_utc    INTEGER NOT NULL,
+            blocked_count    INTEGER NOT NULL DEFAULT 0,
+            last_blocked_utc INTEGER
+        );
         """;
 }

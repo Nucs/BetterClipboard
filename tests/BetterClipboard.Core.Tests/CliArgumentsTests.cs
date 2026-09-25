@@ -33,7 +33,7 @@ public sealed class CliArgumentsTests
         string[] commands =
         [
             CliCommands.List, CliCommands.Search, CliCommands.Grep, CliCommands.Get, CliCommands.Copy, CliCommands.Put,
-            CliCommands.Pin, CliCommands.Unpin, CliCommands.Delete, CliCommands.Wait, CliCommands.Status,
+            CliCommands.Pin, CliCommands.Unpin, CliCommands.Delete, CliCommands.Forget, CliCommands.Wait, CliCommands.Status,
         ];
         foreach (var command in commands)
         {
@@ -88,6 +88,23 @@ public sealed class CliArgumentsTests
         var saved = Parse("get", "7", "-o", "shot.png", "--format", "png");
         Assert.Equal("shot.png", saved.OutputFile);
         Assert.Equal("png", saved.Request!.Format);
+    }
+
+    /// <summary>
+    /// forget takes one id or --recent like delete (that it needs one is the server's rule, so an untargeted
+    /// request still parses); it is listed in the overview.
+    /// </summary>
+    [Fact]
+    public void Forget_Targets()
+    {
+        var byId = Parse("forget", "12");
+        Assert.Equal((CliCommands.Forget, (long?)12), (byId.Request!.Command, byId.Request.Id));
+        Assert.Equal(1, Parse("forget", "-r", "1", "--json").Request!.Recent);
+        Assert.Null(Parse("forget").Request!.Id);
+        Assert.NotNull(Parse("forget", "1", "2").Error);
+        Assert.NotNull(Parse("forget", "secret").Error);
+        Assert.Contains("forget <ID>", CliArguments.Help(null), StringComparison.Ordinal);
+        Assert.Contains("never records its content again", CliArguments.Help(CliCommands.Forget), StringComparison.Ordinal);
     }
 
     /// <summary>put takes its words, or stdin when given none or <c>-</c>.</summary>

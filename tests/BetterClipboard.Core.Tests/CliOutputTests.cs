@@ -48,6 +48,9 @@ public sealed class CliOutputTests
         var status = CliOutput.Render(CliCommands.Status, new CliResponse { Ok = true, Status = new CliStatus { Version = "0.2.0", Items = 3, TotalBytes = 2048 } }, Now);
         Assert.StartsWith("BetterClipboard 0.2.0 (protocol v1)\n", status, StringComparison.Ordinal);
         Assert.EndsWith("\n", status, StringComparison.Ordinal);
+        Assert.DoesNotContain("Forgotten", status, StringComparison.Ordinal);
+        var withForgotten = CliOutput.Render(CliCommands.Status, new CliResponse { Ok = true, Status = new CliStatus { Version = "0.2.0", Forgotten = 2 } }, Now);
+        Assert.Contains("Forgotten: 2 items never recorded", withForgotten, StringComparison.Ordinal);
     }
 
     /// <summary>Exit codes: 0 ok, 1 nothing found / timed out, 2 bad request, 4 other failures.</summary>

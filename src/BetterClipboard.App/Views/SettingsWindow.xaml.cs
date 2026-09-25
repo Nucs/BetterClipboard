@@ -47,6 +47,7 @@ public sealed partial class SettingsWindow : Window
         controller.HistoryChanged += OnHistoryChanged;
         controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
+        controller.ForgottenChanged += OnForgottenChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
         BuildHotkeyPresetsMenu();
@@ -61,7 +62,9 @@ public sealed partial class SettingsWindow : Window
         ViewModel.RefreshSystemStatus();
         ViewModel.RefreshHotkeyStatus();
         ViewModel.RefreshShareXStatus();
-        _ = ViewModel.RefreshStatsAsync();
+
+        // Also refreshes the stats line, which counts the forgotten items.
+        _ = ViewModel.RefreshForgottenAsync();
         AppWindow.Show(true);
         Activate();
         ForegroundHelper.Activate(hwnd);
@@ -90,7 +93,38 @@ public sealed partial class SettingsWindow : Window
         controller.HistoryChanged -= OnHistoryChanged;
         controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
+        controller.ForgottenChanged -= OnForgottenChanged;
         controller.Settings.Changed -= OnSettingsChanged;
+    }
+
+    /// <summary>Something was forgotten, allowed again or kept out once more: rebuild the list.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnForgottenChanged(object? sender, EventArgs e) => _ = ViewModel.RefreshForgottenAsync();
+
+    /// <summary>"Allow again" on one row of Forgotten forever (no confirmation: it only restores the default, recording).</summary>
+    /// <param name="sender">The row's button; its <c>Tag</c> holds the list entry id.</param>
+    /// <param name="e">Click data.</param>
+    private async void AllowAgain_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: long id })
+        {
+            await ViewModel.AllowAgainAsync(id);
+        }
+    }
+
+    /// <summary>"Allow all again", after confirmation.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private async void AllowAllForgotten_Click(object sender, RoutedEventArgs e)
+    {
+        if (await ConfirmAsync(
+                "Allow everything you forgot?",
+                "All of it is recorded again from its next copy. Nothing that was deleted comes back.",
+                "Allow all again"))
+        {
+            await ViewModel.AllowAllAgainAsync();
+        }
     }
 
     /// <summary>ShareX found/lost, watch started/stopped, or a screenshot came in: refresh its card.</summary>
@@ -280,4 +314,9 @@ public sealed partial class SettingsWindow : Window
     /// <param name="value">Value.</param>
     /// <returns>The negation.</returns>
     public bool Not(bool value) => !value;
+
+    /// <summary>x:Bind helper: visible when <paramref name="value"/> is true.</summary>
+    /// <param name="value">Value.</param>
+    /// <returns>Visibility.</returns>
+    public Visibility Visible(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 }

@@ -258,8 +258,8 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (173 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, opt-in real-clipboard round trip, explicit capture-rate measurement (118 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (194 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement (119 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -732,13 +732,89 @@ User request (2026-09-25):
     `ClearValue`). A right-click in the search box still gets the text box's menu.
 - **Cards:** a card shows its groups' glyphs in the header row, with the group names in a tooltip.
 
+### 2.12 Forget forever — `ForgetFingerprint`, the `forgotten` table, `ClipHistoryService.ForgetAsync`
+
+User request (2026-09-25): "a feature 'Forget Forever' which is using a hash of the clipboard/clipboard
+content to detect if we should never keep this kind of clipboard copy in this app and so it is never
+recorded."
+
+**The fingerprint** (`Core/Content/ForgetFingerprint`).
+- **Text:** SHA-256 over `N\n` + UTF-8 of the normalized text: `\r\n` and lone `\r` become `\n`, then
+  leading and trailing whitespace is trimmed (`char.IsWhiteSpace`, i.e. `string.Trim()`).
+  - Why normalize: `ContentHasher.ForText` (the dedupe key) is exact on purpose. A rule that must never let
+    something back in cannot be: the same secret arrives with and without a trailing newline depending on
+    the app (terminals, editors copying a whole line).
+  - Everything else must match, letter case included. Whitespace-only text falls back to the exact content
+    hash, or forgetting one blank copy would keep out every blank copy.
+- **Other kinds** use their existing identity: file lists by their paths (already case-insensitive), images
+  by the analyzer's **pixel hash** (the check runs after image analysis), rich-only content by its bytes.
+- **Hashing:** chunked (16 K chars, a stateful UTF-8 `Encoder` carries a surrogate over a chunk boundary),
+  so a 50 MB text is not encoded into one buffer. A partly consumed chunk throws instead of storing a
+  fingerprint later copies would never match.
+- **Frozen:** known answers from Python `hashlib` pin the scheme (`ForgetFingerprintTests`). Changing it
+  would silently un-forget everything, and it cannot be migrated: the content is gone by design.
+
+**Storage** (`ClipStore`, additive like the groups: an older build opens the file but records forgotten
+content again while it runs).
+- `forgotten(id AUTOINCREMENT, fingerprint UNIQUE, kind, text_length, file_count, image_width,
+  image_height, source_app_name, forgotten_utc, blocked_count, last_blocked_utc)`. Content-free except the
+  fingerprint, which never leaves the store (not in `ForgottenColumns`, never logged).
+- **Encrypted store, not `settings.json`:** a bare SHA-256 of a short password can be guessed offline.
+- **`Forget(id)`**, one transaction: recompute the fingerprint from the stored formats (re-classified, so a
+  file list whose formats also carry text is still fingerprinted by its paths; images use the stored
+  content hash = pixel hash), `INSERT OR IGNORE` (an already-forgotten fingerprint keeps its first entry and
+  counters), delete the entry **and its stored look-alikes**.
+  - Why the look-alikes: the cards trim whitespace, so `secret` and `secret\r\n` look identical. Leaving
+    one would look like the forget failed.
+  - The sweep: SQL narrows (`instr` with the normalized text's first line, then the same normalization in
+    SQL over `search_text`, with `trim(…, $ws)` given exactly .NET's whitespace set), then C# verifies each
+    candidate's fingerprint from its full stored text. Only texts up to the 32 K `search_text` cap are
+    swept.
+  - Pins and groups do not protect: forgetting is an explicit request. No tombstone is written (the list
+    is stronger and never expires).
+- **No clear or prune touches the list.** Only "Allow again" (`RemoveForgotten`) and "Allow all again"
+  (`ClearForgotten`) do.
+
+**Capture path** (`ClipHistoryService.StoreAsync`).
+- After pause, ignored apps, size, classification and image analysis, before `Upsert`. Every channel is
+  covered: live copies, ShareX screenshots, `bclip put`, and the Windows import.
+- `anyForgotten` (worker-thread cache; `null` = recount on next need) skips fingerprinting entirely while
+  the list is empty, so the feature costs nothing until used.
+- Only **new events** (Captured, ShareX) count as "kept out" (`RecordForgottenBlock`) and log
+  `Skipped a copy that was forgotten forever.`. The Windows import offers the same old item at every start;
+  counting it would inflate the number.
+- The single worker orders everything: a copy queued right after "forget" is processed after it and kept
+  out (`ACopyQueuedRightAfterForget_IsKeptOut`).
+- Events: `Changed` `Removed` per deleted entry, and `ForgottenChanged` (forwarded to the UI as
+  `AppController.ForgottenChanged`), also when a copy was kept out, so Settings' counters move live.
+
+**UI and CLI.**
+- **Card menu:** *Forget forever…* (Blocked `E733`) under Delete, queued like the group follow-ups. A
+  confirmation flyout at the card (`ShowForgetFlyout`) is worth the click: the effect outlives the item, and
+  only Settings can undo it. `ForgetItemAsync` moves the selection to a neighbor like `DeleteItem`.
+- **Settings › Privacy › Forgotten forever:** the list (`ForgottenText.Title`/`Details`, pure and tested:
+  "Text · 20 characters", "From Notepad · forgotten just now · not copied since"), *Allow again* per row
+  (the button's accessible name says which row), *Allow all again…* with a confirmation. The stats chip
+  adds "· N forgotten".
+- **`bclip forget <ID | -r N>`:** needs an explicit target like `delete`. It reports look-alikes removed.
+  There is deliberately no CLI "allow again": undoing is the user's call, in Settings. `status` has a
+  `Forgotten` count (printed only when > 0), and `put` says when its text was not saved.
+
+**Limits.**
+- Windows' own clipboard history is not touched (it forgets unpinned items on restart anyway). The
+  forgotten item is only never re-imported.
+- Matching is exact apart from line endings and surrounding whitespace: `secret1` is not `secret`.
+- Look-alikes of texts over 32 K characters are not swept (they are still kept out when copied).
+- Images too large for the analyzer to pixel-hash are matched by their bytes, so the same huge picture in
+  another encoding is not recognized.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 291 tests (289 run; 1 opt-in + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 313 tests (311 run; 1 opt-in + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -853,7 +929,8 @@ ShareX end-to-end (2026-09-25), with the dev build:
   Delete E74D, Setting E713, Link E71B, Photo E91B, Folder E8B7, Font E8D2, FontColor E8D3, Color E790,
   History E81C, Clock E917, Pause E769, Play E768, Keyboard E765, KeyboardShortcut EDA7, FileExplorer EC50,
   Personalize E771, Shield EA18, Import E8B5, Info E946, OpenInNewWindow E8A7, Code E943, Power E7E8,
-  Camera E722 (ShareX card), Add E710 (new group), Tag E8EC (Groups submenu), Rename E8AC, Remove E738.
+  Camera E722 (ShareX card), Add E710 (new group), Tag E8EC (Groups submenu), Rename E8AC, Remove E738,
+  Blocked E733 (Forget forever; a circle with a slash, checked by rendering).
   Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
   on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did. Sweep new C# files with an
   escape script before committing (never XAML files: there the escape is `&#xE8xx;`).
@@ -902,6 +979,9 @@ ShareX end-to-end (2026-09-25), with the dev build:
 
 | Feature | How | Result |
 |---|---|---|
+| Forget forever, live on an isolated instance next to the user's app: the card menu ends with *Forget forever…*; its confirmation ("Forget this forever?") deletes the card **and** its CRLF look-alike (log "2 history entries deleted"); `bclip status` prints "Forgotten: 1 item never recorded"; Settings › Forgotten forever shows "Text · 20 characters / From Notepad · forgotten just now · not copied since"; *Allow again* empties the list ("Nothing is forgotten…", *Allow all again…* disabled); user's PID unchanged | UIA invokes + one guarded right-click + UIA `ScrollPattern` to the Settings card (`groups_e2e/run5.sh`, scratch) | ✅ first attempt |
+| Forget forever end to end in the private window station: after `bclip forget`, another program copying the same text with a trailing CRLF is read by the real listener and kept out (counted once), the next different copy is recorded | `CliEndToEndTests.Forget_KeepsRealCopiesOut` | ✅ 8/8 repeated runs |
+| Forget forever in Core: normalization (CRLF, NBSP, U+3000 and U+2029 trimmed; case and inner text kept), known answers, chunk boundaries inside surrogate pairs, SQL trim set = .NET whitespace; look-alike sweep removes exactly the variants; clears/prune keep the list; first entry wins; counters only for new copies; images by pixels; worker order; allow again; CLI grammar/processor/status | tests (`ForgetTests`, CLI tests) | ✅ |
 | Groups column, live on an isolated instance next to the user's app. The column opens 44 px to the left (right edge unchanged) and closing shrinks it back (444 → 400 px, remembered). The icon picker creates a group. A mouse drag of a card onto the icon adds it (log "Dropped 1 card(s) on group 1", button "…group, 1 item", badge on the card). The group view shows only its card (header "Clipboard › Name" with the chip, placeholder, footer "1 in Name"). Right-click → *Remove from Name* empties the view, and the logo shows all cards again. Rename through the icon menu works. User's PID unchanged every run | UI Automation (invoke/select/value) + guarded mouse and keys (`groups_e2e` scratch scripts) | ✅ |
 | Keys inside popups: Esc on a card menu closes only the menu (before the fix the whole panel closed); Delete in the rename box edits the name and deletes no card; Esc on the search box's own menu keeps the panel open; the Menu key opens the card menu, where it used to open a lone "Paste" menu, and a right-click in the search box afterwards still gets the text box's menu | same run, guarded keys + content-free diagnostic log lines (removed afterwards) | ✅ (Enter in the rename box was not pressed: had the guard failed, it would have pasted through the real clipboard; it takes the same guard path as Delete) |
 | Groups store and service: pinned-or-grouped protected from age/count/size retention and from Clear; Clear all keeps the groups (empty); the retention clock resets on leaving the last group (also when a group is deleted) without moving the item in the list; memberships cascade; events; icon catalog glyphs valid and unique | tests (`GroupTests`, `Positioner_GroupsColumnGrowsAndShrinksOnTheLeft`) | ✅ |
@@ -954,6 +1034,11 @@ ShareX end-to-end (2026-09-25), with the dev build:
   - `bclip list --group NAME` / `bclip group add|remove` for scripts and agents;
   - dragging a card out to other apps (a text/bitmap data provider next to the internal id format);
   - a "drop on + to create a group with this card" shortcut.
+- Forget forever, next steps:
+  - optional delete-through to Windows' own history (`Clipboard.DeleteItemFromHistory` for items whose
+    fingerprint matches), so a forgotten secret also leaves Win+V's RAM buffer and pins;
+  - pattern rules ("never record anything that looks like an AWS key / a JWT"), next to the exact list;
+  - sweeping look-alikes of texts over the 32 K `search_text` cap (would need a stored fingerprint column).
 - ShareX, next steps:
   - an opt-in one-time backfill of the existing screenshot archive;
   - upload URLs from `History.db` (task completion) as link items next to their screenshot;

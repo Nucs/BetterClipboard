@@ -20,6 +20,7 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 | Content | Text, HTML, bitmaps | Text, rich text/HTML, links, colors, images with previews, copied files |
 | Screenshots | Only what you copy | Also every [ShareX](https://getsharex.com) screenshot the moment it is saved, in its own tab |
 | Organizing | Pins | Pins plus groups: drag cards onto your own icons; grouped items are kept like pins |
+| Keeping things out | Copies apps mark as private | The same, plus known password managers ignored by default, and **Forget forever** for anything else |
 | At rest | Pinned items encrypted | Everything encrypted (ChaCha20-Poly1305), bound to your PC and account |
 
 ## Install
@@ -69,7 +70,7 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | `Del` (or `Shift+Del` while searching) | Delete the item |
 | `Ctrl+F` | Back to the search box |
 | `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
-| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer, delete |
+| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer, delete, forget forever |
 | `Esc` | Clear the search, then close — focus returns to where you were |
 | Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens by your cursor again next time. |
 
@@ -93,6 +94,24 @@ Collect the things you reuse — snippets, addresses, links for a project — in
 Items in a group are **kept like pinned items**: no retention limit (count, age, size) removes them and
 *Clear* skips them. When an item leaves its last group, its retention clock starts over. It won't be
 removed just because it is old, and it keeps its place in the list.
+
+### Forget forever
+
+Copied a password, a token or anything else you never want in your history? Right-click it (or press
+the Menu key) and choose **Forget forever…**. It is deleted, and **BetterClipboard never records it again**,
+whichever app copies it next time: a browser, a terminal, ShareX, or `bclip put`. It is also never
+re-imported from Windows' own clipboard history.
+
+- **What counts as the same:** everything must match, letter case included. Line endings and spaces
+  around the text don't matter, so `token` copied again from a terminal with a line break after it is
+  kept out too.
+  Copies already in your history that differ only that way disappear together with the one you forget.
+- **Pictures and files:** a picture is recognized by its pixels, so the same screenshot as PNG or bitmap
+  counts. A file list is recognized by its paths (not by the files' contents).
+- **What is kept:** a fingerprint (a SHA-256 hash) of the content, encrypted with the rest of your history,
+  plus its kind, length and source app, so you can tell entries apart. The content itself is gone.
+- **Changed your mind?** *Settings › Forgotten forever* lists every entry with how often it was kept out
+  since. *Allow again* records it again from its next copy. Nothing that was deleted comes back.
 
 **Password managers are ignored out of the box.** *Ignored apps* comes filled with 46 password managers
 and authenticator apps, 65 process names in all: 1Password, Bitwarden, KeePass, KeePassXC, LastPass,
@@ -160,6 +179,7 @@ the network cannot connect, and each command is logged by name only, never with 
 | `bclip copy [ID] [--plain]` | Put an item back on the clipboard, like picking it in the panel |
 | `bclip put <text>` or `… \| bclip put` | Copy text (or standard input) to the clipboard and the history |
 | `bclip pin [ID]` · `unpin [ID]` · `delete ID` | Keep an item forever, release it, or delete it |
+| `bclip forget ID` | Forget forever: delete the item and never record its content again (undo only in Settings) |
 | `bclip wait [-t 60]` | Block until you copy something, then print it |
 | `bclip status` | Version, item counts, capture statistics |
 
@@ -192,6 +212,11 @@ git diff | bclip put                      # hand text back to you on the clipboa
   `CanIncludeInClipboardHistory = 0`, `Clipboard Viewer Ignore` — used by password managers) are never
   recorded. Many managers, Electron-based ones especially, don't set these flags. The ignored-apps list
   catches those by the name of the process that made the copy.
+- **Forget forever.** Every copy — live, ShareX, `bclip put`, the Windows import — is checked against the
+  forget list before anything is written. Text is fingerprinted after unifying line endings and trimming
+  surrounding whitespace, pictures by their decoded pixels, file lists by their paths. While the list is
+  empty, nothing is even hashed. The list lives in the encrypted database, not in `settings.json`: a bare
+  hash of a short password could be guessed offline.
 - **Storage.** One SQLite database, fully encrypted with [SQLite3 Multiple Ciphers](https://github.com/utelle/SQLite3MultipleCiphers)
   (ChaCha20-Poly1305: every page, the write-ahead log, the full-text index and thumbnails). Search uses an
   FTS5 trigram index on the decrypted pages in memory.

@@ -33,6 +33,9 @@ public static class CliCommands
     /// <summary>Delete an item.</summary>
     public const string Delete = "delete";
 
+    /// <summary>Delete an item and never record its content again ("Forget forever").</summary>
+    public const string Forget = "forget";
+
     /// <summary>Block until the next copy arrives.</summary>
     public const string Wait = "wait";
 
@@ -255,6 +258,12 @@ public sealed record CliStatus
 
     /// <summary>Stored payload bytes.</summary>
     public long TotalBytes { get; init; }
+
+    /// <summary>
+    /// Entries of the "Forget forever" list: content that is never recorded (managed in the app's Settings;
+    /// 0 from servers that predate the list).
+    /// </summary>
+    public long Forgotten { get; init; }
 
     /// <summary>Whether live capture is paused.</summary>
     public bool CapturePaused { get; init; }
