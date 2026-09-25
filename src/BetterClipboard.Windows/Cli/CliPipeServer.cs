@@ -18,8 +18,9 @@ namespace BetterClipboard.Windows.Cli;
 /// <para>
 /// <b>Who can connect.</b> The pipe's DACL grants access to the current user only and explicitly denies
 /// network logons (<c>NT AUTHORITY\NETWORK</c>), so it is reachable by local programs running as this
-/// user — which is exactly the population the setting warns about. The owner is set to the user so
-/// clients using <see cref="PipeOptions.CurrentUserOnly"/> accept it.
+/// user — which is exactly the population the setting warns about. The owner is set explicitly to the
+/// user SID (not the token's default owner, which is <c>BUILTIN\Administrators</c> when elevated), because
+/// that is what <see cref="CliClient.VerifyServerOwner"/> accepts — from elevated and normal terminals alike.
 /// </para>
 /// <para>
 /// <b>Squatting.</b> The first instance is created with <see cref="PipeOptions.FirstPipeInstance"/>: if any

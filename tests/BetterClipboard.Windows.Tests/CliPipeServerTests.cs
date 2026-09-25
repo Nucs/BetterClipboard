@@ -88,15 +88,37 @@ public sealed class CliPipeServerTests
         await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 
+    /// <summary>
+    /// The pipe is owned by the token's <b>user</b> SID and the client check accepts it. Guards the CI
+    /// failure of 2026-09-25: GitHub runners test elevated, where the token's default owner is
+    /// <c>BUILTIN\Administrators</c>, and <see cref="PipeOptions.CurrentUserOnly"/> (which compares with
+    /// that default owner) refused the app's own pipe — as it would for any admin terminal.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Owner_IsTheUser_EvenWhenElevated()
+    {
+        await using var server = StartServer((_, _) => Task.FromResult(new CliResponse { Ok = true }));
+        using var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+        await pipe.ConnectAsync(5000, TestContext.Current.CancellationToken);
+
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        var owner = pipe.GetAccessControl().GetOwner(typeof(System.Security.Principal.SecurityIdentifier));
+        Assert.Equal(identity.User, owner);
+        CliClient.VerifyServerOwner(pipe); // must not throw, elevated or not
+        TestContext.Current.TestOutputHelper?.WriteLine($"elevated token (default owner differs from user): {identity.Owner != identity.User}");
+    }
+
     /// <summary>Malformed JSON gets a bad_request answer; the server keeps serving afterwards.</summary>
     /// <returns>A task.</returns>
     [Fact]
     public async Task MalformedRequest_IsAnswered()
     {
         await using var server = StartServer((_, _) => Task.FromResult(new CliResponse { Ok = true }));
-        using (var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly))
+        using (var pipe = new NamedPipeClientStream(".", server.PipeName, PipeDirection.InOut, PipeOptions.Asynchronous))
         {
             await pipe.ConnectAsync(5000, TestContext.Current.CancellationToken);
+            CliClient.VerifyServerOwner(pipe);
             await pipe.WriteAsync(Encoding.UTF8.GetBytes("{not json\n"), TestContext.Current.CancellationToken);
             var line = await CliWire.ReadLineAsync(pipe, 1 << 20, TestContext.Current.CancellationToken);
             var answer = CliJson.DeserializeResponse(line!);

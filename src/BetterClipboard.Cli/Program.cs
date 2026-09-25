@@ -113,9 +113,16 @@ internal static class Program
                 : "bclip: BetterClipboard is not running and could not be started — start it, and check that Settings › Command line is on.").ConfigureAwait(false);
             return CliExitCodes.Unavailable;
         }
-        catch (UnauthorizedAccessException)
+        catch (CliPipeOwnerException)
         {
             await stderr.WriteLineAsync("bclip: the BetterClipboard pipe is not owned by your account — refusing to use it.").ConfigureAwait(false);
+            return CliExitCodes.Unavailable;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Opening was denied (not an impostor): typically the app runs as administrator and this
+            // terminal does not, and the elevated app's pipe is out of reach of a normal process.
+            await stderr.WriteLineAsync("bclip: Windows denied access to BetterClipboard's pipe — is BetterClipboard running as administrator? Start it normally.").ConfigureAwait(false);
             return CliExitCodes.Unavailable;
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or JsonException)

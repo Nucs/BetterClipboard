@@ -246,7 +246,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (150 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, opt-in real-clipboard round trip (58 tests). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, opt-in real-clipboard round trip (59 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -406,8 +406,13 @@ while on, any process running as the user can read the whole history through it 
 - **Pipe security.** Name `BetterClipboard.Cli.<hex(SHA-256("BetterClipboard/CliPipe/v1:" + SID upper))[..16]>.<session>[.<scope>]`
   (per user and session, SID not readable from it). Server: owner = user, allow the user
   ReadWrite|CreateNewInstance|Synchronize, **deny NETWORK**, `FirstPipeInstance` on the first instance (if
-  someone squatted the name, `Start` throws and Settings shows the error). Client: `PipeOptions.CurrentUserOnly`
-  (a pipe owned by another account ⇒ `UnauthorizedAccessException` ⇒ exit 3). ≤ 8 instances, 64 KB buffers.
+  someone squatted the name, `Start` throws and Settings shows the error). Client: `CliClient.VerifyServerOwner`
+  — pipe owner must equal the token's **user** SID before anything is written (else `CliPipeOwnerException`
+  ⇒ exit 3). **Not** `PipeOptions.CurrentUserOnly`: .NET compares the owner with the token's *default
+  owner*, which is `BUILTIN\Administrators` for an elevated admin — the first CI run (GitHub runners test
+  elevated) failed all 8 pipe tests with "not owned by the current user", and an admin terminal would have
+  been refused by its own app. `Owner_IsTheUser_EvenWhenElevated` guards it (it logs whether the token was
+  elevated). ≤ 8 instances, 64 KB buffers.
 - **Protocol v1.** One request line, one response line: newline-delimited JSON (source-generated
   System.Text.Json, camelCase, nulls omitted), each line bounded at 64 MB (`CliWire.ReadLineAsync` refuses
   more instead of buffering). Client deadline = `wait` timeout + 30 s, else 2 min. A pending 1-byte read
@@ -450,7 +455,7 @@ while on, any process running as the user can read the whole history through it 
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 208 tests (1 opt-in skipped)
+dotnet test --solution BetterClipboard.sln                     # 209 tests (1 opt-in skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 ```
 
@@ -561,7 +566,7 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 
 | Feature | How | Result |
 |---|---|---|
-| Unit tests | `dotnet test --solution` | 207 pass + 1 opt-in (5/5 repeated runs green) |
+| Unit tests | `dotnet test --solution` | 208 pass + 1 opt-in locally (non-elevated) and on CI (elevated runner) |
 | `bclip` published build next to the user's running app: status (auto-starts the scoped instance), list, search, grep, get (exact bytes, Hebrew/✓, HTML fragment, file list), image → exit 2 without `-o` / PNG with `-o`, `--json`, pin + pinned filter, `--since`, wait timeout (1), not found (1), usage (2), access off (3, starts nothing); audit log; no LL hook; user's PID unchanged | isolated seeded store + `run.sh` | ✅ (after the ShellExecute fix) |
 | `put`/`copy` write the clipboard, `wait` sees the next copy | CLI end-to-end tests in the isolated window station | ✅ |
 | `install.ps1 -AddToPath` / uninstall PATH helpers | AST-loaded functions on a scratch key, PS 5.1 + 7 | ✅ (15/15) |

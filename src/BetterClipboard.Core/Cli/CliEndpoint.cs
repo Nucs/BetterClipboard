@@ -118,6 +118,39 @@ public static class CliWire
 }
 
 /// <summary>
+/// The pipe answering under BetterClipboard's name is owned by someone other than the current Windows
+/// user — most likely another account squatting the name — so <c>bclip</c> refused to send it anything.
+/// </summary>
+/// <remarks>
+/// A distinct subtype so callers can tell "someone else's pipe" (never talk to it) from a plain
+/// <see cref="UnauthorizedAccessException"/> raised while connecting ("Windows denied access", e.g. an
+/// elevated app and a non-elevated terminal), which needs a different fix.
+/// </remarks>
+public sealed class CliPipeOwnerException : UnauthorizedAccessException
+{
+    /// <summary>Creates the exception with the standard message.</summary>
+    public CliPipeOwnerException()
+        : base("The BetterClipboard pipe is not owned by your Windows account; refusing to use it.")
+    {
+    }
+
+    /// <summary>Creates the exception with a custom message.</summary>
+    /// <param name="message">The message.</param>
+    public CliPipeOwnerException(string message)
+        : base(message)
+    {
+    }
+
+    /// <summary>Creates the exception with a custom message and cause.</summary>
+    /// <param name="message">The message.</param>
+    /// <param name="innerException">The cause.</param>
+    public CliPipeOwnerException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
+/// <summary>
 /// The <c>bclip</c> side of the pipe: one request, one response, one connection.
 /// </summary>
 public static class CliClient
@@ -126,7 +159,7 @@ public static class CliClient
     /// Sends <paramref name="request"/> to the app and returns its response.
     /// </summary>
     /// <remarks>
-    /// <see cref="PipeOptions.CurrentUserOnly"/> makes the client verify that the pipe is owned by the
+    /// Before anything is written, <see cref="VerifyServerOwner"/> checks that the pipe is owned by the
     /// current user: a pipe pre-created under the same name by another account (squatting) is refused
     /// instead of being handed our request.
     /// </remarks>
@@ -136,7 +169,8 @@ public static class CliClient
     /// <param name="cancellationToken">Cancels the whole exchange (e.g. Ctrl+C during <c>wait</c>).</param>
     /// <returns>The response.</returns>
     /// <exception cref="TimeoutException">No server accepted in time (the app is not running or command-line access is off).</exception>
-    /// <exception cref="UnauthorizedAccessException">The pipe exists but is not owned by the current user.</exception>
+    /// <exception cref="CliPipeOwnerException">The pipe exists but is not owned by the current user.</exception>
+    /// <exception cref="UnauthorizedAccessException">Windows denied opening the pipe (its DACL or integrity level excludes this process).</exception>
     /// <exception cref="IOException">The connection broke, the server closed without answering, or it did not answer within <see cref="ResponseTimeout"/>.</exception>
     /// <exception cref="InvalidDataException">The response was oversized or not UTF-8.</exception>
     /// <exception cref="System.Text.Json.JsonException">The response was not valid JSON.</exception>
@@ -145,8 +179,15 @@ public static class CliClient
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(pipeName);
         ArgumentNullException.ThrowIfNull(request);
-        using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+        // Not PipeOptions.CurrentUserOnly on Windows: .NET compares the pipe's owner with the token's
+        // *default owner*, which for an elevated administrator is BUILTIN\Administrators rather than the
+        // user — so an admin terminal (and every GitHub Actions runner) was refused by its own app.
+        // VerifyServerOwner below compares with the user SID instead. Elsewhere the option is the check.
+        var options = PipeOptions.Asynchronous | (OperatingSystem.IsWindows() ? PipeOptions.None : PipeOptions.CurrentUserOnly);
+        using var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, options);
         await pipe.ConnectAsync((int)Math.Clamp(connectTimeout.TotalMilliseconds, 0, int.MaxValue), cancellationToken).ConfigureAwait(false);
+        VerifyServerOwner(pipe);
 
         // An overall deadline, so a wedged server can never hang a script or an AI agent forever.
         var deadline = ResponseTimeout(request);
@@ -162,6 +203,47 @@ public static class CliClient
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             throw new IOException($"BetterClipboard did not answer within {deadline.TotalSeconds:0} s.");
+        }
+    }
+
+    /// <summary>
+    /// Refuses a connected pipe unless its owner is the current Windows <b>user</b> (the SID
+    /// <c>CliPipeServer</c> sets as owner) — whether or not this process is elevated.
+    /// </summary>
+    /// <remarks>
+    /// Why the owner proves anything: an object's owner can only be set to a SID the creator holds with the
+    /// owner right (or with SeRestorePrivilege, i.e. an administrator, who can read the history anyway), so
+    /// another standard account cannot create a pipe that passes. Comparing with the token's
+    /// <i>default owner</i> — what <see cref="PipeOptions.CurrentUserOnly"/> does — would reject our own app
+    /// whenever the client runs elevated. No-op off Windows, where <see cref="SendAsync"/> relies on
+    /// <see cref="PipeOptions.CurrentUserOnly"/>'s peer-credential check.
+    /// </remarks>
+    /// <param name="pipe">A connected client pipe; nothing has been written to it yet.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="pipe"/> is <see langword="null"/>.</exception>
+    /// <exception cref="CliPipeOwnerException">The pipe is owned by someone else (or its owner is unreadable).</exception>
+    public static void VerifyServerOwner(PipeStream pipe)
+    {
+        ArgumentNullException.ThrowIfNull(pipe);
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        System.Security.Principal.IdentityReference? owner;
+        try
+        {
+            owner = pipe.GetAccessControl().GetOwner(typeof(System.Security.Principal.SecurityIdentifier));
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or InvalidOperationException or IOException)
+        {
+            // A server that does not even let us read its owner (our own DACL grants ReadPermissions) is not ours.
+            throw new CliPipeOwnerException("Could not read the owner of the BetterClipboard pipe; refusing to use it.", ex);
+        }
+
+        using var identity = System.Security.Principal.WindowsIdentity.GetCurrent();
+        if (owner is null || !owner.Equals(identity.User))
+        {
+            throw new CliPipeOwnerException();
         }
     }
 
