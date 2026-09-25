@@ -329,6 +329,10 @@ public sealed class ClipStore
     /// "clear history" is skipped entirely.</item>
     /// </list>
     /// A live copy removes any tombstone for its hash: copying something again is explicit consent to keep it.
+    /// <see cref="ClipOrigin.ShareX"/> is the hybrid. The caller bumps its duplicates (it is a new
+    /// screenshot), but it never lifts a tombstone and is skipped when older than the last clear. Only
+    /// <see cref="ClipOrigin.Captured"/> lifts tombstones, because the startup catch-up can rediscover a
+    /// screenshot file the user deleted from history.
     /// </remarks>
     /// <param name="capture">The raw capture (formats, time, source, origin, pin request).</param>
     /// <param name="classified">Its classification from <see cref="ContentClassifier.Classify"/>.</param>
@@ -765,6 +769,66 @@ public sealed class ClipStore
         return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
     }
 
+    /// <summary>
+    /// Reads a small piece of integration state kept with the history (e.g. the newest ShareX screenshot
+    /// already handled), stored in <c>meta</c> under <c>state.&lt;name&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// Kept in the encrypted store rather than <c>settings.json</c> because it describes <i>this</i> history:
+    /// when a store is quarantined and a fresh one starts, the state resets with it — a new store then
+    /// starts ShareX from "now" instead of re-importing screenshots its predecessor had.
+    /// </remarks>
+    /// <param name="name">State name (letters, digits, <c>.</c>, <c>_</c>, <c>-</c>).</param>
+    /// <returns>The value, or <see langword="null"/> when never set.</returns>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is not a valid state name.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public string? GetStateValue(string name)
+    {
+        // Validate before opening: a bad name must fail without touching the database.
+        var key = StateKey(name);
+        using var connection = Open();
+        using var command = Command(connection, "SELECT value FROM meta WHERE key = $key;");
+        command.Parameters.AddWithValue("$key", key);
+        return command.ExecuteScalar() as string;
+    }
+
+    /// <summary>
+    /// Writes a piece of integration state (see <see cref="GetStateValue"/>).
+    /// </summary>
+    /// <param name="name">State name.</param>
+    /// <param name="value">The value.</param>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is not a valid state name.</exception>
+    /// <exception cref="ArgumentNullException"><paramref name="value"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public void SetStateValue(string name, string value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+        var key = StateKey(name);
+        using var connection = Open();
+        using var command = Command(connection, "INSERT OR REPLACE INTO meta (key, value) VALUES ($key, $value);");
+        command.Parameters.AddWithValue("$key", key);
+        command.Parameters.AddWithValue("$value", value);
+        command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Maps a state name to its <c>meta</c> key. The fixed <c>state.</c> prefix keeps callers away from the
+    /// store's own keys (<c>last_clear_utc</c>, <c>fixup.*</c>), which drive import suppression and migrations.
+    /// </summary>
+    /// <param name="name">State name.</param>
+    /// <returns>The key.</returns>
+    /// <exception cref="ArgumentException">Blank, too long, or with characters outside <c>[A-Za-z0-9._-]</c>.</exception>
+    private static string StateKey(string name)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        if (name.Length > 64 || !name.All(ch => char.IsAsciiLetterOrDigit(ch) || ch is '.' or '_' or '-'))
+        {
+            throw new ArgumentException($"'{name}' is not a valid state name.", nameof(name));
+        }
+
+        return "state." + name;
+    }
+
     /// <summary>Opens a pooled connection with per-connection pragmas applied.</summary>
     /// <returns>An open connection the caller must dispose.</returns>
     private SqliteConnection Open()
@@ -801,6 +865,10 @@ public sealed class ClipStore
         ClipFilter.Images => $"c.kind = {(int)ClipKind.Image}",
         ClipFilter.Links => $"c.kind = {(int)ClipKind.Link}",
         ClipFilter.Files => $"c.kind = {(int)ClipKind.Files}",
+
+        // Both ways ShareX content arrives: picked up from its folders, or copied to the clipboard by
+        // ShareX.exe (then only the source app tells). LIKE is ASCII case-insensitive and treats '\' literally.
+        ClipFilter.ShareX => $"(c.origin = {(int)ClipOrigin.ShareX} OR c.source_app_path LIKE '%\\ShareX.exe' OR c.source_app_name = 'ShareX')",
         _ => null,
     };
 

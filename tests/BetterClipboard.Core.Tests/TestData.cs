@@ -75,6 +75,23 @@ internal static class TestData
         Source = Notepad,
     };
 
+    /// <summary>ShareX as the source of its screenshots and clipboard copies.</summary>
+    public static readonly SourceAppInfo ShareX = new("ShareX", @"C:\Program Files\ShareX\ShareX.exe", "ShareX");
+
+    /// <summary>
+    /// Builds a screenshot as the ShareX folder watch delivers it (origin <see cref="ClipOrigin.ShareX"/>).
+    /// </summary>
+    /// <param name="seed">Varies the bytes so different seeds are different images.</param>
+    /// <param name="at">File write time (defaults to <see cref="Now"/>).</param>
+    /// <returns>The capture.</returns>
+    public static ClipCapture ShareXShot(byte seed, DateTimeOffset? at = null) => new()
+    {
+        Formats = [new ClipFormatData(ClipFormatNames.Png, Enumerable.Repeat(seed, 64).ToArray())],
+        CapturedAtUtc = at ?? Now,
+        Origin = ClipOrigin.ShareX,
+        Source = ShareX,
+    };
+
     /// <summary>
     /// Creates a unique temp database path; the directory is deleted by <see cref="TempDirectory.Dispose"/>.
     /// </summary>

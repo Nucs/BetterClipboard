@@ -272,6 +272,30 @@ public sealed class ClipHistoryService : IAsyncDisposable
     public Task<StoreStats> GetStatsAsync() => Task.Run(store.GetStats);
 
     /// <summary>
+    /// Reads integration state kept with this history (see <see cref="ClipStore.GetStateValue"/>) on the
+    /// thread pool.
+    /// </summary>
+    /// <param name="name">State name.</param>
+    /// <returns>The value, or <see langword="null"/> when never set.</returns>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is not a valid state name.</exception>
+    public Task<string?> GetStateValueAsync(string name) => Task.Run(() => store.GetStateValue(name));
+
+    /// <summary>
+    /// Writes integration state through the worker, like every other write, so it is serialized with the
+    /// captures it describes (a "last handled" marker never overtakes the capture it marks).
+    /// </summary>
+    /// <param name="name">State name.</param>
+    /// <param name="value">The value.</param>
+    /// <returns>A task completing once written.</returns>
+    /// <exception cref="ArgumentException"><paramref name="name"/> is not a valid state name.</exception>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task SetStateValueAsync(string name, string value) => EnqueueAsync(() =>
+    {
+        store.SetStateValue(name, value);
+        return Task.FromResult(true);
+    });
+
+    /// <summary>
     /// Stops accepting work, drains what is already queued (so no capture is lost on exit) and stops the worker.
     /// </summary>
     /// <returns>A task completing when the worker has finished.</returns>
@@ -361,7 +385,11 @@ public sealed class ClipHistoryService : IAsyncDisposable
     private async Task<UpsertResult?> StoreAsync(ClipCapture capture, bool raiseEvents)
     {
         var rules = rulesProvider();
-        if (capture.Origin == ClipOrigin.Captured && rules.IsPaused)
+
+        // A ShareX screenshot is a new event like a live copy, so "pause capturing" covers it too — the
+        // user pausing for privacy expects nothing new to be recorded, whatever the channel.
+        bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX;
+        if (isNewEvent && rules.IsPaused)
         {
             return null;
         }
@@ -407,7 +435,9 @@ public sealed class ClipHistoryService : IAsyncDisposable
             }
         }
 
-        var result = store.Upsert(capture, classified, image, bumpIfExists: capture.Origin == ClipOrigin.Captured);
+        // New events (live copies, ShareX screenshots) move an existing duplicate to the top — ShareX often
+        // copied the same screenshot to the clipboard a moment earlier, and the pixel hash merges the two.
+        var result = store.Upsert(capture, classified, image, bumpIfExists: isNewEvent);
         if (result is null || !raiseEvents)
         {
             return result;

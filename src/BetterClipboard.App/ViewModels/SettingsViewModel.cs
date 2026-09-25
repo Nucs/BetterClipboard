@@ -147,6 +147,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool EnableCommandLine { get; set; }
 
+    /// <summary>See <see cref="AppSettings.ImportShareXScreenshots"/> (on by default).</summary>
+    [ObservableProperty]
+    public partial bool ImportShareXScreenshots { get; set; }
+
     // ───── Status ─────
 
     /// <summary>How the shortcut is wired right now.</summary>
@@ -200,6 +204,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanAddCommandLineToPath { get; set; }
 
+    /// <summary>Whether ShareX was found, how, which folders are watched, and how many screenshots came in.</summary>
+    [ObservableProperty]
+    public partial string ShareXStatus { get; set; } = string.Empty;
+
     /// <summary>
     /// Copies a settings snapshot into the properties without persisting anything.
     /// </summary>
@@ -228,8 +236,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             ThemeIndex = (int)settings.Theme;
             LaunchAtStartup = StartupRegistration.IsEnabled(AppController.ExecutablePath);
             EnableCommandLine = settings.EnableCommandLine;
+            ImportShareXScreenshots = settings.ImportShareXScreenshots;
             RefreshHotkeyStatus();
             RefreshCommandLineStatus();
+            RefreshShareXStatus();
         }
         finally
         {
@@ -250,6 +260,35 @@ public sealed partial class SettingsViewModel : ObservableObject
             : controller.IsCommandLineActive ? "Serving bclip now."
             : "Off — bclip is refused.";
         CommandLineStatus = $"{state}\n{where}";
+    }
+
+    /// <summary>
+    /// Re-reads the ShareX integration state. Folders are listed as watched only while really watched, so
+    /// a folder that does not exist yet (ShareX creates it with the first screenshot) is visible as such.
+    /// </summary>
+    public void RefreshShareXStatus()
+    {
+        var shareX = controller.ShareX;
+        if (!shareX.IsInstalled)
+        {
+            ShareXStatus = "ShareX was not found on this PC. Install it and this turns on by itself (checked when Settings opens and every few minutes).";
+            return;
+        }
+
+        var found = shareX.ExecutablePath is { } exe ? $"ShareX found: {exe} (via {shareX.DetectedBy})." : $"ShareX found (via {shareX.DetectedBy}).";
+        if (!ImportShareXScreenshots)
+        {
+            ShareXStatus = $"{found}\nOff — screenshots are not imported; copies made by ShareX are still recorded and shown in its tab.";
+            return;
+        }
+
+        var watched = controller.ShareXWatchedFolders;
+        var folders = watched.Count > 0
+            ? $"Watching: {string.Join("; ", watched)}"
+            : $"Waiting for ShareX to create its screenshots folder ({string.Join("; ", shareX.WatchFolders)}).";
+        int imported = controller.ShareXImportedThisSession;
+        var count = imported > 0 ? $"\n{imported:N0} screenshot{(imported == 1 ? string.Empty : "s")} added since BetterClipboard started." : string.Empty;
+        ShareXStatus = $"{found}\n{folders}{count}";
     }
 
     /// <summary>Adds bclip's folder to the user PATH and refreshes the status text.</summary>
@@ -558,6 +597,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Persists the change; the controller starts or stops the pipe when it sees the new settings.</summary>
     /// <param name="value">New value.</param>
     partial void OnEnableCommandLineChanged(bool value) => Update(s => s with { EnableCommandLine = value });
+
+    /// <summary>Persists the ShareX import switch (the controller starts or stops the folder watch).</summary>
+    /// <param name="value">New value.</param>
+    partial void OnImportShareXScreenshotsChanged(bool value) => Update(s => s with { ImportShareXScreenshots = value });
 
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>

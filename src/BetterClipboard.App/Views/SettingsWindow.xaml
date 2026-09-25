@@ -344,6 +344,23 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
 
+                <!--  Integrations  -->
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="Integrations" />
+                <controls:SettingsCard
+                    Description="Every screenshot ShareX saves shows up in your history the moment the file is written, and the panel gets a ShareX tab. Pause capturing, Ignored apps (add ShareX to skip it) and the size limit apply to screenshots too."
+                    Glyph="&#xE722;"
+                    Header="ShareX screenshots">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.ImportShareXScreenshots, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.ShareXStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+
                 <!--  App  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="App" />
                 <controls:SettingsCard

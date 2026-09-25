@@ -18,6 +18,7 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 | Item size | ≤ 4 MB | ≤ 64 MB (configurable) |
 | Search | None | Instant substring search, any language |
 | Content | Text, HTML, bitmaps | Text, rich text/HTML, links, colors, images with previews, copied files |
+| Screenshots | Only what you copy | Also every [ShareX](https://getsharex.com) screenshot the moment it is saved, in its own tab |
 | At rest | Pinned items encrypted | Everything encrypted (ChaCha20-Poly1305), bound to your PC and account |
 
 ## Install
@@ -71,7 +72,7 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens by your cursor again next time. |
 
 The tray icon opens the panel and Settings: shortcut, retention (items, days, size), what to record,
-ignored apps, pause, theme, start with Windows, the command line, and **Import from Windows**, which pulls
+ignored apps, pause, theme, start with Windows, the command line, ShareX screenshots, and **Import from Windows**, which pulls
 in everything Win+V still remembers — including its pinned items.
 
 **Password managers are ignored out of the box.** *Ignored apps* comes filled with 46 password managers
@@ -93,6 +94,32 @@ Explorer owns Win+V. BetterClipboard supports two ways to take it:
 
 Any other shortcut works too (Settings › Shortcut).
 
+## ShareX screenshots
+
+With [ShareX](https://getsharex.com) installed, every screenshot it saves is in your history the moment the
+file is written. The panel gets a **ShareX** tab holding those screenshots and everything you copied from
+ShareX. Paste one with `Enter` like any other item.
+
+- **Where it looks.** BetterClipboard reads ShareX's own settings:
+  - the personal folder: portable mode, the `PersonalPath` registry value, or `PersonalPath.cfg`;
+  - the screenshots folder: the custom path and its fallback;
+  - the subfolder patterns: `%y-%mo` by default, plus per-hotkey folder overrides.
+
+  It imports only from folders those patterns can produce, so other images saved nearby (a synced phone
+  folder, say) stay out. `UploadersConfig.json`, where ShareX keeps upload credentials, is never opened.
+- **Nothing half-written, nothing missed.** A file is read only after ShareX has finished writing it.
+  Screenshots saved while BetterClipboard wasn't running arrive at its next start, up to the 100 newest.
+  The first time, only new screenshots count; your existing archive is left alone.
+- **Skipped:**
+  - thumbnails;
+  - GIF screen recordings and videos;
+  - everything while *Pause capturing* is on.
+
+  Add `ShareX` to *Ignored apps* to leave ShareX out entirely, or turn off *Settings › ShareX screenshots*.
+- Screenshots that ShareX only uploads or only copies aren't files. The copies still arrive through
+  normal clipboard capture and show up in the same tab. A picture that was both copied and saved is kept
+  once.
+
 ## Command line for scripts and AI agents
 
 `bclip` lets terminals, scripts and AI coding agents (Claude Code, Codex, Copilot CLI, …) work with your
@@ -107,7 +134,7 @@ the network cannot connect, and each command is logged by name only, never with 
 
 | Command | What it does |
 |---|---|
-| `bclip list [-n 20] [-f pinned\|text\|images\|links\|files] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line |
+| `bclip list [-n 20] [-f pinned\|text\|images\|links\|files\|sharex] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line |
 | `bclip search <words…>` | Items containing all the words (substring, any language) |
 | `bclip grep [-i] <regex>` | Matching lines as `id:line: text`, like `grep -n` |
 | `bclip get [ID \| -r N] [--format text\|html\|rtf\|files\|png] [-o FILE]` | An item's content, byte for byte (default: the latest); images need `-o file.png` |

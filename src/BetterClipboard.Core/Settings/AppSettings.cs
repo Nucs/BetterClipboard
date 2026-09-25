@@ -92,6 +92,18 @@ public sealed record AppSettings
     /// <summary>Temporarily stop recording live copies.</summary>
     public bool IsCapturePaused { get; init; }
 
+    /// <summary>
+    /// Add every screenshot ShareX saves to history the moment the file is written (only when ShareX is
+    /// installed; its tab in the panel appears either way).
+    /// </summary>
+    /// <remarks>
+    /// On by default. It changes nothing when ShareX is absent, and when present it is what a ShareX user
+    /// expects. Screenshots ShareX only uploads or only copies to the clipboard are not files. The
+    /// clipboard copies arrive through normal capture anyway, and pause, ignored apps (add "ShareX") and
+    /// size limits apply to both paths.
+    /// </remarks>
+    public bool ImportShareXScreenshots { get; init; } = true;
+
     /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
     /// <remarks>
     /// Starts out holding <see cref="KnownPasswordManagers.All"/>: <see cref="Normalize"/> merges every

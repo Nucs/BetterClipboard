@@ -16,6 +16,7 @@ using BetterClipboard.Windows.Clipboard;
 using BetterClipboard.Windows.Imaging;
 using BetterClipboard.Windows.Import;
 using BetterClipboard.Windows.Input;
+using BetterClipboard.Windows.Integrations;
 using BetterClipboard.Windows.Security;
 using BetterClipboard.Windows.Shell;
 using Microsoft.UI.Dispatching;
@@ -61,6 +62,9 @@ public sealed class AppController
     /// <summary>Serializes starting/stopping <see cref="commandLine"/> (toggling quickly must not race two servers).</summary>
     private readonly SemaphoreSlim commandLineGate = new(1, 1);
 
+    /// <summary>ShareX detection and screenshot import (created in <see cref="Start"/>, disposed on exit).</summary>
+    private ShareXIntegration? shareX;
+
     /// <summary>
     /// Creates the controller; nothing starts until <see cref="Start"/>.
     /// </summary>
@@ -80,6 +84,12 @@ public sealed class AppController
 
     /// <summary>Raised on the UI thread after command-line access was switched on or off (or failed to start).</summary>
     public event EventHandler? CommandLineStatusChanged;
+
+    /// <summary>
+    /// Raised on the UI thread when ShareX was found or lost, its screenshot watch started or stopped, or a
+    /// screenshot was imported (the flyout shows or hides its ShareX tab; Settings refreshes its status).
+    /// </summary>
+    public event EventHandler? ShareXStatusChanged;
 
     /// <summary>Data locations (database, settings, logs).</summary>
     public AppPaths Paths => paths;
@@ -110,6 +120,21 @@ public sealed class AppController
 
     /// <summary>Why command-line access could not start (e.g. the pipe name is taken), or <see langword="null"/>.</summary>
     public string? CommandLineError { get; private set; }
+
+    /// <summary>
+    /// What is known about ShareX (<see cref="ShareXInstallation.NotFound"/> until located, which happens
+    /// off the UI thread shortly after <see cref="Start"/>). Decides whether the flyout has a ShareX tab.
+    /// </summary>
+    public ShareXInstallation ShareX => shareX?.Installation ?? ShareXInstallation.NotFound;
+
+    /// <summary>Whether ShareX's screenshot folders are being watched right now (installed and the setting on).</summary>
+    public bool IsShareXWatching => shareX?.IsWatching == true;
+
+    /// <summary>The ShareX screenshot folders being watched (empty when not watching).</summary>
+    public IReadOnlyList<string> ShareXWatchedFolders => shareX?.WatchedFolders ?? [];
+
+    /// <summary>ShareX screenshots stored since the app started.</summary>
+    public int ShareXImportedThisSession => shareX?.ImportedThisSession ?? 0;
 
     /// <summary>Where <c>bclip.exe</c> ships: next to the app (release builds; absent in a dev build's bin folder).</summary>
     public static string CommandLinePath => Path.Combine(AppContext.BaseDirectory, "bclip.exe");
@@ -151,6 +176,11 @@ public sealed class AppController
         monitor = new ClipboardMonitor(CreateCaptureOptions, new SourceAppResolver());
         monitor.Captured += (_, capture) => history.TryEnqueueCapture(capture);
         monitor.Start();
+
+        // Located on a pool thread (registry + a few small files); the tab appears once it is found.
+        shareX = new ShareXIntegration(history, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L);
+        shareX.StatusChanged += (_, _) => ui.TryEnqueue(() => ShareXStatusChanged?.Invoke(this, EventArgs.Empty));
+        _ = StartShareXAsync(shareX, settings.Current.ImportShareXScreenshots);
 
         if (settings.Current.EnableCommandLine)
         {
@@ -206,6 +236,10 @@ public sealed class AppController
         }
 
         settingsWindow.Present();
+
+        // Opening Settings is when a user who just installed ShareX looks for it: re-locate now instead of
+        // waiting for the periodic check.
+        _ = shareX?.RefreshAsync();
     }
 
     /// <summary>
@@ -351,6 +385,13 @@ public sealed class AppController
 
         // Stop answering bclip before the history it reads from is drained and disposed.
         await SetCommandLineAsync(enabled: false);
+
+        // Stop the ShareX watch before the history closes: a screenshot delivered after that would fail,
+        // and the catch-up marker must only move for screenshots that were really stored.
+        if (shareX is not null)
+        {
+            await shareX.DisposeAsync();
+        }
         tray?.Dispose();
         monitor?.Dispose();
         if (history is not null)
@@ -458,7 +499,32 @@ public sealed class AppController
             {
                 await SetCommandLineAsync(next.EnableCommandLine);
             }
+
+            // Idempotent: the integration ignores an unchanged value.
+            if (shareX is not null && !exiting)
+            {
+                await shareX.SetEnabledAsync(next.ImportShareXScreenshots);
+            }
         });
+    }
+
+    /// <summary>
+    /// Starts the ShareX integration without letting a failure escape into the fire-and-forget caller.
+    /// </summary>
+    /// <param name="integration">The integration.</param>
+    /// <param name="enable">The <c>ImportShareXScreenshots</c> setting at startup.</param>
+    /// <returns>A task completing once started (or failed, logged).</returns>
+    private static async Task StartShareXAsync(ShareXIntegration integration, bool enable)
+    {
+        try
+        {
+            await integration.StartAsync(enable);
+        }
+        catch (Exception ex)
+        {
+            // ShareX support is optional: the rest of the app keeps working without it.
+            AppLog.Error("Starting the ShareX integration failed.", ex);
+        }
     }
 
     /// <summary>

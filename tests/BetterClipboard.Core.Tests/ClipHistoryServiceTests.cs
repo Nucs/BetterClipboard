@@ -63,6 +63,37 @@ public sealed class ClipHistoryServiceTests : IAsyncLifetime
         Assert.NotNull(await service.AddAsync(TestData.Text("import", origin: ClipOrigin.WindowsHistory)));
     }
 
+    /// <summary>
+    /// A ShareX screenshot is a new event like a live copy: pause drops it (privacy), the ignore list
+    /// applies (the user can add "ShareX"), and a duplicate moves to the top.
+    /// </summary>
+    [Fact]
+    public async Task ShareXShots_ObeyPauseIgnoreAndBump()
+    {
+        rules = rules with { IsPaused = true };
+        Assert.Null(await service.AddAsync(TestData.ShareXShot(1)));
+
+        rules = rules with { IsPaused = false, IgnoredProcessNames = new HashSet<string>(["ShareX"], StringComparer.OrdinalIgnoreCase) };
+        Assert.Null(await service.AddAsync(TestData.ShareXShot(1)));
+
+        rules = rules with { IgnoredProcessNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase) };
+        var shot = await service.AddAsync(TestData.ShareXShot(1, TestData.Now.AddMinutes(-5)));
+        await service.AddAsync(TestData.Text("newer text", TestData.Now.AddMinutes(-1)));
+        var again = await service.AddAsync(TestData.ShareXShot(1, TestData.Now));
+        Assert.Equal(shot!.Id, again!.Id);
+        Assert.Equal(shot.Id, (await service.QueryAsync(new ClipQuery { PinnedFirst = false }, TestContext.Current.CancellationToken))[0].Id);
+    }
+
+    /// <summary>Integration state goes through the worker and reads back.</summary>
+    [Fact]
+    public async Task StateValues_RoundTripThroughTheWorker()
+    {
+        Assert.Null(await service.GetStateValueAsync("sharex.last_seen_utc"));
+        await service.SetStateValueAsync("sharex.last_seen_utc", "marker");
+        Assert.Equal("marker", await service.GetStateValueAsync("sharex.last_seen_utc"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.SetStateValueAsync("bad name", "x"));
+    }
+
     /// <summary>Copies from ignored apps are never recorded (name normalization included).</summary>
     [Fact]
     public async Task IgnoredApps_AreSkipped()

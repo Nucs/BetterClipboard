@@ -121,6 +121,7 @@ public sealed class CliArgumentsTests
         Assert.NotNull(Parse("list", "-n").Error);
         Assert.NotNull(Parse("list", "-n", "0").Error);
         Assert.NotNull(Parse("list", "-f", "videos").Error);
+        Assert.Equal("sharex", Parse("list", "-f", "ShareX").Request!.Filter);
         Assert.NotNull(Parse("status", "extra").Error);
         Assert.Equal(3, Parse("wait", "-t", "3").Request!.TimeoutSeconds);
     }

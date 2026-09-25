@@ -19,4 +19,15 @@ public enum ClipOrigin
 
     /// <summary>Imported by decrypting Windows' on-disk pinned store (<c>...\Clipboard\Pinned</c>).</summary>
     WindowsPinned = 2,
+
+    /// <summary>
+    /// A screenshot ShareX saved to one of its screenshot folders, picked up by the ShareX integration.
+    /// </summary>
+    /// <remarks>
+    /// Hybrid on purpose. Like <see cref="Captured"/> it is a new event, so an existing duplicate is bumped
+    /// and paused capture skips it. Like an import it never lifts a tombstone and is skipped when older
+    /// than the last "clear history": the startup catch-up scan can rediscover files, and that must not
+    /// bring back a screenshot the user deleted.
+    /// </remarks>
+    ShareX = 3,
 }

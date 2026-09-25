@@ -155,6 +155,7 @@ public sealed class CliCommandProcessor
             {
                 ClipOrigin.WindowsHistory => "windows-history",
                 ClipOrigin.WindowsPinned => "windows-pinned",
+                ClipOrigin.ShareX => "sharex",
                 _ => "copied",
             },
             FirstCopied = entry.CreatedUtc,
@@ -194,6 +195,7 @@ public sealed class CliCommandProcessor
             "images" or "image" => ClipFilter.Images,
             "links" or "link" => ClipFilter.Links,
             "files" or "file" => ClipFilter.Files,
+            "sharex" => ClipFilter.ShareX,
             _ => (ClipFilter)(-1),
         };
         return Enum.IsDefined(filter);
@@ -659,5 +661,5 @@ public sealed class CliCommandProcessor
     /// <param name="filter">The name given.</param>
     /// <returns>The response.</returns>
     private static CliResponse BadFilter(string? filter) =>
-        CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown filter '{filter}' (use all, pinned, text, images, links or files).");
+        CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown filter '{filter}' (use all, pinned, text, images, links, files or sharex).");
 }

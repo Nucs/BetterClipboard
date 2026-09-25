@@ -124,12 +124,30 @@
             Grid.Row="2"
             Margin="-4,0,-4,0"
             SelectionChanged="Filters_SelectionChanged">
+            <SelectorBar.Resources>
+                <!--
+                    9 instead of WinUI's 12 px side padding: with the ShareX tab, seven labels at the default
+                    padding need 393-408 px (measured, Segoe UI Variable 14 px) but the bar has 384 (400 DIP
+                    flyout - 24 padding + 8 negative margin), so the last tab was clipped. At 9 they need
+                    351-366 px. The bar does not scroll, so anything wider is cut off.
+                -->
+                <Style TargetType="SelectorBarItem">
+                    <Setter Property="Padding" Value="9,10,9,7" />
+                </Style>
+            </SelectorBar.Resources>
             <SelectorBarItem IsSelected="True" Tag="All" Text="All" />
             <SelectorBarItem Tag="Pinned" Text="Pinned" />
             <SelectorBarItem Tag="Text" Text="Text" />
             <SelectorBarItem Tag="Images" Text="Images" />
             <SelectorBarItem Tag="Links" Text="Links" />
             <SelectorBarItem Tag="Files" Text="Files" />
+            <!--  Only while ShareX is installed (code-behind: UpdateShareXTab).  -->
+            <SelectorBarItem
+                x:Name="ShareXFilter"
+                Tag="ShareX"
+                Text="ShareX"
+                ToolTipService.ToolTip="Screenshots saved by ShareX and everything copied from it"
+                Visibility="Collapsed" />
         </SelectorBar>
 
         <!--  History  -->

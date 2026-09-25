@@ -126,6 +126,24 @@ public static class ImageCodec
         return await EncodePngAsync(pixels.DetachPixelData(), decoder.PixelWidth, decoder.PixelHeight, BitmapAlphaMode.Straight, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Counts the frames of an encoded image. More than one means an animation — for ShareX a GIF screen
+    /// recording, which must not be imported as a still screenshot of its first frame.
+    /// </summary>
+    /// <param name="encoded">A complete image file.</param>
+    /// <param name="cancellationToken">Cancels decoder creation.</param>
+    /// <returns>The frame count (1 for still images).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="encoded"/> is <see langword="null"/>.</exception>
+    /// <exception cref="Exception">WIC rejects the data (truncated or not an image).</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public static async Task<uint> GetFrameCountAsync(byte[] encoded, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(encoded);
+        using var input = await ToStreamAsync(encoded).ConfigureAwait(false);
+        var decoder = await BitmapDecoder.CreateAsync(input).AsTask(cancellationToken).ConfigureAwait(false);
+        return decoder.FrameCount;
+    }
+
     /// <summary>Encodes BGRA8 pixels as PNG.</summary>
     /// <param name="bgra">Top-down BGRA8 pixels.</param>
     /// <param name="width">Width.</param>

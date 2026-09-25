@@ -324,6 +324,81 @@ public sealed class ClipStoreTests : IDisposable
         Assert.Equal(2, store.Query(new ClipQuery { UsedSince = TestData.Now.AddHours(-2) }).Count);
     }
 
+    /// <summary>
+    /// The ShareX tab shows both ways ShareX content arrives — screenshots from its folders and copies whose
+    /// source app is ShareX.exe (path, any case, or just the name when the path was unavailable) — and
+    /// nothing else, not even an app whose name merely ends in "ShareX".
+    /// </summary>
+    [Fact]
+    public void Query_ShareXFilter_MatchesOriginOrSourceApp()
+    {
+        Add(TestData.ShareXShot(1, TestData.Now.AddMinutes(-4)));
+        Add(TestData.Text("copied from ShareX", TestData.Now.AddMinutes(-3), source: TestData.ShareX));
+        Add(TestData.Text("elevated ShareX", TestData.Now.AddMinutes(-2), source: new SourceAppInfo("ShareX", null, "ShareX")));
+        Add(TestData.Text("upper case path", TestData.Now.AddMinutes(-1), source: new SourceAppInfo("sharex", @"D:\Tools\SHAREX.EXE", "Portable")));
+        Add(TestData.Text("look-alike", TestData.Now, source: new SourceAppInfo("NotShareX", @"C:\Tools\NotShareX.exe", "NotShareX")));
+        Add(TestData.Text("notepad", TestData.Now));
+
+        var shareX = store.Query(new ClipQuery { Filter = ClipFilter.ShareX, PinnedFirst = false });
+        Assert.Equal(["upper case path", "elevated ShareX", "copied from ShareX", ContentClassifier.DescribeImage(null, null)], shareX.Select(e => e.Preview));
+        Assert.Equal(ClipOrigin.ShareX, shareX[^1].Origin);
+        Assert.Equal(6, store.Query(new ClipQuery()).Count);
+    }
+
+    /// <summary>
+    /// A ShareX screenshot bumps an existing duplicate like a live copy (the clipboard copy ShareX made a
+    /// moment earlier), but never lifts a tombstone and never survives a clear — unlike a live copy.
+    /// </summary>
+    [Fact]
+    public void Upsert_ShareXShot_BumpsButRespectsTombstonesAndClears()
+    {
+        var copied = Add(TestData.Image(7))!.Entry;
+        var shot = TestData.ShareXShot(7, TestData.Now.AddSeconds(1));
+        var merged = store.Upsert(shot, ContentClassifier.Classify(shot)!, null, bumpIfExists: true)!;
+        Assert.Equal(copied.Id, merged.Entry.Id);
+        Assert.Equal(2, merged.Entry.UseCount);
+        Assert.Equal(TestData.Now.AddSeconds(1), merged.Entry.LastUsedUtc);
+
+        Assert.True(store.Delete(copied.Id, TestData.Now.AddMinutes(1)));
+        var again = TestData.ShareXShot(7, TestData.Now.AddMinutes(2));
+        Assert.Null(store.Upsert(again, ContentClassifier.Classify(again)!, null, bumpIfExists: true));
+
+        store.ClearUnpinned(TestData.Now.AddMinutes(10));
+        var beforeClear = TestData.ShareXShot(8, TestData.Now.AddMinutes(9));
+        Assert.Null(store.Upsert(beforeClear, ContentClassifier.Classify(beforeClear)!, null, bumpIfExists: true));
+        var afterClear = TestData.ShareXShot(8, TestData.Now.AddMinutes(11));
+        Assert.NotNull(store.Upsert(afterClear, ContentClassifier.Classify(afterClear)!, null, bumpIfExists: true));
+    }
+
+    /// <summary>
+    /// Integration state round-trips, persists, and is namespaced: a caller cannot overwrite the store's own
+    /// keys (here <c>last_clear_utc</c>, which drives import suppression) or use arbitrary names.
+    /// </summary>
+    [Fact]
+    public void StateValues_RoundTripPersistAndAreNamespaced()
+    {
+        Assert.Null(store.GetStateValue("sharex.last_seen_utc"));
+        store.SetStateValue("sharex.last_seen_utc", "2026-09-25T12:00:00.0000000Z");
+        Assert.Equal("2026-09-25T12:00:00.0000000Z", store.GetStateValue("sharex.last_seen_utc"));
+        store.SetStateValue("sharex.last_seen_utc", string.Empty);
+        Assert.Equal(string.Empty, store.GetStateValue("sharex.last_seen_utc"));
+
+        store.SetStateValue("sharex.last_seen_utc", "kept");
+        var reopened = new ClipStore(temp.DatabasePath);
+        reopened.Initialize();
+        Assert.Equal("kept", reopened.GetStateValue("sharex.last_seen_utc"));
+
+        store.SetStateValue("last_clear_utc", long.MaxValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        var import = TestData.Text("still importable", TestData.Now, ClipOrigin.WindowsHistory);
+        Assert.NotNull(store.Upsert(import, ContentClassifier.Classify(import)!, null, bumpIfExists: false));
+
+        Assert.Throws<ArgumentException>(() => store.SetStateValue(" ", "x"));
+        Assert.Throws<ArgumentException>(() => store.SetStateValue("with space", "x"));
+        Assert.Throws<ArgumentException>(() => store.GetStateValue("semi;colon"));
+        Assert.Throws<ArgumentException>(() => store.SetStateValue(new string('a', 65), "x"));
+        Assert.Throws<ArgumentNullException>(() => store.SetStateValue("sharex.x", null!));
+    }
+
     /// <summary>Runs SQL directly against the (plaintext test) database.</summary>
     /// <param name="sql">Statement.</param>
     private void ExecuteRaw(string sql)

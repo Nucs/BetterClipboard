@@ -91,6 +91,7 @@ public sealed partial class ClipboardFlyout : Window
         Activated += OnActivated;
         AppWindow.Closing += OnClosing;
         controller.HistoryChanged += OnHistoryChanged;
+        controller.ShareXStatusChanged += OnShareXStatusChanged;
         ItemsList.Loaded += (_, _) => HookScrollViewer();
 
         // Background drags move the window (see class remarks). handledEventsToo: a control may mark a
@@ -137,6 +138,7 @@ public sealed partial class ClipboardFlyout : Window
             EndDrag();
             controller.ApplyTheme(Root);
             ViewModel.ResetForShow();
+            UpdateShareXTab();
             SelectFilter(ClipFilter.All);
 
             // Show and take focus FIRST, load after: keys typed right after the shortcut must land in our
@@ -200,6 +202,7 @@ public sealed partial class ClipboardFlyout : Window
     {
         closingForExit = true;
         controller.HistoryChanged -= OnHistoryChanged;
+        controller.ShareXStatusChanged -= OnShareXStatusChanged;
         Close();
     }
 
@@ -724,6 +727,25 @@ public sealed partial class ClipboardFlyout : Window
 
         ItemsList.SelectedIndex = index;
         ItemsList.ScrollIntoView(ViewModel.Items[index]);
+    }
+
+    /// <summary>ShareX was found or lost (UI thread): show or hide its tab.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Unused.</param>
+    private void OnShareXStatusChanged(object? sender, EventArgs e) => UpdateShareXTab();
+
+    /// <summary>
+    /// Shows the ShareX tab only while ShareX is installed. If it disappears while selected, falls back to
+    /// "All" so the list never stays filtered by an invisible tab.
+    /// </summary>
+    private void UpdateShareXTab()
+    {
+        bool installed = controller.ShareX.IsInstalled;
+        ShareXFilter.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
+        if (!installed && ViewModel.Filter == ClipFilter.ShareX)
+        {
+            SelectFilter(ClipFilter.All);
+        }
     }
 
     /// <summary>Selects a filter pill without raising a reload (used on show).</summary>

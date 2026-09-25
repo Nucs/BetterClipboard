@@ -19,3 +19,6 @@ coverage*/
 *.db-shm
 *.db-wal
 /data/
+
+# Third-party source trees kept for study only (e.g. ShareX, GPL-3.0) - never committed; nothing is copied from them.
+refs/

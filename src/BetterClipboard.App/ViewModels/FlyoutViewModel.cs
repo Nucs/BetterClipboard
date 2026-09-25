@@ -271,6 +271,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
             EmptyTitle = "Nothing pinned yet";
             EmptyMessage = "Pin items (Ctrl+P) to keep them at hand forever.";
         }
+        else if (Filter == ClipFilter.ShareX)
+        {
+            EmptyTitle = "No ShareX screenshots yet";
+            EmptyMessage = controller.Settings.Current.ImportShareXScreenshots
+                ? "Take a screenshot with ShareX — it shows up here the moment ShareX saves it."
+                : "Turn on “Import ShareX screenshots” in Settings to collect them here. Copies from ShareX still show up.";
+        }
         else if (Filter != ClipFilter.All)
         {
             EmptyTitle = "Nothing here yet";

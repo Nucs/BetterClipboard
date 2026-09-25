@@ -22,6 +22,12 @@ public enum ClipFilter
 
     /// <summary>File-list entries.</summary>
     Files = 5,
+
+    /// <summary>
+    /// Everything that came from ShareX: screenshots picked up from its folders (<see cref="Model.ClipOrigin.ShareX"/>)
+    /// and anything ShareX put on the clipboard (source app <c>ShareX.exe</c>).
+    /// </summary>
+    ShareX = 6,
 }
 
 /// <summary>

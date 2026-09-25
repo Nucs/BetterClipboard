@@ -167,7 +167,7 @@ public static class CliArguments
         CliCommands.List => """
             bclip list [-n N] [--offset N] [-f FILTER] [-s SINCE] [--full] [--json]
               Recent items, newest first: id (* = pinned), kind, age, source app, first line.
-              FILTER: all | pinned | text | images | links | files. --full adds each item's whole text.
+              FILTER: all | pinned | text | images | links | files | sharex. --full adds each item's whole text.
             """,
         CliCommands.Search => """
             bclip search <words...> [-n N] [-f FILTER] [-s SINCE] [--full] [--json]
@@ -230,7 +230,7 @@ public static class CliArguments
 
             Options:
               -n, --limit N         Maximum items (default 20)        --offset N  Skip N items
-              -f, --filter F        all | pinned | text | images | links | files
+              -f, --filter F        all | pinned | text | images | links | files | sharex
               -s, --since T         Used within T (30s, 10m, 2h, 7d, 2w) or since a date/time
               -r, --recent N        Target the N-th most recent item (1 = latest) instead of an ID
               -i, --ignore-case     grep: ignore case
@@ -332,7 +332,7 @@ public static class CliArguments
                 case "--filter":
                     if (!CliCommandProcessor.TryParseFilter(value, out _))
                     {
-                        return Fail($"Unknown filter '{value}' (use all, pinned, text, images, links or files).");
+                        return Fail($"Unknown filter '{value}' (use all, pinned, text, images, links, files or sharex).");
                     }
 
                     request = request with { Filter = value!.Trim().ToLowerInvariant() };

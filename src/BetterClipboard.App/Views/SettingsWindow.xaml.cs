@@ -46,6 +46,7 @@ public sealed partial class SettingsWindow : Window
         controller.HotkeyStatusChanged += OnHotkeyStatusChanged;
         controller.HistoryChanged += OnHistoryChanged;
         controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
+        controller.ShareXStatusChanged += OnShareXStatusChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
         BuildHotkeyPresetsMenu();
@@ -59,6 +60,7 @@ public sealed partial class SettingsWindow : Window
     {
         ViewModel.RefreshSystemStatus();
         ViewModel.RefreshHotkeyStatus();
+        ViewModel.RefreshShareXStatus();
         _ = ViewModel.RefreshStatsAsync();
         AppWindow.Show(true);
         Activate();
@@ -87,8 +89,14 @@ public sealed partial class SettingsWindow : Window
         controller.HotkeyStatusChanged -= OnHotkeyStatusChanged;
         controller.HistoryChanged -= OnHistoryChanged;
         controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
+        controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.Settings.Changed -= OnSettingsChanged;
     }
+
+    /// <summary>ShareX found/lost, watch started/stopped, or a screenshot came in: refresh its card.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnShareXStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshShareXStatus();
 
     /// <summary>The bclip pipe started, stopped or failed: refresh its card.</summary>
     /// <param name="sender">Controller.</param>

@@ -255,11 +255,11 @@ use it instead of Win+V's mechanism? Findings:
 | Project | TFM | Role |
 |---|---|---|
 | [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing (`Content/`), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), settings, logging, presentation helpers. **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (157 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, opt-in real-clipboard round trip, explicit capture-rate measurement (63 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (163 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), opt-in real-clipboard round trip, explicit capture-rate measurement (117 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -285,6 +285,10 @@ History worker (single consumer Channel) ── classify → WIC analyze (thumbn
 "Cli" named pipe (only while Settings › Command line is on) ── accept loop + ≤ 8 connections on the thread
  pool → CliCommandProcessor → reads via ClipHistoryService, writes via the worker, clipboard writes via
  ClipboardMonitor (IClipboardWriter)
+
+"ShareX" FileSystemWatchers (only while ShareX is installed and Settings › ShareX screenshots is on) ── pool
+ thread events → 250 ms debounce per path → one file at a time: wait for the writer, decode (WIC) →
+ ClipHistoryService.AddAsync (the worker) → Handled → catch-up marker (state.sharex.last_seen_utc), §2.10
 ```
 
 Rules: nothing heavy on the hook thread (Windows silently drops slow LL hooks); the clipboard thread only
@@ -516,13 +520,125 @@ while on, any process running as the user can read the whole history through it 
   served the wrong pipe and a client write blocked forever. Found with `dotnet-dump analyze` → `dumpasync`;
   fixed by capturing a local; `ManyConnections_AreAllServed` fails with the bug reintroduced.
 
+### 2.10 ShareX screenshots — `Windows/Integrations/`, `ClipOrigin.ShareX`, `ClipFilter.ShareX`
+
+User request (2026-09-25): every image ShareX takes should be in the history immediately, and ShareX gets
+its own tab when it is installed. ShareX's source was cloned to `refs/ShareX` (commit 94838f6, 2026-09-24;
+git-ignored, **GPL-3.0: studied for interoperability, nothing copied**). Facts below are **[verified from
+that source]** unless marked.
+
+**How ShareX saves a screenshot.**
+- `WorkerTask` writes the image to its final path right after capture, **before** any upload.
+- `History.db` (SQLite: `History(Id, FileName, FilePath, DateTime, Type, Host, URL, …)`) gets its row only
+  when the whole task completes, and only with `HistorySaveTasks` on (default) and `HistoryCheckURL` off
+  (default).
+- So the file is the earliest reliable signal, and the integration watches folders, not the database.
+
+**Where ShareX saves** (reproduced by `ShareXLocator.Resolve`, pure over `ShareXLocatorInputs`):
+- **Personal folder**, first match wins:
+  1. a `Portable` file next to `ShareX.exe` → `<exe dir>\ShareX`;
+  2. the registry value `SOFTWARE\ShareX\PersonalPath` (HKLM, then HKCU);
+  3. `PersonalPath.cfg` next to the exe, then in `Documents\ShareX`, then the legacy `%LOCALAPPDATA%\ShareX`
+     (relative entries are relative to the exe folder);
+  4. `Documents\ShareX`.
+- **Screenshots parent** (`AppPaths.ScreenshotsParentFolder`): with `UseCustomScreenshotsPath`, the expanded
+  `CustomScreenshotsPath` is used if `CustomScreenshotsPath2` is empty or the primary exists; otherwise the
+  fallback if it exists. Else `<personal>\Screenshots`.
+- **Folder of one capture** (`TaskHelpers.GetScreenshotsFolder`): a task's `OverrideScreenshotsFolder` +
+  `ScreenshotsFolder` pattern (in `DefaultTaskSettings` in `ApplicationConfig.json`, or per hotkey in
+  `HotkeysConfig.json`, whose path `CustomHotkeysConfigPath` can move). Otherwise `parent\` + the parsed
+  `SaveImageSubFolderPatternWindow` (when set and a window title is known) or `SaveImageSubFolderPattern`
+  (default `%y-%mo`). Then `GetAbsolutePath`: `%SpecialFolder%` names, environment variables, and
+  relative paths against the exe folder.
+- **Name tokens** (`NameParser`): plain, case-sensitive `StringBuilder.Replace` of `%token`s in a fixed
+  order. `%t`/`%pn` stay literal when unknown, `%width`/`%height` become "", `%n` is replaced only in text,
+  never in paths, and `{…}` holds arguments (`%ra{10}`, `%rf{file}`).
+- **Other facts:** thumbnails are saved as `<name><ImageSettings.ThumbnailName>` (default `-thumbnail`); the
+  installer is Inno Setup with AppId `82E6AC09-0FEF-4390-AD9F-0DD3F5561EFC`, so the uninstall key is
+  `{AppId}_is1`, which has `InstallLocation`. Other uninstall entries named ShareX (Steam) and a running
+  `ShareX.exe` are accepted too.
+- **Never read:** `UploadersConfig.json`, which holds upload credentials. Settings files are opened with
+  `FileShare.ReadWrite|Delete`. Bad JSON degrades to ShareX's defaults.
+
+**Folder rules** (`ShareXFolderRule` = fixed root + relative pattern → a `NonBacktracking` regex).
+- **Why patterns:** users point ShareX at broad folders (`Pictures`), and a plain recursive watch would
+  import every image any app saves there (phone sync, downloads).
+- **Token mapping:** date/time tokens become digit classes; free-text tokens become `[^\\]*`; arguments are
+  skipped; everything else is literal. `%y-%mo` → `^\d{4}-\d{2}$`.
+- **The root** ends at the first *real* token (`FirstTokenIndex`). A literal `%` (`D:\100%\Shots`) must not
+  end it, or the watch widens to the whole drive.
+- **Watch set:** `MinimalRoots` watches each root once, and never one inside another.
+
+**Watcher** (`ShareXScreenshotWatcher`).
+- **Watching:** recursive `FileSystemWatcher`s (64 KB buffer) on the existing roots; Created, Changed and
+  Renamed events are debounced 250 ms per path.
+- **Reading:** only once the writer is done — an open with `FileShare.Read` fails while ShareX still holds
+  its write handle. Retries run up to 10 s.
+- **Skipped:** thumbnails, non-images, folders outside the patterns, animated GIFs (`GetFrameCountAsync` > 1:
+  a ShareX screen recording) and files over the item-size limit.
+- **What is stored:** the PNG byte-for-byte plus a DIBV5 (`ToClipboardFormatsAsync`), with source
+  `SourceAppInfo("ShareX", exe, "ShareX")` and origin `ShareX`.
+- **Duplicate events:** a path|size|mtime key (pre-checked before decoding) stops the several events of one
+  save from importing it twice.
+- **`Handled` fires for stored *and* deliberately skipped files.** A screenshot taken while paused must not
+  come back through the catch-up. Storage failures leave the marker alone, so the next catch-up retries.
+- **Lost events:** a watcher `Error` means events were lost, so it runs a catch-up.
+
+**Store semantics.**
+- The origin is a hybrid:
+  - Like a live copy: pause, ignored apps (`ShareX`) and the size limit apply, and a duplicate is bumped.
+    The pixel hash merges the file with the clipboard copy ShareX made of the same picture.
+  - Like an import: it never lifts a tombstone, and it is skipped when older than the last clear. The
+    catch-up can rediscover a file the user deleted from history.
+- **The tab's filter:** origin ShareX, **or** a source path ending `\ShareX.exe`, **or** the source name
+  `ShareX`. The last two cover ShareX's clipboard copies, whose row keeps origin Captured when it came
+  first.
+- **Integration state** lives in `meta` under `state.<name>` (`ClipStore.Get/SetStateValue`). Names are
+  validated, and the prefix keeps them away from `last_clear_utc`/`fixup.*`. It lives in the encrypted
+  store, not `settings.json`, so it resets with a quarantined store.
+
+**Life cycle** (`ShareXIntegration`, owned by `AppController`).
+- **Catch-up marker** `state.sharex.last_seen_utc`, the newest handled write time (monotonic, enqueued in
+  order under a lock):
+  - first activation: the marker is "now", so no backfill of an archive (the write is awaited, so
+    `StartAsync` returns with it stored);
+  - each start: files newer than the marker, **at most the 100 newest**, oldest first;
+  - setting off: the watch stops and the marker is cleared, so switching it on again starts fresh.
+    Exiting the app is not "off".
+- **Re-location:** on `*.json` writes in the personal folder (1 s debounce; non-recursive, since backups
+  live in a subfolder), when Settings opens, and every 5 minutes (a new install, a folder that did not
+  exist yet). When the watched folders change, a catch-up picks up whatever was saved there meanwhile.
+- **UI:**
+  - The flyout's `ShareXFilter` tab is visible only while `controller.ShareX.IsInstalled`. It falls back to
+    All when it disappears while selected.
+  - Settings › Integrations › *ShareX screenshots*: a toggle plus a status line (found via…, watched
+    folders or "waiting for the folder", screenshots added this session).
+  - CLI: `-f sharex`, origin `sharex`.
+- **Tab width** (measured with GDI, then checked with UI Automation):
+  - The problem: seven labels at WinUI's 12 px item padding need 393–408 px, but the bar has 384 (400-DIP
+    flyout − 24 padding + 8 negative margin), and it does not scroll. The first screenshot showed "Shar".
+  - The fix: 9 px padding (implicit style in `SelectorBar.Resources`); the tabs need 351–366 px now.
+  - Measured afterwards: the ShareX tab is 61 px wide with 28 px to spare.
+- **Limits:**
+  - Captures that ShareX only uploads or only copies are not files. The copies still arrive through
+    normal capture, into the same tab.
+  - A ShareX installed while BetterClipboard runs shows up within 5 minutes, or when Settings opens.
+  - The Microsoft Store (MSIX) build of ShareX is not verified.
+  - Cost: each screenshot keeps PNG + DIBV5 (a 1080p DIB is 8 MB) and counts against the size budget like
+    any image copy.
+- **Dev/test:**
+  - `BETTERCLIPBOARD_SHAREX_DIR` points the locator at a fake personal folder and skips the registry, so
+    the real ShareX is never read.
+  - Never trigger real ShareX captures: its after-capture tasks may upload the user's screen.
+  - Verified 2026-09-25 (§5), headless through `bclip` next to the user's app.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 220 tests (218 run; 1 opt-in + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 280 tests (278 run; 1 opt-in + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -533,6 +649,9 @@ Do **not** add `-v q` to `dotnet test --solution` (Microsoft.Testing.Platform th
 ran", exit 5). A test executable can also be run directly, e.g.
 `tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe -class <FQN> -showliveoutput`.
 The solution build puts the app in `src/BetterClipboard.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/`.
+A project-level `dotnet build src/BetterClipboard.App` (no `Platform`) writes to `bin/Debug/…` instead, so a
+script running the `bin/x64` exe tests a **stale** binary. Lesson (2026-09-25): the first ShareX-tab
+screenshot showed the old padding. Rebuild through the solution before any end-to-end run.
 
 Run: plain launch = start + open Settings (or activate the running instance); `--background` = tray only
 (used by "Start with Windows"); `--show-flyout` = open the flyout in the running instance; `--exit` =
@@ -548,6 +667,19 @@ yourself). CLI end-to-end next to the user's app (2026-09-25): publish, seed an 
 `IsCapturePaused` on), export `BETTERCLIPBOARD_DATA_DIR`, run the published `bclip` (it auto-starts the
 scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and compare the list of
 `BetterClipboard.exe` PIDs before/after — the user's must be unchanged.
+
+ShareX end-to-end (2026-09-25), with the dev build:
+- **Setup:** export `BETTERCLIPBOARD_DATA_DIR` and `BETTERCLIPBOARD_SHAREX_DIR=<scratch>/FakeShareX`
+  (create `Screenshots\2026-09`). Settings: `EnableCommandLine` on, `ImportWindowsHistoryOnStartup` off, and
+  `IsCapturePaused` **off** (paused skips screenshots by design). The instance then also records live
+  copies, so print only `-f sharex` fields (id/kind/origin/source) and delete the data dir afterwards.
+- **Run:** start the app with `--background` yourself; write BC-TEST PNGs (Python-generated) into the fake
+  folder; poll `bclip list -f sharex --json`; `--exit`, write while it is stopped, restart for the catch-up;
+  compare PIDs.
+- **UI check:** start with capture paused, and only when the store holds nothing but BC-TEST items and the
+  foreground is a terminal/IDE. `--show-flyout` (or a plain launch for Settings), then UI Automation:
+  `SelectionItemPattern.Select` on the tab, `ScrollPattern` to the card — no injected input. Screenshot only
+  the test window, and only while it is the foreground.
 
 ### 3.1 Release & install
 
@@ -615,7 +747,8 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
   invisible in diffs). Code points used: Paste E77F, Copy E8C8, Pin E718, Unpin E77A, PinnedFill E842,
   Delete E74D, Setting E713, Link E71B, Photo E91B, Folder E8B7, Font E8D2, FontColor E8D3, Color E790,
   History E81C, Clock E917, Pause E769, Play E768, Keyboard E765, KeyboardShortcut EDA7, FileExplorer EC50,
-  Personalize E771, Shield EA18, Import E8B5, Info E946, OpenInNewWindow E8A7, Code E943, Power E7E8.
+  Personalize E771, Shield EA18, Import E8B5, Info E946, OpenInNewWindow E8A7, Code E943, Power E7E8,
+  Camera E722 (ShareX card).
 - **Privacy in tooling:** never print clipboard content in probes/logs/test output; `tools/e2e/dbq.py`
   masks non-test rows. Test data is prefixed `BC-TEST`.
 - **Clipboard tests never touch the real clipboard:** put them in the `IsolatedClipboardCollection`
@@ -630,7 +763,13 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
   inherits the tool's stdout/stderr pipes and whoever reads them (a shell pipe, an AI agent) waits for EOF
   until that child exits.
 - **Quote-dense scripts:** write them to a scratch file and run the file; big inline heredocs break the
-  Bash tool's `eval` wrapper (`unexpected EOF while looking for matching '`).
+  Bash tool's `eval` wrapper (`unexpected EOF while looking for matching '`). Escapes don't survive it
+  either: a `\\n` inside a heredoc'd Python edit script reached the C# source as a real line break
+  (2026-09-25). Put escape sequences in with the Edit tool.
+- **Third-party source in `refs/`** (git-ignored, e.g. ShareX, GPL-3.0): study it for interoperability,
+  never copy code from it, and cite the commit with any fact taken from it. Never open ShareX's
+  `UploadersConfig.json` (upload credentials), and never trigger real ShareX captures; use a fake personal
+  folder through `BETTERCLIPBOARD_SHAREX_DIR`.
 - **E2E harness ([`tools/e2e/`](tools/e2e)) injects real keystrokes.**
   Only run it with the user's explicit OK and when they are not using the machine (2026-09-25: the user
   switched to a game mid-run and test keys/Ctrl+V landed in it). Recipe: isolated data dir →
@@ -651,7 +790,10 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 
 | Feature | How | Result |
 |---|---|---|
-| Unit tests | `dotnet test --solution` | 218 pass + 1 opt-in + 1 explicit (measurement) locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
+| ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
+| ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
+| Unit tests | `dotnet test --solution` | 278 pass + 1 opt-in + 1 explicit (measurement) locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -692,6 +834,12 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 - Password-manager catalog: verify the executable names of Zoho Vault, Devolutions Workspace, Passwarden,
   Total Password and Securden (not found in reliable sources on 2026-09-25). Path-aware ignore rules would
   allow generic names safely (Ente Auth's `auth.exe` only under an `ente` folder).
+- ShareX, next steps:
+  - an opt-in one-time backfill of the existing screenshot archive;
+  - upload URLs from `History.db` (task completion) as link items next to their screenshot;
+  - watching a moved `CustomHotkeysConfigPath` file (today the 5-minute refresh catches it);
+  - verifying the Microsoft Store build's folders;
+  - Snipping Tool / Greenshot folders with the same watcher.
 - An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms

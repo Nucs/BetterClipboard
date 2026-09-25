@@ -62,6 +62,21 @@ public sealed class CliCommandProcessorTests : IAsyncLifetime
         Assert.Equal(CliErrorCodes.BadRequest, (await Run(new CliRequest { Command = CliCommands.List, Filter = "videos" })).ErrorCode);
     }
 
+    /// <summary>The sharex filter lists ShareX screenshots and ShareX copies, labelled by origin.</summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task List_ShareXFilter_AndOrigin()
+    {
+        await AddText("unrelated");
+        var shot = (await history.AddAsync(TestData.ShareXShot(3, TestData.Now.AddMinutes(1))))!;
+        var copy = (await history.AddAsync(TestData.Text("copied in ShareX", TestData.Now.AddMinutes(2), source: TestData.ShareX)))!;
+
+        var items = (await Run(new CliRequest { Command = CliCommands.List, Filter = "ShareX" })).Items!;
+        Assert.Equal([copy.Id, shot.Id], items.Select(i => i.Id));
+        Assert.Equal(["copied", "sharex"], items.Select(i => i.Origin));
+        Assert.Equal("ShareX", items[1].Source);
+    }
+
     /// <summary>search uses the panel's substring search; no match is a not-found error.</summary>
     /// <returns>A task.</returns>
     [Fact]
