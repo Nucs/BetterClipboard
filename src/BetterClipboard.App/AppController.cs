@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Security.Cryptography;
 using BetterClipboard.App.Views;
 using BetterClipboard.Core;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Security;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Storage;
@@ -12,6 +14,7 @@ using BetterClipboard.Windows.Clipboard;
 using BetterClipboard.Windows.Imaging;
 using BetterClipboard.Windows.Import;
 using BetterClipboard.Windows.Input;
+using BetterClipboard.Windows.Security;
 using BetterClipboard.Windows.Shell;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -76,6 +79,12 @@ public sealed class AppController
     /// <summary>History service (valid after <see cref="Start"/>).</summary>
     public ClipHistoryService History => history ?? throw new InvalidOperationException("Not started.");
 
+    /// <summary>
+    /// How the encrypted history store was opened (store id, folder, migration/quarantine flags) — for the
+    /// settings page. <see langword="null"/> before <see cref="Start"/>. Holds no key material.
+    /// </summary>
+    public MachineBoundHistoryResult? StorageInfo { get; private set; }
+
     /// <summary>Current state of the global shortcut.</summary>
     public HotkeyRegistration HotkeyStatus => hotkeys?.Current ?? new HotkeyRegistration(default, HotkeyMode.None, 0);
 
@@ -104,8 +113,7 @@ public sealed class AppController
         rules = CaptureRules.FromSettings(settings.Current);
         settings.Changed += OnSettingsChanged;
 
-        var store = new ClipStore(paths.DatabasePath);
-        store.Initialize();
+        var store = OpenMachineBoundStore();
         history = new ClipHistoryService(store, new WinRtImageAnalyzer(), () => rules);
         history.Changed += (_, e) => ui.TryEnqueue(() => HistoryChanged?.Invoke(this, e));
         history.Start();
@@ -328,6 +336,37 @@ public sealed class AppController
     /// <summary>Creates the flyout on first use.</summary>
     /// <returns>The flyout.</returns>
     private ClipboardFlyout EnsureFlyout() => flyout ??= new ClipboardFlyout(this);
+
+    /// <summary>
+    /// Opens this machine's encrypted history: binds to MachineGuid + user SID, unseals the key with DPAPI,
+    /// adopts a legacy plaintext database, and quarantines a store that no longer decrypts.
+    /// </summary>
+    /// <returns>The initialized store.</returns>
+    /// <exception cref="Exception">Any failure <see cref="MachineBoundHistory.Open"/> documents (fatal for startup).</exception>
+    private ClipStore OpenMachineBoundStore()
+    {
+        var identity = MachineIdentity.Current();
+        var binding = MachineBinding.Derive(identity.MachineGuid, identity.UserSid);
+        try
+        {
+            var opened = MachineBoundHistory.Open(paths, new DpapiKeyProtector(), binding, DateTimeOffset.Now);
+            StorageInfo = opened;
+
+            // Ids and flags only — never the key, the binding or the identifiers they come from.
+            AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
+                        $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
+            if (opened.QuarantinedDirectory is not null)
+            {
+                AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
+            }
+
+            return opened.Store;
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(binding);
+        }
+    }
 
     /// <summary>The paste target captured when the flyout was summoned (0 when none).</summary>
     internal nint PasteTargetWindow => pasteTarget?.TargetWindow ?? 0;

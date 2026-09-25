@@ -9,8 +9,17 @@
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 
-    <!-- Storage -->
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.12" />
+    <!--
+      Storage: Microsoft.Data.Sqlite.Core (no bundled engine) + SQLite3 Multiple Ciphers as the engine,
+      which encrypts the whole database (pages, WAL, FTS index) with ChaCha20-Poly1305. SQLite3MC 2.4
+      is built on SQLitePCLRaw 3.x while MDS 10 was compiled against 2.1 — verified compatible
+      (encryption, FTS5 trigram, WAL, rekey) by the storage tests; re-verify when bumping either.
+    -->
+    <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="10.0.12" />
+    <PackageVersion Include="SQLite3MC.PCLRaw.bundle" Version="2.4.0" />
+
+    <!-- DPAPI (CryptProtectData) for sealing the database key to the Windows account. -->
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
 
     <!-- Tests (Microsoft.Testing.Platform runner, see global.json) -->
     <PackageVersion Include="xunit.v3" Version="4.0.1" />

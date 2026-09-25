@@ -41,6 +41,28 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Data folder path.</summary>
     public string DataFolder => controller.Paths.DataDirectory;
 
+    /// <summary>
+    /// One-paragraph description of how the history is protected on disk (cipher, key sealing, store id,
+    /// and a warning when an unreadable store was set aside at startup).
+    /// </summary>
+    public string EncryptionStatus
+    {
+        get
+        {
+            var info = controller.StorageInfo;
+            if (info is null || !info.Store.IsEncrypted)
+            {
+                return "Not encrypted.";
+            }
+
+            var text = "On — every item, the search index and thumbnails are encrypted (ChaCha20-Poly1305). " +
+                       $"The key is sealed to this PC and your Windows account. Store {info.StoreId}.";
+            return info.QuarantinedDirectory is null
+                ? text
+                : text + $" A previous history that could not be decrypted here was set aside in '{Path.GetFileName(info.QuarantinedDirectory)}'.";
+        }
+    }
+
     // ───── Settings (persisted on change) ─────
 
     /// <summary>Shortcut text; only valid gestures are persisted.</summary>

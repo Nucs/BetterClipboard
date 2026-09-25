@@ -263,6 +263,10 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
+                    Description="{x:Bind ViewModel.EncryptionStatus}"
+                    Glyph="&#xE72E;"
+                    Header="Encrypted history" />
+                <controls:SettingsCard
                     Description="Delete history permanently. Clearing keeps pinned items; 'Everything' removes them too."
                     Glyph="&#xE74D;"
                     Header="Clear history">

@@ -40,15 +40,28 @@ public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes);
 /// (SQLite serializes them with busy-waiting up to the command timeout) but slower.
 /// </para>
 /// <para>
-/// <b>Privacy.</b> Content is stored in plaintext inside the user's profile (protected by NTFS ACLs, like
-/// every other app's data). Windows encrypts only its pinned items; at-rest encryption here is a roadmap
-/// item because it conflicts with full-text search (see CLAUDE.md).
+/// <b>Encryption at rest.</b> When constructed with a key, the whole file — every page, the WAL, the FTS
+/// index and the thumbnails — is encrypted by SQLite3 Multiple Ciphers (ChaCha20-Poly1305, authenticated per
+/// page), so search keeps working on decrypted pages in memory while nothing readable ever reaches the disk.
+/// Temp tables/sorts are forced into memory (<c>temp_store = MEMORY</c>) because SQLite temp files are not
+/// covered by the cipher. A pre-encryption (plaintext) database is encrypted in place on
+/// <see cref="Initialize"/>. Where the key comes from is not this class's business (see
+/// <see cref="Security.HistoryKeyVault"/>); without a key the store is plaintext, which only tests use.
 /// </para>
 /// </remarks>
 public sealed class ClipStore
 {
     /// <summary>Current schema version, stored in <c>PRAGMA user_version</c>.</summary>
     public const int SchemaVersion = 1;
+
+    /// <summary>Required encryption key length in bytes (256-bit).</summary>
+    public const int KeyLength = 32;
+
+    /// <summary>SQLite's "file is not a database" result code — what a wrong or missing key produces.</summary>
+    private const int SqliteNotADatabase = 26;
+
+    /// <summary>The first 16 bytes of every <b>unencrypted</b> SQLite file; encrypted files start with a random salt instead.</summary>
+    private static readonly byte[] PlaintextHeader = "SQLite format 3\0"u8.ToArray();
 
     /// <summary>Separator for <c>clips.format_names</c>; the ASCII unit separator cannot appear in real format names.</summary>
     private const char FormatNameSeparator = '\u001F';
@@ -64,15 +77,47 @@ public sealed class ClipStore
     private readonly string connectionString;
 
     /// <summary>
+    /// The passphrase handed to SQLite3MC (hex of the key), or <see langword="null"/> for a plaintext store.
+    /// Kept only for the one-time plaintext→encrypted migration, which needs it outside the connection string.
+    /// </summary>
+    private readonly string? passphrase;
+
+    /// <summary>
+    /// Binds Microsoft.Data.Sqlite to the SQLite3 Multiple Ciphers engine before the first connection.
+    /// </summary>
+    /// <remarks>
+    /// The <c>.Core</c> flavour of Microsoft.Data.Sqlite ships no engine and only auto-initializes the
+    /// stock <c>SQLitePCLRaw.batteries_v2</c> assembly by name, which SQLite3MC's bundle does not use —
+    /// without this call the first <see cref="SqliteConnection.Open"/> would fail with "call
+    /// SQLitePCL.raw.SetProvider()". <c>Init</c> is idempotent, so a static constructor is enough.
+    /// </remarks>
+    static ClipStore() => SQLitePCL.Batteries_V2.Init();
+
+    /// <summary>
     /// Creates a store over the database file at <paramref name="databasePath"/>. Nothing touches the disk
     /// until <see cref="Initialize"/> is called.
     /// </summary>
     /// <param name="databasePath">Full path of the SQLite file; its directory is created on initialize.</param>
-    /// <exception cref="ArgumentException"><paramref name="databasePath"/> is null or blank.</exception>
-    public ClipStore(string databasePath)
+    /// <param name="encryptionKey">
+    /// 32-byte key that encrypts the file (see the class remarks), or <see langword="null"/> for a plaintext
+    /// database (tests only). The same key must be supplied on every later open — a different key makes
+    /// the history unreadable (<see cref="HistoryUnreadableException"/>), there is no recovery.
+    /// </param>
+    /// <exception cref="ArgumentException"><paramref name="databasePath"/> is null or blank, or the key is not <see cref="KeyLength"/> bytes.</exception>
+    public ClipStore(string databasePath, byte[]? encryptionKey = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+        if (encryptionKey is not null && encryptionKey.Length != KeyLength)
+        {
+            throw new ArgumentException($"The encryption key must be {KeyLength} bytes.", nameof(encryptionKey));
+        }
+
         DatabasePath = Path.GetFullPath(databasePath);
+
+        // Hex keeps the 256-bit key printable for PRAGMA key (which Microsoft.Data.Sqlite issues from the
+        // Password keyword on every new physical connection); SQLite3MC then runs it through its KDF once
+        // per physical connection, which pooling amortizes.
+        passphrase = encryptionKey is null ? null : Convert.ToHexStringLower(encryptionKey);
         connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = DatabasePath,
@@ -82,21 +127,129 @@ public sealed class ClipStore
             // Seconds SQLite keeps retrying on SQLITE_BUSY before throwing; generous because a write can
             // briefly wait on an in-flight import transaction.
             DefaultTimeout = 30,
+            Password = passphrase,
         }.ToString();
     }
 
     /// <summary>Absolute path of the database file.</summary>
     public string DatabasePath { get; }
 
+    /// <summary>Whether the file is encrypted (a key was supplied).</summary>
+    public bool IsEncrypted => passphrase is not null;
+
     /// <summary>
-    /// Creates or migrates the schema. Idempotent; call once at startup before any other member.
+    /// Whether the last <see cref="Initialize"/> found a plaintext database from before encryption and
+    /// encrypted it in place (for the log and the settings page).
     /// </summary>
+    public bool MigratedFromPlaintext { get; private set; }
+
+    /// <summary>
+    /// Creates or migrates the schema, and encrypts a legacy plaintext file in place when this store has a
+    /// key. Idempotent; call once at startup before any other member.
+    /// </summary>
+    /// <exception cref="HistoryUnreadableException">
+    /// The file exists but does not decrypt with this store's key (another machine/user's key, a replaced key
+    /// file, an encrypted file opened without a key) or is not a SQLite database at all.
+    /// </exception>
     /// <exception cref="InvalidOperationException">The database was written by a newer BetterClipboard (downgrade refused to avoid corrupting it).</exception>
-    /// <exception cref="SqliteException">The file is not a SQLite database, is locked by another process beyond the timeout, or the disk is full.</exception>
-    /// <exception cref="IOException">The data directory could not be created.</exception>
+    /// <exception cref="SqliteException">The file is locked by another process beyond the timeout, or the disk is full.</exception>
+    /// <exception cref="IOException">
+    /// The data directory could not be created, the file header could not be read, or a plaintext database
+    /// that needs encrypting is still open elsewhere.
+    /// </exception>
     public void Initialize()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(DatabasePath)!);
+        MigratedFromPlaintext = false;
+        if (passphrase is not null && HasPlaintextHeader(DatabasePath))
+        {
+            EncryptPlaintextDatabase();
+            MigratedFromPlaintext = true;
+        }
+
+        try
+        {
+            InitializeSchema();
+        }
+        catch (SqliteException ex) when (ex.SqliteErrorCode == SqliteNotADatabase)
+        {
+            // With a cipher engine a wrong key and garbage look identical (page 1 fails authentication), so
+            // both are reported as one "unreadable" condition the caller can quarantine. The failed
+            // connection went back to the pool still holding the file open, which would make that
+            // quarantine (a folder rename) fail with a sharing violation — so the pool is emptied first.
+            using (var pooled = new SqliteConnection(connectionString))
+            {
+                SqliteConnection.ClearPool(pooled);
+            }
+
+            throw new HistoryUnreadableException(
+                IsEncrypted
+                    ? $"The history database '{DatabasePath}' cannot be decrypted with this machine's key (or is not a database)."
+                    : $"The history database '{DatabasePath}' is encrypted or is not a database.",
+                ex);
+        }
+    }
+
+    /// <summary>
+    /// Moves a database file and its SQLite sidecars (<c>-wal</c>, <c>-shm</c>, <c>-journal</c>) to a new
+    /// path, e.g. to adopt the pre-encryption <c>history.db</c> into a machine-bound store folder.
+    /// </summary>
+    /// <remarks>
+    /// The <c>-wal</c> file holds committed transactions that are not yet in the main file — moving the
+    /// main file without it would silently lose the newest history, hence the sidecars travel with it.
+    /// Must only be called while no connection to either path is open (startup, single instance).
+    /// </remarks>
+    /// <param name="sourcePath">Existing database file.</param>
+    /// <param name="destinationPath">Target path; must not exist.</param>
+    /// <returns><see langword="false"/> when there was nothing to move (source missing).</returns>
+    /// <exception cref="IOException">The destination exists or a file could not be moved.</exception>
+    /// <exception cref="UnauthorizedAccessException">A file is not accessible.</exception>
+    public static bool MoveDatabaseFiles(string sourcePath, string destinationPath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sourcePath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(destinationPath);
+        if (!File.Exists(sourcePath))
+        {
+            return false;
+        }
+
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(destinationPath))!);
+
+        // Sidecars first: if a move fails midway, the main file is still at the source and the next start
+        // retries; the reverse order could leave a main file at the destination with its WAL behind.
+        foreach (var suffix in new[] { "-wal", "-shm", "-journal" })
+        {
+            if (File.Exists(sourcePath + suffix))
+            {
+                File.Move(sourcePath + suffix, destinationPath + suffix, overwrite: true);
+            }
+        }
+
+        File.Move(sourcePath, destinationPath, overwrite: false);
+        return true;
+    }
+
+    /// <summary>Whether <paramref name="path"/> is an existing <b>unencrypted</b> SQLite database.</summary>
+    /// <param name="path">Database path.</param>
+    /// <returns><see langword="true"/> for a plaintext header; <see langword="false"/> for missing, empty, short or encrypted files.</returns>
+    /// <exception cref="IOException">The file exists but could not be read.</exception>
+    internal static bool HasPlaintextHeader(string path)
+    {
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+
+        // FileShare.ReadWrite: another (pooled) connection of ours may still hold the file open.
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        Span<byte> header = stackalloc byte[16];
+        return stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false) == header.Length &&
+               header.SequenceEqual(PlaintextHeader);
+    }
+
+    /// <summary>Creates or upgrades the schema inside one transaction (see <see cref="Initialize"/>).</summary>
+    private void InitializeSchema()
+    {
         using var connection = Open();
 
         // auto_vacuum only takes effect on an empty database (before the first table), and journal_mode
@@ -119,6 +272,46 @@ public sealed class ClipStore
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// Encrypts the existing plaintext database in place with this store's key (<c>PRAGMA rekey</c>).
+    /// </summary>
+    /// <remarks>
+    /// SQLite3MC cannot rekey a WAL-mode database, so the WAL is checkpointed away by switching to a rollback
+    /// journal first; <see cref="InitializeSchema"/> switches back to WAL afterwards. The rekey rewrites every
+    /// page inside one transaction, so a crash midway leaves the (still plaintext) file intact and the next
+    /// start simply retries. A private, unpooled connection is used so no plaintext handle outlives it.
+    /// </remarks>
+    /// <exception cref="IOException">Another connection still has the database open, so WAL cannot be left.</exception>
+    /// <exception cref="SqliteException">The file is locked or the rewrite failed.</exception>
+    private void EncryptPlaintextDatabase()
+    {
+        var plaintext = new SqliteConnectionStringBuilder
+        {
+            DataSource = DatabasePath,
+            Mode = SqliteOpenMode.ReadWrite,
+            Pooling = false,
+            DefaultTimeout = 30,
+        }.ToString();
+
+        using var connection = new SqliteConnection(plaintext);
+        connection.Open();
+
+        // Leaving WAL needs every other connection closed; SQLite then silently keeps "wal" instead of
+        // failing, and the rekey below would fail with a far less helpful message.
+        var mode = Scalar(connection, "PRAGMA journal_mode = DELETE;") as string;
+        if (!string.Equals(mode, "delete", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new IOException($"The plaintext history '{DatabasePath}' is in use by another connection and cannot be encrypted (journal mode stayed '{mode}').");
+        }
+
+
+        // PRAGMA takes no parameters; quote() produces the same literal Microsoft.Data.Sqlite uses for
+        // PRAGMA key, so the rekeyed file opens with the Password in connectionString.
+        using var quote = Command(connection, "SELECT quote($p);");
+        quote.Parameters.AddWithValue("$p", passphrase);
+        Execute(connection, $"PRAGMA rekey = {(string)quote.ExecuteScalar()!};");
     }
 
     /// <summary>
@@ -546,12 +739,25 @@ public sealed class ClipStore
     private SqliteConnection Open()
     {
         var connection = new SqliteConnection(connectionString);
-        connection.Open();
-        // foreign_keys is per-connection and OFF by default — without it clip_formats would not cascade.
-        // synchronous=NORMAL is durable enough under WAL (only the last transaction can be lost on power
-        // failure, never corruption) and much faster than FULL for frequent small captures.
-        Execute(connection, "PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;");
-        return connection;
+        try
+        {
+            connection.Open();
+            // foreign_keys is per-connection and OFF by default — without it clip_formats would not cascade.
+            // synchronous=NORMAL is durable enough under WAL (only the last transaction can be lost on power
+            // failure, never corruption) and much faster than FULL for frequent small captures.
+            // temp_store=MEMORY keeps sorter/temp-index spill files (which the cipher does not cover) off disk.
+            Execute(connection, "PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL; PRAGMA temp_store = MEMORY;");
+            return connection;
+        }
+        catch
+        {
+            // With a wrong key these pragmas are the first statements to touch page 1 and fail with
+            // SQLITE_NOTADB. An undisposed connection would keep the file open until finalization, which
+            // breaks the caller's quarantine (folder rename); disposing hands it to the pool, which
+            // Initialize then clears.
+            connection.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Returns whether an import of <paramref name="hash"/> copied at <paramref name="when"/> must be skipped.</summary>
