@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The Win+V replacement: an acrylic, caption-less, always-on-top panel that opens next to the caret.
+  Layout: header (title + actions) / search / filter pills / history cards / keyboard hints.
+  Keyboard handling lives in Root_PreviewKeyDown so it works while focus stays in the search box.
+-->
+<Window
+    x:Class="BetterClipboard.App.Views.ClipboardFlyout"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:vm="using:BetterClipboard.App.ViewModels"
+    mc:Ignorable="d">
+
+    <Grid
+        x:Name="Root"
+        Padding="12,10,12,8"
+        PreviewKeyDown="Root_PreviewKeyDown"
+        RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Header  -->
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Image
+                Width="20"
+                Height="20"
+                Margin="2,0,0,0"
+                VerticalAlignment="Center"
+                Source="ms-appx:///Assets/AppIcon64.png" />
+            <StackPanel
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Orientation="Horizontal"
+                Spacing="8">
+                <TextBlock
+                    VerticalAlignment="Center"
+                    FontSize="15"
+                    FontWeight="SemiBold"
+                    Text="Clipboard" />
+                <Border
+                    x:Name="PausedChip"
+                    Padding="8,1,8,2"
+                    VerticalAlignment="Center"
+                    Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
+                    CornerRadius="10"
+                    Visibility="{x:Bind PausedVisibility(ViewModel.IsPaused), Mode=OneWay}">
+                    <TextBlock
+                        FontSize="11"
+                        Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                        Text="Paused" />
+                </Border>
+            </StackPanel>
+            <StackPanel
+                Grid.Column="2"
+                Orientation="Horizontal"
+                Spacing="2">
+                <Button
+                    x:Name="PauseButton"
+                    AutomationProperties.Name="Pause or resume capturing"
+                    Click="PauseButton_Click"
+                    Content="{x:Bind PauseGlyph(ViewModel.IsPaused), Mode=OneWay}"
+                    Style="{StaticResource IconButtonStyle}"
+                    ToolTipService.ToolTip="{x:Bind PauseTooltip(ViewModel.IsPaused), Mode=OneWay}" />
+                <Button
+                    x:Name="ClearButton"
+                    AutomationProperties.Name="Clear history"
+                    Content="&#xE74D;"
+                    Style="{StaticResource IconButtonStyle}"
+                    ToolTipService.ToolTip="Clear history (keeps pinned)">
+                    <Button.Flyout>
+                        <Flyout x:Name="ClearFlyout" Closed="Popup_Closed" Opened="Popup_Opened">
+                            <StackPanel MaxWidth="260" Spacing="12">
+                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Clear clipboard history?" />
+                                <TextBlock
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Text="Unpinned items are deleted for good. Pinned items stay."
+                                    TextWrapping="Wrap" />
+                                <Button
+                                    HorizontalAlignment="Right"
+                                    Click="ConfirmClear_Click"
+                                    Content="Clear"
+                                    Style="{StaticResource AccentButtonStyle}" />
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+                <Button
+                    AutomationProperties.Name="Settings"
+                    Click="SettingsButton_Click"
+                    Content="&#xE713;"
+                    Style="{StaticResource IconButtonStyle}"
+                    ToolTipService.ToolTip="Settings" />
+            </StackPanel>
+        </Grid>
+
+        <!--  Search  -->
+        <AutoSuggestBox
+            x:Name="SearchBox"
+            Grid.Row="1"
+            AutomationProperties.Name="Search clipboard history"
+            PlaceholderText="Search everything you've copied…"
+            QueryIcon="Find"
+            Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+        <!--  Filters  -->
+        <SelectorBar
+            x:Name="Filters"
+            Grid.Row="2"
+            Margin="-4,0,-4,0"
+            SelectionChanged="Filters_SelectionChanged">
+            <SelectorBarItem IsSelected="True" Tag="All" Text="All" />
+            <SelectorBarItem Tag="Pinned" Text="Pinned" />
+            <SelectorBarItem Tag="Text" Text="Text" />
+            <SelectorBarItem Tag="Images" Text="Images" />
+            <SelectorBarItem Tag="Links" Text="Links" />
+            <SelectorBarItem Tag="Files" Text="Files" />
+        </SelectorBar>
+
+        <!--  History  -->
+        <ListView
+            x:Name="ItemsList"
+            Grid.Row="3"
+            Margin="-4,0,-4,0"
+            Padding="4,0,4,0"
+            ContainerContentChanging="ItemsList_ContainerContentChanging"
+            IsItemClickEnabled="True"
+            ItemClick="ItemsList_ItemClick"
+            ItemContainerStyle="{StaticResource ClipItemContainerStyle}"
+            ItemsSource="{x:Bind ViewModel.Items}"
+            RightTapped="ItemsList_RightTapped"
+            SelectionMode="Single"
+            TabIndex="1">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:ClipItemViewModel">
+                    <Grid AutomationProperties.Name="{x:Bind AutomationName}" RowSpacing="6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <Grid ColumnSpacing="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon
+                                FontSize="12"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Glyph="{x:Bind KindGlyph}"
+                                ToolTipService.ToolTip="{x:Bind KindLabel}" />
+                            <TextBlock
+                                Grid.Column="1"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind Caption, Mode=OneWay}"
+                                TextTrimming="CharacterEllipsis" />
+                            <FontIcon
+                                Grid.Column="2"
+                                FontSize="12"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Glyph="&#xE842;"
+                                ToolTipService.ToolTip="Pinned"
+                                Visibility="{x:Bind PinVisibility, Mode=OneWay}" />
+                        </Grid>
+
+                        <TextBlock
+                            Grid.Row="1"
+                            FontFamily="{x:Bind BodyFontFamily}"
+                            FontSize="13.5"
+                            MaxLines="4"
+                            Text="{x:Bind Preview}"
+                            TextTrimming="CharacterEllipsis"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind TextVisibility}" />
+
+                        <Border
+                            Grid.Row="1"
+                            Height="128"
+                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="6"
+                            Visibility="{x:Bind ImageVisibility}">
+                            <Image
+                                HorizontalAlignment="Center"
+                                Source="{x:Bind Thumbnail, Mode=OneWay}"
+                                Stretch="Uniform" />
+                        </Border>
+
+                        <StackPanel
+                            Grid.Row="1"
+                            Orientation="Horizontal"
+                            Spacing="12"
+                            Visibility="{x:Bind ColorVisibility}">
+                            <Border
+                                Width="32"
+                                Height="32"
+                                Background="{x:Bind ColorBrush}"
+                                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="16" />
+                            <TextBlock
+                                VerticalAlignment="Center"
+                                FontFamily="{StaticResource MonoFontFamily}"
+                                FontSize="14"
+                                IsTextSelectionEnabled="False"
+                                Text="{x:Bind Preview}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!--  Empty state  -->
+        <StackPanel
+            Grid.Row="3"
+            MaxWidth="280"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Spacing="8"
+            Visibility="{x:Bind EmptyVisibility(ViewModel.IsEmpty), Mode=OneWay}">
+            <FontIcon
+                FontSize="40"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Glyph="&#xE77F;" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="{x:Bind ViewModel.EmptyTitle, Mode=OneWay}"
+                TextAlignment="Center" />
+            <TextBlock
+                HorizontalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!--  Footer  -->
+        <Grid Grid.Row="4" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock
+                FontSize="11"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Text="↵ paste · ⇧↵ plain text · Ctrl+P pin · Del delete"
+                TextTrimming="CharacterEllipsis" />
+            <TextBlock
+                Grid.Column="1"
+                FontSize="11"
+                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                Text="{x:Bind ViewModel.StatusText, Mode=OneWay}" />
+        </Grid>
+    </Grid>
+</Window>

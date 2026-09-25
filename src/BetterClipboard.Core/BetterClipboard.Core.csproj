@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Platform-neutral heart of BetterClipboard: models, content classification, SQLite persistence,
+    retention, settings and the capture pipeline. Deliberately free of Win32/WinRT so it can be unit
+    tested anywhere; everything OS-specific lives in BetterClipboard.Windows behind small interfaces.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>BetterClipboard.Core</RootNamespace>
+    <!-- Undocumented public API is a build error here: the repo rule is "fully documented or not done". -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BetterClipboard.Core.Tests" />
+  </ItemGroup>
+</Project>

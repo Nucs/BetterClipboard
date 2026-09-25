@@ -1,0 +1,21 @@
+# Build output
+bin/
+obj/
+artifacts/
+publish/
+*.user
+*.suo
+.vs/
+.idea/
+*.swp
+
+# Test results / coverage
+TestResults/
+coverage*/
+*.trx
+
+# Local runtime data (never commit anyone's clipboard!)
+*.db
+*.db-shm
+*.db-wal
+/data/

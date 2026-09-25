@@ -1,0 +1,21 @@
+<Project>
+  <!--
+    Shared MSBuild settings for every project in the repo.
+    GenerateDocumentationFile is on everywhere so CS1591 ("missing XML comment") surfaces for any
+    undocumented public member — the repo rule is that ALL members are documented (see CLAUDE.md §4).
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Deterministic>true</Deterministic>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <Company>BetterClipboard</Company>
+    <Product>BetterClipboard</Product>
+    <Authors>Eli Belash</Authors>
+    <Copyright>© 2026 Eli Belash</Copyright>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+</Project>

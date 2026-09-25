@@ -1,0 +1,129 @@
+using System.Text.Json.Serialization;
+
+namespace BetterClipboard.Core.Settings;
+
+/// <summary>Where the flyout appears when summoned.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<FlyoutPlacement>))]
+public enum FlyoutPlacement
+{
+    /// <summary>Next to the text caret like Win+V; falls back to the mouse cursor when the app exposes no caret.</summary>
+    NearCaret = 0,
+
+    /// <summary>Next to the mouse cursor.</summary>
+    NearCursor = 1,
+
+    /// <summary>Centered on the monitor that holds the foreground window.</summary>
+    CenterScreen = 2,
+}
+
+/// <summary>Light/dark choice for BetterClipboard's own windows.</summary>
+[JsonConverter(typeof(JsonStringEnumConverter<AppTheme>))]
+public enum AppTheme
+{
+    /// <summary>Follow the Windows app theme.</summary>
+    System = 0,
+
+    /// <summary>Always light.</summary>
+    Light = 1,
+
+    /// <summary>Always dark.</summary>
+    Dark = 2,
+}
+
+/// <summary>
+/// User settings, persisted as JSON by <see cref="SettingsStore"/>. Immutable: change settings with
+/// <c>with</c> expressions through <see cref="SettingsStore.Update"/> so every reader sees a consistent snapshot.
+/// </summary>
+/// <remarks>
+/// Adding a property is backward compatible (missing JSON members keep their defaults); renaming or
+/// removing one silently resets that setting for existing users — avoid it, or migrate in
+/// <see cref="Normalize"/> using <see cref="SchemaVersion"/>.
+/// </remarks>
+public sealed record AppSettings
+{
+    /// <summary>Settings file format version, for future migrations.</summary>
+    public int SchemaVersion { get; init; } = 1;
+
+    /// <summary>Global shortcut that opens the flyout, e.g. <c>Win+V</c> or <c>Ctrl+Shift+V</c>.</summary>
+    public string OpenHotkey { get; init; } = "Win+V";
+
+    /// <summary>
+    /// When the shortcut is already owned by Windows (Win+V is, by Explorer), intercept it with a
+    /// low-level keyboard hook instead of giving up. The hook only swallows the exact combination.
+    /// </summary>
+    public bool UseKeyboardHookFallback { get; init; } = true;
+
+    /// <summary>Maximum unpinned entries kept (most recently used win); 0 = unlimited.</summary>
+    public int MaxItems { get; init; } = 10_000;
+
+    /// <summary>Drop unpinned entries not used for this many days; 0 = keep forever.</summary>
+    public int RetentionDays { get; init; }
+
+    /// <summary>Largest single copy recorded, in MB (Win+V caps at 4 MB).</summary>
+    public int MaxItemSizeMB { get; init; } = 64;
+
+    /// <summary>Total payload budget for unpinned history, in MB; 0 = unlimited.</summary>
+    public int MaxTotalSizeMB { get; init; } = 4096;
+
+    /// <summary>Record image-only copies (screenshots etc.).</summary>
+    public bool CaptureImages { get; init; } = true;
+
+    /// <summary>Record file lists copied in Explorer (paths only, not file contents).</summary>
+    public bool CaptureFiles { get; init; } = true;
+
+    /// <summary>
+    /// Also keep app-private formats (Office, IDEs, design tools) for highest paste fidelity. Costs a lot
+    /// more disk space (Excel copies carry many formats), hence off by default.
+    /// </summary>
+    public bool PreserveAllFormats { get; init; }
+
+    /// <summary>After choosing an item, paste it into the previously focused app (otherwise only copy it).</summary>
+    public bool PasteOnSelect { get; init; } = true;
+
+    /// <summary>Move an item to the top of history when it is pasted from the flyout.</summary>
+    public bool MoveToTopOnPaste { get; init; } = true;
+
+    /// <summary>Show pinned items above everything else.</summary>
+    public bool PinnedOnTop { get; init; } = true;
+
+    /// <summary>Import Windows' current Win+V history (including its pinned items) at every startup.</summary>
+    public bool ImportWindowsHistoryOnStartup { get; init; } = true;
+
+    /// <summary>Temporarily stop recording live copies.</summary>
+    public bool IsCapturePaused { get; init; }
+
+    /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
+    public IReadOnlyList<string> IgnoredApps { get; init; } = [];
+
+    /// <summary>Where the flyout appears.</summary>
+    public FlyoutPlacement Placement { get; init; } = FlyoutPlacement.NearCaret;
+
+    /// <summary>Theme of BetterClipboard's windows.</summary>
+    public AppTheme Theme { get; init; } = AppTheme.System;
+
+    /// <summary>
+    /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
+    /// into a broken state (e.g. a negative item cap).
+    /// </summary>
+    /// <returns>A normalized copy (or this instance when already valid).</returns>
+    public AppSettings Normalize()
+    {
+        var normalized = this with
+        {
+            SchemaVersion = 1,
+            OpenHotkey = string.IsNullOrWhiteSpace(OpenHotkey) ? "Win+V" : OpenHotkey.Trim(),
+            MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
+            RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
+            MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
+            MaxTotalSizeMB = Math.Clamp(MaxTotalSizeMB, 0, 1_048_576),
+            IgnoredApps = (IgnoredApps ?? [])
+                .Select(a => a?.Trim() ?? string.Empty)
+                .Where(a => a.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            Placement = Enum.IsDefined(Placement) ? Placement : FlyoutPlacement.NearCaret,
+            Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
+        };
+        return normalized;
+    }
+}

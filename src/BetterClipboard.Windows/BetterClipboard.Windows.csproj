@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Everything that touches the OS: the Win32 clipboard listener/reader/writer, the Win+V takeover
+    (RegisterHotKey + WH_KEYBOARD_LL), paste injection, the tray icon, WinRT imaging and the importers
+    for Windows' own clipboard history (WinRT API + decrypted on-disk pinned store).
+    The WinRT projection comes from the windows10.0.26100 TFM (CsWinRT via Microsoft.Windows.SDK.NET).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <RootNamespace>BetterClipboard.Windows</RootNamespace>
+    <!-- LibraryImport's generated marshalling stubs require unsafe code. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\BetterClipboard.Core\BetterClipboard.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="BetterClipboard.Windows.Tests" />
+  </ItemGroup>
+</Project>
