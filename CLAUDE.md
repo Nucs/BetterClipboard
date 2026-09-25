@@ -258,8 +258,8 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (163 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), opt-in real-clipboard round trip, explicit capture-rate measurement (117 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (173 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, opt-in real-clipboard round trip, explicit capture-rate measurement (118 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -631,6 +631,92 @@ that source]** unless marked.
     the real ShareX is never read.
   - Never trigger real ShareX captures: its after-capture tasks may upload the user's screen.
   - Verified 2026-09-25 (§5), headless through `bclip` next to the user's app.
+  - Note: a test instance *without* the override variable finds the user's real ShareX, reads its settings
+    and watches its folders (seen in the groups e2e run). Screenshots are skipped there while capture is
+    paused, and the scratch store is deleted afterwards.
+
+### 2.11 Groups — `ClipGroup`, `ClipStore` groups, the flyout's groups column
+
+User request (2026-09-25):
+- a bookmark button right of Pause opens a left area by widening the panel to the left;
+- that area is a vertical row of font icons: the clipboard icon at the top (it and the "Clipboard" label
+  slide left when the area opens) shows the regular view, and "+" at the bottom lets the user pick an icon
+  for a new group;
+- cards dragged onto an icon join that group, a right-click removes one from a group, and picking a group
+  shows only its items;
+- a grouped item is not deleted, like a pinned one, and when it is ungrouped from all groups it "reenters
+  the retention cycle from reset".
+
+**Data** (`Core/Storage/ClipStore`, `Core/Model/ClipGroup`).
+- **Tables:** `groups(id, name, glyph, sort_order, created_utc)` and `clip_groups(clip_id, group_id,
+  added_utc)`. The primary key is `(clip_id, group_id)`, both sides cascade, and `ix_clip_groups_group`
+  serves the group filter and counts.
+- **Additive, unversioned:** `EnsureGroupsSchema` runs at every `Initialize` inside the migration
+  transaction (`CREATE … IF NOT EXISTS`; the column is added after a `pragma_table_info` check).
+  - Why no `user_version` bump: an older build must still open the file.
+  - The cost: while an older build runs, its retention does not know groups exist.
+- **Entries:** `ClipEntry.GroupIds` comes from a `group_concat` subquery in `EntryColumns`, parsed and sorted.
+  `ClipQuery.GroupId` filters with `EXISTS`, and it combines with filter tabs and search.
+- **Validation:** 1–40 characters for the name (trimmed); the icon must be exactly one Private Use Area
+  character (`ClipGroup.IsValidGlyph`), since anything else renders as a box in the 36-DIP button.
+
+**Retention semantics.**
+- **"Protected" = pinned or grouped** (the `Unprotected` SQL predicate). Retention by age, count and size
+  skips protected entries, and `ClearUnpinned` keeps them. `ClearAll` deletes them, while the groups stay,
+  empty. An explicit delete always works, and memberships cascade.
+- **"Reenters the retention cycle from reset":** the nullable `clips.retain_from_utc` is set when an entry
+  leaves its last group (`RemoveFromGroup`, or `DeleteGroup` for the members of no other group).
+- **Retention key:** `max(last_used_utc, coalesce(retain_from_utc, 0))` (`RetentionKey`) for age and for
+  the count and size order. So an item grouped long ago is neither pruned for its old age nor last in line
+  right after ungrouping.
+- **List order:** `last_used_utc` is not touched, so the item keeps its place in the list. The choice was
+  deliberate: resetting last-used would have moved it to the top.
+
+**Service** (`ClipHistoryService`):
+- the write APIs `Create/Update/DeleteGroupAsync`, `AddToGroupAsync(ids, group)` and
+  `RemoveFromGroupAsync` go through the worker; `GetGroupsAsync` reads on the pool;
+- events: `GroupsChanged` for the column, `Changed` `Updated` per entry whose membership changed (in-place
+  badges), and one `Reset` when a group is deleted;
+- `AppController.GroupsChanged` forwards the event to the UI thread.
+
+**Panel** (`ClipboardFlyout`, `FlyoutViewModel`).
+- **Column:** `GroupsColumn` is 0 or 44 DIP (a 36-DIP icon plus an 8-DIP gap).
+  - The window grows on its left (`FlyoutPositioner.ExtendLeft`, pure and unit-tested; it grows right
+    only at the work area's left edge), so the list, search box and buttons stay put on screen.
+  - The logo button grows from 24 to 36 DIP, so it tops the icon column. The title lands on the main
+    content's left edge, 56 DIP.
+  - `PlayGroupsPaneAnimation` slides the logo and title from their old screen position (window shift plus
+    the in-window shift of 6 and 12 DIP) and fades the column in.
+  - The state is kept in `AppSettings.ShowGroupsPane` and toggled by `Ctrl+G` as well. Closing the column
+    leaves a group view.
+- **Toggle icon:** Segoe Fluent Icons has **no bookmark ribbon** (E8A4 "Bookmarks" draws a bulleted list;
+  checked by rendering every mapped glyph E700–F8CC). The toggle is therefore a 16-DIP `PathIcon` ribbon:
+  an even-odd outline while the column is closed, filled while it is open.
+- **Icons:** `GroupIconCatalog`: 64 glyphs, each verified by rendering, with names that become the default
+  group name. Code points are escapes; the raw-character lesson is in §4.
+- **States are whole styles** (`GroupButton[Selected|DropTarget]Style`, `IconButtonActiveStyle` in
+  App.xaml). A brush looked up in code from `Application.Resources` would ignore the flyout's own
+  `RequestedTheme`.
+- **Views:** clicking an icon shows that group; clicking it again, or the logo, returns to everything. A
+  summon always starts in the regular view, like the filter tabs.
+- **Header:** the header reads "Clipboard › Name". `TitlePanel` is a grid whose name column is `*` only
+  while it has text, so the "Paused" chip always fits (a StackPanel cut it to "Pau"). The placeholder reads
+  "Search in Name…" and the footer "N in Name".
+- **Drag and drop:**
+  - `ItemsList.CanDragItems` is on only while the column is open.
+  - `DragItemsStarting` stores the ids and marks the package with the custom format
+    `BetterClipboard.ClipIds` (Copy).
+  - Group buttons (`AllowDrop`) accept only that format, with the caption "Add to Name" and a highlight.
+  - `Drop` copies the ids before awaiting, because `DragItemsCompleted` clears them.
+  - Other apps and our own text boxes see no format they understand, so the drop is refused.
+- **Menus:**
+  - Card: "Remove from Name" in a group view, plus a *Groups* submenu of toggles (the keyboard and
+    screen-reader route).
+  - Group icon: Rename… (flyout), Change icon… (the picker), Delete group (confirm; it says the items
+    stay).
+  - Follow-up flyouts are queued through `DispatcherQueue`, so they open after the menu closed. Each one
+    counts in `openPopups`, so the flyout does not dismiss itself.
+- **Cards:** a card shows its groups' glyphs in the header row, with the group names in a tooltip.
 
 ---
 
@@ -638,7 +724,7 @@ that source]** unless marked.
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 280 tests (278 run; 1 opt-in + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 291 tests (289 run; 1 opt-in + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -748,7 +834,14 @@ ShareX end-to-end (2026-09-25), with the dev build:
   Delete E74D, Setting E713, Link E71B, Photo E91B, Folder E8B7, Font E8D2, FontColor E8D3, Color E790,
   History E81C, Clock E917, Pause E769, Play E768, Keyboard E765, KeyboardShortcut EDA7, FileExplorer EC50,
   Personalize E771, Shield EA18, Import E8B5, Info E946, OpenInNewWindow E8A7, Code E943, Power E7E8,
-  Camera E722 (ShareX card).
+  Camera E722 (ShareX card), Add E710 (new group), Tag E8EC (Groups submenu), Rename E8AC, Remove E738.
+  Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
+  on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did. Sweep new C# files with an
+  escape script before committing (never XAML files: there the escape is `&#xE8xx;`).
+- **SendInput from Python needs the real `INPUT` layout:** 40 bytes on x64 (type + padding + a 32-byte
+  union). A struct with the member inlined plus extra padding was 48 bytes; `SendInput` then returns 0 and
+  **nothing happens**, while the test script printed "dragged" (2026-09-25, groups e2e). Check the return
+  value (`sendinput.py` in the groups e2e scratch does), or reuse `tools/e2e/drag.py`'s layout.
 - **Privacy in tooling:** never print clipboard content in probes/logs/test output; `tools/e2e/dbq.py`
   masks non-test rows. Test data is prefixed `BC-TEST`.
 - **Clipboard tests never touch the real clipboard:** put them in the `IsolatedClipboardCollection`
@@ -793,7 +886,7 @@ ShareX end-to-end (2026-09-25), with the dev build:
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 278 pass + 1 opt-in + 1 explicit (measurement) locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 289 pass + 1 opt-in + 1 explicit (measurement) locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -834,6 +927,11 @@ ShareX end-to-end (2026-09-25), with the dev build:
 - Password-manager catalog: verify the executable names of Zoho Vault, Devolutions Workspace, Passwarden,
   Total Password and Securden (not found in reliable sources on 2026-09-25). Path-aware ignore rules would
   allow generic names safely (Ente Auth's `auth.exe` only under an `ente` folder).
+- Groups, next steps:
+  - reorder group icons by dragging them in the column;
+  - `bclip list --group NAME` / `bclip group add|remove` for scripts and agents;
+  - dragging a card out to other apps (a text/bitmap data provider next to the internal id format);
+  - a "drop on + to create a group with this card" shortcut.
 - ShareX, next steps:
   - an opt-in one-time backfill of the existing screenshot archive;
   - upload URLs from `History.db` (task completion) as link items next to their screenshot;

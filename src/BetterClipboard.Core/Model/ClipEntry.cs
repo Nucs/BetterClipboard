@@ -34,6 +34,15 @@ public sealed class ClipEntry
     /// <summary>Pinned entries are exempt from every retention rule and survive "clear history".</summary>
     public bool IsPinned { get; init; }
 
+    /// <summary>
+    /// Ids of the <see cref="ClipGroup"/>s the entry belongs to, ascending; empty when it is in none. Any
+    /// membership protects the entry from retention and "clear history" like a pin (see <see cref="IsGrouped"/>).
+    /// </summary>
+    public IReadOnlyList<long> GroupIds { get; init; } = [];
+
+    /// <summary>Whether the entry is in at least one group — and therefore kept like a pinned entry.</summary>
+    public bool IsGrouped => GroupIds.Count > 0;
+
     /// <summary>Where the entry was first created from.</summary>
     public ClipOrigin Origin { get; init; }
 

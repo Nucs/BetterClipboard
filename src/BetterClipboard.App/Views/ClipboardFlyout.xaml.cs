@@ -5,6 +5,7 @@ using BetterClipboard.App.ViewModels;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Storage;
@@ -13,11 +14,13 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 using Windows.System;
 using WinRT.Interop;
@@ -45,6 +48,14 @@ namespace BetterClipboard.App.Views;
 /// in a WinUI window it never sees the button-up and the window sticks to the cursor (see
 /// <see cref="ScreenPointer"/>). The next summon anchors the flyout at the caret again, like Win+V.
 /// </para>
+/// <para>
+/// <b>Groups column.</b> The bookmark button (or Ctrl+G) opens a column of group icons on the left. The window
+/// grows <see cref="GroupsPaneDip"/> to the left (<see cref="FlyoutPositioner.ExtendLeft"/>), so the list,
+/// search box and buttons keep their screen position. The header's logo and title slide left into the
+/// column's top: the logo is its first icon and stands for the regular view. Cards dragged onto an icon join
+/// that group. Right-click a group icon to rename it, change its icon or delete it; right-click a card to
+/// take it out of a group. The open/closed state is remembered (<see cref="AppSettings.ShowGroupsPane"/>).
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
 {
@@ -63,12 +74,33 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>Mouse/pen travel before a drag moves the window — the system's drag threshold (4 px at 100 %), so a click stays a click.</summary>
     private const double DragThresholdDip = 4;
 
+    /// <summary>Width of the groups column in DIPs: a 36-DIP icon plus the 8-DIP gap to the list.</summary>
+    private const double GroupsPaneDip = 44;
+
+    /// <summary>
+    /// Logo button width with the column closed (the logo's old spot, so the header looks as before) and open
+    /// (the column's icon width, so the logo sits exactly above the group icons).
+    /// </summary>
+    private const double LogoClosedDip = 24, LogoOpenDip = 36;
+
+    /// <summary>
+    /// Drag-and-drop format that marks a drag of our own cards (comma-separated entry ids). Only our group
+    /// icons accept it; other apps and our own text boxes see nothing they understand and refuse the drop.
+    /// </summary>
+    private const string ClipIdsFormat = "BetterClipboard.ClipIds";
+
     private readonly AppController controller;
     private readonly nint hwnd;
     private ScrollViewer? scrollViewer;
     private int openPopups;
     private bool closingForExit;
     private bool reloadPending;
+
+    /// <summary>Whether the groups column is showing (mirrors <see cref="AppSettings.ShowGroupsPane"/>).</summary>
+    private bool groupsPaneOpen;
+
+    /// <summary>Entry ids of the card drag in progress, or <see langword="null"/>.</summary>
+    private long[]? draggedClipIds;
 
     /// <summary>The background drag in progress, or <see langword="null"/>.</summary>
     private WindowDragTracker? drag;
@@ -92,6 +124,22 @@ public sealed partial class ClipboardFlyout : Window
         AppWindow.Closing += OnClosing;
         controller.HistoryChanged += OnHistoryChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
+        controller.GroupsChanged += OnGroupsChanged;
+        ViewModel.GroupsReloaded += (_, _) => RebuildGroupButtons();
+        ViewModel.PropertyChanged += (_, e) =>
+        {
+            // Any route to another view (icon click, reset on show, deleted group) must move the highlight.
+            if (e.PropertyName == nameof(FlyoutViewModel.SelectedGroupId))
+            {
+                UpdateGroupSelectionVisuals();
+            }
+
+            // The group name column fills and trims only while it has text (see TitlePanel in the XAML).
+            if (e.PropertyName == nameof(FlyoutViewModel.GroupTitle))
+            {
+                GroupTitleColumn.Width = ViewModel.GroupTitle.Length == 0 ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
+            }
+        };
         ItemsList.Loaded += (_, _) => HookScrollViewer();
 
         // Background drags move the window (see class remarks). handledEventsToo: a control may mark a
@@ -140,6 +188,8 @@ public sealed partial class ClipboardFlyout : Window
             ViewModel.ResetForShow();
             UpdateShareXTab();
             SelectFilter(ClipFilter.All);
+            groupsPaneOpen = controller.Settings.Current.ShowGroupsPane;
+            ApplyGroupsPaneLayout();
 
             // Show and take focus FIRST, load after: keys typed right after the shortcut must land in our
             // search box. Loading first (even for a few ms, more on a cold start) lets fast typists' keys
@@ -154,6 +204,12 @@ public sealed partial class ClipboardFlyout : Window
                 : MonitorLookup.FromPoint(anchorPoint);
             var bounds = FlyoutPositioner.Compute(placement, context, workArea,
                 (int)Math.Round(WidthDip * scale), (int)Math.Round(HeightDip * scale), (int)Math.Round(GapDip * scale));
+            if (groupsPaneOpen)
+            {
+                // Place the list where it always goes, then add the column on its left.
+                bounds = FlyoutPositioner.ExtendLeft(bounds, (int)Math.Round(GroupsPaneDip * scale), workArea);
+            }
+
             var rect = new RectInt32(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
 
             AppWindow.MoveAndResize(rect);
@@ -166,8 +222,12 @@ public sealed partial class ClipboardFlyout : Window
             SearchBox.Focus(FocusState.Programmatic);
             PlayEntranceAnimation();
 
+            // Groups load alongside the list: cards created before the groups arrive get their badges when
+            // LoadGroupsAsync refreshes them.
+            var groups = ViewModel.LoadGroupsAsync();
             await ViewModel.ReloadAsync();
             SelectIndex(0);
+            await groups;
         }
         catch (Exception ex)
         {
@@ -203,6 +263,7 @@ public sealed partial class ClipboardFlyout : Window
         closingForExit = true;
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
+        controller.GroupsChanged -= OnGroupsChanged;
         Close();
     }
 
@@ -373,6 +434,9 @@ public sealed partial class ClipboardFlyout : Window
                 break;
             case VirtualKey.F when ctrl:
                 SearchBox.Focus(FocusState.Keyboard);
+                break;
+            case VirtualKey.G when ctrl:
+                SetGroupsPane(!groupsPaneOpen);
                 break;
             case >= VirtualKey.Number1 and <= VirtualKey.Number9 when ctrl:
                 int index = e.Key - VirtualKey.Number1;
@@ -649,6 +713,15 @@ public sealed partial class ClipboardFlyout : Window
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
+
+        // In a group view the most likely wish is "not in here anymore": one click, no submenu.
+        if (ViewModel.SelectedGroup is { } viewed && item.IsInGroup(viewed.Id))
+        {
+            menu.Items.Add(MenuItem($"Remove from {viewed.Name}", "\uE738", null, () => _ = RemoveFromGroupAsync(item, viewed)));
+        }
+
+        menu.Items.Add(BuildGroupsSubMenu(item));
+        menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(MenuItem("Delete", "\uE74D", "Del", () => DeleteItem(item)));
 
         menu.Opened += Popup_Opened;
@@ -727,6 +800,538 @@ public sealed partial class ClipboardFlyout : Window
 
         ItemsList.SelectedIndex = index;
         ItemsList.ScrollIntoView(ViewModel.Items[index]);
+    }
+
+    /// <summary>
+    /// The "Groups" submenu of a card: one toggle per group (checked = the card is in it), so a card can join
+    /// or leave any group without dragging — the keyboard and screen-reader route.
+    /// </summary>
+    /// <param name="item">The card.</param>
+    /// <returns>The submenu.</returns>
+    private MenuFlyoutSubItem BuildGroupsSubMenu(ClipItemViewModel item)
+    {
+        var submenu = new MenuFlyoutSubItem { Text = "Groups", Icon = new FontIcon { Glyph = "\uE8EC" } };
+        if (ViewModel.Groups.Count == 0)
+        {
+            submenu.Items.Add(new MenuFlyoutItem { Text = "No groups yet: open the groups column (Ctrl+G) and press +", IsEnabled = false });
+            return submenu;
+        }
+
+        foreach (var group in ViewModel.Groups)
+        {
+            var toggle = new ToggleMenuFlyoutItem { Text = group.Name, IsChecked = item.IsInGroup(group.Id), Icon = new FontIcon { Glyph = group.Glyph } };
+
+            // IsChecked has already flipped when Click arrives: it is the requested state.
+            toggle.Click += (_, _) => _ = toggle.IsChecked ? AddToGroupAsync([item.Id], group) : RemoveFromGroupAsync(item, group);
+            submenu.Items.Add(toggle);
+        }
+
+        return submenu;
+    }
+
+    /// <summary>Groups were created, renamed, re-iconed, deleted or changed membership (UI thread): reload the column.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Unused.</param>
+    private void OnGroupsChanged(object? sender, EventArgs e) => _ = ViewModel.LoadGroupsAsync();
+
+    /// <summary>The bookmark button: open or close the groups column.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void GroupsToggle_Click(object sender, RoutedEventArgs e) => SetGroupsPane(!groupsPaneOpen);
+
+    /// <summary>The logo (the column's top icon): back to the regular view.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void LogoButton_Click(object sender, RoutedEventArgs e) => SelectGroup(null);
+
+    /// <summary>"+" at the bottom of the column: pick an icon for a new group.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void AddGroupButton_Click(object sender, RoutedEventArgs e) => ShowIconPicker(AddGroupButton, existing: null);
+
+    /// <summary>
+    /// Opens or closes the groups column: layout, window size (the window grows or shrinks on its left
+    /// side), the header slide, and the remembered setting. Closing it also leaves a group view — a view
+    /// whose group icon is hidden would be a trap.
+    /// </summary>
+    /// <param name="open">Desired state.</param>
+    private void SetGroupsPane(bool open)
+    {
+        if (open == groupsPaneOpen)
+        {
+            return;
+        }
+
+        groupsPaneOpen = open;
+        controller.Settings.Update(s => s with { ShowGroupsPane = open });
+        if (!open && ViewModel.SelectedGroupId is not null)
+        {
+            ViewModel.SelectedGroupId = null;
+        }
+
+        int windowShift = 0;
+        if (IsOpen)
+        {
+            var position = AppWindow.Position;
+            var size = AppWindow.Size;
+            var current = new ScreenRect(position.X, position.Y, position.X + size.Width, position.Y + size.Height);
+            int extra = (int)Math.Round(GroupsPaneDip * Scale);
+            var next = open
+                ? FlyoutPositioner.ExtendLeft(current, extra, MonitorLookup.FromWindow(hwnd).WorkArea)
+                : FlyoutPositioner.ShrinkLeft(current, extra);
+            AppWindow.MoveAndResize(new RectInt32(next.Left, next.Top, next.Width, next.Height));
+            windowShift = next.Left - current.Left;
+        }
+
+        ApplyGroupsPaneLayout();
+        if (IsOpen)
+        {
+            PlayGroupsPaneAnimation(open, windowShift / Scale);
+        }
+
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// Lays the flyout out for the current <see cref="groupsPaneOpen"/> (no window resize): column width, the
+    /// logo's width (24 → 36 so it tops the icon column), card dragging, and the toggle's look.
+    /// </summary>
+    private void ApplyGroupsPaneLayout()
+    {
+        GroupsColumn.Width = new GridLength(groupsPaneOpen ? GroupsPaneDip : 0);
+        GroupsPane.Visibility = groupsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        LogoButton.Width = groupsPaneOpen ? LogoOpenDip : LogoClosedDip;
+
+        // Dragging a card only makes sense when there is somewhere to drop it.
+        ItemsList.CanDragItems = groupsPaneOpen;
+        GroupsToggle.Style = (Style)Application.Current.Resources[groupsPaneOpen ? "IconButtonActiveStyle" : "IconButtonStyle"];
+        RibbonOutline.Visibility = groupsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
+        RibbonFilled.Visibility = groupsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
+        AutomationProperties.SetName(GroupsToggle, groupsPaneOpen ? "Hide groups" : "Show groups");
+        UpdateGroupSelectionVisuals();
+    }
+
+    /// <summary>
+    /// Makes the column change look continuous. The window jumped by <paramref name="windowShiftDip"/>, and
+    /// inside it the logo and title moved right by 6 and 12 DIP (the logo cell grew from 24 to 36). Both
+    /// start where they were on screen and glide to their new place; the icons fade in.
+    /// </summary>
+    /// <param name="open">Whether the column just opened.</param>
+    /// <param name="windowShiftDip">How far the window's left edge moved, in DIPs (negative = left).</param>
+    private void PlayGroupsPaneAnimation(bool open, double windowShiftDip)
+    {
+        double cellShift = open ? (LogoOpenDip - LogoClosedDip) / 2 : -(LogoOpenDip - LogoClosedDip) / 2;
+        double titleShift = open ? LogoOpenDip - LogoClosedDip : -(LogoOpenDip - LogoClosedDip);
+        Slide(LogoButton, -(windowShiftDip + cellShift));
+        Slide(TitlePanel, -(windowShiftDip + titleShift));
+        if (open)
+        {
+            FadeIn(GroupsPane);
+        }
+
+        void Slide(UIElement element, double fromX)
+        {
+            ElementCompositionPreview.SetIsTranslationEnabled(element, true);
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            var compositor = visual.Compositor;
+            var slide = compositor.CreateVector3KeyFrameAnimation();
+            slide.InsertKeyFrame(0f, new Vector3((float)fromX, 0, 0));
+            slide.InsertKeyFrame(1f, Vector3.Zero, compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f)));
+            slide.Duration = TimeSpan.FromMilliseconds(200);
+            visual.StartAnimation("Translation", slide);
+        }
+
+        static void FadeIn(UIElement element)
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(element);
+            var fade = visual.Compositor.CreateScalarKeyFrameAnimation();
+            fade.InsertKeyFrame(0f, 0f);
+            fade.InsertKeyFrame(1f, 1f);
+            fade.Duration = TimeSpan.FromMilliseconds(180);
+            visual.StartAnimation("Opacity", fade);
+        }
+    }
+
+    /// <summary>Switches the list to a group (or the regular view) and gives typing back to the search box.</summary>
+    /// <param name="groupId">Group id, or <see langword="null"/> for everything.</param>
+    private void SelectGroup(long? groupId)
+    {
+        ViewModel.SelectedGroupId = groupId;
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>Recreates the column's icons from <see cref="FlyoutViewModel.Groups"/>.</summary>
+    private void RebuildGroupButtons()
+    {
+        GroupButtons.Children.Clear();
+        foreach (var group in ViewModel.Groups)
+        {
+            GroupButtons.Children.Add(CreateGroupButton(group));
+        }
+
+        UpdateGroupSelectionVisuals();
+    }
+
+    /// <summary>
+    /// One group icon: click shows the group (click again: back to everything), right-click opens its menu,
+    /// and it accepts dropped cards.
+    /// </summary>
+    /// <param name="group">The group.</param>
+    /// <returns>The button (its <see cref="FrameworkElement.Tag"/> is the group id).</returns>
+    private Button CreateGroupButton(ClipGroup group)
+    {
+        var button = new Button
+        {
+            Style = GroupStyle(selected: false),
+            Content = group.Glyph,
+            Tag = group.Id,
+            AllowDrop = true,
+        };
+        string count = group.ItemCount == 1 ? "1 item" : $"{group.ItemCount:N0} items";
+        ToolTipService.SetToolTip(button, $"{group.Name} · {count}");
+        AutomationProperties.SetName(button, $"{group.Name} group, {count}");
+        button.Click += (_, _) => SelectGroup(ViewModel.SelectedGroupId == group.Id ? null : group.Id);
+        button.RightTapped += (_, e) =>
+        {
+            ShowGroupMenu(group, button, e.GetPosition(button));
+            e.Handled = true;
+        };
+        button.DragEnter += (_, e) => AcceptCardDrag(button, group, e);
+        button.DragOver += (_, e) => AcceptCardDrag(button, group, e);
+        button.DragLeave += (_, _) => SetDropHighlight(button, on: false);
+        button.Drop += (_, e) => _ = DropCardsAsync(button, group, e);
+        return button;
+    }
+
+    /// <summary>Highlights the regular-view logo or the selected group icon (only while the column is open).</summary>
+    private void UpdateGroupSelectionVisuals()
+    {
+        long? selected = ViewModel.SelectedGroupId;
+        foreach (var button in GroupButtons.Children.OfType<Button>())
+        {
+            button.Style = GroupStyle(selected: button.Tag is long id && id == selected);
+        }
+
+        // Style resets Width: set it again right after, the logo's width depends on the column state.
+        LogoButton.Style = GroupStyle(selected: groupsPaneOpen && selected is null);
+        LogoButton.Width = groupsPaneOpen ? LogoOpenDip : LogoClosedDip;
+        LogoButton.Height = 32;
+    }
+
+    /// <summary>The group-icon style for a state (see App.xaml: whole styles, so brushes follow the flyout's theme).</summary>
+    /// <param name="selected">Selected look.</param>
+    /// <returns>The style.</returns>
+    private static Style GroupStyle(bool selected) =>
+        (Style)Application.Current.Resources[selected ? "GroupButtonSelectedStyle" : "GroupButtonStyle"];
+
+    /// <summary>Shows or clears the drop highlight of a group icon.</summary>
+    /// <param name="button">The icon.</param>
+    /// <param name="on">Highlight on.</param>
+    private void SetDropHighlight(Button button, bool on)
+    {
+        bool selected = button.Tag is long id && id == ViewModel.SelectedGroupId;
+        button.Style = on ? (Style)Application.Current.Resources["GroupButtonDropTargetStyle"] : GroupStyle(selected);
+    }
+
+    /// <summary>A card drag starts: remember its entries and mark the data as ours.</summary>
+    /// <param name="sender">List.</param>
+    /// <param name="e">Drag data.</param>
+    private void ItemsList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        var ids = e.Items.OfType<ClipItemViewModel>().Select(i => i.Id).ToArray();
+        if (!groupsPaneOpen || ids.Length == 0)
+        {
+            e.Cancel = true;
+            return;
+        }
+
+        draggedClipIds = ids;
+        e.Data.SetData(ClipIdsFormat, string.Join(",", ids));
+        e.Data.RequestedOperation = DataPackageOperation.Copy;
+        AppLog.Info($"Card drag started ({ids.Length} card(s)).");
+    }
+
+    /// <summary>The card drag ended (dropped anywhere, or cancelled).</summary>
+    /// <param name="sender">List.</param>
+    /// <param name="args">Drag result.</param>
+    private void ItemsList_DragItemsCompleted(ListViewBase sender, DragItemsCompletedEventArgs args) => draggedClipIds = null;
+
+    /// <summary>A drag hovers a group icon: accept our cards ("Add to Work"), refuse anything else.</summary>
+    /// <param name="button">The icon.</param>
+    /// <param name="group">Its group.</param>
+    /// <param name="e">Drag data.</param>
+    private void AcceptCardDrag(Button button, ClipGroup group, DragEventArgs e)
+    {
+        if (draggedClipIds is { Length: > 0 } && e.DataView.Contains(ClipIdsFormat))
+        {
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = $"Add to {group.Name}";
+            SetDropHighlight(button, on: true);
+        }
+        else
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>Cards were dropped on a group icon: add them to the group.</summary>
+    /// <param name="button">The icon.</param>
+    /// <param name="group">Its group.</param>
+    /// <param name="e">Drop data.</param>
+    /// <returns>A task completing when stored (failures logged).</returns>
+    private async Task DropCardsAsync(Button button, ClipGroup group, DragEventArgs e)
+    {
+        // Copy before awaiting: DragItemsCompleted clears the field as soon as this handler yields.
+        var ids = draggedClipIds;
+        SetDropHighlight(button, on: false);
+        e.Handled = true;
+        if (ids is { Length: > 0 })
+        {
+            // Counts only: the log never names cards (their text is clipboard content).
+            AppLog.Info($"Dropped {ids.Length} card(s) on group {group.Id}.");
+            await AddToGroupAsync(ids, group);
+        }
+    }
+
+    /// <summary>Adds entries to a group (logged on failure; the worker announces the change).</summary>
+    /// <param name="clipIds">Entry ids.</param>
+    /// <param name="group">The group.</param>
+    /// <returns>A task completing when stored.</returns>
+    private async Task AddToGroupAsync(IReadOnlyList<long> clipIds, ClipGroup group)
+    {
+        try
+        {
+            await controller.History.AddToGroupAsync(clipIds, group.Id);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Adding to group {group.Id} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Takes a card out of a group; it re-enters retention with a fresh clock if that was its last group.</summary>
+    /// <param name="item">The card.</param>
+    /// <param name="group">The group.</param>
+    /// <returns>A task completing when stored.</returns>
+    private async Task RemoveFromGroupAsync(ClipItemViewModel item, ClipGroup group)
+    {
+        try
+        {
+            await controller.History.RemoveFromGroupAsync(item.Id, group.Id);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Removing entry {item.Id} from group {group.Id} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>The right-click menu of a group icon: rename, change icon, delete.</summary>
+    /// <param name="group">The group.</param>
+    /// <param name="button">Its icon (placement target).</param>
+    /// <param name="position">Position relative to <paramref name="button"/>.</param>
+    private void ShowGroupMenu(ClipGroup group, Button button, global::Windows.Foundation.Point position)
+    {
+        var menu = new MenuFlyout();
+
+        // The follow-up flyouts open after the menu has closed (queued), never on top of it.
+        menu.Items.Add(MenuItem("Rename…", "\uE8AC", null, () => DispatcherQueue.TryEnqueue(() => ShowRenameFlyout(group, button))));
+        menu.Items.Add(MenuItem("Change icon…", "\uE790", null, () => DispatcherQueue.TryEnqueue(() => ShowIconPicker(button, group))));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(MenuItem("Delete group", "\uE74D", null, () => DispatcherQueue.TryEnqueue(() => ShowDeleteGroupFlyout(group, button))));
+        menu.Opened += Popup_Opened;
+        menu.Closed += Popup_Closed;
+        menu.ShowAt(button, new FlyoutShowOptions { Position = position });
+    }
+
+    /// <summary>
+    /// The icon picker: a grid of <see cref="GroupIconCatalog"/> icons. For a new group it also asks for an
+    /// optional name (default: the icon's name). Picking an icon creates the group or changes its icon at once.
+    /// </summary>
+    /// <param name="anchor">Placement target.</param>
+    /// <param name="existing">The group whose icon changes, or <see langword="null"/> to create one.</param>
+    private void ShowIconPicker(FrameworkElement anchor, ClipGroup? existing)
+    {
+        var flyout = new Flyout { Placement = FlyoutPlacementMode.RightEdgeAlignedBottom };
+        var panel = new StackPanel { Width = 280, Spacing = 10 };
+        panel.Children.Add(new TextBlock
+        {
+            Text = existing is null ? "New group" : $"Icon for {existing.Name}",
+            Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
+        });
+
+        TextBox? nameBox = null;
+        if (existing is null)
+        {
+            nameBox = new TextBox { PlaceholderText = "Name (optional)", MaxLength = ClipGroup.MaxNameLength };
+            AutomationProperties.SetName(nameBox, "Group name");
+            panel.Children.Add(nameBox);
+        }
+
+        var grid = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, MaximumRowsOrColumns = 7, ItemWidth = 38, ItemHeight = 38 };
+        foreach (var icon in GroupIconCatalog.All)
+        {
+            var choice = new Button { Style = GroupStyle(selected: existing?.Glyph == icon.Glyph), Content = icon.Glyph };
+            ToolTipService.SetToolTip(choice, icon.Name);
+            AutomationProperties.SetName(choice, icon.Name);
+            choice.Click += (_, _) =>
+            {
+                flyout.Hide();
+                _ = PickIconAsync(existing, icon, nameBox?.Text);
+            };
+            grid.Children.Add(choice);
+        }
+
+        panel.Children.Add(new ScrollViewer { Content = grid, MaxHeight = 228, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
+        if (existing is null)
+        {
+            panel.Children.Add(new TextBlock { Text = "Then drag cards onto the new icon to add them.", Opacity = 0.7, TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+        }
+
+        flyout.Content = panel;
+        flyout.Opened += (s, e) =>
+        {
+            Popup_Opened(s, e);
+            nameBox?.Focus(FocusState.Programmatic);
+        };
+        flyout.Closed += Popup_Closed;
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>Creates a group with the picked icon, or gives an existing one the new icon.</summary>
+    /// <param name="existing">The group to change, or <see langword="null"/> to create.</param>
+    /// <param name="icon">The picked icon.</param>
+    /// <param name="typedName">The name typed for a new group (blank = the icon's name).</param>
+    /// <returns>A task completing when stored (failures logged).</returns>
+    private async Task PickIconAsync(ClipGroup? existing, GroupIcon icon, string? typedName)
+    {
+        try
+        {
+            if (existing is null)
+            {
+                string name = string.IsNullOrWhiteSpace(typedName) ? icon.Name : typedName.Trim();
+                await controller.History.CreateGroupAsync(name, icon.Glyph);
+            }
+            else if (existing.Glyph != icon.Glyph)
+            {
+                await controller.History.UpdateGroupAsync(existing.Id, name: null, glyph: icon.Glyph);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Saving a group icon failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Small flyout to rename a group (Enter or the button saves; Esc cancels).</summary>
+    /// <param name="group">The group.</param>
+    /// <param name="anchor">Placement target.</param>
+    private void ShowRenameFlyout(ClipGroup group, FrameworkElement anchor)
+    {
+        var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220 };
+        AutomationProperties.SetName(box, "Group name");
+        var save = new Button { Content = "Rename", HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var panel = new StackPanel { Spacing = 10 };
+        panel.Children.Add(new TextBlock { Text = "Rename group", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+        panel.Children.Add(box);
+        panel.Children.Add(save);
+        var flyout = new Flyout { Content = panel, Placement = FlyoutPlacementMode.RightEdgeAlignedTop };
+
+        void Commit()
+        {
+            var name = box.Text.Trim();
+            flyout.Hide();
+            if (name.Length > 0 && name != group.Name)
+            {
+                _ = RenameGroupAsync(group, name);
+            }
+        }
+
+        save.Click += (_, _) => Commit();
+        box.KeyDown += (_, e) =>
+        {
+            if (e.Key == VirtualKey.Enter)
+            {
+                e.Handled = true;
+                Commit();
+            }
+        };
+        flyout.Opened += (s, e) =>
+        {
+            Popup_Opened(s, e);
+            box.Focus(FocusState.Programmatic);
+            box.SelectAll();
+        };
+        flyout.Closed += Popup_Closed;
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>Stores a new group name (failures logged).</summary>
+    /// <param name="group">The group.</param>
+    /// <param name="name">New name.</param>
+    /// <returns>A task completing when stored.</returns>
+    private async Task RenameGroupAsync(ClipGroup group, string name)
+    {
+        try
+        {
+            await controller.History.UpdateGroupAsync(group.Id, name, glyph: null);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Renaming group {group.Id} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Confirms deleting a group. Its items stay in the history, but those in no other group lose their
+    /// protection (they re-enter retention from now) — worth one confirmation click.
+    /// </summary>
+    /// <param name="group">The group.</param>
+    /// <param name="anchor">Placement target.</param>
+    private void ShowDeleteGroupFlyout(ClipGroup group, FrameworkElement anchor)
+    {
+        var delete = new Button { Content = "Delete group", HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var panel = new StackPanel { MaxWidth = 260, Spacing = 12 };
+        panel.Children.Add(new TextBlock { Text = $"Delete “{group.Name}”?", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"], TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock
+        {
+            Text = group.ItemCount == 0
+                ? "The group is empty."
+                : "Its items stay in your history. Those in no other group are no longer kept like pinned items.",
+            Opacity = 0.8,
+            TextWrapping = TextWrapping.Wrap,
+        });
+        panel.Children.Add(delete);
+        var flyout = new Flyout { Content = panel, Placement = FlyoutPlacementMode.RightEdgeAlignedTop };
+        delete.Click += (_, _) =>
+        {
+            flyout.Hide();
+            _ = DeleteGroupAsync(group);
+        };
+        flyout.Opened += Popup_Opened;
+        flyout.Closed += Popup_Closed;
+        flyout.ShowAt(anchor);
+    }
+
+    /// <summary>Deletes a group (failures logged); a deleted selected group falls back to the regular view.</summary>
+    /// <param name="group">The group.</param>
+    /// <returns>A task completing when stored.</returns>
+    private async Task DeleteGroupAsync(ClipGroup group)
+    {
+        try
+        {
+            if (ViewModel.SelectedGroupId == group.Id)
+            {
+                ViewModel.SelectedGroupId = null;
+            }
+
+            await controller.History.DeleteGroupAsync(group.Id);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Deleting group {group.Id} failed: {ex.Message}");
+        }
     }
 
     /// <summary>ShareX was found or lost (UI thread): show or hide its tab.</summary>
@@ -822,6 +1427,11 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="empty">Whether the list is empty.</param>
     /// <returns>Visibility.</returns>
     public Visibility EmptyVisibility(bool empty) => empty ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>x:Bind helper: visible only with text (the header's group name).</summary>
+    /// <param name="text">The text.</param>
+    /// <returns>Visibility.</returns>
+    public Visibility TextVisibility(string? text) => string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
 
     /// <summary>x:Bind helper: pause button glyph (Play when paused, Pause otherwise).</summary>
     /// <param name="paused">Paused state.</param>

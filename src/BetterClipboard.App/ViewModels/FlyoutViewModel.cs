@@ -21,6 +21,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <summary>Items per page; one page comfortably overfills the flyout.</summary>
     public const int PageSize = 60;
 
+    /// <summary>Search placeholder of the regular view (a group view names its group instead).</summary>
+    public const string DefaultSearchPlaceholder = "Search everything you've copied…";
+
     private readonly AppController controller;
     private CancellationTokenSource? queryCancellation;
     private int loaded;
@@ -71,6 +74,65 @@ public sealed partial class FlyoutViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsPaused { get; set; }
 
+    /// <summary>The groups column, in column order (reloaded by <see cref="LoadGroupsAsync"/>).</summary>
+    [ObservableProperty]
+    public partial IReadOnlyList<ClipGroup> Groups { get; set; } = [];
+
+    /// <summary>
+    /// The group whose items the list shows, or <see langword="null"/> for the regular view (the clipboard
+    /// icon); changes reload. Filter pills and search apply inside the group too.
+    /// </summary>
+    [ObservableProperty]
+    public partial long? SelectedGroupId { get; set; }
+
+    /// <summary>Header text after "Clipboard": "› Work" in a group view, empty otherwise.</summary>
+    [ObservableProperty]
+    public partial string GroupTitle { get; set; } = string.Empty;
+
+    /// <summary>Search box placeholder ("Search in Work…" in a group view).</summary>
+    [ObservableProperty]
+    public partial string SearchPlaceholder { get; set; } = DefaultSearchPlaceholder;
+
+    /// <summary>Raised (UI thread) after <see cref="Groups"/> was reloaded, so the view rebuilds its group icons.</summary>
+    public event EventHandler? GroupsReloaded;
+
+    /// <summary>The selected group's snapshot, or <see langword="null"/> in the regular view (or when it vanished).</summary>
+    public ClipGroup? SelectedGroup => SelectedGroupId is { } id ? FindGroup(id) : null;
+
+    /// <summary>Finds a group in the current <see cref="Groups"/> list.</summary>
+    /// <param name="id">Group id.</param>
+    /// <returns>The group, or <see langword="null"/>.</returns>
+    public ClipGroup? FindGroup(long id) => Groups.FirstOrDefault(g => g.Id == id);
+
+    /// <summary>
+    /// Reloads the groups column; falls back to the regular view when the selected group no longer exists,
+    /// and refreshes the group badges of the visible cards (names and icons may have changed).
+    /// </summary>
+    /// <returns>A task completing when reloaded (failures are logged, never thrown).</returns>
+    public async Task LoadGroupsAsync()
+    {
+        try
+        {
+            Groups = await controller.History.GetGroupsAsync();
+            if (SelectedGroupId is { } id && FindGroup(id) is null)
+            {
+                SelectedGroupId = null; // deleted meanwhile: back to everything
+            }
+
+            foreach (var item in Items)
+            {
+                item.RefreshGroups(FindGroup);
+            }
+
+            UpdateGroupTexts();
+            GroupsReloaded?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Loading groups failed: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Resets search/filter for a fresh summon without triggering intermediate reloads.
     /// </summary>
@@ -79,6 +141,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
         suppressReload = true;
         SearchText = string.Empty;
         Filter = ClipFilter.All;
+
+        // Like the filter, a summon always starts in the regular view: Win+V means "what did I copy last".
+        SelectedGroupId = null;
         suppressReload = false;
         IsPaused = controller.Settings.Current.IsCapturePaused;
     }
@@ -194,6 +259,21 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return false;
             case ClipChangeKind.Updated when change.Entry is { } updated:
                 var existing = Items.FirstOrDefault(i => i.Id == updated.Id);
+                if (SelectedGroupId is { } groupId && !updated.GroupIds.Contains(groupId))
+                {
+                    // Taken out of the group being viewed ("Remove from group"): it leaves this view at
+                    // once, in place, so the scroll position and the neighbors' selection survive.
+                    if (existing is not null)
+                    {
+                        Items.Remove(existing);
+                        loaded = Math.Max(0, loaded - 1);
+                        UpdateEmptyState();
+                        _ = UpdateStatusAsync();
+                    }
+
+                    return false;
+                }
+
                 if (existing is not null && existing.IsPinned == updated.IsPinned)
                 {
                     existing.Update(updated);
@@ -235,6 +315,25 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
     }
 
+    /// <summary>Retitles and reloads when another group (or the regular view) is picked.</summary>
+    /// <param name="value">New group id.</param>
+    partial void OnSelectedGroupIdChanged(long? value)
+    {
+        UpdateGroupTexts();
+        if (!suppressReload)
+        {
+            _ = ReloadAsync();
+        }
+    }
+
+    /// <summary>Header suffix and search placeholder for the current view.</summary>
+    private void UpdateGroupTexts()
+    {
+        var group = SelectedGroup;
+        GroupTitle = group is null ? string.Empty : "› " + group.Name;
+        SearchPlaceholder = group is null ? DefaultSearchPlaceholder : $"Search in {group.Name}…";
+    }
+
     /// <summary>Builds the query for a page.</summary>
     /// <param name="offset">Rows to skip.</param>
     /// <returns>The query.</returns>
@@ -245,12 +344,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
         Offset = offset,
         Limit = PageSize,
         PinnedFirst = controller.Settings.Current.PinnedOnTop,
+        GroupId = SelectedGroupId,
     };
 
     /// <summary>Wraps an entry in a card model.</summary>
     /// <param name="entry">The entry.</param>
     /// <returns>The card model.</returns>
-    private ClipItemViewModel CreateItem(ClipEntry entry) => new(entry, controller.History.GetThumbnailAsync);
+    private ClipItemViewModel CreateItem(ClipEntry entry) => new(entry, controller.History.GetThumbnailAsync, FindGroup);
 
     /// <summary>Chooses the empty-state wording for the current search/filter.</summary>
     private void UpdateEmptyState()
@@ -261,7 +361,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(SearchText))
+        if (SelectedGroup is { } group)
+        {
+            bool searching = !string.IsNullOrWhiteSpace(SearchText);
+            EmptyTitle = searching ? "No matches" : $"Nothing in {group.Name} yet";
+            EmptyMessage = searching
+                ? $"Nothing in {group.Name} contains “{SearchText.Trim()}”."
+                : $"Open the full history (the clipboard icon above), then drag cards onto the {group.Name} icon.";
+        }
+        else if (!string.IsNullOrWhiteSpace(SearchText))
         {
             EmptyTitle = "No matches";
             EmptyMessage = $"Nothing in your history contains “{SearchText.Trim()}”.";
@@ -296,6 +404,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
     {
         try
         {
+            if (SelectedGroup is { } group)
+            {
+                StatusText = $"{group.ItemCount:N0} in {group.Name}";
+                return;
+            }
+
             var stats = await controller.History.GetStatsAsync();
             StatusText = stats.PinnedCount > 0
                 ? $"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned"

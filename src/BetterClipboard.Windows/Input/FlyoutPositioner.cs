@@ -57,6 +57,39 @@ public static class FlyoutPositioner
         top = Math.Clamp(top, workArea.Top, workArea.Bottom - height);
         return new ScreenRect(left, top, left + width, top + height);
     }
+
+    /// <summary>
+    /// Grows the flyout to the left by <paramref name="extra"/> pixels (the groups column), so everything
+    /// that was on screen stays where it was and only a new strip appears on the left.
+    /// </summary>
+    /// <remarks>
+    /// Near the work area's left edge there is no room to grow left: the flyout then starts at the edge
+    /// and grows right instead (its content shifts right by the missing amount). It is never wider than
+    /// the work area, and never moves vertically.
+    /// </remarks>
+    /// <param name="bounds">Current flyout bounds.</param>
+    /// <param name="extra">Pixels to add on the left.</param>
+    /// <param name="workArea">Work area of the flyout's monitor.</param>
+    /// <returns>The grown bounds.</returns>
+    public static ScreenRect ExtendLeft(ScreenRect bounds, int extra, ScreenRect workArea)
+    {
+        int width = Math.Min(bounds.Width + Math.Max(0, extra), workArea.Width);
+        int left = Math.Clamp(bounds.Right - width, workArea.Left, Math.Max(workArea.Left, workArea.Right - width));
+        return new ScreenRect(left, bounds.Top, left + width, bounds.Bottom);
+    }
+
+    /// <summary>
+    /// Undoes <see cref="ExtendLeft"/>: removes <paramref name="extra"/> pixels from the left, keeping the
+    /// right edge (and so the list, search box and buttons) where they are.
+    /// </summary>
+    /// <param name="bounds">Current flyout bounds.</param>
+    /// <param name="extra">Pixels to remove on the left.</param>
+    /// <returns>The shrunk bounds (never narrower than 1 pixel).</returns>
+    public static ScreenRect ShrinkLeft(ScreenRect bounds, int extra)
+    {
+        int left = Math.Min(bounds.Left + Math.Max(0, extra), bounds.Right - 1);
+        return new ScreenRect(left, bounds.Top, bounds.Right, bounds.Bottom);
+    }
 }
 
 /// <summary>

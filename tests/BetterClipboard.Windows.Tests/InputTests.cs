@@ -123,6 +123,27 @@ public sealed class InputTests
         Assert.Equal(new ScreenRect(760, 236, 1160, 796), centered);
     }
 
+    /// <summary>
+    /// Opening the groups column grows the flyout on its left only (the list stays put); at the work area's
+    /// left edge it grows right instead; never wider than the work area; closing removes the strip on the left.
+    /// </summary>
+    [Fact]
+    public void Positioner_GroupsColumnGrowsAndShrinksOnTheLeft()
+    {
+        var flyout = new ScreenRect(500, 100, 900, 660);
+        var open = FlyoutPositioner.ExtendLeft(flyout, 44, Work);
+        Assert.Equal(new ScreenRect(456, 100, 900, 660), open);
+        Assert.Equal(flyout, FlyoutPositioner.ShrinkLeft(open, 44));
+
+        var atEdge = new ScreenRect(20, 100, 420, 660);
+        Assert.Equal(new ScreenRect(0, 100, 444, 660), FlyoutPositioner.ExtendLeft(atEdge, 44, Work));
+
+        var tiny = new ScreenRect(0, 0, 420, 400);
+        Assert.Equal(new ScreenRect(0, 100, 420, 660), FlyoutPositioner.ExtendLeft(new ScreenRect(0, 100, 400, 660), 44, tiny));
+        Assert.Equal(new ScreenRect(399, 100, 400, 660), FlyoutPositioner.ShrinkLeft(new ScreenRect(0, 100, 400, 660), 1000));
+        Assert.Equal(flyout, FlyoutPositioner.ExtendLeft(flyout, -5, Work));
+    }
+
     /// <summary>On a monitor smaller than the flyout it shrinks to fit instead of spilling off-screen.</summary>
     [Fact]
     public void Positioner_ShrinksOnTinyScreens()

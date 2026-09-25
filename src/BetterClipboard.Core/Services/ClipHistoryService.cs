@@ -59,6 +59,13 @@ public sealed class ClipHistoryService : IAsyncDisposable
     /// </summary>
     public event EventHandler<ClipChangedEventArgs>? Changed;
 
+    /// <summary>
+    /// Raised on the worker thread after the set of groups or a group's name, icon or item count changed.
+    /// Membership changes also raise <see cref="Changed"/> (<see cref="ClipChangeKind.Updated"/>) for each
+    /// affected entry, so a card can update its group badges in place.
+    /// </summary>
+    public event EventHandler? GroupsChanged;
+
     /// <summary>The underlying store (for read-only diagnostics such as the database path).</summary>
     public ClipStore Store => store;
 
@@ -296,6 +303,119 @@ public sealed class ClipHistoryService : IAsyncDisposable
     });
 
     /// <summary>
+    /// Reads all groups (column order, with item counts) on the thread pool.
+    /// </summary>
+    /// <returns>The groups.</returns>
+    public Task<IReadOnlyList<ClipGroup>> GetGroupsAsync() => Task.Run(store.GetGroups);
+
+    /// <summary>
+    /// Creates a group through the worker.
+    /// </summary>
+    /// <param name="name">Display name (trimmed; 1–<see cref="ClipGroup.MaxNameLength"/> characters).</param>
+    /// <param name="glyph">Icon character (see <see cref="ClipGroup.IsValidGlyph"/>).</param>
+    /// <returns>The new group.</returns>
+    /// <exception cref="ArgumentException">Invalid name or glyph.</exception>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<ClipGroup> CreateGroupAsync(string name, string glyph) => EnqueueAsync(() =>
+    {
+        var group = store.CreateGroup(name, glyph, time.GetUtcNow());
+        RaiseGroupsChanged();
+        return Task.FromResult(group);
+    });
+
+    /// <summary>
+    /// Renames a group and/or changes its icon (<see langword="null"/> keeps that part).
+    /// </summary>
+    /// <param name="id">Group id.</param>
+    /// <param name="name">New name, or <see langword="null"/>.</param>
+    /// <param name="glyph">New icon, or <see langword="null"/>.</param>
+    /// <returns>Whether the group exists.</returns>
+    /// <exception cref="ArgumentException">Invalid name or glyph.</exception>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<bool> UpdateGroupAsync(long id, string? name, string? glyph) => EnqueueAsync(() =>
+    {
+        bool exists = store.UpdateGroup(id, name, glyph);
+        if (exists)
+        {
+            RaiseGroupsChanged();
+        }
+
+        return Task.FromResult(exists);
+    });
+
+    /// <summary>
+    /// Deletes a group; its items stay (those in no other group re-enter retention from now).
+    /// </summary>
+    /// <param name="id">Group id.</param>
+    /// <returns>How many items were in it.</returns>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<int> DeleteGroupAsync(long id) => EnqueueAsync(() =>
+    {
+        var members = store.DeleteGroup(id, time.GetUtcNow());
+
+        // Every former member's badges changed: one reset instead of an event per card.
+        Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
+        RaiseGroupsChanged();
+        return Task.FromResult(members.Count);
+    });
+
+    /// <summary>
+    /// Adds entries to a group (e.g. cards dropped on its icon). Entries already in it are skipped.
+    /// </summary>
+    /// <param name="clipIds">Entry ids.</param>
+    /// <param name="groupId">Group id.</param>
+    /// <returns>How many memberships were added.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="clipIds"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<int> AddToGroupAsync(IReadOnlyList<long> clipIds, long groupId)
+    {
+        ArgumentNullException.ThrowIfNull(clipIds);
+        return EnqueueAsync(() =>
+        {
+            var now = time.GetUtcNow();
+            int added = 0;
+            foreach (var clipId in clipIds.Distinct())
+            {
+                if (store.AddToGroup(clipId, groupId, now) && store.GetEntry(clipId) is { } entry)
+                {
+                    added++;
+                    Raise(new ClipChangedEventArgs(ClipChangeKind.Updated, entry));
+                }
+            }
+
+            if (added > 0)
+            {
+                RaiseGroupsChanged();
+            }
+
+            return Task.FromResult(added);
+        });
+    }
+
+    /// <summary>
+    /// Takes an entry out of a group; when it was its last group, it re-enters retention with a fresh clock.
+    /// </summary>
+    /// <param name="clipId">Entry id.</param>
+    /// <param name="groupId">Group id.</param>
+    /// <returns>What happened.</returns>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    public Task<GroupRemoval> RemoveFromGroupAsync(long clipId, long groupId) => EnqueueAsync(() =>
+    {
+        var removal = store.RemoveFromGroup(clipId, groupId, time.GetUtcNow());
+        if (removal.Removed)
+        {
+            if (store.GetEntry(clipId) is { } entry)
+            {
+                Raise(new ClipChangedEventArgs(ClipChangeKind.Updated, entry));
+            }
+
+            RaiseGroupsChanged();
+        }
+
+        return Task.FromResult(removal);
+    });
+
+    /// <summary>
     /// Stops accepting work, drains what is already queued (so no capture is lost on exit) and stops the worker.
     /// </summary>
     /// <returns>A task completing when the worker has finished.</returns>
@@ -470,6 +590,19 @@ public sealed class ClipHistoryService : IAsyncDisposable
         catch (Exception ex)
         {
             AppLog.Error("A history change subscriber threw.", ex);
+        }
+    }
+
+    /// <summary>Raises <see cref="GroupsChanged"/>, shielding the worker from subscriber exceptions.</summary>
+    private void RaiseGroupsChanged()
+    {
+        try
+        {
+            GroupsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("A groups change subscriber threw.", ex);
         }
     }
 }

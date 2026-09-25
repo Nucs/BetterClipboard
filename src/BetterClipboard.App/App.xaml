@@ -30,6 +30,38 @@
                 <Setter Property="FontSize" Value="15" />
             </Style>
 
+            <!--
+                A square icon in the flyout's groups column (and the icon picker): 36 DIP, so the column (36 + 8 gap)
+                lines the header logo up with the icons below it. Selection and drop highlights are set from code.
+            -->
+            <Style x:Key="GroupButtonStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+                <Setter Property="Width" Value="36" />
+                <Setter Property="Height" Value="36" />
+                <Setter Property="FontSize" Value="16" />
+            </Style>
+
+            <!--
+                States of a group icon, swapped as whole styles from code: ThemeResource setters resolve against the
+                element's own theme (the flyout can be light while the app is dark), which a brush looked up in code
+                from Application.Resources would not.
+            -->
+            <Style x:Key="GroupButtonSelectedStyle" TargetType="Button" BasedOn="{StaticResource GroupButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </Style>
+            <Style x:Key="GroupButtonDropTargetStyle" TargetType="Button" BasedOn="{StaticResource GroupButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="1" />
+            </Style>
+
+            <!-- A toolbar icon button in its "on" state (the groups toggle while the column is open). -->
+            <Style x:Key="IconButtonActiveStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </Style>
+
             <!-- Clip card container: each history item is a rounded card; hover/selection use the stock Fluent states. -->
             <Style x:Key="ClipItemContainerStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
                 <Setter Property="Padding" Value="12,10,12,10" />

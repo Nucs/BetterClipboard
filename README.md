@@ -19,6 +19,7 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 | Search | None | Instant substring search, any language |
 | Content | Text, HTML, bitmaps | Text, rich text/HTML, links, colors, images with previews, copied files |
 | Screenshots | Only what you copy | Also every [ShareX](https://getsharex.com) screenshot the moment it is saved, in its own tab |
+| Organizing | Pins | Pins plus groups: drag cards onto your own icons; grouped items are kept like pins |
 | At rest | Pinned items encrypted | Everything encrypted (ChaCha20-Poly1305), bound to your PC and account |
 
 ## Install
@@ -67,13 +68,31 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | `Ctrl+P` | Pin / unpin (pinned items ignore retention and "clear") |
 | `Del` (or `Shift+Del` while searching) | Delete the item |
 | `Ctrl+F` | Back to the search box |
-| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, open link / show in Explorer, delete |
+| `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
+| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer, delete |
 | `Esc` | Clear the search, then close — focus returns to where you were |
 | Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens by your cursor again next time. |
 
 The tray icon opens the panel and Settings: shortcut, retention (items, days, size), what to record,
 ignored apps, pause, theme, start with Windows, the command line, ShareX screenshots, and **Import from Windows**, which pulls
 in everything Win+V still remembers — including its pinned items.
+
+### Groups
+
+Collect the things you reuse — snippets, addresses, links for a project — into groups.
+
+- **Open the column:** the bookmark button next to Pause (or `Ctrl+G`). The panel widens to the left and a
+  column of icons appears. The clipboard logo at the top is your whole history.
+- **Make a group:** press **+** at the bottom, give it a name if you like, and pick an icon.
+- **Fill it:** drag any card onto a group's icon. The card then shows that group's icon.
+- **Open it:** click the icon, and the panel shows only that group's items (search and the filter tabs
+  still work inside it). Click the icon again, or the logo, to go back to everything.
+- **Take things out:** right-click a card → *Remove from …*, or use *Groups* in the same menu. Right-click
+  a group's icon to rename it, change its icon or delete it. Deleting a group never deletes its items.
+
+Items in a group are **kept like pinned items**: no retention limit (count, age, size) removes them and
+*Clear* skips them. When an item leaves its last group, its retention clock starts over. It won't be
+removed just because it is old, and it keeps its place in the list.
 
 **Password managers are ignored out of the box.** *Ignored apps* comes filled with 46 password managers
 and authenticator apps, 65 process names in all: 1Password, Bitwarden, KeePass, KeePassXC, LastPass,

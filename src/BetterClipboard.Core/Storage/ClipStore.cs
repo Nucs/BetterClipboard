@@ -19,7 +19,15 @@ public sealed record UpsertResult(ClipEntry Entry, bool IsNew, bool Changed);
 /// <param name="Count">Total entries.</param>
 /// <param name="PinnedCount">Pinned entries.</param>
 /// <param name="TotalBytes">Sum of stored payload sizes (excludes SQLite overhead, index and thumbnails).</param>
-public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes);
+/// <param name="GroupedCount">Entries in at least one group (kept like pinned ones; may overlap <paramref name="PinnedCount"/>).</param>
+public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0);
+
+/// <summary>Outcome of <see cref="ClipStore.RemoveFromGroup"/>.</summary>
+/// <param name="Removed">The entry was in the group and is not anymore.</param>
+/// <param name="RetentionReset">
+/// It was the entry's last group: it is subject to retention again, with its clock reset to the removal time.
+/// </param>
+public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 
 /// <summary>
 /// SQLite-backed persistent clipboard history — the thing Windows' Win+V never had.
@@ -32,6 +40,17 @@ public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes);
 /// <c>search_text</c>, kept in sync by triggers; <c>deleted_hashes</c> tombstones content the user deleted
 /// so the next startup import from Windows' history does not resurrect it; <c>meta</c> stores
 /// <c>last_clear_utc</c> for the same reason after "clear history".
+/// </para>
+/// <para>
+/// <b>Groups.</b> <c>groups</c> (name, icon glyph, order) and <c>clip_groups</c> (membership, cascade-deleted
+/// with either side) hold the user's collections. Membership protects an entry like a pin: retention and
+/// <see cref="ClearUnpinned"/> skip it. When an entry leaves its last group, <c>clips.retain_from_utc</c> is set
+/// to that moment. Retention then measures age and recency from <c>max(last_used_utc, retain_from_utc)</c>
+/// (<see cref="RetentionKey"/>), so an item grouped months ago is not pruned the moment it is ungrouped — and
+/// its place in the list (by <c>last_used_utc</c>) does not change. These objects are <b>added idempotently at
+/// every <see cref="Initialize"/></b> without bumping <see cref="SchemaVersion"/>: an older build still
+/// opens the file (it ignores the new tables and the nullable column). Only the protection is lost while an
+/// older build runs — its retention does not know about groups.
 /// </para>
 /// <para>
 /// <b>Threading.</b> Every public method opens its own pooled connection, so the store may be used from
@@ -72,7 +91,21 @@ public sealed class ClipStore
     private const string EntryColumns =
         "c.id, c.kind, c.preview, c.content_hash, c.created_utc, c.last_used_utc, c.use_count, c.is_pinned, " +
         "c.origin, c.source_app_name, c.source_app_path, c.size_bytes, c.format_names, c.image_width, " +
-        "c.image_height, (c.thumbnail IS NOT NULL) AS has_thumbnail";
+        "c.image_height, (c.thumbnail IS NOT NULL) AS has_thumbnail, " +
+        "(SELECT group_concat(cg.group_id) FROM clip_groups cg WHERE cg.clip_id = c.id) AS group_ids";
+
+    /// <summary>
+    /// SQL predicate over the bare <c>clips</c> table: "not protected" — neither pinned nor in any group.
+    /// Everything retention and "clear history" may delete matches it.
+    /// </summary>
+    private const string Unprotected =
+        "is_pinned = 0 AND NOT EXISTS (SELECT 1 FROM clip_groups cg WHERE cg.clip_id = clips.id)";
+
+    /// <summary>
+    /// SQL expression over the bare <c>clips</c> table that retention ages and ranks by: the last use, or the
+    /// moment the entry left its last group when that is later (the "reset" retention clock).
+    /// </summary>
+    private const string RetentionKey = "max(last_used_utc, coalesce(retain_from_utc, 0))";
 
     private readonly string connectionString;
 
@@ -271,8 +304,33 @@ public sealed class ClipStore
             Execute(connection, $"PRAGMA user_version = {SchemaVersion};");
         }
 
+        EnsureGroupsSchema(connection);
         transaction.Commit();
         ApplyDataFixups(connection);
+    }
+
+    /// <summary>
+    /// Adds the groups objects when missing (see the class remarks for why this is additive and unversioned):
+    /// the <c>groups</c> and <c>clip_groups</c> tables and the nullable <c>clips.retain_from_utc</c> column.
+    /// </summary>
+    /// <remarks>Idempotent. Runs inside the caller's migration transaction, so a failure leaves nothing half-added.</remarks>
+    /// <param name="connection">Open connection inside the migration transaction.</param>
+    private static void EnsureGroupsSchema(SqliteConnection connection)
+    {
+        Execute(connection, SchemaGroups);
+
+        // ADD COLUMN has no IF NOT EXISTS: look first. A nullable column without a default is a metadata-only
+        // change in SQLite (no table rewrite), so this is instant even on a large history.
+        bool hasColumn = false;
+        using (var columns = Command(connection, "SELECT 1 FROM pragma_table_info('clips') WHERE name = 'retain_from_utc';"))
+        {
+            hasColumn = columns.ExecuteScalar() is not null;
+        }
+
+        if (!hasColumn)
+        {
+            Execute(connection, "ALTER TABLE clips ADD COLUMN retain_from_utc INTEGER;");
+        }
     }
 
     /// <summary>
@@ -512,6 +570,12 @@ public sealed class ClipStore
             command.Parameters.AddWithValue("$since", since.ToUnixTimeMilliseconds());
         }
 
+        if (query.GroupId is { } groupId)
+        {
+            predicates.Add("EXISTS (SELECT 1 FROM clip_groups cg WHERE cg.clip_id = c.id AND cg.group_id = $group)");
+            command.Parameters.AddWithValue("$group", groupId);
+        }
+
         if (predicates.Count > 0)
         {
             sql.Append(" WHERE ").AppendJoin(" AND ", predicates);
@@ -682,16 +746,17 @@ public sealed class ClipStore
     }
 
     /// <summary>
-    /// Deletes all unpinned entries (the Win+V "Clear all" semantics) and records the clear time so
-    /// imports skip anything older.
+    /// Deletes all unpinned, ungrouped entries (the Win+V "Clear all" semantics, with groups kept like pins)
+    /// and records the clear time so imports skip anything older.
     /// </summary>
     /// <param name="now">The clear time.</param>
     /// <returns>Number of entries deleted.</returns>
     /// <exception cref="SqliteException">The write failed.</exception>
-    public int ClearUnpinned(DateTimeOffset now) => Clear("DELETE FROM clips WHERE is_pinned = 0;", now);
+    public int ClearUnpinned(DateTimeOffset now) => Clear($"DELETE FROM clips WHERE {Unprotected};", now);
 
     /// <summary>
-    /// Deletes every entry including pinned ones, and records the clear time.
+    /// Deletes every entry including pinned and grouped ones, and records the clear time. The groups
+    /// themselves stay (empty): they are the user's organization, not history.
     /// </summary>
     /// <param name="now">The clear time.</param>
     /// <returns>Number of entries deleted.</returns>
@@ -699,11 +764,13 @@ public sealed class ClipStore
     public int ClearAll(DateTimeOffset now) => Clear("DELETE FROM clips;", now);
 
     /// <summary>
-    /// Applies retention to unpinned entries: age first, then count, then total size (oldest-used first).
+    /// Applies retention to unprotected entries (neither pinned nor grouped): age first, then count, then
+    /// total size (oldest first).
     /// </summary>
     /// <remarks>
-    /// Runs in one transaction; afterwards an incremental vacuum returns freed pages to the OS so the file
-    /// actually shrinks (large images are the usual culprit). Also expires old tombstones.
+    /// Age and order use <see cref="RetentionKey"/>: an entry that recently left its last group counts as
+    /// fresh from that moment. Runs in one transaction; afterwards an incremental vacuum returns freed pages
+    /// to the OS so the file actually shrinks (large images are the usual culprit). Also expires old tombstones.
     /// </remarks>
     /// <param name="policy">The limits.</param>
     /// <param name="now">Reference time for the age limit.</param>
@@ -719,7 +786,7 @@ public sealed class ClipStore
         {
             if (policy.MaxAge is { } maxAge && maxAge > TimeSpan.Zero)
             {
-                using var byAge = Command(connection, "DELETE FROM clips WHERE is_pinned = 0 AND last_used_utc < $cutoff;");
+                using var byAge = Command(connection, $"DELETE FROM clips WHERE {Unprotected} AND {RetentionKey} < $cutoff;");
                 byAge.Parameters.AddWithValue("$cutoff", (now - maxAge).ToUnixTimeMilliseconds());
                 removed += byAge.ExecuteNonQuery();
             }
@@ -727,7 +794,7 @@ public sealed class ClipStore
             if (policy.MaxItems > 0)
             {
                 using var byCount = Command(connection,
-                    "DELETE FROM clips WHERE id IN (SELECT id FROM clips WHERE is_pinned = 0 ORDER BY last_used_utc DESC, id DESC LIMIT -1 OFFSET $max);");
+                    $"DELETE FROM clips WHERE id IN (SELECT id FROM clips WHERE {Unprotected} ORDER BY {RetentionKey} DESC, id DESC LIMIT -1 OFFSET $max);");
                 byCount.Parameters.AddWithValue("$max", policy.MaxItems);
                 removed += byCount.ExecuteNonQuery();
             }
@@ -763,11 +830,217 @@ public sealed class ClipStore
     public StoreStats GetStats()
     {
         using var connection = Open();
-        using var command = Command(connection, "SELECT count(*), coalesce(sum(is_pinned), 0), coalesce(sum(size_bytes), 0) FROM clips;");
+        using var command = Command(connection,
+            "SELECT count(*), coalesce(sum(is_pinned), 0), coalesce(sum(size_bytes), 0), (SELECT count(DISTINCT clip_id) FROM clip_groups) FROM clips;");
         using var reader = command.ExecuteReader();
         reader.Read();
-        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2));
+        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3));
     }
+
+    /// <summary>
+    /// Returns all groups in column order, each with its current item count.
+    /// </summary>
+    /// <returns>The groups (possibly empty).</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public IReadOnlyList<ClipGroup> GetGroups()
+    {
+        using var connection = Open();
+        using var command = Command(connection,
+            """
+            SELECT g.id, g.name, g.glyph, g.sort_order,
+                   (SELECT count(*) FROM clip_groups cg WHERE cg.group_id = g.id)
+            FROM groups g ORDER BY g.sort_order, g.id;
+            """);
+        var groups = new List<ClipGroup>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            groups.Add(new ClipGroup(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3), reader.GetInt64(4)));
+        }
+
+        return groups;
+    }
+
+    /// <summary>
+    /// Creates a group at the end of the column.
+    /// </summary>
+    /// <param name="name">Display name (trimmed; 1–<see cref="ClipGroup.MaxNameLength"/> characters).</param>
+    /// <param name="glyph">Icon character (see <see cref="ClipGroup.IsValidGlyph"/>).</param>
+    /// <param name="now">Creation time.</param>
+    /// <returns>The new group (0 items).</returns>
+    /// <exception cref="ArgumentException">The name is blank or too long, or the glyph is not a single Private Use Area character.</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public ClipGroup CreateGroup(string name, string glyph, DateTimeOffset now)
+    {
+        var validName = ValidGroupName(name);
+        var validGlyph = ValidGroupGlyph(glyph);
+        using var connection = Open();
+        using var insert = Command(connection,
+            """
+            INSERT INTO groups (name, glyph, sort_order, created_utc)
+            VALUES ($name, $glyph, coalesce((SELECT max(sort_order) FROM groups), -1) + 1, $now)
+            RETURNING id, sort_order;
+            """);
+        insert.Parameters.AddWithValue("$name", validName);
+        insert.Parameters.AddWithValue("$glyph", validGlyph);
+        insert.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+        using var reader = insert.ExecuteReader();
+        reader.Read();
+        return new ClipGroup(reader.GetInt64(0), validName, validGlyph, reader.GetInt32(1), 0);
+    }
+
+    /// <summary>
+    /// Renames a group and/or changes its icon; <see langword="null"/> leaves that part as it is.
+    /// </summary>
+    /// <param name="id">Group id.</param>
+    /// <param name="name">New name, or <see langword="null"/>.</param>
+    /// <param name="glyph">New icon, or <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> when the group exists.</returns>
+    /// <exception cref="ArgumentException">A given name or glyph is invalid (see <see cref="CreateGroup"/>).</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public bool UpdateGroup(long id, string? name, string? glyph)
+    {
+        var validName = name is null ? null : ValidGroupName(name);
+        var validGlyph = glyph is null ? null : ValidGroupGlyph(glyph);
+        using var connection = Open();
+        using var update = Command(connection,
+            "UPDATE groups SET name = coalesce($name, name), glyph = coalesce($glyph, glyph) WHERE id = $id;");
+        update.Parameters.AddWithValue("$name", (object?)validName ?? DBNull.Value);
+        update.Parameters.AddWithValue("$glyph", (object?)validGlyph ?? DBNull.Value);
+        update.Parameters.AddWithValue("$id", id);
+        return update.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// Deletes a group. Its items stay in the history; those that were in no other group re-enter retention
+    /// with their clock reset to <paramref name="now"/>.
+    /// </summary>
+    /// <param name="id">Group id.</param>
+    /// <param name="now">Deletion time (the reset retention clock).</param>
+    /// <returns>Ids of the former members (empty when the group did not exist or was empty).</returns>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public IReadOnlyList<long> DeleteGroup(long id, DateTimeOffset now)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        var members = new List<long>();
+        using (var select = Command(connection, "SELECT clip_id FROM clip_groups WHERE group_id = $id;"))
+        {
+            select.Parameters.AddWithValue("$id", id);
+            using var reader = select.ExecuteReader();
+            while (reader.Read())
+            {
+                members.Add(reader.GetInt64(0));
+            }
+        }
+
+        // Before the cascade: afterwards nobody can tell which members had no other group.
+        using (var reset = Command(connection,
+            """
+            UPDATE clips SET retain_from_utc = $now
+            WHERE id IN (SELECT clip_id FROM clip_groups WHERE group_id = $id)
+              AND NOT EXISTS (SELECT 1 FROM clip_groups other WHERE other.clip_id = clips.id AND other.group_id <> $id);
+            """))
+        {
+            reset.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            reset.Parameters.AddWithValue("$id", id);
+            reset.ExecuteNonQuery();
+        }
+
+        using (var delete = Command(connection, "DELETE FROM groups WHERE id = $id;"))
+        {
+            delete.Parameters.AddWithValue("$id", id);
+            delete.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+        return members;
+    }
+
+    /// <summary>
+    /// Puts an entry into a group (no-op when it already is, or when either does not exist).
+    /// </summary>
+    /// <param name="clipId">Entry id.</param>
+    /// <param name="groupId">Group id.</param>
+    /// <param name="now">Membership time.</param>
+    /// <returns><see langword="true"/> when a membership was added.</returns>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public bool AddToGroup(long clipId, long groupId, DateTimeOffset now)
+    {
+        using var connection = Open();
+
+        // The EXISTS guards turn "gone meanwhile" (entry pruned, group deleted) into a quiet no-op instead of a
+        // foreign-key error — OR IGNORE only covers the duplicate-membership case.
+        using var insert = Command(connection,
+            """
+            INSERT OR IGNORE INTO clip_groups (clip_id, group_id, added_utc)
+            SELECT $clip, $group, $now
+            WHERE EXISTS (SELECT 1 FROM clips WHERE id = $clip) AND EXISTS (SELECT 1 FROM groups WHERE id = $group);
+            """);
+        insert.Parameters.AddWithValue("$clip", clipId);
+        insert.Parameters.AddWithValue("$group", groupId);
+        insert.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+        return insert.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// Takes an entry out of a group. When that was its last group, the entry re-enters retention with its
+    /// clock reset to <paramref name="now"/> (see the class remarks) — it is neither pruned at once for its
+    /// old age nor moved in the list.
+    /// </summary>
+    /// <param name="clipId">Entry id.</param>
+    /// <param name="groupId">Group id.</param>
+    /// <param name="now">Removal time (the reset retention clock).</param>
+    /// <returns>What happened.</returns>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public GroupRemoval RemoveFromGroup(long clipId, long groupId, DateTimeOffset now)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using (var delete = Command(connection, "DELETE FROM clip_groups WHERE clip_id = $clip AND group_id = $group;"))
+        {
+            delete.Parameters.AddWithValue("$clip", clipId);
+            delete.Parameters.AddWithValue("$group", groupId);
+            if (delete.ExecuteNonQuery() == 0)
+            {
+                return new GroupRemoval(false, false);
+            }
+        }
+
+        int reset;
+        using (var update = Command(connection,
+            "UPDATE clips SET retain_from_utc = $now WHERE id = $clip AND NOT EXISTS (SELECT 1 FROM clip_groups WHERE clip_id = $clip);"))
+        {
+            update.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            update.Parameters.AddWithValue("$clip", clipId);
+            reset = update.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+        return new GroupRemoval(true, reset > 0);
+    }
+
+    /// <summary>Validates and trims a group name.</summary>
+    /// <param name="name">Raw name.</param>
+    /// <returns>The trimmed name.</returns>
+    /// <exception cref="ArgumentException">Blank or longer than <see cref="ClipGroup.MaxNameLength"/>.</exception>
+    private static string ValidGroupName(string name)
+    {
+        var trimmed = name?.Trim() ?? string.Empty;
+        if (trimmed.Length == 0 || trimmed.Length > ClipGroup.MaxNameLength)
+        {
+            throw new ArgumentException($"A group name must be 1-{ClipGroup.MaxNameLength} characters.", nameof(name));
+        }
+
+        return trimmed;
+    }
+
+    /// <summary>Validates a group icon.</summary>
+    /// <param name="glyph">Raw glyph.</param>
+    /// <returns>The glyph.</returns>
+    /// <exception cref="ArgumentException">Not a single Private Use Area character.</exception>
+    private static string ValidGroupGlyph(string glyph) =>
+        ClipGroup.IsValidGlyph(glyph) ? glyph : throw new ArgumentException("A group icon must be one Segoe Fluent Icons character.", nameof(glyph));
 
     /// <summary>
     /// Reads a small piece of integration state kept with the history (e.g. the newest ShareX screenshot
@@ -957,20 +1230,20 @@ public sealed class ClipStore
         return removed;
     }
 
-    /// <summary>Deletes least-recently-used unpinned rows until their total size fits <paramref name="maxBytes"/>.</summary>
+    /// <summary>Deletes the oldest unprotected rows (by <see cref="RetentionKey"/>) until their total size fits <paramref name="maxBytes"/>.</summary>
     /// <param name="connection">Open connection inside the caller's transaction.</param>
     /// <param name="maxBytes">The size cap.</param>
     /// <returns>Rows deleted.</returns>
     private static int PruneBySize(SqliteConnection connection, long maxBytes)
     {
-        long total = Convert.ToInt64(Scalar(connection, "SELECT coalesce(sum(size_bytes), 0) FROM clips WHERE is_pinned = 0;"));
+        long total = Convert.ToInt64(Scalar(connection, $"SELECT coalesce(sum(size_bytes), 0) FROM clips WHERE {Unprotected};"));
         if (total <= maxBytes)
         {
             return 0;
         }
 
         var victims = new List<long>();
-        using (var oldest = Command(connection, "SELECT id, size_bytes FROM clips WHERE is_pinned = 0 ORDER BY last_used_utc ASC, id ASC;"))
+        using (var oldest = Command(connection, $"SELECT id, size_bytes FROM clips WHERE {Unprotected} ORDER BY {RetentionKey} ASC, id ASC;"))
         using (var reader = oldest.ExecuteReader())
         {
             while (total > maxBytes && reader.Read())
@@ -1044,7 +1317,20 @@ public sealed class ClipStore
         ImageWidth = reader.IsDBNull(13) ? null : reader.GetInt32(13),
         ImageHeight = reader.IsDBNull(14) ? null : reader.GetInt32(14),
         HasThumbnail = reader.GetInt64(15) != 0,
+        GroupIds = reader.IsDBNull(16) ? [] : ParseIds(reader.GetString(16)),
     };
+
+    /// <summary>Parses <c>group_concat</c>'s comma list (unspecified order) into ascending ids.</summary>
+    /// <param name="csv">E.g. <c>"7,3"</c>.</param>
+    /// <returns>E.g. [3, 7].</returns>
+    private static long[] ParseIds(string csv)
+    {
+        var ids = csv.Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => long.Parse(part, System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        Array.Sort(ids);
+        return ids;
+    }
 
     /// <summary>Creates a command bound to <paramref name="connection"/>.</summary>
     /// <param name="connection">Open connection.</param>
@@ -1140,5 +1426,30 @@ public sealed class ClipStore
             INSERT INTO clips_fts (clips_fts, rowid, search_text) VALUES ('delete', old.id, old.search_text);
             INSERT INTO clips_fts (rowid, search_text) VALUES (new.id, new.search_text);
         END;
+        """;
+
+    /// <summary>
+    /// Groups tables (added by <see cref="EnsureGroupsSchema"/>, see the class remarks). Memberships cascade
+    /// with the entry (delete, prune) and with the group; <c>ix_clip_groups_group</c> serves the group filter
+    /// and the per-group counts, the primary key serves "is this entry grouped".
+    /// </summary>
+    private const string SchemaGroups =
+        """
+        CREATE TABLE IF NOT EXISTS groups (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name        TEXT    NOT NULL,
+            glyph       TEXT    NOT NULL,
+            sort_order  INTEGER NOT NULL,
+            created_utc INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS clip_groups (
+            clip_id   INTEGER NOT NULL REFERENCES clips (id) ON DELETE CASCADE,
+            group_id  INTEGER NOT NULL REFERENCES groups (id) ON DELETE CASCADE,
+            added_utc INTEGER NOT NULL,
+            PRIMARY KEY (clip_id, group_id)
+        ) WITHOUT ROWID;
+
+        CREATE INDEX IF NOT EXISTS ix_clip_groups_group ON clip_groups (group_id, clip_id);
         """;
 }

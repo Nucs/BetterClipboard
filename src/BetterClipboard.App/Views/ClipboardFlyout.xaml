@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   The Win+V replacement: an acrylic, caption-less, always-on-top panel that opens next to the caret.
-  Layout: header (title + actions) / search / filter pills / history cards / keyboard hints.
+  Layout: header (title + actions) / search / filter pills / history cards / keyboard hints, plus the
+  optional groups column on the left (GroupsColumn: 0 wide when closed, 44 when open — the window grows to
+  the left by the same amount, so everything else stays where it was on screen and only the header's logo
+  and title slide left into the column's top).
   Keyboard handling lives in Root_PreviewKeyDown so it works while focus stays in the search box.
   Root's Transparent background is load-bearing: it makes the empty areas hit-testable, so dragging the
   background moves the window like a title bar (Root_PointerPressed); a null background would let those
@@ -22,6 +25,10 @@
         Background="Transparent"
         PreviewKeyDown="Root_PreviewKeyDown"
         RowSpacing="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="GroupsColumn" Width="0" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -30,31 +37,60 @@
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!--  Header  -->
-        <Grid ColumnSpacing="8">
+        <!--  Header (spans the groups column: its logo is the column's top icon, "the regular view")  -->
+        <Grid Grid.ColumnSpan="2" ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <Image
-                Width="20"
-                Height="20"
-                Margin="2,0,0,0"
-                VerticalAlignment="Center"
-                Source="ms-appx:///Assets/AppIcon64.png" />
-            <StackPanel
+            <!--  24 wide when the column is closed (the old logo spot), 36 when open (code-behind)  -->
+            <Button
+                x:Name="LogoButton"
+                Width="24"
+                Height="32"
+                AutomationProperties.Name="All clipboard history"
+                Click="LogoButton_Click"
+                Style="{StaticResource GroupButtonStyle}"
+                ToolTipService.ToolTip="All clipboard history">
+                <Image
+                    Width="20"
+                    Height="20"
+                    Source="ms-appx:///Assets/AppIcon64.png" />
+            </Button>
+            <!--
+                A grid, not a stack: in a group view the group name takes the remaining width and trims, so the
+                "Paused" chip always fits (a stack clipped it to "Pau"). GroupTitleColumn is Auto in the regular
+                view (code-behind), keeping the chip right after "Clipboard". Margins instead of ColumnSpacing:
+                spacing would also apply around the empty, collapsed name.
+            -->
+            <Grid
+                x:Name="TitlePanel"
                 Grid.Column="1"
-                VerticalAlignment="Center"
-                Orientation="Horizontal"
-                Spacing="8">
+                VerticalAlignment="Center">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition x:Name="GroupTitleColumn" Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
                 <TextBlock
                     VerticalAlignment="Center"
                     FontSize="15"
                     FontWeight="SemiBold"
                     Text="Clipboard" />
+                <TextBlock
+                    Grid.Column="1"
+                    Margin="8,0,0,0"
+                    VerticalAlignment="Center"
+                    FontSize="15"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{x:Bind ViewModel.GroupTitle, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    Visibility="{x:Bind TextVisibility(ViewModel.GroupTitle), Mode=OneWay}" />
                 <Border
                     x:Name="PausedChip"
+                    Grid.Column="2"
+                    Margin="8,0,0,0"
                     Padding="8,1,8,2"
                     VerticalAlignment="Center"
                     Background="{ThemeResource SystemFillColorCautionBackgroundBrush}"
@@ -65,7 +101,7 @@
                         Foreground="{ThemeResource SystemFillColorCautionBrush}"
                         Text="Paused" />
                 </Border>
-            </StackPanel>
+            </Grid>
             <StackPanel
                 Grid.Column="2"
                 Orientation="Horizontal"
@@ -77,19 +113,38 @@
                     Content="{x:Bind PauseGlyph(ViewModel.IsPaused), Mode=OneWay}"
                     Style="{StaticResource IconButtonStyle}"
                     ToolTipService.ToolTip="{x:Bind PauseTooltip(ViewModel.IsPaused), Mode=OneWay}" />
+                <!--
+                    Groups toggle. Segoe Fluent Icons has no bookmark ribbon (its "Bookmarks" E8A4 is drawn as a
+                    bulleted list), so the ribbon is a 16-DIP path: an outline while the column is closed (F0 =
+                    even-odd fill of an outer and an inner ribbon, 1.25 DIP apart), filled while it is open.
+                -->
+                <Button
+                    x:Name="GroupsToggle"
+                    AutomationProperties.Name="Show groups"
+                    Click="GroupsToggle_Click"
+                    Style="{StaticResource IconButtonStyle}"
+                    ToolTipService.ToolTip="Groups (Ctrl+G)">
+                    <Grid>
+                        <PathIcon x:Name="RibbonOutline" Data="F0 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z M4.5,2.75 A0.25,0.25 0 0 0 4.25,3 V11.9 L8,9.4 L11.75,11.9 V3 A0.25,0.25 0 0 0 11.5,2.75 Z" />
+                        <PathIcon
+                            x:Name="RibbonFilled"
+                            Data="F1 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z"
+                            Visibility="Collapsed" />
+                    </Grid>
+                </Button>
                 <Button
                     x:Name="ClearButton"
                     AutomationProperties.Name="Clear history"
                     Content="&#xE74D;"
                     Style="{StaticResource IconButtonStyle}"
-                    ToolTipService.ToolTip="Clear history (keeps pinned)">
+                    ToolTipService.ToolTip="Clear history (keeps pinned and grouped items)">
                     <Button.Flyout>
                         <Flyout x:Name="ClearFlyout" Closed="Popup_Closed" Opened="Popup_Opened">
                             <StackPanel MaxWidth="260" Spacing="12">
                                 <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="Clear clipboard history?" />
                                 <TextBlock
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="Unpinned items are deleted for good. Pinned items stay."
+                                    Text="Items are deleted for good. Pinned items and items in groups stay."
                                     TextWrapping="Wrap" />
                                 <Button
                                     HorizontalAlignment="Right"
@@ -109,12 +164,42 @@
             </StackPanel>
         </Grid>
 
+        <!--  Groups column: the user's group icons, "+" at the bottom. Cards dropped on an icon join that group.  -->
+        <Grid
+            x:Name="GroupsPane"
+            Grid.Row="1"
+            Grid.RowSpan="4"
+            Grid.Column="0"
+            Margin="0,0,8,0"
+            RowSpacing="4"
+            Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <ScrollViewer
+                HorizontalScrollMode="Disabled"
+                VerticalScrollBarVisibility="Hidden"
+                VerticalScrollMode="Auto">
+                <StackPanel x:Name="GroupButtons" Spacing="4" />
+            </ScrollViewer>
+            <Button
+                x:Name="AddGroupButton"
+                Grid.Row="1"
+                AutomationProperties.Name="New group"
+                Click="AddGroupButton_Click"
+                Content="&#xE710;"
+                Style="{StaticResource GroupButtonStyle}"
+                ToolTipService.ToolTip="New group: pick an icon, then drag cards onto it" />
+        </Grid>
+
         <!--  Search  -->
         <AutoSuggestBox
             x:Name="SearchBox"
             Grid.Row="1"
+            Grid.Column="1"
             AutomationProperties.Name="Search clipboard history"
-            PlaceholderText="Search everything you've copied…"
+            PlaceholderText="{x:Bind ViewModel.SearchPlaceholder, Mode=OneWay}"
             QueryIcon="Find"
             Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
@@ -122,6 +207,7 @@
         <SelectorBar
             x:Name="Filters"
             Grid.Row="2"
+            Grid.Column="1"
             Margin="-4,0,-4,0"
             SelectionChanged="Filters_SelectionChanged">
             <SelectorBar.Resources>
@@ -151,12 +237,16 @@
         </SelectorBar>
 
         <!--  History  -->
+        <!--  CanDragItems is switched on with the groups column (a drag needs a drop target).  -->
         <ListView
             x:Name="ItemsList"
             Grid.Row="3"
+            Grid.Column="1"
             Margin="-4,0,-4,0"
             Padding="4,0,4,0"
             ContainerContentChanging="ItemsList_ContainerContentChanging"
+            DragItemsCompleted="ItemsList_DragItemsCompleted"
+            DragItemsStarting="ItemsList_DragItemsStarting"
             IsItemClickEnabled="True"
             ItemClick="ItemsList_ItemClick"
             ItemContainerStyle="{StaticResource ClipItemContainerStyle}"
@@ -177,6 +267,7 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <FontIcon
                                 FontSize="12"
@@ -189,8 +280,18 @@
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                                 Text="{x:Bind Caption, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis" />
-                            <FontIcon
+                            <!--  The icons of the groups this card is in (symbol-font text)  -->
+                            <TextBlock
                                 Grid.Column="2"
+                                VerticalAlignment="Center"
+                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind GroupBadges, Mode=OneWay}"
+                                ToolTipService.ToolTip="{x:Bind GroupBadgesTooltip, Mode=OneWay}"
+                                Visibility="{x:Bind GroupBadgesVisibility, Mode=OneWay}" />
+                            <FontIcon
+                                Grid.Column="3"
                                 FontSize="12"
                                 Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                 Glyph="&#xE842;"
@@ -247,6 +348,7 @@
         <!--  Empty state  -->
         <StackPanel
             Grid.Row="3"
+            Grid.Column="1"
             MaxWidth="280"
             HorizontalAlignment="Center"
             VerticalAlignment="Center"
@@ -270,7 +372,10 @@
         </StackPanel>
 
         <!--  Footer  -->
-        <Grid Grid.Row="4" ColumnSpacing="8">
+        <Grid
+            Grid.Row="4"
+            Grid.Column="1"
+            ColumnSpacing="8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />

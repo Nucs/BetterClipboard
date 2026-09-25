@@ -82,6 +82,12 @@ public sealed class AppController
     /// <summary>Raised on the UI thread after the global shortcut was (re)applied.</summary>
     public event EventHandler? HotkeyStatusChanged;
 
+    /// <summary>
+    /// Raised on the UI thread after groups were created, renamed, re-iconed, deleted, or gained/lost items
+    /// (forwarded from the worker thread); the flyout rebuilds its groups column.
+    /// </summary>
+    public event EventHandler? GroupsChanged;
+
     /// <summary>Raised on the UI thread after command-line access was switched on or off (or failed to start).</summary>
     public event EventHandler? CommandLineStatusChanged;
 
@@ -170,6 +176,7 @@ public sealed class AppController
         var store = OpenMachineBoundStore();
         history = new ClipHistoryService(store, new WinRtImageAnalyzer(), () => rules);
         history.Changed += (_, e) => ui.TryEnqueue(() => HistoryChanged?.Invoke(this, e));
+        history.GroupsChanged += (_, _) => ui.TryEnqueue(() => GroupsChanged?.Invoke(this, EventArgs.Empty));
         history.Start();
         _ = history.PruneAsync();
 

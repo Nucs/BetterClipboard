@@ -161,7 +161,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsHotkeyActive { get; set; }
 
-    /// <summary>"1,234 items · 56.1 MB · 12 pinned".</summary>
+    /// <summary>"1,234 items · 56.1 MB · 12 pinned · 30 in groups".</summary>
     [ObservableProperty]
     public partial string StatsText { get; set; } = "…";
 
@@ -336,7 +336,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             var stats = await controller.History.GetStatsAsync();
-            StatsText = $"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned";
+            StatsText = $"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups";
         }
         catch (Exception ex)
         {

@@ -65,4 +65,11 @@ public sealed record ClipQuery
     /// <see cref="Model.ClipEntry.LastUsedUtc"/>, so an old item copied again counts as recent.
     /// </summary>
     public DateTimeOffset? UsedSince { get; init; }
+
+    /// <summary>
+    /// Only entries in this <see cref="Model.ClipGroup"/> (the panel's selected group icon);
+    /// <see langword="null"/> = the regular view over the whole history. Combines with
+    /// <see cref="Filter"/> and <see cref="SearchText"/> (e.g. the images of one group).
+    /// </summary>
+    public long? GroupId { get; init; }
 }

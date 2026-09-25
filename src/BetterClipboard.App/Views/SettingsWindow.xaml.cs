@@ -185,24 +185,24 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Click data.</param>
     private void AddKnownPasswordManagers_Click(object sender, RoutedEventArgs e) => ViewModel.AddKnownPasswordManagers();
 
-    /// <summary>Clear unpinned history.</summary>
+    /// <summary>Clear history except pinned items and items in groups.</summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
     private async void ClearUnpinned_Click(object sender, RoutedEventArgs e)
     {
-        if (await ConfirmAsync("Clear clipboard history?", "All unpinned items are deleted permanently. Pinned items stay.", "Clear"))
+        if (await ConfirmAsync("Clear clipboard history?", "Items are deleted permanently. Pinned items and items in groups stay.", "Clear"))
         {
             await controller.History.ClearAsync(includePinned: false);
             await ViewModel.RefreshStatsAsync();
         }
     }
 
-    /// <summary>Clear everything including pins.</summary>
+    /// <summary>Clear everything including pins and grouped items (the groups themselves stay, empty).</summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
     private async void ClearAll_Click(object sender, RoutedEventArgs e)
     {
-        if (await ConfirmAsync("Delete everything?", "Every item — including pinned ones — is deleted permanently. This cannot be undone.", "Delete everything"))
+        if (await ConfirmAsync("Delete everything?", "Every item — including pinned ones and those in groups — is deleted permanently. Your groups stay, empty. This cannot be undone.", "Delete everything"))
         {
             await controller.History.ClearAsync(includePinned: true);
             await ViewModel.RefreshStatsAsync();

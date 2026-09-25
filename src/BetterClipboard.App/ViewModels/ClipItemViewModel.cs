@@ -26,6 +26,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
     private static readonly FontFamily UiFont = FontFamily.XamlAutoFontFamily;
 
     private readonly Func<long, Task<byte[]?>> thumbnailLoader;
+    private Func<long, ClipGroup?> groupLookup;
     private bool thumbnailRequested;
 
     /// <summary>
@@ -33,12 +34,15 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// </summary>
     /// <param name="entry">The history entry.</param>
     /// <param name="thumbnailLoader">Loads PNG thumbnail bytes by entry id (called at most once, on demand).</param>
-    public ClipItemViewModel(ClipEntry entry, Func<long, Task<byte[]?>> thumbnailLoader)
+    /// <param name="groupLookup">Finds a group by id for the card's group badges; <see langword="null"/> = no badges.</param>
+    public ClipItemViewModel(ClipEntry entry, Func<long, Task<byte[]?>> thumbnailLoader, Func<long, ClipGroup?>? groupLookup = null)
     {
         Entry = entry;
         this.thumbnailLoader = thumbnailLoader;
+        this.groupLookup = groupLookup ?? (_ => null);
         IsPinned = entry.IsPinned;
         Caption = BuildCaption();
+        (GroupBadges, GroupBadgesTooltip) = BuildGroupBadges();
 
         if (entry.Kind == ClipKind.Color && ColorLiteral.TryParse(entry.Preview, out var argb))
         {
@@ -73,6 +77,26 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     /// <summary>Pin badge visibility.</summary>
     public Visibility PinVisibility => IsPinned ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>
+    /// The icons of the groups the entry is in, as symbol-font text (thin-space separated), shown in the
+    /// card header so a drop onto a group icon is visibly confirmed; empty when in none.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupBadgesVisibility))]
+    public partial string GroupBadges { get; set; }
+
+    /// <summary>Tooltip naming the groups behind <see cref="GroupBadges"/>.</summary>
+    [ObservableProperty]
+    public partial string GroupBadgesTooltip { get; set; }
+
+    /// <summary>Group badges visibility.</summary>
+    public Visibility GroupBadgesVisibility => GroupBadges.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>Whether the entry is in the group with <paramref name="groupId"/>.</summary>
+    /// <param name="groupId">Group id.</param>
+    /// <returns><see langword="true"/> for a member.</returns>
+    public bool IsInGroup(long groupId) => Entry.GroupIds.Contains(groupId);
 
     /// <summary>Fluent glyph describing the kind.</summary>
     public string KindGlyph => Kind switch
@@ -123,10 +147,36 @@ public sealed partial class ClipItemViewModel : ObservableObject
         Entry = entry;
         IsPinned = entry.IsPinned;
         Caption = BuildCaption();
+        (GroupBadges, GroupBadgesTooltip) = BuildGroupBadges();
     }
 
     /// <summary>Re-formats the relative time in the caption.</summary>
     public void RefreshCaption() => Caption = BuildCaption();
+
+    /// <summary>
+    /// Re-renders the group badges after groups changed (renamed, new icon, deleted) — the entry snapshot
+    /// itself only holds group ids.
+    /// </summary>
+    /// <param name="lookup">Finds a group by id in the fresh group list.</param>
+    public void RefreshGroups(Func<long, ClipGroup?> lookup)
+    {
+        groupLookup = lookup;
+        (GroupBadges, GroupBadgesTooltip) = BuildGroupBadges();
+    }
+
+    /// <summary>Builds the badge glyphs and their tooltip from the entry's group ids.</summary>
+    /// <returns>Glyph text and tooltip (both empty when the entry is in no known group).</returns>
+    private (string Badges, string Tooltip) BuildGroupBadges()
+    {
+        // A group deleted meanwhile (id without a lookup hit) simply shows no badge.
+        var groups = Entry.GroupIds.Select(groupLookup).OfType<ClipGroup>().ToArray();
+        if (groups.Length == 0)
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        return (string.Join("\u2009", groups.Select(g => g.Glyph)), "In " + string.Join(", ", groups.Select(g => g.Name)));
+    }
 
     /// <summary>
     /// Starts loading the thumbnail if this is an image entry and it has not been requested yet.

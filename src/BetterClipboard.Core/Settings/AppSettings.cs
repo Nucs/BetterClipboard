@@ -53,16 +53,16 @@ public sealed record AppSettings
     /// </summary>
     public bool UseKeyboardHookFallback { get; init; } = true;
 
-    /// <summary>Maximum unpinned entries kept (most recently used win); 0 = unlimited.</summary>
+    /// <summary>Maximum entries kept apart from pinned and grouped ones (most recently used win); 0 = unlimited.</summary>
     public int MaxItems { get; init; } = 10_000;
 
-    /// <summary>Drop unpinned entries not used for this many days; 0 = keep forever.</summary>
+    /// <summary>Drop entries not used for this many days (pinned and grouped ones never); 0 = keep forever.</summary>
     public int RetentionDays { get; init; }
 
     /// <summary>Largest single copy recorded, in MB (Win+V caps at 4 MB).</summary>
     public int MaxItemSizeMB { get; init; } = 64;
 
-    /// <summary>Total payload budget for unpinned history, in MB; 0 = unlimited.</summary>
+    /// <summary>Total payload budget for history apart from pinned and grouped entries, in MB; 0 = unlimited.</summary>
     public int MaxTotalSizeMB { get; init; } = 4096;
 
     /// <summary>Record image-only copies (screenshots etc.).</summary>
@@ -85,6 +85,12 @@ public sealed record AppSettings
 
     /// <summary>Show pinned items above everything else.</summary>
     public bool PinnedOnTop { get; init; } = true;
+
+    /// <summary>
+    /// Whether the panel shows its groups column (the bookmark button in the header toggles it; the panel
+    /// then grows to the left). Remembered so the column is there again on the next Win+V.
+    /// </summary>
+    public bool ShowGroupsPane { get; init; }
 
     /// <summary>Import Windows' current Win+V history (including its pinned items) at every startup.</summary>
     public bool ImportWindowsHistoryOnStartup { get; init; } = true;
