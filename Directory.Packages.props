@@ -5,7 +5,17 @@
   </PropertyGroup>
   <ItemGroup>
     <!-- UI stack -->
-    <PackageVersion Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <!--
+      Windows App SDK components instead of the Microsoft.WindowsAppSDK 2.5.1 metapackage: the metapackage
+      also drags in AI (Phi Silica / semantic index), ML (onnxruntime + DirectML, ~40 MB), Search and
+      Widgets, none of which BetterClipboard uses. Versions are the ones metapackage 2.5.1 pins; bump them
+      together from its dependency list (`nuget deps Microsoft.WindowsAppSDK <version>`).
+    -->
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Base" Version="2.0.4" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.Foundation" Version="2.3.12" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.InteractiveExperiences" Version="2.1.9" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.WinUI" Version="2.3.9" />
+    <PackageVersion Include="Microsoft.WindowsAppSDK.DWrite" Version="2.1.0" />
     <PackageVersion Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 

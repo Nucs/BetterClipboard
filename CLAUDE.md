@@ -17,10 +17,12 @@ strings/registrations, not proven by execution.
 |---|---|
 | Is Win+V open source? | **No.** It is closed Windows code split across an OS service (`cbdhsvc.dll`) and a Store-serviced UI package (`TextInputHost.exe`). Nothing to fork or "refactor". |
 | Where is it coded? | Microsoft-internal trees: service = `onecoreuap\windows\cbdhsvc\{dll,lib}\*.cpp` (C++ / WRL / WIL); UI = TextInput repo `Src\Components\TextInput\SuggestionUI\ClipboardAdapter.cpp` (C++/CX + XAML) **[verified — embedded source paths]**. |
-| Where is it hosted? | Backend: per-user service `cbdhsvc_<LUID>` in `svchost.exe -k ClipboardSvcGroup`. UI: [`TextInputHost.exe`](file:///C:/Windows/SystemApps/MicrosoftWindows.Client.CBS_cw5n1h2txyewy/TextInputHost.exe) (package `MicrosoftWindows.Client.CBS_cw5n1h2txyewy`). Hotkey: `explorer.exe` **[verified]**. |
+| Where is it hosted? | Backend: per-user service `cbdhsvc_<LUID>` in `svchost.exe -k ClipboardSvcGroup`. UI: `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe` (package `MicrosoftWindows.Client.CBS_cw5n1h2txyewy`). Hotkey: `explorer.exe` **[verified]**. |
 | Reverse-engineerable? | Yes, for **interoperability** (registry, WinRT registrations, on-disk format, strings, public PDBs on the Microsoft symbol server). The Windows EULA forbids RE beyond what law permits, and copying their code would be pointless anyway. We did black-box/interop observation only (no disassembly) and re-implement on **public** Win32/WinRT APIs. |
 | Why does it forget on restart? | By design: unpinned items live in the service's **memory** (`ClipboardHistoryBuffer`); only **pinned** items are written to disk (DPAPI-NG encrypted) **[verified]**. After this morning's boot the WinRT history held just 3 new items + 1 pinned one. |
 | Can we take over? | **Yes.** (1) Capture ourselves via `AddClipboardFormatListener`; (2) persist in SQLite; (3) hijack `Win+V` with a low-level keyboard hook (or `DisabledHotkeys=V` + Explorer restart); (4) import Windows' current history (WinRT API works from a **background unpackaged** process **[verified]**) and its pinned items (decryptable with `NCryptUnprotectSecret` as the same user **[verified]**). |
+| Is there an "atomic", never-miss clipboard subscription? | **No — none exists in user mode [verified, §1.9].** Win+V's service, WinRT `Clipboard.ContentChanged` and Chromium's new web `clipboardchange` event all sit on the same `WM_CLIPBOARDUPDATE` notification we use; every consumer reads the clipboard *after* being told. The legacy viewer chain is **not** synchronous either (producer's `CloseClipboard` returned in 0.01 ms while the viewer slept 150 ms). What we control: read immediately (no debounce) → copies ≥ 0.5 ms apart are all captured; faster bursts are counted, not silently lost. |
+| Can Win+V be replaced for good? | **Yes, both ways [verified 2026-09-25]:** default LL-hook interception (no system change), or `DisabledHotkeys=V` + Explorer restart → Win+V becomes free and BetterClipboard gets it via plain `RegisterHotKey`. Original state restored afterwards (value absent, Explorer owns Win+V again). |
 
 ---
 
@@ -30,19 +32,19 @@ strings/registrations, not proven by execution.
 
 | Layer | Binary / location | Role | Tech |
 |---|---|---|---|
-| Hotkey owner | [`explorer.exe`](file:///C:/Windows/explorer.exe) | Registers `Win+V` (telemetry event `ClipboardHistoryHotkeyRegistration`), activates `ClipboardHistoryServer`, reads policy `AllowClipboardHistory`/`AllowCrossDeviceClipboard` | C++ |
-| Hotkey router | [`twinui.pcshell.dll`](file:///C:/Windows/System32/twinui.pcshell.dll) | `ShellHotKeyRequestReceived` → shows `SuggestionUIClipboardHistory` | C++ |
-| UI host | [`TextInputHost.exe`](file:///C:/Windows/SystemApps/MicrosoftWindows.Client.CBS_cw5n1h2txyewy/TextInputHost.exe) ("Windows Input Experience", package `MicrosoftWindows.Client.CBS` v1000.26100.334.0) | Hosts the emoji/GIF/kaomoji/symbols/**clipboard** panel | XAML |
-| UI module | [`WindowsInternal.ComposableShell.Experiences.SuggestionUIUndocked.dll`](file:///C:/Windows/SystemApps/MicrosoftWindows.Client.CBS_cw5n1h2txyewy/WindowsInternal.ComposableShell.Experiences.SuggestionUIUndocked.dll) (v2605.22000.400.0) + `.winmd` | `ClipboardAdapter` / `ClipboardHistoryItem` (pin/unpin/delete/select/upload, `GetMaxPinnedClipboardHistoryItemsAsync`, `PasswordFieldClipboardHistory`) | **C++/CX** (hat `^` types, PPL tasks) |
-| UI → service wrapper | [`windowsudk.shellcommon.dll`](file:///C:/Windows/System32/windowsudk.shellcommon.dll) ("Windows **Undocked Dev Kit** Shellcommon") | In-proc WinRT classes `WindowsUdk.ApplicationModel.DataTransfer.{ClipboardHistory, ClipboardHistoryItem, ClipboardSettings, ClipboardViewManager, ClipboardHistoryPromotionManager}` | WinRT |
-| Public API | [`windows.applicationmodel.datatransfer.dll`](file:///C:/Windows/System32/windows.applicationmodel.datatransfer.dll) | `Windows.ApplicationModel.DataTransfer.Clipboard` (+ `ClipboardContentOptions`, internal `ClipboardPolicy`) → talks to the OOP server | WinRT |
-| **Backend service** | [`cbdhsvc.dll`](file:///C:/Windows/System32/cbdhsvc.dll) ("Microsoft (R) Clipboard History", 10.0.26100.8117) in `svchost.exe -k ClipboardSvcGroup -p` | Out-of-proc WinRT server **`CBDHSvc`** (`ServerType=2` service) hosting `Windows.ApplicationModel.Internal.DataTransfer.{ClipboardHistoryServer, ClipboardBrokerProvider, ClipboardHistoryItemInternal, ClipboardOperationAppInfo, ClipboardSettings, ClipboardSettingsProvider, ClipboardSignalProducer, ClipboardViewManager}` + `WindowsInternal.SmartActionPlatform.SmartClipboardProxy` | C++ (WRL/WIL, `Windows.Data.Json`, `Windows.Storage.Compression`, `DataProtectionProvider`) |
-| Cloud sync | [`cdprt.dll`](file:///C:/Windows/System32/cdprt.dll) (Connected Devices Platform runtime) | `Windows.ApplicationModel.Internal.DataTransfer.{CloudClipboard, ClipboardChannel}` — Microsoft-account sync | C++ |
-| Smart actions / AI | [`SmartActionPlatform.dll`](file:///C:/Windows/System32/SmartActionPlatform.dll), [`TaskFlowDataEngine.dll`](file:///C:/Windows/System32/TaskFlowDataEngine.dll) | `SmartClipboard` suggested actions, `ClipboardSignalListener`; cbdhsvc also references `Microsoft.Windows.AugLoop.CBS` packages **[inferred: AI "augmentation loop" features]** | — |
+| Hotkey owner | `C:\Windows\explorer.exe` | Registers `Win+V` (telemetry event `ClipboardHistoryHotkeyRegistration`), activates `ClipboardHistoryServer`, reads policy `AllowClipboardHistory`/`AllowCrossDeviceClipboard` | C++ |
+| Hotkey router | `C:\Windows\System32\twinui.pcshell.dll` | `ShellHotKeyRequestReceived` → shows `SuggestionUIClipboardHistory` | C++ |
+| UI host | `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\TextInputHost.exe` ("Windows Input Experience", package `MicrosoftWindows.Client.CBS` v1000.26100.334.0) | Hosts the emoji/GIF/kaomoji/symbols/**clipboard** panel | XAML |
+| UI module | `C:\Windows\SystemApps\MicrosoftWindows.Client.CBS_cw5n1h2txyewy\WindowsInternal.ComposableShell.Experiences.SuggestionUIUndocked.dll` (v2605.22000.400.0) + `.winmd` | `ClipboardAdapter` / `ClipboardHistoryItem` (pin/unpin/delete/select/upload, `GetMaxPinnedClipboardHistoryItemsAsync`, `PasswordFieldClipboardHistory`) | **C++/CX** (hat `^` types, PPL tasks) |
+| UI → service wrapper | `C:\Windows\System32\windowsudk.shellcommon.dll` ("Windows **Undocked Dev Kit** Shellcommon") | In-proc WinRT classes `WindowsUdk.ApplicationModel.DataTransfer.{ClipboardHistory, ClipboardHistoryItem, ClipboardSettings, ClipboardViewManager, ClipboardHistoryPromotionManager}` | WinRT |
+| Public API | `C:\Windows\System32\windows.applicationmodel.datatransfer.dll` | `Windows.ApplicationModel.DataTransfer.Clipboard` (+ `ClipboardContentOptions`, internal `ClipboardPolicy`) → talks to the OOP server | WinRT |
+| **Backend service** | `C:\Windows\System32\cbdhsvc.dll` ("Microsoft (R) Clipboard History", 10.0.26100.8117) in `svchost.exe -k ClipboardSvcGroup -p` | Out-of-proc WinRT server **`CBDHSvc`** (`ServerType=2` service) hosting `Windows.ApplicationModel.Internal.DataTransfer.{ClipboardHistoryServer, ClipboardBrokerProvider, ClipboardHistoryItemInternal, ClipboardOperationAppInfo, ClipboardSettings, ClipboardSettingsProvider, ClipboardSignalProducer, ClipboardViewManager}` + `WindowsInternal.SmartActionPlatform.SmartClipboardProxy` | C++ (WRL/WIL, `Windows.Data.Json`, `Windows.Storage.Compression`, `DataProtectionProvider`) |
+| Cloud sync | `C:\Windows\System32\cdprt.dll` (Connected Devices Platform runtime) | `Windows.ApplicationModel.Internal.DataTransfer.{CloudClipboard, ClipboardChannel}` — Microsoft-account sync | C++ |
+| Smart actions / AI | `C:\Windows\System32\SmartActionPlatform.dll`, `C:\Windows\System32\TaskFlowDataEngine.dll` | `SmartClipboard` suggested actions, `ClipboardSignalListener`; cbdhsvc also references `Microsoft.Windows.AugLoop.CBS` packages **[inferred: AI "augmentation loop" features]** | — |
 
 Service registration **[verified]**: template `cbdhsvc` (Type `0x60` = `USER_SHARE_PROCESS | TEMPLATE`,
 auto-start delayed, `UserServiceFlags=2`, `RequiredPrivileges=SeImpersonatePrivilege`) → per-user
-instance `cbdhsvc_6f5e93540` (suffix = logon-session LUID). `ServiceDll = %SystemRoot%\System32\cbdhsvc.dll`.
+instance `cbdhsvc_<hex>` (suffix = logon-session LUID, changes every sign-in). `ServiceDll = %SystemRoot%\System32\cbdhsvc.dll`.
 Early Windows 10 builds (1809–1909) hosted the UI in
 `SystemApps\InputApp_cw5n1h2txyewy\WindowsInternal.ComposableShell.Experiences.TextInput.InputApp.exe`
 (from memory, unverified).
@@ -131,7 +133,10 @@ in strings).
 
 Explorer hotkey kill-switch: `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`
 `DisabledHotkeys` (REG_SZ, each char = one `Win+<char>` combo, e.g. `"V"`), effective after Explorer
-restart/sign-out **[community-reported, not yet tested here]** (value absent on this machine).
+restart/sign-out **[verified 2026-09-25]**: with `"V"` + Explorer restart, `RegisterHotKey(MOD_WIN,'V')`
+succeeds (was 1409) and the app logs `Win+V registered with RegisterHotKey (no keyboard hook needed)`;
+deleting the value + restart gives Win+V back to Explorer. `explorer.exe` contains the string
+`DisabledHotkeys`, so the knob is still read by this build. (Value absent on this machine by default.)
 
 ### 1.6 Hotkey ownership probe (`RegisterHotKey`, 2026-09-25) **[verified]**
 
@@ -150,7 +155,8 @@ dummy key so releasing Win doesn't open Start — the PowerToys Keyboard-Manager
 ### 1.7 Public APIs we build on
 
 - **Win32 clipboard** **[docs]**: `AddClipboardFormatListener` + `WM_CLIPBOARDUPDATE` (Vista+; replaces the
-  fragile `SetClipboardViewer` chain), `GetClipboardSequenceNumber`, `OpenClipboard` (fails while another
+  fragile `SetClipboardViewer` chain — which, measured, is *not* synchronous either, §1.9),
+  `GetClipboardSequenceNumber` (per window station; bumps: see §1.9), `OpenClipboard` (fails while another
   process holds it → retry), `EnumClipboardFormats` (original formats first, then synthesized ones),
   `GetClipboardData`/`SetClipboardData` (HGLOBAL `GMEM_MOVEABLE`; system owns it after success),
   `EmptyClipboard` (needs a non-NULL owner HWND or `SetClipboardData` fails), `RegisterClipboardFormat`
@@ -187,14 +193,45 @@ dummy key so releasing Win doesn't open Start — the PowerToys Keyboard-Manager
   [Using the clipboard (Support)](https://support.microsoft.com/en-us/windows/using-the-clipboard-30375039-ce71-9fe4-5b30-21b7aab6b13f).
 
 Reproduction probes that produced the verified facts live in
-[`tools/probes/`](file:///K:/source/BetterClipboard/tools/probes) — re-run them after Windows updates
+[`tools/probes/`](tools/probes) — re-run them after Windows updates
 (they print metadata only, never clipboard content):
-[`probe_dpapi.cs`](file:///K:/source/BetterClipboard/tools/probes/probe_dpapi.cs) (pinned-blob decryption),
-[`probe_hotkeys.cs`](file:///K:/source/BetterClipboard/tools/probes/probe_hotkeys.cs) (hotkey ownership),
-[`probe_history.cs`](file:///K:/source/BetterClipboard/tools/probes/probe_history.cs) (WinRT history from background),
-[`winrt_classes.py`](file:///K:/source/BetterClipboard/tools/probes/winrt_classes.py) (WinRT class hosting),
-[`binary_strings.py`](file:///K:/source/BetterClipboard/tools/probes/binary_strings.py) (strings of a binary).
+[`probe_dpapi.cs`](tools/probes/probe_dpapi.cs) (pinned-blob decryption),
+[`probe_hotkeys.cs`](tools/probes/probe_hotkeys.cs) (hotkey ownership),
+[`probe_history.cs`](tools/probes/probe_history.cs) (WinRT history from background),
+[`winrt_classes.py`](tools/probes/winrt_classes.py) (WinRT class hosting),
+[`binary_strings.py`](tools/probes/binary_strings.py) (strings of a binary),
+[`probe_viewer_chain.cs`](tools/probes/probe_viewer_chain.cs) (viewer chain vs listener timing, §1.9),
+[`probe_sequence.cs`](tools/probes/probe_sequence.cs) (sequence-number bumps, delayed rendering, §1.9).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`.
+
+### 1.9 Clipboard change notification — "can we never miss a copy?" (2026-09-25) **[verified]**
+
+Question (user): Microsoft reportedly added an "atomic" clipboard subscription that never misses a copy —
+use it instead of Win+V's mechanism? Findings:
+
+- **No such native API.** The recent announcement is the **web** `clipboardchange` event (Chromium/Edge),
+  implemented on Windows over `AddClipboardFormatListener`. WinRT `Clipboard.ContentChanged` and Win+V's
+  cbdhsvc use that same listener. All of them are *notifications*; the content is read afterwards by
+  opening the clipboard, so a producer that replaces the content faster than the consumer can open it
+  wins — for every consumer, Win+V included. We never polled; we already used the Win+V mechanism.
+- **The "synchronous" viewer chain is a myth on modern Windows.** Probed inside a private window station
+  (`probe_viewer_chain.cs`): with the viewer sleeping 150 ms in `WM_DRAWCLIPBOARD`, the producer's
+  `CloseClipboard` still returned in **0.01 ms** (delivered like `SendNotifyMessage`). In a 40-copy
+  zero-delay burst both mechanisms got 40 notifications and read ~2 distinct states. The chain is also
+  fragile (a crashed member cuts off everyone after it), so BetterClipboard does not join it. Our own
+  write re-enters `WM_DRAWCLIPBOARD` inside our `CloseClipboard` (same thread).
+- **Sequence numbers** (`probe_sequence.cs`): `EmptyClipboard` +1, each `SetClipboardData` +1,
+  `CloseClipboard` **+2** (synthesized formats) → read the self-write number *after* close. A staged add
+  (owner adds formats without emptying) gets its own notification. A delayed render (`WM_RENDERFORMAT` →
+  `SetClipboardData`) neither bumps the number nor notifies.
+- **Capture rate vs gap** (real `ClipboardMonitor`, 100 copies with busy-waited gaps — `Thread.Sleep`
+  rounds up to the 15.6 ms tick): 0 ms → 1 captured (the whole burst takes ~2 ms); ~0.1–0.3 ms → 3–47;
+  **≥ 0.5 ms → 100/100** (99–100 at 1 ms); 15 ms → 100/100. The old 60 ms debounce would have merged
+  anything < 60 ms apart into one item.
+- **Isolation trick for tests/probes:** `CreateWindowStation(NULL, …)` (named stations need elevation) →
+  `SetProcessWindowStation` → `CreateDesktop` → MTA threads call `SetThreadDesktop` before any other user32
+  call (STA fails with `ERROR_BUSY`: COM's hidden window). The station has its own clipboard; the user's
+  clipboard and Win+V history (RAM-only, unrecoverable) stay untouched.
 
 ---
 
@@ -204,16 +241,17 @@ Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](file:///K:/source/BetterClipboard/src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing (`Content/`), SQLite store (`Storage/`), capture pipeline (`Services/ClipHistoryService`), settings, logging, presentation helpers. **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](file:///K:/source/BetterClipboard/src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings). **CS1591 = error.** |
-| [`src/BetterClipboard.App`](file:///K:/source/BetterClipboard/src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1**, unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](file:///K:/source/BetterClipboard/tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (99 tests). |
-| [`tests/BetterClipboard.Windows.Tests`](file:///K:/source/BetterClipboard/tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, opt-in real-clipboard round trip (40 tests). |
-| [`tools/`](file:///K:/source/BetterClipboard/tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`make_icon.py`](file:///K:/source/BetterClipboard/tools/make_icon.py) (app icon). |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing (`Content/`), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), settings, logging, presentation helpers. **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings), `Security/` (MachineGuid + SID, DPAPI key protector). **CS1591 = error.** |
+| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (120 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), opt-in real-clipboard round trip (48 tests). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
+| [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
-Shared build config: [`Directory.Build.props`](file:///K:/source/BetterClipboard/Directory.Build.props) (docs on,
-nullable, version), [`Directory.Packages.props`](file:///K:/source/BetterClipboard/Directory.Packages.props)
-(central package versions), [`global.json`](file:///K:/source/BetterClipboard/global.json) (SDK 10.0.1xx +
+Shared build config: [`Directory.Build.props`](Directory.Build.props) (docs on,
+nullable, version), [`Directory.Packages.props`](Directory.Packages.props)
+(central package versions), [`global.json`](global.json) (SDK 10.0.1xx +
 `"test": {"runner": "Microsoft.Testing.Platform"}` — required: xunit.v3 4.x no longer supports VSTest on .NET 10).
 
 ### 2.2 Runtime topology (threads)
@@ -222,9 +260,10 @@ nullable, version), [`Directory.Packages.props`](file:///K:/source/BetterClipboa
 UI thread (WinUI DispatcherQueue) ── AppController, ClipboardFlyout, SettingsWindow, view models
    ▲ TryEnqueue                     ▲ TryEnqueue              ▲ TryEnqueue            ▲ TryEnqueue
 "Clipboard" STA msg-window     "Input" msg-window          "Tray" hidden top-level  "Commands" thread
- AddClipboardFormatListener     RegisterHotKey / LL hook    Shell_NotifyIcon v4      named events from
- read/write clipboard           (hook callback = decide,    TaskbarCreated re-add    2nd launches
- → ClipCapture                  tap mask key, post, return)                          (--show-flyout/--exit)
+ (AboveNormal priority)         RegisterHotKey / LL hook    Shell_NotifyIcon v4      named events from
+ AddClipboardFormatListener     (hook callback = decide,    TaskbarCreated re-add    2nd launches
+ read at once + 2 s watchdog    tap mask key, post, return)                          (--show-flyout/--exit)
+ → ClipCapture
    │ TryEnqueueCapture
    ▼
 History worker (single consumer Channel) ── classify → WIC analyze (thumbnail + pixel hash) → SQLite upsert → prune → Changed event
@@ -237,11 +276,21 @@ copies bytes then closes the clipboard ASAP; all writes are serialized through t
 ### 2.3 Capture pipeline
 
 1. `WM_CLIPBOARDUPDATE` → snapshot **source attribution now** (owner window, else foreground window —
-   short-lived producers like scripts exit before the debounce ends) → 60 ms debounce timer.
-2. Skip if sequence number unchanged or equals our own last write (echo suppression).
-3. `OpenClipboard` with timer-based retries (40 ms × 12). **Privacy markers checked before reading any
-   content**: `ExcludeClipboardContentFromMonitorProcessing`, `Clipboard Viewer Ignore`,
-   `CanIncludeInClipboardHistory` = 0 (unreadable value ⇒ treated as exclude).
+   short-lived producers like scripts exit quickly) → **read immediately** in the handler (no debounce:
+   the old 60 ms debounce merged any copies < 60 ms apart; §1.9 has the measured capture rates).
+   Staged producers (formats added in a 2nd session) are harmless: same text ⇒ same hash ⇒ one entry,
+   and "latest copy wins" keeps the complete format set.
+2. Skip if the sequence number is unchanged (state already read — counted as **superseded**) or equals our
+   own last write (echo suppression; that number is read after `CloseClipboard`, which bumps it by 2).
+3. `OpenClipboard` with timer-based retries (10 ms × 50; a newer notification cancels the retry and reads
+   the newest state). The authoritative sequence number is re-read while holding the clipboard. **Privacy
+   markers checked before reading any content**: `ExcludeClipboardContentFromMonitorProcessing`,
+   `Clipboard Viewer Ignore`, `CanIncludeInClipboardHistory` = 0 (unreadable value ⇒ treated as exclude).
+   Accounting (`ClipboardMonitor.Statistics`, shown in Settings › Capture reliability) — once idle:
+   `Notifications == Read + SelfWrites + LockedOut − Recovered + Superseded`. Watchdog: every 2 s, a
+   sequence number unhandled for a whole period with no notification ⇒ capture it, re-register the
+   listener, log a warning (`WM_TIMER` is only generated when no posted message waits, so a queued
+   notification always wins).
 4. Portable formats first (text, file list + drop effect, HTML, RTF, URL, PNG, the *original* DIB flavor),
    app-private formats only with `PreserveAllFormats`, all under a byte budget checked via `GlobalSize`
    **before** copying. GDI handle formats and synthesized duplicates are never stored.
@@ -257,8 +306,10 @@ swallow key-down/repeats/key-up of `V`, tap unassigned VK `0xE8` so releasing Wi
 to the input window, return. Our own synthetic events carry `dwExtraInfo = 0x0B0CC11B` and are ignored;
 keys injected by *other* tools (PowerToys KBM, AutoHotkey) are intercepted like physical keys. Quitting the
 app unhooks → Win+V instantly returns to Windows (verified with `probe_hotkeys.cs`). Optional
-"Release Win+V from Explorer" writes `DisabledHotkeys` + restarts Explorer (behind a confirmation dialog;
-**not yet verified on this machine**).
+"Release Win+V from Explorer" (Settings, or `install.ps1 -TakeOverWinV`) writes `DisabledHotkeys` and
+restarts Explorer; `RegisterHotKey` then succeeds and no hook is needed — works over elevated windows too,
+but Win+V is dead while the app is not running (uninstall restores it) **[verified 2026-09-25, §1.5]**.
+The log names the path: `… registered with RegisterHotKey …` vs `… intercepting it with a keyboard hook`.
 
 ### 2.5 Summon & paste flow
 
@@ -270,7 +321,7 @@ into the app below), then list reloads and the first card is selected → Enter/
 target while we still own the foreground, then hide** (hiding first loses the right to set focus) →
 wait for foreground → release held modifiers (mask-key first for Win/Alt) → inject Ctrl+V.
 
-### 2.6 Storage (`Storage/ClipStore`, SQLite via Microsoft.Data.Sqlite, file `history.db`)
+### 2.6 Storage (`Storage/ClipStore`, SQLite3 Multiple Ciphers via Microsoft.Data.Sqlite.Core, `stores\{id}\history.db`)
 
 `clips` (one row per content hash, preview, search text ≤ 32 K chars, recency, pin, origin, source app,
 thumbnail) · `clip_formats` (raw payloads by name, cascade) · `clips_fts` (FTS5 **trigram**, external
@@ -280,6 +331,42 @@ copy lifts the tombstone) · `meta.last_clear_utc` (imports older than the last 
 WAL, `synchronous=NORMAL`, `auto_vacuum=INCREMENTAL` + `incremental_vacuum` after prunes, schema version
 in `PRAGMA user_version` (newer ⇒ refuse, never downgrade). Merge rules: live duplicate ⇒ bump + replace
 formats (latest copy wins); import duplicate ⇒ untouched except adding a pin.
+Engine: `Microsoft.Data.Sqlite.Core` 10 + `SQLite3MC.PCLRaw.bundle` 2.4 (built on SQLitePCLRaw 3.x while
+MDS 10 targets 2.1 — verified compatible by the tests; re-verify when bumping either). The `.Core` package
+ships no engine, so `ClipStore`'s static constructor calls `SQLitePCL.Batteries_V2.Init()`. Every
+connection sets `foreign_keys=ON`, `synchronous=NORMAL` and **`temp_store=MEMORY`** (temp spill files are
+not covered by the cipher). `Open()` disposes a connection whose setup pragmas fail: with a wrong key they
+are the first statements to touch page 1, and a leaked connection kept the file open and broke quarantine.
+
+### 2.6.1 Encryption at rest & machine binding (`Core/Security`, `Storage/MachineBoundHistory`) **[verified]**
+
+```text
+MachineGuid (HKLM\SOFTWARE\Microsoft\Cryptography, 64-bit view) + user SID
+   └─ HKDF-SHA256(ikm="machine:<guid D>", salt="BetterClipboard/MachineBinding/v1", info="user:<SID upper>")
+        = 32-byte binding (never stored; zeroed after use)
+            ├─ storeId = UUIDv5(fixed BetterClipboard namespace, "store:" + hex(SHA-256(binding)))
+            └─ DPAPI CurrentUser entropy
+random 32-byte DEK ──DPAPI(CurrentUser, entropy=binding)──► stores\{storeId}\history.key (JSON, "dpapi-user")
+DEK (hex passphrase → MDS Password → PRAGMA key) ──SQLite3MC ChaCha20-Poly1305──► stores\{storeId}\history.db
+```
+
+- The DEK is random (not derived) so it can be re-sealed later (export password) without re-encrypting.
+  Known-answer tests (independent Python HKDF/uuid5) pin the derivation: **changing the salt or labels
+  orphans every store** — only ever with a migration.
+- `MachineBoundHistory.Open`: resolve the store folder → adopt the v0.1 plaintext `DataDirectory\history.db`
+  (moved with its `-wal`/`-shm`, sidecars first) → unseal or create the key → `ClipStore.Initialize`
+  encrypts a plaintext file in place (`journal_mode=DELETE`, checked, then `PRAGMA rekey` with MDS's
+  `quote()` literal). Key unavailable (`HistoryKeyUnavailableException`) or database unreadable
+  (`SQLITE_NOTADB` 26 → `HistoryUnreadableException`) ⇒ **quarantine**: rename the folder to
+  `{storeId}.unreadable-yyyyMMdd-HHmmss[-n]` and start fresh — never delete (renaming it back on the
+  original machine and account recovers it).
+- Threat model: protects data at rest (stolen disk, backups, other accounts incl. admins without the
+  password), not against malware running as the same user (true for every DPAPI consumer). Footguns: an
+  admin *resetting* a local account's password loses its DPAPI keys; a Windows reinstall or unprepared disk
+  clone changes MachineGuid ⇒ new empty store (the old folder stays untouched). `MachineIdentity.ToString()`
+  is redacted so the identifiers never reach a log.
+- Real-app migration check: copy of a v0.1 plaintext data dir → log `adopted legacy: True, encrypted legacy
+  in place: True`; reopened through real DPAPI: 0 of 16 original entries missing; no plaintext header left.
 
 ### 2.7 Importing Windows' history (`Import/`)
 
@@ -290,10 +377,11 @@ never reorders existing history.
 
 ### 2.8 Data & privacy decisions
 
-Data dir: `%LOCALAPPDATA%\BetterClipboard\` (`history.db`, `settings.json`, `logs\betterclipboard-*.log`,
-14-day log retention); override with env `BETTERCLIPBOARD_DATA_DIR` (tests, dev runs — **always use it
-when experimenting** so the real history stays clean). Content is plaintext in the user profile (like
-Ditto/CopyQ); Windows encrypts only pins. Logs never contain clipboard content.
+Data dir: `%LOCALAPPDATA%\BetterClipboard\` (`stores\{id}\history.db` + `history.key`, `settings.json`,
+`logs\betterclipboard-*.log` with 14-day retention, `installer.json` from `install.ps1`); override with env
+`BETTERCLIPBOARD_DATA_DIR` (tests, dev runs; the installer honors it too — **always use it when
+experimenting** so the real history stays clean). Everything is encrypted at rest (§2.6.1); Windows itself
+encrypts only pins. Logs never contain clipboard content, keys, the binding or the identifiers.
 
 ---
 
@@ -301,17 +389,49 @@ Ditto/CopyQ); Windows encrypts only pins. Logs never contain clipboard content.
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 139 tests (1 opt-in skipped)
+dotnet test --solution BetterClipboard.sln                     # 168 tests (1 opt-in skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 ```
 
-Run (exe: [`src/BetterClipboard.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/BetterClipboard.exe`](file:///K:/source/BetterClipboard/src/BetterClipboard.App/bin/Debug/net10.0-windows10.0.26100.0/win-x64/BetterClipboard.exe)):
-plain launch = start + open Settings (or activate the running instance); `--background` = tray only
+Do **not** add `-v q` to `dotnet test --solution` (Microsoft.Testing.Platform then reports "Zero tests
+ran", exit 5). A test executable can also be run directly, e.g.
+`tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe -class <FQN> -showliveoutput`.
+The solution build puts the app in `src/BetterClipboard.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/`.
+
+Run: plain launch = start + open Settings (or activate the running instance); `--background` = tray only
 (used by "Start with Windows"); `--show-flyout` = open the flyout in the running instance; `--exit` =
 graceful quit (drains queued captures). **The exe is locked while running — `--exit` before rebuilding.**
 Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe --background`.
-Publishing/installer: not yet exercised (`dotnet publish src/BetterClipboard.App -c Release -r win-x64`
-is the expected path; WinAppSDK is self-contained, .NET 10 runtime framework-dependent).
+
+### 3.1 Release & install
+
+- **Package:** [`tools/release/package.ps1`](tools/release/package.ps1) `-Version X.Y.Z` → for win-x64 and
+  win-arm64: `dotnet publish -c Release -r win-<arch> --self-contained true -p:Platform=<x64|ARM64>
+  -p:DebugType=none` (no .NET or WinAppSDK runtime needed on the target) + `install.ps1`, `LICENSE`,
+  `THIRD-PARTY-NOTICES.md` at the zip root → `BetterClipboard-X.Y.Z-win-<arch>.zip` (~70 MB, ~180 MB
+  unpacked) + `SHA256SUMS.txt` (sha256sum format, LF). The same script runs in CI and in the release job.
+- **Release:** push an **annotated** tag `vX.Y.Z` whose message is the release notes (`git tag -a vX.Y.Z -F
+  notes.md`) → [`.github/workflows/release.yml`](.github/workflows/release.yml) tests, packages, and
+  `gh release create --notes-from-tag` with both zips, `SHA256SUMS.txt` and `install.ps1`. Tags with a
+  pre-release suffix (`-rc.1`) become pre-releases. CI ([`ci.yml`](.github/workflows/ci.yml)) builds,
+  tests and packages x64 on every push/PR.
+- **Installer** ([`install.ps1`](install.ps1), Windows PowerShell 5.1 and PowerShell 7, StrictMode 3):
+  GitHub API → zip for the **OS** architecture (`RuntimeInformation.OSArchitecture`, correct under x64
+  emulation on ARM64) → SHA-256 vs `SHA256SUMS.txt` **and** GitHub's asset `digest` → `--exit` the running
+  instance (graceful, 15 s, then kill) → extract to `<dir>.new`, `Unblock-File`, swap via renames
+  (failure puts the old version back) → Start-menu shortcut, Run entry in exactly the app's own format
+  (`"<exe>" --background`), HKCU `Uninstall\BetterClipboard` entry (runs `install.ps1 -Uninstall` from the
+  install folder) → `installer.json` in the data dir → launch (via `explorer.exe` when elevated, so the app
+  never runs elevated). `-TakeOverWinV` sets `DisabledHotkeys` + restarts Explorer. `-Uninstall` removes
+  everything but the history (`-RemoveData` for that) and gives Win+V back to Explorer when released.
+- **Installer tests (offline):** shadow `Invoke-RestMethod`/`Invoke-WebRequest` with functions that serve
+  the local `artifacts/release` zips (PowerShell resolves functions before cmdlets, also inside the called
+  script; share state via `$global:`, not `$script:`). Verified 2026-09-25: fresh install (5.1), update over
+  a running instance (7), tampered checksum refused with the install untouched, uninstall launched from
+  *inside* the install folder (needed `[Environment]::CurrentDirectory` — `Set-Location` alone keeps the
+  folder's process-CWD handle open), DisabledHotkeys helpers against a scratch key. When invoking Windows
+  PowerShell 5.1 from this bash, clear `PSModulePath` (`env -u PSModulePath …`), or 5.1 picks up
+  PowerShell 7's modules and even `Get-FileHash` is "not recognized".
 
 ---
 
@@ -335,7 +455,13 @@ is the expected path; WinAppSDK is self-contained, .NET 10 runtime framework-dep
   Personalize E771, Shield EA18, Import E8B5, Info E946, OpenInNewWindow E8A7, Code E943, Power E7E8.
 - **Privacy in tooling:** never print clipboard content in probes/logs/test output; `tools/e2e/dbq.py`
   masks non-test rows. Test data is prefixed `BC-TEST`.
-- **E2E harness ([`tools/e2e/`](file:///K:/source/BetterClipboard/tools/e2e)) injects real keystrokes.**
+- **Clipboard tests never touch the real clipboard:** put them in the `IsolatedClipboardCollection`
+  (private window station, see §1.9) and drive them with `ClipboardProducer`. Writing unmarked content to
+  the real clipboard pushes items out of the user's RAM-only Win+V history — that loss is unrecoverable.
+- **Gaps in timing tests:** busy-wait on a `Stopwatch` — `Thread.Sleep(n)` rounds up to the 15.6 ms tick.
+- **Quote-dense scripts:** write them to a scratch file and run the file; big inline heredocs break the
+  Bash tool's `eval` wrapper (`unexpected EOF while looking for matching '`).
+- **E2E harness ([`tools/e2e/`](tools/e2e)) injects real keystrokes.**
   Only run it with the user's explicit OK and when they are not using the machine (2026-09-25: the user
   switched to a game mid-run and test keys/Ctrl+V landed in it). Recipe: isolated data dir →
   `PasteTarget.cs` with a unique output file → `activate.py BC-PasteTarget` → `keys.py win+v "type=…" enter`
@@ -349,7 +475,13 @@ is the expected path; WinAppSDK is self-contained, .NET 10 runtime framework-dep
 
 | Feature | How | Result |
 |---|---|---|
-| Unit tests | `dotnet test --solution` | 138 pass + 1 opt-in (also passed when enabled) |
+| Unit tests | `dotnet test --solution` | 167 pass + 1 opt-in |
+| Encryption at rest: no plaintext in db/WAL, wrong key ⇒ unreadable, in-place migration, quarantine | tests + real app on a copy of a v0.1 dir | ✅ (0 of 16 entries lost) |
+| Capture: 25 copies 20 ms apart all captured; 100 copies ≥ 0.5 ms apart all captured; bursts accounted | isolated window station | ✅ (10/10 runs green) |
+| Watchdog recovers a deaf listener; own writes ignored; delayed rendering | isolated window station | ✅ |
+| `DisabledHotkeys=V` ⇒ `RegisterHotKey` path; restore ⇒ Explorer owns Win+V again | real Explorer restarts | ✅ |
+| Release zips (x64 + ARM64 native DLLs), published app starts (WinUI window) and exits | `package.ps1` + launch | ✅ |
+| `install.ps1`: install / update-over-running / bad checksum / uninstall | offline harness, PS 5.1 + 7 | ✅ |
 | Live capture: text, link, color, files, image (+thumbnail) | real clipboard + DB inspection | ✅ |
 | Privacy markers (`Exclude…`, `CanInclude…=0`; `=1` still recorded) | WinForms DataObject from PowerShell 5.1 | ✅ |
 | Win+V takeover via LL hook; Win+V returns on exit | log + `probe_hotkeys.cs` | ✅ |
@@ -359,15 +491,19 @@ is the expected path; WinAppSDK is self-contained, .NET 10 runtime framework-dep
 | Windows history import incl. decrypted pin; image DIB/PNG dedupe by pixels | logs + DB | ✅ |
 | `--exit`, `--background` | CLI | ✅ |
 | Zero-delay typing right after Win+V (show-first ordering) | e2e | ⚠️ not verified (run aborted: user took focus) |
-| `DisabledHotkeys` release, Windows-history toggle via registry, Start with Windows, multi-monitor DPI | — | ⚠️ not verified |
+| Windows-history toggle via registry, Start with Windows (app toggle), multi-monitor DPI | — | ⚠️ not verified |
 
 ---
 
 ## 6. Roadmap / known gaps
 
 - Caret position for apps without a Win32 caret (WinUI, some Electron): UI Automation `TextPattern2.GetCaretRange`.
-- Optional at-rest encryption (DPAPI) — conflicts with FTS; options: encrypt payloads only, or in-memory search.
-- LL-hook watchdog (Windows removes hooks that time out) + re-install; hook-free mode when `DisabledHotkeys` is set.
+- LL-hook watchdog (Windows removes hooks that time out) + re-install. (Hook-free mode when `DisabledHotkeys`
+  is set: done — `RegisterHotKey` succeeds then.)
+- Export/backup with a user password (re-seal the DEK; the database itself need not be re-encrypted).
+- Code signing (SmartScreen reputation), winget manifest, in-app update check against GitHub releases.
+- Smaller release: trim the 26 MB `Microsoft.Windows.SDK.NET.dll` projection (needs a trim-safe audit of
+  reflection-based JSON first).
 - Delete-through to Windows history (`Clipboard.DeleteItemFromHistory`) when deleting here.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms
-  (trim, case, JSON pretty), large preview pane, drag-out, sync between PCs, packaging (MSIX/installer, signing, updates).
+  (trim, case, JSON pretty), large preview pane, drag-out, sync between PCs, MSIX packaging.

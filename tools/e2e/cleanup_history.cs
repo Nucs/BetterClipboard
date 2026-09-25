@@ -34,7 +34,10 @@ foreach (var item in result.Items)
     else if (content.Contains(StandardDataFormats.StorageItems))
     {
         var files = await content.GetStorageItemsAsync();
-        mine = files.Any(f => f.Path.Equals(@"K:\source\BetterClipboard\CLAUDE.md", StringComparison.OrdinalIgnoreCase));
+        // The e2e recipe copies the repo's own CLAUDE.md as its file-drop sample; the tool runs from the
+        // repo root (see the usage line), so the relative path resolves to that same file on any checkout.
+        var sample = Path.GetFullPath("CLAUDE.md");
+        mine = files.Any(f => f.Path.Equals(sample, StringComparison.OrdinalIgnoreCase));
     }
     else if (content.Contains(StandardDataFormats.Bitmap))
     {

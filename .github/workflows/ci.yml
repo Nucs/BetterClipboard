@@ -1,0 +1,38 @@
+# Build + full test suite on every push to main and every pull request.
+# The clipboard capture tests run inside a private window station (see
+# tests/BetterClipboard.Windows.Tests/IsolatedClipboard.cs), so they need no interactive desktop.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build
+        run: dotnet build BetterClipboard.sln -c Release --nologo
+
+      - name: Test
+        run: dotnet test --solution BetterClipboard.sln -c Release --no-build
+
+      - name: Package smoke test (x64)
+        shell: pwsh
+        run: tools/release/package.ps1 -Version 0.0.0-ci -Architectures x64 -OutputDirectory artifacts/ci
