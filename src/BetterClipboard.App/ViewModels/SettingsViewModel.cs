@@ -353,9 +353,32 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// </summary>
     public void ApplyIgnoredApps()
     {
-        var apps = IgnoredAppsText.Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var apps = ParseIgnoredApps(IgnoredAppsText);
         Update(s => s with { IgnoredApps = apps });
     }
+
+    /// <summary>
+    /// Appends every catalogued password manager and authenticator missing from the text box — including
+    /// ones the user deleted earlier, which the automatic seeding never brings back — and saves the list.
+    /// </summary>
+    /// <remarks>
+    /// Merges into the text box rather than the saved list, so unsaved edits the user typed are kept (and
+    /// saved with it) instead of being overwritten.
+    /// </remarks>
+    /// <returns>How many process names were added (0 when all were already listed).</returns>
+    public int AddKnownPasswordManagers()
+    {
+        var merged = KnownPasswordManagers.AddMissing(ParseIgnoredApps(IgnoredAppsText), out int added);
+        IgnoredAppsText = string.Join(Environment.NewLine, merged);
+        ApplyIgnoredApps();
+        return added;
+    }
+
+    /// <summary>Splits the ignored-apps text box into entries (lines, commas or semicolons).</summary>
+    /// <param name="text">The text.</param>
+    /// <returns>Trimmed, non-empty entries in typed order.</returns>
+    private static string[] ParseIgnoredApps(string text) =>
+        text.Split([',', ';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
     /// <summary>
     /// Turns Windows' own clipboard history on or off.

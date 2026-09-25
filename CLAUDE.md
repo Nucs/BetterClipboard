@@ -245,7 +245,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (150 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (157 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, opt-in real-clipboard round trip (59 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
@@ -299,7 +299,7 @@ copies bytes then closes the clipboard ASAP; all writes are serialized through t
 4. Portable formats first (text, file list + drop effect, HTML, RTF, URL, PNG, the *original* DIB flavor),
    app-private formats only with `PreserveAllFormats`, all under a byte budget checked via `GlobalSize`
    **before** copying. GDI handle formats and synthesized duplicates are never stored.
-5. Worker: rules (pause, ignored apps, size) → `ContentClassifier` (Files > Text[Link/Color/Rich] > Image
+5. Worker: rules (pause, ignored apps — pre-seeded with the password-manager catalog, §2.8 — size) → `ContentClassifier` (Files > Text[Link/Color/Rich] > Image
    > rich-only) → image analysis (dims, 720×400 PNG thumbnail, **pixel hash** — images dedupe by decoded
    pixels, so DIB-vs-PNG encodings of one picture merge) → `ClipStore.Upsert` → retention prune.
 
@@ -394,6 +394,36 @@ single-instance lock, `--exit`/`--show-flyout` events and pipe, so an isolated r
 user's installed app instead of signalling it. Everything is encrypted at rest (§2.6.1); Windows itself
 encrypts only pins. Logs never contain clipboard content, keys, the binding or the identifiers.
 
+**Password managers are ignored by default** (`Core/Settings/KnownPasswordManagers`, added 2026-09-25 on
+request: "Add to Ignored apps all known password managers you can find").
+- **Why it's needed:** the privacy markers (§1.7) cover only apps that set them, and many managers
+  (Electron-based ones especially) don't.
+- **What's in it:** 46 products (42 password managers + 4 authenticator apps, since OTP codes are
+  credentials too), 65 process names including helpers (tray agents, browser-integration hosts, old major
+  versions: 1Password 7 = `AgileBits.OnePassword.Desktop`, 4 = `Agile1pAgent`).
+- **Evidence:** every name was checked, not guessed. Open-source apps: their build files read through
+  `gh api`:
+  - Electron `productName`/`executableName` (Proton Pass is `ProtonPass.exe` on Windows only);
+  - Flutter `BINARY_NAME` (AuthPass `authpass`, Yubico `authenticator`, Ente Auth `auth`);
+  - Qt `TARGET` (`qtpass`);
+  - MSBuild `AssemblyName` (Passbolt `passbolt`).
+
+  Others: Brave Search over file.net / process databases / vendor docs. The per-name sources are in
+  [`docs/password-managers.md`](docs/password-managers.md), which also lists what can't be covered:
+  - browser-extension managers (the copy is attributed to the browser);
+  - CLI tools (attributed to `clip`/the terminal);
+  - Ente Auth's too-generic `auth`;
+  - versioned or unverifiable names.
+- **Seeding without a migration:** `AppSettings.Normalize` runs `KnownPasswordManagers.Seed`. Every catalog
+  name not yet in `AppSettings.SeededIgnoredApps` is appended once (unless a user entry already covers it,
+  e.g. `keepass.exe`) and recorded as seen.
+  - Result: new and existing installs get the catalog, a deleted name stays deleted, and names added to
+    the catalog later arrive exactly once. No revision number to remember to bump.
+  - Footgun: an older version saving the file drops `SeededIgnoredApps`, so the next newer version offers
+    the whole catalog again.
+- **Settings UI:** *Add known password managers* (`AddMissing`) deliberately restores deleted names too.
+  The text box scrolls (`MaxHeight` 240) because the list alone is ~65 lines.
+
 ### 2.9 Command line (`bclip`) — `Core/Cli`, `Windows/Cli/CliPipeServer`, `src/BetterClipboard.Cli`
 
 Purpose: let terminals, scripts and AI agents list/search/grep the history, read an item exactly, put an
@@ -455,7 +485,7 @@ while on, any process running as the user can read the whole history through it 
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 209 tests (1 opt-in skipped)
+dotnet test --solution BetterClipboard.sln                     # 216 tests (1 opt-in skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 ```
 
@@ -566,7 +596,9 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 
 | Feature | How | Result |
 |---|---|---|
-| Unit tests | `dotnet test --solution` | 208 pass + 1 opt-in locally (non-elevated) and on CI (elevated runner) |
+| Unit tests | `dotnet test --solution` | 215 pass + 1 opt-in locally (non-elevated); the CLI pipe fix also passed on CI (elevated runner) |
+| Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
+| Settings › Ignored apps: scrollable list + *Add known password managers* | XAML builds | ⚠️ not visually verified (opening Settings would steal the user's focus) |
 | `bclip` published build next to the user's running app: status (auto-starts the scoped instance), list, search, grep, get (exact bytes, Hebrew/✓, HTML fragment, file list), image → exit 2 without `-o` / PNG with `-o`, `--json`, pin + pinned filter, `--since`, wait timeout (1), not found (1), usage (2), access off (3, starts nothing); audit log; no LL hook; user's PID unchanged | isolated seeded store + `run.sh` | ✅ (after the ShellExecute fix) |
 | `put`/`copy` write the clipboard, `wait` sees the next copy | CLI end-to-end tests in the isolated window station | ✅ |
 | `install.ps1 -AddToPath` / uninstall PATH helpers | AST-loaded functions on a scratch key, PS 5.1 + 7 | ✅ (15/15) |
@@ -600,6 +632,9 @@ scoped instance), print only `BC-TEST` lines, `--exit` the scoped instance, and 
 - Smaller release: trim the 26 MB `Microsoft.Windows.SDK.NET.dll` projection (needs a trim-safe audit of
   reflection-based JSON first).
 - Delete-through to Windows history (`Clipboard.DeleteItemFromHistory`) when deleting here.
+- Password-manager catalog: verify the executable names of Zoho Vault, Devolutions Workspace, Passwarden,
+  Total Password and Securden (not found in reliable sources on 2026-09-25). Path-aware ignore rules would
+  allow generic names safely (Ente Auth's `auth.exe` only under an `ente` folder).
 - An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms

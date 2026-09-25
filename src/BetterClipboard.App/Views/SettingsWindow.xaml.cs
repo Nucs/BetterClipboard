@@ -141,6 +141,11 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Click data.</param>
     private void ApplyIgnoredApps_Click(object sender, RoutedEventArgs e) => ViewModel.ApplyIgnoredApps();
 
+    /// <summary>Re-add every known password manager / authenticator to the ignored-apps list and save it.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void AddKnownPasswordManagers_Click(object sender, RoutedEventArgs e) => ViewModel.AddKnownPasswordManagers();
+
     /// <summary>Clear unpinned history.</summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>

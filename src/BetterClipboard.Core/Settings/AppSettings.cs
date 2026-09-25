@@ -93,7 +93,26 @@ public sealed record AppSettings
     public bool IsCapturePaused { get; init; }
 
     /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
+    /// <remarks>
+    /// Starts out holding <see cref="KnownPasswordManagers.All"/>: <see cref="Normalize"/> merges every
+    /// catalogued name not yet in <see cref="SeededIgnoredApps"/>, for new and existing users alike.
+    /// Entries are free text (a name, <c>name.exe</c> or a full path) and matched after
+    /// <see cref="Services.CaptureRules.NormalizeProcessName"/>.
+    /// </remarks>
     public IReadOnlyList<string> IgnoredApps { get; init; } = [];
+
+    /// <summary>
+    /// Catalogued password-manager process names (<see cref="KnownPasswordManagers"/>) already offered to
+    /// <see cref="IgnoredApps"/> — whether or not the user kept them.
+    /// </summary>
+    /// <remarks>
+    /// This is what makes a deletion stick: a name listed here is never merged in again, so removing
+    /// <c>KeePass</c> from the list survives restarts and updates, while names a later release adds to the
+    /// catalog still arrive exactly once. Missing (settings from before the catalog) = nothing offered yet.
+    /// Footgun: an older version saving the file drops this member, and the next newer version then offers
+    /// the whole catalog again.
+    /// </remarks>
+    public IReadOnlyList<string> SeededIgnoredApps { get; init; } = [];
 
     /// <summary>Where the flyout appears.</summary>
     public FlyoutPlacement Placement { get; init; } = FlyoutPlacement.NearCaret;
@@ -114,11 +133,30 @@ public sealed record AppSettings
 
     /// <summary>
     /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
-    /// into a broken state (e.g. a negative item cap).
+    /// into a broken state (e.g. a negative item cap), and merges catalogued password managers the
+    /// settings have not seen yet into <see cref="IgnoredApps"/> (see <see cref="SeededIgnoredApps"/>).
     /// </summary>
-    /// <returns>A normalized copy (or this instance when already valid).</returns>
+    /// <remarks>
+    /// Runs on every load and save, so everything here is idempotent. The catalog merge happens in memory
+    /// on load and reaches the file with the next save — until then it simply repeats on each start.
+    /// </remarks>
+    /// <returns>A normalized copy.</returns>
     public AppSettings Normalize()
     {
+        var ignored = (IgnoredApps ?? [])
+            .Select(a => a?.Trim() ?? string.Empty)
+            .Where(a => a.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        // Stored normalized, so "KeePass.exe" typed into a hand-edited file still counts as seen.
+        var seeded = (SeededIgnoredApps ?? [])
+            .Select(Services.CaptureRules.NormalizeProcessName)
+            .Where(a => a.Length > 0)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var (withCatalog, seen) = KnownPasswordManagers.Seed(ignored, seeded);
+
         var normalized = this with
         {
             SchemaVersion = 1,
@@ -127,11 +165,8 @@ public sealed record AppSettings
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
             MaxTotalSizeMB = Math.Clamp(MaxTotalSizeMB, 0, 1_048_576),
-            IgnoredApps = (IgnoredApps ?? [])
-                .Select(a => a?.Trim() ?? string.Empty)
-                .Where(a => a.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray(),
+            IgnoredApps = withCatalog,
+            SeededIgnoredApps = seen,
             Placement = Enum.IsDefined(Placement) ? Placement : FlyoutPlacement.NearCaret,
             Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
         };

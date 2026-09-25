@@ -70,8 +70,14 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | `Esc` | Clear the search, then close — focus returns to where you were |
 
 The tray icon opens the panel and Settings: shortcut, retention (items, days, size), what to record,
-ignored apps (e.g. your password manager), pause, theme, start with Windows, the command line, and
-**Import from Windows**, which pulls in everything Win+V still remembers — including its pinned items.
+ignored apps, pause, theme, start with Windows, the command line, and **Import from Windows**, which pulls
+in everything Win+V still remembers — including its pinned items.
+
+**Password managers are ignored out of the box.** *Ignored apps* comes filled with 46 password managers
+and authenticator apps, 65 process names in all: 1Password, Bitwarden, KeePass, KeePassXC, LastPass,
+Dashlane, Keeper, NordPass, Proton Pass, RoboForm, Enpass and many more. See the
+[full list with sources](docs/password-managers.md). Delete any you do want recorded and they stay
+deleted; updates only ever add names that are new to the catalog.
 
 ## Taking over Win+V
 
@@ -133,7 +139,8 @@ git diff | bclip put                      # hand text back to you on the clipboa
   Settings › Capture reliability). A watchdog re-arms the listener if Windows ever stops delivering.
 - **Privacy markers.** Copies flagged by apps as private (`ExcludeClipboardContentFromMonitorProcessing`,
   `CanIncludeInClipboardHistory = 0`, `Clipboard Viewer Ignore` — used by password managers) are never
-  recorded.
+  recorded. Many managers, Electron-based ones especially, don't set these flags. The ignored-apps list
+  catches those by the name of the process that made the copy.
 - **Storage.** One SQLite database, fully encrypted with [SQLite3 Multiple Ciphers](https://github.com/utelle/SQLite3MultipleCiphers)
   (ChaCha20-Poly1305: every page, the write-ahead log, the full-text index and thumbnails). Search uses an
   FTS5 trigram index on the decrypted pages in memory.

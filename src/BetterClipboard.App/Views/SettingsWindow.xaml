@@ -239,7 +239,7 @@
                     <ToggleSwitch IsOn="{x:Bind ViewModel.IsCapturePaused, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="Never record copies from these apps (process names, one per line — e.g. KeePass, 1Password)."
+                    Description="Never record copies from these apps (process names, one per line). Comes filled with known password managers and authenticator apps (1Password, Bitwarden, KeePass, KeePassXC, LastPass, Proton Pass, RoboForm and many more); delete any you do want recorded and they stay deleted. Managers that work only inside the browser cannot be told apart from the browser."
                     Glyph="&#xEA18;"
                     Header="Ignored apps">
                     <controls:SettingsCard.Footer>
@@ -248,17 +248,29 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
+                            <!-- MaxHeight + scrolling: the built-in list alone is ~65 lines. -->
                             <TextBox
                                 MinHeight="64"
+                                MaxHeight="240"
                                 AcceptsReturn="True"
                                 PlaceholderText="KeePass"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto"
                                 Text="{x:Bind ViewModel.IgnoredAppsText, Mode=TwoWay}"
                                 TextWrapping="Wrap" />
-                            <Button
+                            <StackPanel
                                 Grid.Column="1"
                                 VerticalAlignment="Bottom"
-                                Click="ApplyIgnoredApps_Click"
-                                Content="Apply" />
+                                Spacing="8">
+                                <Button
+                                    HorizontalAlignment="Stretch"
+                                    Click="AddKnownPasswordManagers_Click"
+                                    Content="Add known password managers"
+                                    ToolTipService.ToolTip="Puts back every known password manager and authenticator that is missing from the list, then saves it." />
+                                <Button
+                                    HorizontalAlignment="Stretch"
+                                    Click="ApplyIgnoredApps_Click"
+                                    Content="Apply" />
+                            </StackPanel>
                         </Grid>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
