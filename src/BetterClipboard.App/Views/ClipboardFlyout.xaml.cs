@@ -184,6 +184,15 @@ public sealed partial class ClipboardFlyout : Window
             // A drag interrupted by hiding normally ends through capture loss; never let one survive into
             // a new summon, where the next pointer move would jump the window.
             EndDrag();
+
+            // A popup count that no open popup accounts for is stale (a Closed that never came). Left alone it
+            // would mute the whole key model (IsPopupKey) and keep deactivation from hiding the panel.
+            if (openPopups > 0 && Root.XamlRoot is { } xamlRoot && VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count == 0)
+            {
+                AppLog.Warn($"Cleared a stale count of {openPopups} open popup(s).");
+                openPopups = 0;
+            }
+
             controller.ApplyTheme(Root);
             ViewModel.ResetForShow();
             UpdateShareXTab();
@@ -377,6 +386,16 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="e">Key data.</param>
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // Keys typed into a popup tunnel through Root as well: a flyout's popup is parented to its placement
+        // target, which lives in this tree. They belong to the popup (Esc closes only the menu, Enter invokes
+        // the focused menu item or saves a group name, Delete and the arrows edit the name), never to the
+        // card model below. Found in the groups e2e run (2026-09-25): Esc on a card menu closed the whole
+        // panel, and Enter or Delete in a group-name box would have pasted or deleted the selected card.
+        if (IsPopupKey(e.OriginalSource))
+        {
+            return;
+        }
+
         bool ctrl = IsKeyDown(VirtualKey.Control);
         bool shift = IsKeyDown(VirtualKey.Shift);
         switch (e.Key)
@@ -450,7 +469,17 @@ public sealed partial class ClipboardFlyout : Window
             case VirtualKey.F10 when shift:
                 if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
                 {
-                    ShowItemMenu(forMenu, container, new global::Windows.Foundation.Point(24, 24));
+                    var menu = ShowItemMenu(forMenu, container, new global::Windows.Foundation.Point(24, 24));
+
+                    // The same key also becomes a context-menu request for the element it came from. The search
+                    // box's text box answers that with its own Cut/Copy/Paste menu, which closed this one at
+                    // once (a lone "Paste" menu, found in the groups e2e run, 2026-09-25). The text box handles
+                    // the request before it bubbles, so no handler of ours can stop it, and moving the focus to
+                    // the card first did not help either. So its menu is taken away until the card menu closes.
+                    if (e.OriginalSource is TextBox box)
+                    {
+                        MuteContextFlyoutUntilClosed(box, menu);
+                    }
                 }
 
                 break;
@@ -459,6 +488,60 @@ public sealed partial class ClipboardFlyout : Window
         }
 
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Whether a key event comes from inside a popup rather than from the panel itself, so the panel's key
+    /// model (<see cref="Root_PreviewKeyDown"/>) must leave it alone.
+    /// </summary>
+    /// <param name="source">The event's original source (the focused element).</param>
+    /// <returns>
+    /// <see langword="true"/> while one of our own menus or flyouts is open (<see cref="openPopups"/>), or when
+    /// <paramref name="source"/> sits inside any other open popup of this window, such as the search box's own
+    /// Cut/Copy/Paste menu; <see langword="false"/> for keys aimed at the panel.
+    /// </returns>
+    /// <remarks>
+    /// The count is the dependable half: its Opened/Closed pairs are ours, and while one of our light-dismiss
+    /// popups is open, the panel itself cannot hold the focus. The walk to an open popup also covers popups
+    /// we never see open. Tooltips are popups too, but they never take the focus, so they are never a key's
+    /// source. Footgun: a count that never came back to 0 would mute the whole key model, which is why
+    /// <see cref="ShowAt"/> clears a count that no open popup accounts for.
+    /// </remarks>
+    private bool IsPopupKey(object? source)
+    {
+        if (openPopups > 0)
+        {
+            return true;
+        }
+
+        if (source is not DependencyObject element || Root.XamlRoot is not { } xamlRoot)
+        {
+            return false;
+        }
+
+        var popups = VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot);
+        if (popups.Count == 0)
+        {
+            return false;
+        }
+
+        for (DependencyObject? current = element; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, Root))
+            {
+                return false; // the panel's own tree
+            }
+
+            foreach (var popup in popups)
+            {
+                if (ReferenceEquals(current, popup) || ReferenceEquals(current, popup.Child))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -671,6 +754,45 @@ public sealed partial class ClipboardFlyout : Window
         controller.ShowSettings();
     }
 
+    /// <summary>
+    /// Takes <paramref name="element"/>'s own context menu away until <paramref name="menu"/> closes, so a key
+    /// that opened <paramref name="menu"/> cannot also open the element's menu over it.
+    /// </summary>
+    /// <param name="element">
+    /// The element the key came from, whose <see cref="UIElement.ContextFlyout"/> would answer the key's
+    /// context-menu request (the search box's text box and its Cut/Copy/Paste menu).
+    /// </param>
+    /// <param name="menu">The menu shown instead. Its <see cref="FlyoutBase.Closed"/> gives the element its menu back.</param>
+    /// <remarks>
+    /// Restores exactly what was there: a local value is set back, and a style-provided one (a text box's
+    /// default menu comes from its style) comes back by clearing the local <see langword="null"/>.
+    /// <see cref="FlyoutBase.Closed"/> also fires for a menu closed before it finished opening, so the element
+    /// never stays without its menu. A right-click meanwhile is impossible: the open menu holds the input.
+    /// </remarks>
+    private static void MuteContextFlyoutUntilClosed(UIElement element, FlyoutBase menu)
+    {
+        if (element.ContextFlyout is not { } own)
+        {
+            return;
+        }
+
+        // Pattern test rather than comparing with DependencyProperty.UnsetValue, whose projected instance
+        // need not be the one ReadLocalValue hands back.
+        bool wasLocal = element.ReadLocalValue(UIElement.ContextFlyoutProperty) is FlyoutBase;
+        element.ContextFlyout = null;
+        menu.Closed += (_, _) =>
+        {
+            if (wasLocal)
+            {
+                element.ContextFlyout = own;
+            }
+            else
+            {
+                element.ClearValue(UIElement.ContextFlyoutProperty);
+            }
+        };
+    }
+
     /// <summary>Tracks our own popups so their activation does not dismiss the flyout.</summary>
     /// <param name="sender">Popup.</param>
     /// <param name="e">Event data.</param>
@@ -689,7 +811,8 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="item">The card.</param>
     /// <param name="target">Placement target.</param>
     /// <param name="position">Position relative to <paramref name="target"/>.</param>
-    private void ShowItemMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position)
+    /// <returns>The menu, already opening (for callers that must act when it closes).</returns>
+    private MenuFlyout ShowItemMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position)
     {
         var menu = new MenuFlyout();
         menu.Items.Add(MenuItem("Paste", "\uE77F", "Enter", () => _ = controller.PasteAsync(item.Entry, plainText: false)));
@@ -727,6 +850,7 @@ public sealed partial class ClipboardFlyout : Window
         menu.Opened += Popup_Opened;
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });
+        return menu;
     }
 
     /// <summary>Builds a menu item with glyph and accelerator hint.</summary>
@@ -863,6 +987,7 @@ public sealed partial class ClipboardFlyout : Window
         }
 
         groupsPaneOpen = open;
+        AppLog.Info(open ? "Groups column opened." : "Groups column closed.");
         controller.Settings.Update(s => s with { ShowGroupsPane = open });
         if (!open && ViewModel.SelectedGroupId is not null)
         {

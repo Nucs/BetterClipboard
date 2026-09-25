@@ -716,6 +716,20 @@ User request (2026-09-25):
     stay).
   - Follow-up flyouts are queued through `DispatcherQueue`, so they open after the menu closed. Each one
     counts in `openPopups`, so the flyout does not dismiss itself.
+  - **Keys inside popups** (`IsPopupKey`, found in the e2e run): a flyout's popup is parented to its
+    placement target, so every key typed into it tunnels through `Root_PreviewKeyDown` first. Esc on a card
+    menu closed the whole panel (the log showed `Dismiss` called from `Root_PreviewKeyDown` with a
+    `MenuFlyoutItem` as the source). Enter or Delete in a group-name box would have pasted or deleted the
+    selected card. The key model now skips a key while one of our popups is open, or when its source sits
+    inside any open popup (`VisualTreeHelper.GetOpenPopupsForXamlRoot` lists the windowed menus too; that
+    also covers the search box's own Cut/Copy/Paste menu). `ShowAt` clears a stale count, which would
+    otherwise mute every key.
+  - **Menu key / Shift+F10** open the selected card's menu. The same key also becomes a context request for
+    the search box's inner `TextBox`, which handles it itself before it bubbles (it reached Root already
+    handled), so its "Paste" menu closed ours at once. Moving the focus to the card first did not help, and
+    a `ContextRequested` handler on the search box never ran. So the text box's `ContextFlyout` is taken away
+    until the card menu's `Closed` (`MuteContextFlyoutUntilClosed`; a style value comes back via
+    `ClearValue`). A right-click in the search box still gets the text box's menu.
 - **Cards:** a card shows its groups' glyphs in the header row, with the group names in a tooltip.
 
 ---
@@ -820,6 +834,11 @@ ShareX end-to-end (2026-09-25), with the dev build:
   escape WndProc/hook callbacks (they are wrapped).
 - **XAML build errors cascade:** `WMC1509 No LocalAssembly…` + dozens of "Unknown type" errors mean a C#
   error broke the XAML pre-compile — fix the first `CS####` error, not the XAML.
+- **A window-level key model must skip keys typed into popups.** A `Flyout`/`MenuFlyout` popup is parented
+  to its placement target, so `PreviewKeyDown` on any ancestor of the target sees every key of the popup,
+  and sees it first. Without a guard, Esc, Enter or Delete meant for a menu or for a text box in a flyout
+  act on the window. `ClipboardFlyout.IsPopupKey` is the pattern (§2.11). The same goes for context-menu
+  keys: a `TextBox` answers the Menu key with its own `ContextFlyout` before the request bubbles.
 - **No editable `ComboBox` bound through `Text`.**
   - What went wrong: when its template loads, WinUI fills the inner text box from `SelectedItem`, so a
     value bound before that shows blank. In v0.2.0 the Settings shortcut box was empty for both custom
@@ -883,6 +902,9 @@ ShareX end-to-end (2026-09-25), with the dev build:
 
 | Feature | How | Result |
 |---|---|---|
+| Groups column, live on an isolated instance next to the user's app. The column opens 44 px to the left (right edge unchanged) and closing shrinks it back (444 → 400 px, remembered). The icon picker creates a group. A mouse drag of a card onto the icon adds it (log "Dropped 1 card(s) on group 1", button "…group, 1 item", badge on the card). The group view shows only its card (header "Clipboard › Name" with the chip, placeholder, footer "1 in Name"). Right-click → *Remove from Name* empties the view, and the logo shows all cards again. Rename through the icon menu works. User's PID unchanged every run | UI Automation (invoke/select/value) + guarded mouse and keys (`groups_e2e` scratch scripts) | ✅ |
+| Keys inside popups: Esc on a card menu closes only the menu (before the fix the whole panel closed); Delete in the rename box edits the name and deletes no card; Esc on the search box's own menu keeps the panel open; the Menu key opens the card menu, where it used to open a lone "Paste" menu, and a right-click in the search box afterwards still gets the text box's menu | same run, guarded keys + content-free diagnostic log lines (removed afterwards) | ✅ (Enter in the rename box was not pressed: had the guard failed, it would have pasted through the real clipboard; it takes the same guard path as Delete) |
+| Groups store and service: pinned-or-grouped protected from age/count/size retention and from Clear; Clear all keeps the groups (empty); the retention clock resets on leaving the last group (also when a group is deleted) without moving the item in the list; memberships cascade; events; icon catalog glyphs valid and unique | tests (`GroupTests`, `Positioner_GroupsColumnGrowsAndShrinksOnTheLeft`) | ✅ |
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
