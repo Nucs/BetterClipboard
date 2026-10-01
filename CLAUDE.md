@@ -692,6 +692,9 @@ User request (2026-09-25):
 - **Toggle icon:** Segoe Fluent Icons has **no bookmark ribbon** (E8A4 "Bookmarks" draws a bulleted list;
   checked by rendering every mapped glyph E700–F8CC). The toggle is therefore a 16-DIP `PathIcon` ribbon:
   an even-odd outline while the column is closed, filled while it is open.
+  - Both `PathIcon`s carry `Width="16" Height="16"`, the design box; the ribbon (x 3–13, y 1.5–14.25) is
+    centered in it. Without that box the ribbon was drawn 2 px right of and ~0.8 px below the button's
+    center (reported 2026-10-01; the `PathIcon` sizing trap is in §4).
 - **Icons:** `GroupIconCatalog`: 64 glyphs, each verified by rendering, with names that become the default
   group name. Code points are escapes; the raw-character lesson is in §4.
 - **States are whole styles** (`GroupButton[Selected|DropTarget]Style`, `IconButtonActiveStyle` in
@@ -934,6 +937,17 @@ ShareX end-to-end (2026-09-25), with the dev build:
   Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
   on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did. Sweep new C# files with an
   escape script before committing (never XAML files: there the escape is `&#xE8xx;`).
+- **A `PathIcon` needs its design box as `Width`/`Height`.**
+  - Why: WinUI draws its path as a `Stretch=None` shape at the geometry's own coordinates and measures it as
+    the geometry's **right/bottom edge**, not as a design box (`CShape::MeasureOverride` in
+    microsoft-ui-xaml). A 16-unit icon whose ink spans x 3–13 therefore measures 13 wide, and a parent that
+    centers it pushes the ink right and down.
+  - What to do: give it the box the geometry was drawn in (`Width="16" Height="16"`) and keep the ink
+    centered inside that box.
+  - Lesson (2026-10-01): the Groups toggle's ribbon sat 2 px right of and ~0.8 px below its button's center
+    (margins left 14 / right 10). The 2026-09-25 screenshots already showed it, but nobody measured them.
+    Measure icon placement inside a button from a screenshot. The highlight of an "on" state or of a hover
+    shows the button's bounds.
 - **SendInput from Python needs the real `INPUT` layout:** 40 bytes on x64 (type + padding + a 32-byte
   union). A struct with the member inlined plus extra padding was 48 bytes; `SendInput` then returns 0 and
   **nothing happens**, while the test script printed "dragged" (2026-09-25, groups e2e). Check the return
@@ -979,6 +993,7 @@ ShareX end-to-end (2026-09-25), with the dev build:
 
 | Feature | How | Result |
 |---|---|---|
+| Groups toggle icon centered (2026-10-01): the ribbon's margins in its 34×32 button are left/right 12/12 (before: 14/10) and top/bottom 9.5/≈10 (before: 10.5/≈9), with the column closed (outline) and open (filled, on its highlight); user's PID unchanged | guarded screenshots of an isolated instance (`--show-flyout`, UIA invokes of the toggle, no injected input), ink edges measured with sub-pixel coverage, before = the 2026-09-25 groups e2e screenshots of the same markup | ✅ (vertical rest ≈ −0.2 px: the notch tips' faint antialiasing; geometrically −⅛ px) |
 | Forget forever, live on an isolated instance next to the user's app: the card menu ends with *Forget forever…*; its confirmation ("Forget this forever?") deletes the card **and** its CRLF look-alike (log "2 history entries deleted"); `bclip status` prints "Forgotten: 1 item never recorded"; Settings › Forgotten forever shows "Text · 20 characters / From Notepad · forgotten just now · not copied since"; *Allow again* empties the list ("Nothing is forgotten…", *Allow all again…* disabled); user's PID unchanged | UIA invokes + one guarded right-click + UIA `ScrollPattern` to the Settings card (`groups_e2e/run5.sh`, scratch) | ✅ first attempt |
 | Forget forever end to end in the private window station: after `bclip forget`, another program copying the same text with a trailing CRLF is read by the real listener and kept out (counted once), the next different copy is recorded | `CliEndToEndTests.Forget_KeepsRealCopiesOut` | ✅ 8/8 repeated runs |
 | Forget forever in Core: normalization (CRLF, NBSP, U+3000 and U+2029 trimmed; case and inner text kept), known answers, chunk boundaries inside surrogate pairs, SQL trim set = .NET whitespace; look-alike sweep removes exactly the variants; clears/prune keep the list; first entry wins; counters only for new copies; images by pixels; worker order; allow again; CLI grammar/processor/status | tests (`ForgetTests`, CLI tests) | ✅ |

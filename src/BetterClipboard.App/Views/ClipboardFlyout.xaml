@@ -117,6 +117,13 @@
                     Groups toggle. Segoe Fluent Icons has no bookmark ribbon (its "Bookmarks" E8A4 is drawn as a
                     bulleted list), so the ribbon is a 16-DIP path: an outline while the column is closed (F0 =
                     even-odd fill of an outer and an inner ribbon, 1.25 DIP apart), filled while it is open.
+                    Width/Height 16 are load-bearing: they make the 16x16 design box the icon's layout box. A
+                    PathIcon without them measures as its geometry's right/bottom edge (13 x 14.25 here: the path
+                    is a Stretch=None shape, drawn at its own coordinates), so the button centered a box whose ink
+                    sat in its lower right, and the ribbon drew 2 px right of and ~0.8 px below the button's
+                    center (measured at 100 %: margins left 14 / right 10, now 12 / 12). The ribbon (x 3-13,
+                    y 1.5-14.25) is centered in the 16x16 box, so centering the box centers the ribbon. Keep any
+                    new geometry centered in that box.
                 -->
                 <Button
                     x:Name="GroupsToggle"
@@ -125,9 +132,15 @@
                     Style="{StaticResource IconButtonStyle}"
                     ToolTipService.ToolTip="Groups (Ctrl+G)">
                     <Grid>
-                        <PathIcon x:Name="RibbonOutline" Data="F0 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z M4.5,2.75 A0.25,0.25 0 0 0 4.25,3 V11.9 L8,9.4 L11.75,11.9 V3 A0.25,0.25 0 0 0 11.5,2.75 Z" />
+                        <PathIcon
+                            x:Name="RibbonOutline"
+                            Width="16"
+                            Height="16"
+                            Data="F0 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z M4.5,2.75 A0.25,0.25 0 0 0 4.25,3 V11.9 L8,9.4 L11.75,11.9 V3 A0.25,0.25 0 0 0 11.5,2.75 Z" />
                         <PathIcon
                             x:Name="RibbonFilled"
+                            Width="16"
+                            Height="16"
                             Data="F1 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z"
                             Visibility="Collapsed" />
                     </Grid>
