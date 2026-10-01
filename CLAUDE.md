@@ -203,7 +203,8 @@ Reproduction probes that produced the verified facts live in
 [`probe_viewer_chain.cs`](tools/probes/probe_viewer_chain.cs) (viewer chain vs listener timing, §1.9),
 [`probe_sequence.cs`](tools/probes/probe_sequence.cs) (sequence-number bumps, delayed rendering, §1.9),
 [`probe_everything.cs`](tools/probes/probe_everything.cs) (voidtools Everything IPC in a private instance, §2.14),
-[`probe_runmru.py`](tools/probes/probe_runmru.py) (Win+R history structure, change watch, §2.15).
+[`probe_runmru.py`](tools/probes/probe_runmru.py) (Win+R history structure, change watch, §2.15),
+[`probe_shellhistory.cs`](tools/probes/probe_shellhistory.cs) (PowerShell and cmd command history, §2.16).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`.
 
 ### 1.9 Clipboard change notification — "can we never miss a copy?" (2026-09-25) **[verified]**
@@ -262,7 +263,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (438 tests, one class at a time — §4: paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement (119 tests). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`make_icon.py`](tools/make_icon.py) (app icon). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
 Shared build config: [`Directory.Build.props`](Directory.Build.props) (docs on,
@@ -1080,6 +1081,105 @@ User request (2026-10-01): "What about the Win+R's as a new tab 'Run' history?" 
 ShareX it fits (333 px). Run + Everything would be 476 px (92 over), so more source tabs need a tab-bar
 redesign: a "Sources" overflow, icon tabs, or a wider flyout.
 
+### 2.16 PowerShell and cmd.exe history — verified facts for "Pwsh"/"Cmd" tabs (2026-10-01; nothing built yet)
+
+User request (2026-10-01): "What if we use the powershell history and cmd history? "Pwsh" "Cmd" tabs? discover".
+Discovery only, measured with [`probe_shellhistory.cs`](tools/probes/probe_shellhistory.cs) (commit `46a0dd0` has
+the full record):
+- `--inventory` is read-only and prints structure and counts, never a command.
+- `--isolated` runs pwsh 7, Windows PowerShell 5.1 and cmd in hidden pseudoconsoles (no window, never handed to a
+  terminal) on BC-TEST input. Each PowerShell session gets a scratch `HistorySavePath` before its first prompt,
+  so the user's file is never opened; it was checked unchanged afterwards.
+- Sources, studied for interoperability only: PSReadLine (BSD-2) v2.3.6 `d2e770f` and v2.0.0 `6b5e9ff`;
+  microsoft/terminal (MIT) `2b5336c`.
+
+**PowerShell: one shared file** **[verified]**.
+- **Hosts here:** pwsh 7.5.8 with PSReadLine 2.3.6; Windows PowerShell 5.1.26100.8875 with the inbox
+  PSReadLine 2.0.0 (the 2020 GA).
+- **Where:** `%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine\<HostName>_history.txt`, built from
+  `Environment.GetFolderPath(ApplicationData)` (the known folder, not the variable).
+  - Both console hosts are `ConsoleHost`, so 5.1 and 7 **share one file** (Windows Terminal, conhost, a plain
+    VS Code terminal). VS Code's PowerShell extension writes `Visual Studio Code Host_history.txt`.
+  - A profile can move it (`Set-PSReadLineOption -HistorySavePath`). None of this PC's three profiles mentions a
+    history option.
+- **Format:** UTF-8 without BOM, one record per line, CRLF at the end.
+  - A multi-line command keeps each inner break as a backtick + bare LF: ``line`<LF>line`<LF>line<CRLF>``.
+  - The reading rule (PSReadLine's own): a line that ends with a backtick continues. A one-line command that
+    really ends with a backtick is misread by PSReadLine too.
+  - No timestamp, host, version, directory or exit status per record.
+- **When:** at Enter, **before the command runs**. The record was there 7–13 ms after Enter while its 3 s
+  `Start-Sleep` was still running.
+  - The first file-change event came 4.6–6.5 ms after the keystrokes (median of 5), with 1–2 `Changed` events
+    per command.
+  - Failing commands are recorded, unlike Win+R.
+- **Growth:** `SaveIncrementally` (the default) appends and never trims.
+  - `MaximumHistoryCount` (4096) limits memory only: set to 3, five more commands all reached the file.
+  - A new session loads the newest 4096 records, so on this PC 1,741 of 5,837 are beyond PowerShell's own Up
+    arrow and Ctrl+R.
+  - `exit` is recorded like any line; nothing is rewritten at exit. `SaveAtExit` rewrites the whole file when
+    the console closes **[source]**, so a reader must survive a shorter file.
+- **Duplicates:** `HistoryNoDuplicates` (on) drops only a line equal to the one before. A repeat of an older
+  line is appended again (51% of this PC's records are distinct).
+- **Secret filter** (the file only; the session keeps the line in memory):
+  - 2.0.0 keeps out any line matching `password|asplaintext|token|key|secret`, so also `monkey`, `HKEY_…`,
+    `-Password $var` and `Get-Secret`.
+  - 2.3.6 matches `password|asplaintext|token|apikey|secret`, then lets some through by syntax tree: a variable
+    as the argument, SecretManagement commands and `Get-AzAccessToken`, switch parameters.
+  - **Both write** `curl -u user:pass`, `mysql -pPASS`, `$env:GH_PAT = '…'`, `Authorization = 'Bearer …'` and
+    `sqlcmd -P …`. Checked by asking the default handler with BC-TEST lines, then in live sessions.
+- **Locking: what a reader must do.**
+  - Open the file with `FileShare.ReadWrite | FileShare.Delete` and close it fast. A reader holding only
+    `FileShare.Read` made PSReadLine print "Error reading or writing history file" **into the user's console**,
+    and the record arrived with the next command.
+  - Don't take the mutex. Its name is `PSReadLineHistoryFile_` + FNV-1a 32 over the UTF-16 code units (low
+    byte first) of the lower-cased path, the same in both versions, so 5.1 and 7 coordinate. Holding it for
+    1.5 s silently postponed a record to the next command.
+  - PSReadLine keeps no handle open between writes. Deleting the file under a running session worked, and the
+    next command re-created it with only that record (events Deleted, Created, Changed).
+- **This PC** (counts only):
+  - `ConsoleHost_history.txt`: 295 KB, 5,837 records since 2024-02-22, ~6 a day. 47 are multi-line (the
+    longest has 44 lines); median 30 chars, max 2,685. A full read + parse takes 2.5 ms.
+  - Credential-like records already in it: 50 match 2.3.6's raw pattern, 95 match 2.0.0's, 192 a broader
+    pattern.
+  - The VS Code host file has 81 records.
+
+**cmd.exe: no file, only the console's memory** **[verified]**.
+- **Where:** the console host (conhost, or OpenConsole in Windows Terminal) keeps it in memory, per console and
+  per client exe name. `HKCU\Console` here: `HistoryBufferSize` 50, `NumberOfHistoryBuffers` 4, `HistoryNoDup` 0.
+- **Reading:** only from inside that console: `AttachConsole(pid)`, then `GetConsoleCommandHistoryW` with
+  `cmd.exe`. That is the kernel32 export `doskey /history` uses; lengths are in bytes, entries NUL-separated,
+  oldest first.
+  - A command repeated right away is stored once, a repeat of an older one again; unknown commands are kept.
+  - After 60 more commands, 50 were left.
+- **Lifetime:** gone when cmd.exe exits, even while the console lives on (0 entries after `exit`).
+- **No notification.** Console WinEvents need a real console window: conhost's `AccessibilityNotifier` enables
+  MSAA events only with an `hwnd`.
+  - Measured with one hook: a pseudoconsole and a `CREATE_NO_WINDOW` console raised 0 events, a hidden classic
+    window (`SW_HIDE`) raised 4.
+  - Windows Terminal tabs are pseudoconsoles. This PC's default terminal is "Let Windows decide" (= Windows
+    Terminal), so its cmd windows never notify.
+  - Where the events do fire, they mean "a program started": `cd`, `dir`, `set` start nothing **[inferred]**.
+- **Attaching can kill.** A process attached to a console when that console closes is terminated (0xC000013A
+  within 9–15 ms). That held with `SetConsoleCtrlHandler(NULL, TRUE)` too, and with a handler returning TRUE
+  (it saw `CTRL_CLOSE_EVENT`).
+  - So BetterClipboard must never attach itself: one helper process per read costs 56 ms (.NET apphost), where
+    in-process would be 0.2 ms.
+- **Noise:** 158 `cmd.exe` ran in this session, all started by tools (parents `node.exe` 71, `claude.exe` 43,
+  `codex.exe` 43, `chrome.exe` 1). A scan must filter them before spawning helpers.
+- **Hand-off:** conhost never hands a console to Windows Terminal for a pseudoconsole, `CREATE_NO_WINDOW`, or
+  `SW_HIDE`/minimized (`_shouldAttemptHandoff`). That is why the probe's consoles never appeared.
+- **Clink** (keeps `%LOCALAPPDATA%\clink\clink_history`) is not installed here.
+  `HKCU\Software\Microsoft\Command Processor\AutoRun` is set (value not read); the probe's cmd ran with `/d`.
+
+**Other shells.**
+- **Git Bash** `~/.bash_history` (132 lines, last written 2026-03-12): bash writes it only at exit (no
+  `histappend` or `PROMPT_COMMAND`).
+- **WSL** was not probed (`\\wsl$` starts the VM).
+- **Windows Terminal** keeps no command history of its own **[docs]**.
+
+**Tab bar** (the §2.15 estimate). "Pwsh" needs ~50 px and "Cmd" ~47 px, and either alone overflows the 384-px
+bar (the 7 tabs use 351). Both are 64 px over; with Run and Everything, 189 over (still 79 at 4 px padding).
+
 ---
 
 ## 3. Build · run · test
@@ -1107,6 +1207,34 @@ graceful quit (drains queued captures). **The exe is locked while running — `-
 Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe --background` — a scoped
 instance (§2.9), so `--exit` with the same variable set stops only it; **without** the variable, `--exit`
 stops the user's installed app.
+
+**Side by side for the user** ("Launch for me quickly", 2026-10-01): `python tools/launch_dev.py` runs a
+**copy** of the solution build next to the installed app. `--exit` stops it, `--exit --clean` also deletes it
+and its history, and `--no-show` skips the panel.
+- **A copy, never the build output.** A running exe locks its files, so the next build (yours or another
+  agent's in the same tree) fails with "being used by another process", and stopping a process to get a build
+  through is not allowed.
+  - The copy lives in `%TEMP%\BetterClipboard-dev\app`. A re-run sends the copy `--exit` first, because it is
+    locked too while it runs.
+  - It prints the build time and warns when a source file is newer: copying never rebuilds.
+- **Its own data dir** (`…\data`): a scoped instance (§2.9).
+  - A new data dir is seeded with `OpenHotkey` `Alt+Win+V` (free on this PC, §1.6) and
+    `UseKeyboardHookFallback` off, so Win+V stays with the installed app.
+  - Real data on purpose: it imports Windows' history and the Win+R history, watches the real ShareX folders
+    and records live copies. That data stays in the folder until `--clean`.
+- **The user's environment, not this shell's.** It uses `CreateEnvironmentBlock(bInherit = FALSE)` +
+  `BETTERCLIPBOARD_DATA_DIR`, with no inherited handles. Otherwise this shell's `CLAUDECODE`, `MSYSTEM` and
+  invalid `GH_TOKEN` reach every command the dev app starts (the Run tab's Ctrl+Enter).
+- **The panel opens only over a terminal, IDE, browser or Explorer.** On 2026-10-01 a game (`rs2client.exe`)
+  and later another app were in front, so the script printed the shortcut instead.
+- **Verified 2026-10-01**, 0 new warnings or errors in the log:
+  - copied in 0.4 s and started in 0.3 s;
+  - `Alt+Win+V registered with RegisterHotKey`;
+  - Win+R: "imported 26 new of 26";
+  - Windows: "Imported 24 new items (27 found …)";
+  - ShareX folder watched.
+  - The installed app's PID was unchanged. The line "other instances still running: 1 of 2" was another
+    agent's own test instance, which had ended by itself: the script only ever signals its own data dir.
 
 `bclip` from the solution build: `src/BetterClipboard.Cli/bin/Debug/net10.0-windows/bclip.exe`
 (framework-dependent; it can auto-start only a `BetterClipboard.exe` in its own folder, so start a dev app
@@ -1259,7 +1387,8 @@ ShareX end-to-end (2026-09-25), with the dev build:
 - **Never disturb the user's installed app** (it runs in the same session as every experiment): test
   instances get their own `BETTERCLIPBOARD_DATA_DIR` (⇒ scoped lock/events/pipe, no LL hook), `--exit` is
   only ever sent with that variable set, and scripts record the `BetterClipboard.exe` PIDs before and
-  check them after.
+  check them after. To let the user try a dev build, run a copy with `tools/launch_dev.py` (§3), never the
+  build output itself: a running exe locks the next build, another agent's included.
 - **Starting long-lived processes from a console tool:** `UseShellExecute = true` — with `false` the child
   inherits the tool's stdout/stderr pipes and whoever reads them (a shell pipe, an AI agent) waits for EOF
   until that child exits.
@@ -1400,6 +1529,28 @@ ShareX end-to-end (2026-09-25), with the dev build:
   - **Rules:** pause, Forget forever and the ignore rules apply. Deleting through to `RunMRU` only as an
     opt-in, and never writing BetterClipboard's history back into it.
   - **Prerequisite:** the tab-bar redesign (see §2.15) once more than one source tab exists.
+- "Pwsh" and "Cmd" tabs (asked for 2026-10-01; facts in §2.16):
+  - **PowerShell, store don't mirror:**
+    - **Watch and read:** watch the PSReadLine folder (`*_history.txt`) and read the new bytes from a stored
+      offset (`FileShare.ReadWrite | Delete`, never the mutex). Take complete records only and decode the
+      backtick breaks.
+    - **Marker:** one per file in `state.pwsh.<host>`, holding the offset plus a hash of the bytes before it. A
+      shorter or different file means a resync from 0; the content hash dedupes.
+    - **Times:** a new record's time is accurate (written at Enter). The backlog has order only, so import it
+      once as an import origin with synthesized times, like the Run tab.
+    - **Privacy:** opt-in, with a secret filter before storing (2.0.0's regex plus `ghp_`, `github_pat_`, `sk-`,
+      `AKIA`, `xox?-`, Bearer, `-p<pass>`, `curl -u`). Forget forever and pause apply, and the file is never
+      written. Settings must say that deleting `ConsoleHost_history.txt` does not delete BetterClipboard's copy.
+    - **Keys:** Enter pastes; no "run" (no safe target for an arbitrary history line).
+  - **cmd, best effort:**
+    - **When:** on tab entry, and every 30–60 s while interactive cmd windows exist.
+    - **How:** a helper process per console reads its 50 entries, after tool-started consoles are filtered out
+      by parent. Diff per console (PID + start time) with the Run tab's rule.
+    - **Limits:** commands from a window closed between scans are lost.
+    - **Clink:** when installed, its file takes the PowerShell path.
+    - **Or** no Cmd tab, with a hint about Clink.
+  - **Git Bash:** `~/.bash_history` the PowerShell way; it arrives at shell exit.
+  - **Tab bar:** one "Commands" tab with chips (Win+R, PowerShell, cmd, Bash) instead of four tabs.
 - An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms

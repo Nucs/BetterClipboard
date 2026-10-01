@@ -44,7 +44,7 @@ using static Native;
 //
 // Run: dotnet run tools/probes/probe_shellhistory.cs -- --all
 // Results on Windows 11 26200 (2026-10-01), pwsh 7.5.8 (PSReadLine 2.3.6), Windows PowerShell 5.1 (PSReadLine
-// 2.0.0): the commit that added this probe (CLAUDE.md gets the research section once the Run tab lands).
+// 2.0.0): CLAUDE.md §2.16 (the full record is the message of the commit that added this probe, 46a0dd0).
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 if (args.Length > 0 && args[0] == "--hold-attached")
