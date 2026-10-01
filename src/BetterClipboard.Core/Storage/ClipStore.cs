@@ -53,7 +53,9 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// its place in the list (by <c>last_used_utc</c>) does not change. These objects are <b>added idempotently at
 /// every <see cref="Initialize"/></b> without bumping <see cref="SchemaVersion"/>: an older build still
 /// opens the file (it ignores the new tables and the nullable column). Only the protection is lost while an
-/// older build runs — its retention does not know about groups.
+/// older build runs — its retention does not know about groups. A query may name several groups
+/// (<see cref="ClipQuery.GroupIds"/>, the panel's Ctrl/Shift multi-selection): their members are merged into one
+/// list, each entry once, in the usual order; <see cref="CountInGroups"/> counts that merged list.
 /// </para>
 /// <para>
 /// <b>Forget forever.</b> <c>forgotten</c> lists content the user asked never to record again, keyed by its
@@ -785,10 +787,11 @@ public sealed class ClipStore
             command.Parameters.AddWithValue("$since", since.ToUnixTimeMilliseconds());
         }
 
-        if (query.GroupId is { } groupId)
+        // Several selected groups are merged: EXISTS rather than a join, so an entry in two of them is one row, and the
+        // ORDER BY below interleaves them by recency like any other page (never group by group).
+        if (query.GroupIds is { Count: > 0 } groupIds)
         {
-            predicates.Add("EXISTS (SELECT 1 FROM clip_groups cg WHERE cg.clip_id = c.id AND cg.group_id = $group)");
-            command.Parameters.AddWithValue("$group", groupId);
+            predicates.Add($"EXISTS (SELECT 1 FROM clip_groups cg WHERE cg.clip_id = c.id AND cg.group_id IN ({BindIds(command, "$group", groupIds)}))");
         }
 
         // Last, so every cheaper predicate above has narrowed the rows before a text is tested.
@@ -1440,6 +1443,29 @@ public sealed class ClipStore
     }
 
     /// <summary>
+    /// How many entries are in at least one of <paramref name="groupIds"/>: the footer of a view that merges several
+    /// groups ("12 in Work + Home"). Adding up the groups' own <see cref="ClipGroup.ItemCount"/>s would count an entry
+    /// that is in two of them twice; this counts what the merged list (<see cref="ClipQuery.GroupIds"/>) shows.
+    /// </summary>
+    /// <param name="groupIds">Group ids; unknown ids count nothing and duplicates are ignored.</param>
+    /// <returns>The number of distinct entries; 0 for an empty list.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="groupIds"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public long CountInGroups(IReadOnlyCollection<long> groupIds)
+    {
+        ArgumentNullException.ThrowIfNull(groupIds);
+        if (groupIds.Count == 0)
+        {
+            return 0; // nothing to bind: "IN ()" would not even parse
+        }
+
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT count(DISTINCT clip_id) FROM clip_groups WHERE group_id IN ({BindIds(command, "$group", groupIds)});";
+        return (long)command.ExecuteScalar()!;
+    }
+
+    /// <summary>
     /// Creates a group at the end of the column.
     /// </summary>
     /// <param name="name">Display name (trimmed; 1–<see cref="ClipGroup.MaxNameLength"/> characters).</param>
@@ -1919,6 +1945,28 @@ public sealed class ClipStore
             .ToArray();
         Array.Sort(ids);
         return ids;
+    }
+
+    /// <summary>
+    /// Binds a list of ids as numbered parameters (<c>$group0</c>, <c>$group1</c>, …) and returns their names for an
+    /// <c>IN (…)</c> list, so no id is ever spliced into the SQL text.
+    /// </summary>
+    /// <param name="command">The command the parameters are added to (its text uses the returned list).</param>
+    /// <param name="prefix">Parameter name prefix including the <c>$</c>; unique within the command.</param>
+    /// <param name="ids">The ids; duplicates are bound once. Must not be empty: <c>IN ()</c> is a syntax error in SQLite.</param>
+    /// <returns>E.g. <c>"$group0, $group1"</c>.</returns>
+    /// <exception cref="ArgumentException"><paramref name="ids"/> is empty.</exception>
+    private static string BindIds(SqliteCommand command, string prefix, IEnumerable<long> ids)
+    {
+        var names = new List<string>();
+        foreach (var id in ids.Distinct())
+        {
+            var name = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{prefix}{names.Count}");
+            command.Parameters.AddWithValue(name, id);
+            names.Add(name);
+        }
+
+        return names.Count > 0 ? string.Join(", ", names) : throw new ArgumentException("At least one id is needed.", nameof(ids));
     }
 
     /// <summary>Creates a command bound to <paramref name="connection"/>.</summary>

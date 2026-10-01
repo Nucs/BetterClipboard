@@ -1,3 +1,4 @@
+using System.Globalization;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
@@ -91,14 +92,74 @@ public sealed class GroupStoreTests : IDisposable
         Assert.True(store.GetEntry(text.Id)!.IsGrouped);
         Assert.False(store.GetEntry(other.Id)!.IsGrouped);
 
-        Assert.Equal([link.Id, text.Id], store.Query(new ClipQuery { GroupId = work.Id }).Select(e => e.Id));
-        Assert.Equal([link.Id], store.Query(new ClipQuery { GroupId = work.Id, Filter = ClipFilter.Links }).Select(e => e.Id));
-        Assert.Equal([text.Id], store.Query(new ClipQuery { GroupId = work.Id, SearchText = "quarterly" }).Select(e => e.Id));
-        Assert.Equal([link.Id], store.Query(new ClipQuery { GroupId = fun.Id }).Select(e => e.Id));
+        Assert.Equal([link.Id, text.Id], store.Query(new ClipQuery { GroupIds = [work.Id] }).Select(e => e.Id));
+        Assert.Equal([link.Id], store.Query(new ClipQuery { GroupIds = [work.Id], Filter = ClipFilter.Links }).Select(e => e.Id));
+        Assert.Equal([text.Id], store.Query(new ClipQuery { GroupIds = [work.Id], SearchText = "quarterly" }).Select(e => e.Id));
+        Assert.Equal([link.Id], store.Query(new ClipQuery { GroupIds = [fun.Id] }).Select(e => e.Id));
         Assert.Equal(3, store.Query(new ClipQuery()).Count);
 
         Assert.Equal([2L, 1L], store.GetGroups().Select(g => g.ItemCount));
         Assert.Equal(2, store.GetStats().GroupedCount);
+    }
+
+    /// <summary>
+    /// Several groups in one query (the panel's Ctrl/Shift multi-selection) are merged: an entry in two of them comes
+    /// once, the page is interleaved by recency like any other — never group by group — and paging, filters, the search
+    /// and its toggles apply to the merged list. The ids' order, repeats and unknown ids change nothing; no ids means no
+    /// group filter. <see cref="ClipStore.CountInGroups"/> counts exactly what the merged list shows.
+    /// </summary>
+    [Fact]
+    public void MergedGroups_AreOneListInTheUsualOrder()
+    {
+        var work = store.CreateGroup("Work", Star, TestData.Now);
+        var home = store.CreateGroup("Home", Heart, TestData.Now);
+        var empty = store.CreateGroup("Empty", Star, TestData.Now);
+        var workOnly = Add(TestData.Text("BC-TEST work report", TestData.Now.AddMinutes(-6)));
+        var homeOnly = Add(TestData.Text("BC-TEST home groceries", TestData.Now.AddMinutes(-5)));
+        var shared = Add(TestData.Text("BC-TEST shared report", TestData.Now.AddMinutes(-4)));
+        var workLink = Add(TestData.Text("https://example.com/BC-TEST/work", TestData.Now.AddMinutes(-3)));
+        var homeNewest = Add(TestData.Text("BC-TEST home report", TestData.Now.AddMinutes(-2)));
+        Add(TestData.Text("BC-TEST report in no group", TestData.Now.AddMinutes(-1)));
+        foreach (var entry in new[] { workOnly, shared, workLink })
+        {
+            store.AddToGroup(entry.Id, work.Id, TestData.Now);
+        }
+
+        foreach (var entry in new[] { homeOnly, shared, homeNewest })
+        {
+            store.AddToGroup(entry.Id, home.Id, TestData.Now);
+        }
+
+        long[] merged = [homeNewest.Id, workLink.Id, shared.Id, homeOnly.Id, workOnly.Id];
+        Assert.Equal(merged, Ids(new ClipQuery { GroupIds = [work.Id, home.Id] }));
+        Assert.Equal(merged, Ids(new ClipQuery { GroupIds = [home.Id, work.Id, home.Id, 999_999] }));
+        Assert.Equal(6, store.Query(new ClipQuery { GroupIds = [] }).Count);
+        Assert.Empty(store.Query(new ClipQuery { GroupIds = [empty.Id, 999_999] }));
+
+        // One list, plain offsets: the third and fourth cards of the merged view.
+        Assert.Equal([shared.Id, homeOnly.Id], Ids(new ClipQuery { GroupIds = [work.Id, home.Id], Offset = 2, Limit = 2 }));
+
+        // Filter tabs, the search and its toggles apply to the merged groups (not to "report in no group").
+        Assert.Equal([workLink.Id], Ids(new ClipQuery { GroupIds = [work.Id, home.Id], Filter = ClipFilter.Links }));
+        Assert.Equal([homeNewest.Id, shared.Id, workOnly.Id], Ids(new ClipQuery { GroupIds = [work.Id, home.Id], SearchText = "report" }));
+        Assert.Equal(
+            [homeNewest.Id, shared.Id, workOnly.Id],
+            Ids(new ClipQuery { GroupIds = [work.Id, home.Id], SearchText = "report$", SearchOptions = SearchOptions.Regex }));
+        Assert.Empty(store.Query(new ClipQuery { GroupIds = [work.Id, home.Id], SearchText = "Report", SearchOptions = SearchOptions.MatchCase }));
+
+        // Pinned first holds for the merged list as a whole, not group by group.
+        store.SetPinned(workOnly.Id, true, TestData.Now);
+        Assert.Equal([workOnly.Id, homeNewest.Id, workLink.Id, shared.Id, homeOnly.Id], Ids(new ClipQuery { GroupIds = [work.Id, home.Id] }));
+        Assert.Equal(merged, Ids(new ClipQuery { GroupIds = [work.Id, home.Id], PinnedFirst = false }));
+
+        // "shared" counts once; the groups' own counts add up to one more.
+        Assert.Equal(5, store.CountInGroups([work.Id, home.Id]));
+        Assert.Equal(6, store.GetGroups().Where(g => g.Id == work.Id || g.Id == home.Id).Sum(g => g.ItemCount));
+        Assert.Equal(3, store.CountInGroups([work.Id, work.Id]));
+        Assert.Equal(5, store.CountInGroups([work.Id, home.Id, empty.Id, 999_999]));
+        Assert.Equal(0, store.CountInGroups([empty.Id]));
+        Assert.Equal(0, store.CountInGroups([]));
+        Assert.Throws<ArgumentNullException>(() => store.CountInGroups(null!));
     }
 
     /// <summary>Grouped entries survive every retention rule and "clear", like pinned ones; "clear everything" removes them but keeps the groups.</summary>
@@ -226,6 +287,11 @@ public sealed class GroupStoreTests : IDisposable
     private ClipEntry Add(ClipCapture capture) =>
         store.Upsert(capture, ContentClassifier.Classify(capture)!, null, bumpIfExists: true)!.Entry;
 
+    /// <summary>Runs a query and keeps only the ids, in page order.</summary>
+    /// <param name="query">The query.</param>
+    /// <returns>The ids.</returns>
+    private List<long> Ids(ClipQuery query) => [.. store.Query(query).Select(e => e.Id)];
+
     /// <summary>Runs SQL directly against the (plaintext test) database.</summary>
     /// <param name="sql">Statements.</param>
     private void ExecuteRaw(string sql)
@@ -309,6 +375,30 @@ public sealed class GroupServiceTests : IAsyncLifetime
         await Assert.ThrowsAsync<ArgumentException>(() => service.CreateGroupAsync("Bad", "B"));
     }
 
+    /// <summary>
+    /// The merged view's count (the footer of several groups shown together) counts an entry in two of them once, and
+    /// works on its own copy of the ids: the panel may change its list right after asking.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task CountInGroups_CountsTheMergedList()
+    {
+        var a = (await service.AddAsync(TestData.Text("BC-TEST a")))!;
+        var b = (await service.AddAsync(TestData.Text("BC-TEST b")))!;
+        var work = await service.CreateGroupAsync("Work", GroupIconCatalog.All[0].Glyph);
+        var home = await service.CreateGroupAsync("Home", GroupIconCatalog.All[1].Glyph);
+        await service.AddToGroupAsync([a.Id, b.Id], work.Id);
+        await service.AddToGroupAsync([b.Id], home.Id);
+
+        var ids = new List<long> { work.Id, home.Id };
+        var counting = service.CountInGroupsAsync(ids);
+        ids.Clear();
+        Assert.Equal(2, await counting);
+        Assert.Equal(1, await service.CountInGroupsAsync([home.Id]));
+        Assert.Equal(0, await service.CountInGroupsAsync([]));
+        Assert.Throws<ArgumentNullException>(() => { _ = service.CountInGroupsAsync(null!); });
+    }
+
     /// <summary>Snapshot of the recorded changes.</summary>
     /// <returns>The changes in order.</returns>
     private List<ClipChangedEventArgs> Snapshot()
@@ -336,4 +426,209 @@ public sealed class GroupIconCatalogTests
         Assert.Equal("Star", GroupIconCatalog.NameOf(GroupIconCatalog.Default.Glyph));
         Assert.Null(GroupIconCatalog.NameOf("x"));
     }
+}
+
+/// <summary>
+/// Tests for <see cref="GroupSelection"/>: which groups the panel shows after plain, Ctrl, Shift and Ctrl+Shift clicks
+/// on the group icons (Explorer's selection keys), the icon menu's toggle, and groups deleted while shown.
+/// </summary>
+public sealed class GroupSelectionTests
+{
+    /// <summary>A groups column, top to bottom (ids deliberately not 1, 2, 3: positions and ids must not be confused).</summary>
+    private static readonly long[] Column = [10, 20, 30, 40, 50];
+
+    /// <summary>
+    /// A plain click shows one group; the same click again goes back to everything (as before groups could be merged);
+    /// a click on another group, or on one of several merged ones, shows that group alone.
+    /// </summary>
+    [Fact]
+    public void PlainClick_ShowsOneGroup_AndAgainGoesBackToEverything()
+    {
+        Assert.True(GroupSelection.None.IsEmpty);
+        Assert.Null(GroupSelection.None.Anchor);
+
+        var one = GroupSelection.None.Click(Column, 30, ctrl: false, shift: false);
+        Assert.Equal([30L], one.Ids);
+        Assert.Equal(30, one.Anchor);
+        Assert.False(one.IsEmpty);
+        Assert.False(one.IsMerged);
+        Assert.True(one.Contains(30));
+        Assert.False(one.Contains(20));
+
+        Assert.Same(GroupSelection.None, one.Click(Column, 30, ctrl: false, shift: false));
+        Assert.Equal([20L], one.Click(Column, 20, ctrl: false, shift: false).Ids);
+
+        var merged = one.Click(Column, 50, ctrl: true, shift: false);
+        Assert.Equal([30L], merged.Click(Column, 30, ctrl: false, shift: false).Ids);
+    }
+
+    /// <summary>
+    /// Ctrl+click adds a group or takes it out, the ids stay in column order whatever the click order, the anchor moves
+    /// to every Ctrl+clicked group (also one taken out, like Explorer), and taking out the last one is the regular view.
+    /// The menu's toggle is the same as a Ctrl+click.
+    /// </summary>
+    [Fact]
+    public void CtrlClick_AddsAndTakesOut_InColumnOrder()
+    {
+        var selection = GroupSelection.None.Click(Column, 50, ctrl: true, shift: false);
+        Assert.Equal([50L], selection.Ids);
+
+        selection = selection.Click(Column, 20, ctrl: true, shift: false);
+        Assert.Equal([20L, 50L], selection.Ids);
+        Assert.Equal(20, selection.Anchor);
+        Assert.True(selection.IsMerged);
+
+        selection = selection.Click(Column, 40, ctrl: true, shift: false).Click(Column, 50, ctrl: true, shift: false);
+        Assert.Equal([20L, 40L], selection.Ids);
+        Assert.Equal(50, selection.Anchor);
+
+        Assert.Equal([20L, 30L, 40L], selection.Toggle(Column, 30).Ids);
+        Assert.Equal([40L], selection.Toggle(Column, 20).Ids);
+        var none = selection.Click(Column, 20, ctrl: true, shift: false).Click(Column, 40, ctrl: true, shift: false);
+        Assert.Same(GroupSelection.None, none);
+        Assert.Null(none.Anchor);
+    }
+
+    /// <summary>
+    /// Shift+click shows the run from the anchor, which stays put so further Shift+clicks pivot around it; without an
+    /// anchor the run starts at the clicked group; Ctrl+Shift+click adds the run to what is shown.
+    /// </summary>
+    [Fact]
+    public void ShiftClick_ShowsTheRunFromTheAnchor()
+    {
+        var selection = GroupSelection.None.Click(Column, 20, ctrl: false, shift: false).Click(Column, 40, ctrl: false, shift: true);
+        Assert.Equal([20L, 30L, 40L], selection.Ids);
+        Assert.Equal(20, selection.Anchor);
+
+        var pivoted = selection.Click(Column, 10, ctrl: false, shift: true);
+        Assert.Equal([10L, 20L], pivoted.Ids);
+        Assert.Equal(20, pivoted.Anchor);
+
+        // The run already shown: the same list (no reload), whatever the instance.
+        Assert.True(selection.Click(Column, 40, ctrl: false, shift: true).HasSameIds(selection));
+
+        var fresh = GroupSelection.None.Click(Column, 40, ctrl: false, shift: true);
+        Assert.Equal([40L], fresh.Ids);
+        Assert.Equal(40, fresh.Anchor);
+
+        var added = GroupSelection.None.Click(Column, 10, ctrl: false, shift: false)
+            .Click(Column, 30, ctrl: true, shift: false)
+            .Click(Column, 50, ctrl: true, shift: true);
+        Assert.Equal([10L, 30L, 40L, 50L], added.Ids);
+        Assert.Equal(30, added.Anchor);
+    }
+
+    /// <summary>
+    /// A click on a group that is not in the column changes nothing; a reloaded column drops deleted groups (and an
+    /// anchor on one: the next Shift+click starts afresh) and keeps the same instance when nothing vanished; a group
+    /// being deleted leaves the view without moving the anchor elsewhere.
+    /// </summary>
+    [Fact]
+    public void DeletedGroups_LeaveTheView()
+    {
+        var selection = GroupSelection.None.Click(Column, 20, ctrl: false, shift: false).Click(Column, 40, ctrl: true, shift: false);
+        Assert.Same(selection, selection.Click(Column, 99, ctrl: false, shift: false));
+        Assert.Same(selection, selection.Retain(Column));
+
+        var retained = selection.Retain([10, 20, 30, 50]);
+        Assert.Equal([20L], retained.Ids);
+        Assert.Null(retained.Anchor);
+        Assert.Equal([50L], retained.Click([10, 20, 30, 50], 50, ctrl: false, shift: true).Ids);
+        Assert.Same(GroupSelection.None, selection.Retain([10, 30]));
+
+        // The column's order wins, also after a reorder.
+        Assert.Equal([40L, 20L], selection.Retain([40, 20]).Ids);
+
+        var without = selection.Without(40);
+        Assert.Equal([20L], without.Ids);
+        Assert.Null(without.Anchor);
+        Assert.Equal(40, selection.Without(20).Anchor);
+        Assert.Same(selection, selection.Without(30));
+        Assert.Same(GroupSelection.None, without.Without(20));
+    }
+
+    /// <summary>The ids cannot be changed through <see cref="GroupSelection.Ids"/>; null arguments are refused.</summary>
+    [Fact]
+    public void Selection_IsImmutable_AndRefusesNulls()
+    {
+        var selection = GroupSelection.None.Click(Column, 10, ctrl: false, shift: false);
+        Assert.Throws<NotSupportedException>(() => ((IList<long>)selection.Ids).Add(20));
+        Assert.Equal([10L], selection.Ids);
+        Assert.Throws<ArgumentNullException>(() => selection.Click(null!, 10, ctrl: false, shift: false));
+        Assert.Throws<ArgumentNullException>(() => selection.Retain(null!));
+        Assert.Throws<ArgumentNullException>(() => selection.HasSameIds(null!));
+    }
+}
+
+/// <summary>
+/// Tests for <see cref="GroupViewText"/>: the header, placeholder, footer, empty-state and menu wording of one group
+/// and of several merged ones, named while they fit and counted otherwise.
+/// </summary>
+public sealed class GroupViewTextTests
+{
+    private static readonly IReadOnlyList<ClipGroup> One = [Group("Work")];
+    private static readonly IReadOnlyList<ClipGroup> Two = [Group("Work"), Group("Home")];
+    private static readonly IReadOnlyList<ClipGroup> Three = [Group("Work"), Group("Home"), Group("Ideas")];
+    private static readonly IReadOnlyList<ClipGroup> Four = [Group("Work"), Group("Home"), Group("Ideas"), Group("Code")];
+
+    /// <summary>The header names every group, however many; the regular view has no suffix.</summary>
+    [Fact]
+    public void Title_NamesEveryGroup()
+    {
+        Assert.Equal(string.Empty, GroupViewText.Title([]));
+        Assert.Equal("Work", GroupViewText.Title(One));
+        Assert.Equal("Work + Home + Ideas + Code", GroupViewText.Title(Four));
+    }
+
+    /// <summary>
+    /// The short texts name up to three groups with up to 24 characters of names together, and count beyond; one group
+    /// is always named, even a 40-character one (as before groups could be merged).
+    /// </summary>
+    [Fact]
+    public void ShortTexts_NameWhileTheyFit_AndCountOtherwise()
+    {
+        var invariant = CultureInfo.InvariantCulture;
+        Assert.Equal("Work", GroupViewText.ShortName(One, invariant));
+        Assert.Equal("Work + Home", GroupViewText.ShortName(Two, invariant));
+        Assert.Equal("Work + Home + Ideas", GroupViewText.ShortName(Three, invariant));
+        Assert.Equal("4 groups", GroupViewText.ShortName(Four, invariant));
+
+        var longest = new string('x', ClipGroup.MaxNameLength);
+        Assert.Equal(longest, GroupViewText.ShortName([Group(longest)], invariant));
+
+        // 24 characters of names fit, 25 do not (the lengths are checked, not assumed).
+        ClipGroup[] fits = [Group("Shopping list"), Group("Gift ideas!")];
+        ClipGroup[] tooLong = [Group("Shopping list"), Group("Gift ideas!!")];
+        Assert.Equal(GroupViewText.MaxNamedLength, fits.Sum(g => g.Name.Length));
+        Assert.Equal(GroupViewText.MaxNamedLength + 1, tooLong.Sum(g => g.Name.Length));
+        Assert.Equal("Shopping list + Gift ideas!", GroupViewText.ShortName(fits, invariant));
+        Assert.Equal("2 groups", GroupViewText.ShortName(tooLong, invariant));
+
+        Assert.Equal("Work", GroupViewText.AnyOf(One, invariant));
+        Assert.Equal("Work or Home", GroupViewText.AnyOf(Two, invariant));
+        Assert.Equal("Work, Home or Ideas", GroupViewText.AnyOf(Three, invariant));
+        Assert.Equal("these 4 groups", GroupViewText.AnyOf(Four, invariant));
+
+        Assert.Equal("Work", GroupViewText.AllOf(One, invariant));
+        Assert.Equal("Work and Home", GroupViewText.AllOf(Two, invariant));
+        Assert.Equal("Work, Home and Ideas", GroupViewText.AllOf(Three, invariant));
+        Assert.Equal("these 2 groups", GroupViewText.AllOf(tooLong, invariant));
+        Assert.Equal("these 2 groups", GroupViewText.AnyOf(tooLong, invariant));
+    }
+
+    /// <summary>The regular view is not a group view: the short texts refuse no groups, and null.</summary>
+    [Fact]
+    public void ShortTexts_NeedAGroup()
+    {
+        Assert.Throws<ArgumentException>(() => GroupViewText.ShortName([]));
+        Assert.Throws<ArgumentException>(() => GroupViewText.AnyOf([]));
+        Assert.Throws<ArgumentException>(() => GroupViewText.AllOf([]));
+        Assert.Throws<ArgumentNullException>(() => GroupViewText.NamesFit(null!));
+        Assert.Throws<ArgumentNullException>(() => GroupViewText.Title(null!));
+    }
+
+    /// <summary>A group snapshot with only a name that matters.</summary>
+    /// <param name="name">The name.</param>
+    /// <returns>The group.</returns>
+    private static ClipGroup Group(string name) => new(name.Length, name, GroupIconCatalog.Default.Glyph, 0, 0);
 }

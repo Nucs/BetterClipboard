@@ -265,7 +265,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (522 tests, one class at a time — §4: the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (532 tests, one class at a time — §4: the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything) (169 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
@@ -762,7 +762,8 @@ User request (2026-09-25):
   - Why no `user_version` bump: an older build must still open the file.
   - The cost: while an older build runs, its retention does not know groups exist.
 - **Entries:** `ClipEntry.GroupIds` comes from a `group_concat` subquery in `EntryColumns`, parsed and sorted.
-  `ClipQuery.GroupId` filters with `EXISTS`, and it combines with filter tabs and search.
+  `ClipQuery.GroupIds` filters with `EXISTS (… group_id IN (…))`: one group, or several merged (each entry
+  once, see "Several groups at once" below). It combines with filter tabs, search and the search toggles.
 - **Validation:** 1–40 characters for the name (trimmed); the icon must be exactly one Private Use Area
   character (`ClipGroup.IsValidGlyph`), since anything else renders as a box in the 36-DIP button.
 
@@ -807,7 +808,8 @@ User request (2026-09-25):
   App.xaml). A brush looked up in code from `Application.Resources` would ignore the flyout's own
   `RequestedTheme`.
 - **Views:** clicking an icon shows that group; clicking it again, or the logo, returns to everything. A
-  summon always starts in the regular view, like the filter tabs.
+  summon always starts in the regular view, like the filter tabs. Ctrl+click and Shift+click show several
+  groups at once (below).
 - **Header:** the header reads "Clipboard › Name". `TitlePanel` is a grid whose name column is `*` only
   while it has text, so the "Paused" chip always fits (a StackPanel cut it to "Pau"). The placeholder reads
   "Search in Name…" and the footer "N in Name".
@@ -819,10 +821,10 @@ User request (2026-09-25):
   - `Drop` copies the ids before awaiting, because `DragItemsCompleted` clears them.
   - Other apps and our own text boxes see no format they understand, so the drop is refused.
 - **Menus:**
-  - Card: "Remove from Name" in a group view, plus a *Groups* submenu of toggles (the keyboard and
-    screen-reader route).
-  - Group icon: Rename… (flyout), Change icon… (the picker), Delete group (confirm; it says the items
-    stay).
+  - Card: "Remove from Name" in a group view ("Remove from Work and Home" in a merged one), plus a *Groups*
+    submenu of toggles (the keyboard and screen-reader route).
+  - Group icon: Add to view / Remove from view (only while other groups are shown), Rename… (flyout), Change
+    icon… (the picker), Delete group (confirm; it says the items stay).
   - Follow-up flyouts are queued through `DispatcherQueue`, so they open after the menu closed. Each one
     counts in `openPopups`, so the flyout does not dismiss itself.
   - **Keys inside popups** (`IsPopupKey`, found in the e2e run): a flyout's popup is parented to its
@@ -840,6 +842,50 @@ User request (2026-09-25):
     until the card menu's `Closed` (`MuteContextFlyoutUntilClosed`; a style value comes back via
     `ClearValue`). A right-click in the search box still gets the text box's menu.
 - **Cards:** a card shows its groups' glyphs in the header row, with the group names in a tooltip.
+
+**Several groups at once** (user request 2026-10-01: "Use can hold (ctrl or shift) and multi-select groups which
+merge by the order we have, search applying to the selected groups and rest of necessary integrations").
+- **Clicks, Explorer's selection keys** (`Core/Presentation/GroupSelection`, immutable, pure, unit-tested):
+  - plain click: that group alone; on the only group shown, back to everything (the old rule); on one of several
+    merged groups, that group alone;
+  - Ctrl+click: add the group or take it out; taking out the last one is the regular view;
+  - Shift+click: the run of groups (column order) from the anchor, the last group clicked without Shift;
+    Ctrl+Shift+click adds the run. A Ctrl+click that takes a group out still moves the anchor there (Explorer
+    does too). The anchor is dropped with the last group shown, and when its group is deleted.
+  - The icon menu's *Add to view* / *Remove from view* (accelerator text "Ctrl+Click") is the route for touch,
+    pen and screen readers (an invoke is a plain click). Offered only while some other group is shown.
+  - The modifiers are read in the button's `Click` (`InputKeyboardSource`), like a card's Shift+click.
+- **"Merge by the order we have":** a union in the list's usual order, never group by group.
+  - `ClipStore.Query` adds one `EXISTS (… group_id IN ($group0, …))` predicate (`BindIds` binds the ids). An
+    entry in two of the groups is one row; `PinnedFirst` and recency order the whole list; paging stays a plain
+    offset.
+  - The search, its Aa / W / .* toggles and the filter tabs apply to the merged list as they do anywhere.
+  - `GroupSelection.Ids` follow the column's order whatever the click order. That order shapes texts only.
+- **Texts** (`Core/Presentation/GroupViewText`, pure, unit-tested):
+  - header: every name, "Clipboard › Work + Home + Ideas". It trims early: next to the "Paused" chip "Work + Home"
+    read "Work +…" (e2e screenshot), so the title's tooltip names them all (`GroupTitleTooltip`);
+  - placeholder "Search in Work + Home…" and footer "5 in Work + Home": names while they fit (≤ 3 groups,
+    ≤ 24 characters of names together), else "4 groups". The footer's count sits in an `Auto` column next to the
+    key hints, so two 40-character names would clip the count itself. One group is always named, as before.
+  - empty state "Nothing in Work or Home yet" / "Nothing in Work or Home contains “foo”." ("these 4 groups"
+    when they don't fit), and "… drag cards onto their icons";
+  - card menu "Remove from Work and Home": takes the card out of every shown group it is in, one after the other
+    (the last removal restarts its retention clock if it is then in no group).
+- **Footer count:** `ClipStore.CountInGroups` = `count(DISTINCT clip_id)`, through `CountInGroupsAsync` (the ids
+  are copied on the caller's thread). The groups' own counts would count a shared entry twice. A result for a
+  view that changed during the await is dropped.
+- **Highlights:** every shown icon gets the selected style, and its UI Automation `ItemStatus` reads "Shown"
+  (screen readers can't see the highlight; UI tests read it). The tooltip's second line and the help text say
+  "Ctrl+click or Shift+click to show several groups together".
+- **Keeping the view right:** `FlyoutViewModel.GroupSelection` replaces `SelectedGroupId`.
+  - A new selection with the same ids (only the anchor moved) does not reload.
+  - `LoadGroupsAsync` drops deleted groups (`Retain`) and refreshes the footer: a membership change reaches the
+    list before the groups reload, so the one-group footer used to keep the old count after "Remove from Work".
+  - `TryApplyInPlace` takes a card out only once it is in none of the shown groups.
+  - Deleting a shown group takes only it out of the view (`Without`).
+  - Closing the column, the logo and every summon go back to the regular view.
+- **Not built:** `bclip list --group` (the store takes `ClipQuery.GroupIds` already); keeping a merged view across
+  summons; keyboard selection of groups beyond Space/Ctrl+Space on a focused icon (not verified).
 
 ### 2.12 Forget forever — `ForgetFingerprint`, the `forgotten` table, `ClipHistoryService.ForgetAsync`
 
@@ -1604,7 +1650,7 @@ The proposal (one "Screenshots" integration in the ShareX mould, the live check 
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 691 tests (688 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 701 tests (698 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -1911,6 +1957,7 @@ Everything tab (2026-10-01):
 
 | Feature | How | Result |
 |---|---|---|
+| Several groups at once, live on an isolated instance next to the user's app (2026-10-01; seven BC-TEST items in Work / Home / Ideas seeded through `MachineBoundHistory`, capture paused, `PasteOnSelect` off). A plain click shows Work (3 cards, "3 in Work"). Ctrl+click Home merges them: 5 cards newest first with the shared card once, header "› Work + Home", footer "5 in Work + Home", both icons' `ItemStatus` "Shown". The search "report" keeps the 3 matching cards of both groups; "zzz-none" shows "Nothing in Work or Home contains “zzz-none”.". Shift+click Ideas shows the run from the anchor (Home + Ideas, 4 cards); Ctrl+Shift+click Work adds Work..Home (all three, 6). The icon menu's *Remove from view* takes Ideas out; the card menu's *Remove from Work and Home* takes the shared card out of the view ("4 in Work + Home"). A plain click on Work shows it alone (2), again: everything (7). 0 WRN/ERR; the user's PIDs unchanged | UIA reads and plain invokes; real Ctrl / Shift / Ctrl+Shift clicks and two right-clicks only after checking that the test panel is in front and owns the point; cards never invoked (`groups_e2e/run.py`, scratch) | ✅ 11/11 on the first run, on the shared tree's build (the same feature code, without the header tooltip). Its screenshot showed the header trimmed to "Work +…" next to the Paused chip, hence the title's tooltip. The exact commit's build (a separate worktree) and the tooltip's hover check were not run live: three waits for the terminal to be in front skipped (the user was away with another app in front) |
 | Everything tab on an isolated instance next to the user's app (2026-10-01): a private, windowless Everything 1.5.0.1423b (`BCTEST-E2E`, only a BC-TEST tree, four picks through the run-count IPC), the store seeded with BC-TEST items, overrides for Everything, ShareX and Win+R. The app verified the instance ("signed by voidtools PTY LTD"). All nine tabs fit: window 518 px outer / 504 visible, "Everything" 83 px with 13 to spare. The tab lists the four picks newest first ("File/Folder opened in Everything", "opened 3 times"), then the path copied in Everything; footer "4 opened in Everything · 1 kept". Ctrl+P on a pick: a pinned history entry in its place (`bclip`: `files everything pinned Everything`). Delete on a pick: hidden, also after reopening the panel. User's PIDs unchanged, scratch removed | UIA (select-only) + Ctrl+P/Delete/Esc sent only while the test panel was in front + two guarded screenshots (`ev_e2e/run.sh`, scratch) | ✅ after two fixes it found: the tab bar ignored the window frame ("Everythin", fixed by `WindowFrameDip`), and the first run's helper invoked a card (it pasted a BC-TEST file reference into the user's clipboard and terminal; select-only since, §4) |
 | Everything against real builds: live picks (run counts, dates, newest first, search words), then the saved `Run History.csv` after the instance exited, all through the real owner check | `RealEverythingTests` with `BETTERCLIPBOARD_EVERYTHING_EXE`, one private instance per run | ✅ 1.4.1.935, 1005, 1026, 1032 and 1.5.0.1423b. 1.4 needs a save for the file (no search window ever opened; see §2.14 "Run history saving") |
 | Everything unit tests: wire format (query and command-line encoding, `LIST2` field order, every field skipped by size, lying sizes refused, unset dates), queries and quoting (`CommandLineToArgvW` round trip), `Run History.csv` (format, header order, odd rows, a write cut off mid-path, candidate paths), merge and hide rules, the store filter/origin/forget-by-path and pick formats, CLI and setting; the client against a fake IPC window (trust, state, matching, latest-wins, deadlines, garbage, a hung window), the integration (live, saved file, loading, garbled, impostor), owner check, locator | tests | ✅ 55 new (Core 29, Windows 26). The locator test found a real bug: a quoted display icon with an icon index (`"…\Everything.exe",0`) was unquoted before the index was cut and never matched |
@@ -1934,7 +1981,7 @@ Everything tab (2026-10-01):
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 688 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 698 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 701 = Core 532 + Windows 169, with merged group views (built and run in a separate worktree holding only that change, while another session's half-done work kept the shared tree from building); before them, 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |

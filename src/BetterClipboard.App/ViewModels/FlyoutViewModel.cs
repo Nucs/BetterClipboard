@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Everything;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Storage;
 using BetterClipboard.Windows.Integrations;
@@ -138,17 +139,25 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public partial IReadOnlyList<ClipGroup> Groups { get; set; } = [];
 
     /// <summary>
-    /// The group whose items the list shows, or <see langword="null"/> for the regular view (the clipboard
-    /// icon); changes reload. Filter pills and search apply inside the group too.
+    /// The groups whose items the list shows — one, or several merged into one list (each item once, in the list's usual
+    /// order) — or <see cref="GroupSelection.None"/> for the regular view (the clipboard icon). Filter pills, the search
+    /// and its toggles apply inside the groups too.
     /// </summary>
+    /// <remarks>
+    /// Changed through <see cref="ClickGroup"/> (plain, Ctrl and Shift clicks on the icons), <see cref="ToggleGroupInView"/>
+    /// (the icon menu), <see cref="ShowAllHistory"/> and <see cref="RemoveGroupFromView"/>; a reloaded column drops
+    /// deleted groups (<see cref="LoadGroupsAsync"/>). A new selection of the same groups (only its Shift anchor moved)
+    /// raises <see cref="ObservableObject.PropertyChanged"/> but does not reload
+    /// (<see cref="OnGroupSelectionChanged(GroupSelection, GroupSelection)"/>).
+    /// </remarks>
     [ObservableProperty]
-    public partial long? SelectedGroupId { get; set; }
+    public partial GroupSelection GroupSelection { get; set; } = GroupSelection.None;
 
-    /// <summary>Header text after "Clipboard": "› Work" in a group view, empty otherwise.</summary>
+    /// <summary>Header text after "Clipboard": "› Work" or "› Work + Home" in a group view, empty otherwise.</summary>
     [ObservableProperty]
     public partial string GroupTitle { get; set; } = string.Empty;
 
-    /// <summary>Search box placeholder ("Search in Work…" in a group view).</summary>
+    /// <summary>Search box placeholder ("Search in Work…" or "Search in Work + Home…" in a group view).</summary>
     [ObservableProperty]
     public partial string SearchPlaceholder { get; set; } = DefaultSearchPlaceholder;
 
@@ -161,15 +170,21 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>
     /// Whether the list is the Everything tab's merged view: the Everything filter in the regular view (in a group
-    /// view the filter only narrows the group's stored entries — live picks are in no group).
+    /// view the filter only narrows the groups' stored entries — live picks are in no group).
     /// </summary>
-    public bool IsEverythingView => Filter == ClipFilter.Everything && SelectedGroupId is null;
+    public bool IsEverythingView => Filter == ClipFilter.Everything && GroupSelection.IsEmpty;
+
+    /// <summary>Whether the list shows groups (one or several) rather than the whole history.</summary>
+    public bool IsGroupView => !GroupSelection.IsEmpty;
 
     /// <summary>Raised (UI thread) after <see cref="Groups"/> was reloaded, so the view rebuilds its group icons.</summary>
     public event EventHandler? GroupsReloaded;
 
-    /// <summary>The selected group's snapshot, or <see langword="null"/> in the regular view (or when it vanished).</summary>
-    public ClipGroup? SelectedGroup => SelectedGroupId is { } id ? FindGroup(id) : null;
+    /// <summary>
+    /// Snapshots of the groups shown, in column order; empty in the regular view. A group that vanished from
+    /// <see cref="Groups"/> before <see cref="LoadGroupsAsync"/> took it out of the selection is skipped.
+    /// </summary>
+    public IReadOnlyList<ClipGroup> SelectedGroups => [.. GroupSelection.Ids.Select(FindGroup).OfType<ClipGroup>()];
 
     /// <summary>Finds a group in the current <see cref="Groups"/> list.</summary>
     /// <param name="id">Group id.</param>
@@ -177,8 +192,36 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public ClipGroup? FindGroup(long id) => Groups.FirstOrDefault(g => g.Id == id);
 
     /// <summary>
-    /// Reloads the groups column; falls back to the regular view when the selected group no longer exists,
-    /// and refreshes the group badges of the visible cards (names and icons may have changed).
+    /// A click on a group icon, with the modifier keys held at that moment: a plain click shows that group alone (or, on
+    /// the only group shown, the whole history again), Ctrl adds the group to the groups shown or takes it out, Shift
+    /// shows the run of groups from the last clicked one, Ctrl+Shift adds that run (<see cref="GroupSelection.Click"/>).
+    /// </summary>
+    /// <param name="groupId">The clicked group.</param>
+    /// <param name="ctrl">Ctrl was down.</param>
+    /// <param name="shift">Shift was down.</param>
+    public void ClickGroup(long groupId, bool ctrl, bool shift) => GroupSelection = GroupSelection.Click(GroupColumn(), groupId, ctrl, shift);
+
+    /// <summary>
+    /// Adds a group to the groups shown, or takes it out — a Ctrl+click for the icon menu's "Add to view" / "Remove from
+    /// view" (touch, pen and screen readers have no Ctrl+click).
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    public void ToggleGroupInView(long groupId) => GroupSelection = GroupSelection.Toggle(GroupColumn(), groupId);
+
+    /// <summary>Back to the regular view over the whole history (the logo, closing the groups column).</summary>
+    public void ShowAllHistory() => GroupSelection = GroupSelection.None;
+
+    /// <summary>
+    /// Takes a group out of the view without touching the other groups shown (it is about to be deleted); the regular
+    /// view when it was the only one. No-op when it is not shown.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    public void RemoveGroupFromView(long groupId) => GroupSelection = GroupSelection.Without(groupId);
+
+    /// <summary>
+    /// Reloads the groups column; drops groups that no longer exist from the view (none left: back to the regular
+    /// view), refreshes the group badges of the visible cards (names and icons may have changed) and, in a group view,
+    /// the footer's count (memberships may have changed).
     /// </summary>
     /// <returns>A task completing when reloaded (failures are logged, never thrown).</returns>
     public async Task LoadGroupsAsync()
@@ -186,10 +229,10 @@ public sealed partial class FlyoutViewModel : ObservableObject
         try
         {
             Groups = await controller.History.GetGroupsAsync();
-            if (SelectedGroupId is { } id && FindGroup(id) is null)
-            {
-                SelectedGroupId = null; // deleted meanwhile: back to everything
-            }
+
+            // Deleted meanwhile: out of the view; Retain hands back the same instance when nothing vanished, so an
+            // unchanged view is not reloaded.
+            GroupSelection = GroupSelection.Retain(GroupColumn());
 
             foreach (var item in Items)
             {
@@ -198,6 +241,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
             UpdateGroupTexts();
             GroupsReloaded?.Invoke(this, EventArgs.Empty);
+
+            // A membership change ("Remove from Work", a drop) reaches the list before the groups reload, so the footer
+            // it refreshed still counted from the old snapshot (one group's count comes from Groups).
+            if (IsGroupView)
+            {
+                await UpdateStatusAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -215,7 +265,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
         Filter = ClipFilter.All;
 
         // Like the filter, a summon always starts in the regular view: Win+V means "what did I copy last".
-        SelectedGroupId = null;
+        GroupSelection = GroupSelection.None;
         suppressReload = false;
         IsPaused = controller.Settings.Current.IsCapturePaused;
 
@@ -388,10 +438,11 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return false;
             case ClipChangeKind.Updated when change.Entry is { } updated:
                 var existing = Items.FirstOrDefault(i => i.Id == updated.Id);
-                if (SelectedGroupId is { } groupId && !updated.GroupIds.Contains(groupId))
+                if (IsGroupView && !updated.GroupIds.Any(GroupSelection.Contains))
                 {
-                    // Taken out of the group being viewed ("Remove from group"): it leaves this view at
-                    // once, in place, so the scroll position and the neighbors' selection survive.
+                    // Taken out of the groups being viewed ("Remove from group"): it leaves this view at once, in
+                    // place, so the scroll position and the neighbors' selection survive. In a merged view only
+                    // once it is in none of them — still in another group shown, it stays (its badges update below).
                     if (existing is not null)
                     {
                         Items.Remove(existing);
@@ -464,10 +515,19 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
     }
 
-    /// <summary>Retitles and reloads when another group (or the regular view) is picked.</summary>
-    /// <param name="value">New group id.</param>
-    partial void OnSelectedGroupIdChanged(long? value)
+    /// <summary>
+    /// Retitles and reloads when other groups (or the regular view) are picked. A selection of the same groups whose
+    /// Shift anchor alone moved (e.g. a Shift+click on the run already shown) shows the same list: nothing to do.
+    /// </summary>
+    /// <param name="oldValue">The groups shown before.</param>
+    /// <param name="newValue">The groups shown now.</param>
+    partial void OnGroupSelectionChanged(GroupSelection oldValue, GroupSelection newValue)
     {
+        if (oldValue.HasSameIds(newValue))
+        {
+            return;
+        }
+
         UpdateGroupTexts();
         if (!suppressReload)
         {
@@ -531,15 +591,23 @@ public sealed partial class FlyoutViewModel : ObservableObject
         suppressReload = wasSuppressed;
     }
 
-    /// <summary>Header suffix and search placeholder for the current view.</summary>
+    /// <summary>
+    /// Header suffix and search placeholder for the current view: every group shown in the header ("› Work + Home",
+    /// trimmed by the header), a short name in the placeholder ("Search in Work + Home…", or "Search in 4 groups…"
+    /// when the names would not fit; see <see cref="GroupViewText"/>).
+    /// </summary>
     private void UpdateGroupTexts()
     {
-        var group = SelectedGroup;
-        GroupTitle = group is null ? string.Empty : "› " + group.Name;
-        SearchPlaceholder = group is not null ? $"Search in {group.Name}…"
+        var groups = SelectedGroups;
+        GroupTitle = groups.Count == 0 ? string.Empty : "› " + GroupViewText.Title(groups);
+        SearchPlaceholder = groups.Count > 0 ? $"Search in {GroupViewText.ShortName(groups)}…"
             : IsEverythingView ? EverythingSearchPlaceholder
             : DefaultSearchPlaceholder;
     }
+
+    /// <summary>The ids of the groups column, top to bottom (what <see cref="GroupSelection"/> orders and runs by).</summary>
+    /// <returns>A fresh list (the column may be reloaded while a caller holds it).</returns>
+    private List<long> GroupColumn() => [.. Groups.Select(g => g.Id)];
 
     /// <summary>
     /// Loads the Everything tab's rows: stored Everything entries and Everything's picks, both narrowed by the search
@@ -580,7 +648,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
         Offset = offset,
         Limit = PageSize,
         PinnedFirst = controller.Settings.Current.PinnedOnTop,
-        GroupId = SelectedGroupId,
+
+        // Several groups are merged by the store: each item once, ordered like any other page.
+        GroupIds = GroupSelection.IsEmpty ? null : GroupSelection.Ids,
     };
 
     /// <summary>
@@ -655,13 +725,17 @@ public sealed partial class FlyoutViewModel : ObservableObject
             return;
         }
 
-        if (SelectedGroup is { } group)
+        if (SelectedGroups is { Count: > 0 } groups)
         {
+            // "Work", "Work or Home", "these 4 groups": true of none of the groups shown.
             bool searching = !string.IsNullOrWhiteSpace(SearchText);
-            EmptyTitle = searching ? "No matches" : $"Nothing in {group.Name} yet";
+            var name = GroupViewText.AnyOf(groups);
+            EmptyTitle = searching ? "No matches" : $"Nothing in {name} yet";
             EmptyMessage = searching
-                ? $"Nothing in {group.Name} {DescribeSearch()}."
-                : $"Open the full history (the clipboard icon above), then drag cards onto the {group.Name} icon.";
+                ? $"Nothing in {name} {DescribeSearch()}."
+                : groups.Count == 1
+                    ? $"Open the full history (the clipboard icon above), then drag cards onto the {name} icon."
+                    : "Open the full history (the clipboard icon above), then drag cards onto their icons.";
         }
         else if (!string.IsNullOrWhiteSpace(SearchText))
         {
@@ -763,9 +837,26 @@ public sealed partial class FlyoutViewModel : ObservableObject
     {
         try
         {
-            if (SelectedGroup is { } group)
+            var groups = SelectedGroups;
+            if (groups.Count == 1)
             {
-                StatusText = $"{group.ItemCount:N0} in {group.Name}";
+                StatusText = $"{groups[0].ItemCount:N0} in {groups[0].Name}";
+                return;
+            }
+
+            if (groups.Count > 1)
+            {
+                // Merged: an item in two of the groups is one card and counts once, which the groups' own counts
+                // cannot tell, so the store counts the merged list.
+                var selection = GroupSelection;
+                long count = await controller.History.CountInGroupsAsync(selection.Ids);
+
+                // Another click may have changed the view during the await: its own update writes the footer.
+                if (selection.HasSameIds(GroupSelection))
+                {
+                    StatusText = $"{count:N0} in {GroupViewText.ShortName(groups)}";
+                }
+
                 return;
             }
 

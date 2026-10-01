@@ -74,7 +74,8 @@ public sealed record ClipQuery
     /// </summary>
     /// <remarks>
     /// Anything else makes the store run each candidate's indexed text through <see cref="SearchMatcher"/>: exact,
-    /// but a regular expression scans the whole slice (filter, group and <see cref="UsedSince"/> still narrow it).
+    /// but a regular expression scans the whole slice (filter, <see cref="GroupIds"/> and <see cref="UsedSince"/> still
+    /// narrow it).
     /// An invalid pattern makes the query throw <see cref="SearchPatternException"/>; a pattern that needs the
     /// backtracking engine and runs too long on one entry, <see cref="SearchTooSlowException"/>.
     /// </remarks>
@@ -100,9 +101,16 @@ public sealed record ClipQuery
     public DateTimeOffset? UsedSince { get; init; }
 
     /// <summary>
-    /// Only entries in this <see cref="Model.ClipGroup"/> (the panel's selected group icon);
-    /// <see langword="null"/> = the regular view over the whole history. Combines with
-    /// <see cref="Filter"/> and <see cref="SearchText"/> (e.g. the images of one group).
+    /// Only entries in at least one of these <see cref="Model.ClipGroup"/>s: the panel's selected group icons (one, or
+    /// several picked with Ctrl+click or Shift+click); <see langword="null"/> or empty = the regular view over the
+    /// whole history. Combines with <see cref="Filter"/>, <see cref="SearchText"/>, <see cref="SearchOptions"/> and
+    /// <see cref="UsedSince"/> (e.g. the images of two groups, or a search inside them).
     /// </summary>
-    public long? GroupId { get; init; }
+    /// <remarks>
+    /// The groups are merged, not listed one after the other: an entry in several of them is returned once, and the
+    /// page is ordered like any other page (<see cref="PinnedFirst"/>, then most recently used), never group by group,
+    /// so paging stays a plain offset over one list. Ids of groups that no longer exist match nothing, and duplicate
+    /// ids are ignored.
+    /// </remarks>
+    public IReadOnlyList<long>? GroupIds { get; init; }
 }

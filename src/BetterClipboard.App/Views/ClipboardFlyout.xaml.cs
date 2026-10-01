@@ -58,6 +58,14 @@ namespace BetterClipboard.App.Views;
 /// that group. Right-click a group icon to rename it, change its icon or delete it; right-click a card to
 /// take it out of a group. The open/closed state is remembered (<see cref="AppSettings.ShowGroupsPane"/>).
 /// </para>
+/// <para>
+/// <b>Several groups at once.</b> Ctrl+click adds a group icon to the view or takes it out, Shift+click shows the run
+/// from the last clicked icon, Ctrl+Shift+click adds that run (Explorer's keys, <see cref="GroupSelection"/>); the icon
+/// menu's "Add to view" / "Remove from view" does the same without a keyboard. The groups are merged into one list —
+/// each card once, in the list's usual order — and the filter tabs and the search apply to all of them. The header
+/// names them ("Clipboard › Work + Home"), the footer counts the merged list, and a card's "Remove from …" takes it out
+/// of every shown group it is in (<see cref="GroupViewText"/> words all of it).
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
 {
@@ -98,6 +106,17 @@ public sealed partial class ClipboardFlyout : Window
     /// icons accept it; other apps and our own text boxes see nothing they understand and refuse the drop.
     /// </summary>
     private const string ClipIdsFormat = "BetterClipboard.ClipIds";
+
+    /// <summary>
+    /// How to show several groups at once: the second line of every group icon's tooltip and its screen-reader help text.
+    /// </summary>
+    private const string MultiSelectHint = "Ctrl+click or Shift+click to show several groups together";
+
+    /// <summary>
+    /// The UI Automation item status of a group icon whose items the list shows (empty otherwise): the highlight in
+    /// words, for screen readers and for UI tests checking which groups a click selected.
+    /// </summary>
+    private const string ShownItemStatus = "Shown";
 
     /// <summary>Segoe Fluent Icons "Play" (E768): the card menu's Run — the Run dialog has no glyph of its own.</summary>
     private const string RunGlyph = "\uE768";
@@ -157,8 +176,9 @@ public sealed partial class ClipboardFlyout : Window
         Filters.Loaded += (_, _) => ApplyTabsWidth();
         ViewModel.PropertyChanged += (_, e) =>
         {
-            // Any route to another view (icon click, reset on show, deleted group) must move the highlight.
-            if (e.PropertyName == nameof(FlyoutViewModel.SelectedGroupId))
+            // Any route to another view (icon click with or without Ctrl/Shift, the icon menu, reset on show, a deleted
+            // group) must move the highlights.
+            if (e.PropertyName == nameof(FlyoutViewModel.GroupSelection))
             {
                 UpdateGroupSelectionVisuals();
             }
@@ -924,10 +944,13 @@ public sealed partial class ClipboardFlyout : Window
 
         menu.Items.Add(new MenuFlyoutSeparator());
 
-        // In a group view the most likely wish is "not in here anymore": one click, no submenu.
-        if (ViewModel.SelectedGroup is { } viewed && item.IsInGroup(viewed.Id))
+        // In a group view the most likely wish is "not in here anymore": one click, no submenu. In a merged view the
+        // card stays while any group shown still holds it, so the one item takes it out of every shown group it is in
+        // ("Remove from Work and Home"); the Groups submenu below still takes it out of one at a time.
+        var viewed = ViewModel.SelectedGroups.Where(g => item.IsInGroup(g.Id)).ToList();
+        if (viewed.Count > 0)
         {
-            menu.Items.Add(MenuItem($"Remove from {viewed.Name}", "\uE738", null, () => _ = RemoveFromGroupAsync(item, viewed)));
+            menu.Items.Add(MenuItem($"Remove from {GroupViewText.AllOf(viewed)}", "\uE738", null, () => _ = RemoveFromGroupsAsync(item, viewed)));
         }
 
         menu.Items.Add(BuildGroupsSubMenu(item));
@@ -1436,10 +1459,14 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="e">Click data.</param>
     private void GroupsToggle_Click(object sender, RoutedEventArgs e) => SetGroupsPane(!groupsPaneOpen);
 
-    /// <summary>The logo (the column's top icon): back to the regular view.</summary>
+    /// <summary>The logo (the column's top icon): back to the regular view, whichever groups were shown.</summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
-    private void LogoButton_Click(object sender, RoutedEventArgs e) => SelectGroup(null);
+    private void LogoButton_Click(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ShowAllHistory();
+        SearchBox.Focus(FocusState.Programmatic);
+    }
 
     /// <summary>"+" at the bottom of the column: pick an icon for a new group.</summary>
     /// <param name="sender">Button.</param>
@@ -1462,9 +1489,9 @@ public sealed partial class ClipboardFlyout : Window
         groupsPaneOpen = open;
         AppLog.Info(open ? "Groups column opened." : "Groups column closed.");
         controller.Settings.Update(s => s with { ShowGroupsPane = open });
-        if (!open && ViewModel.SelectedGroupId is not null)
+        if (!open && ViewModel.IsGroupView)
         {
-            ViewModel.SelectedGroupId = null;
+            ViewModel.ShowAllHistory();
         }
 
         int windowShift = 0;
@@ -1550,11 +1577,20 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Switches the list to a group (or the regular view) and gives typing back to the search box.</summary>
-    /// <param name="groupId">Group id, or <see langword="null"/> for everything.</param>
-    private void SelectGroup(long? groupId)
+    /// <summary>
+    /// A click on a group icon (or Space on a focused one): shows that group alone; with Ctrl adds it to the groups shown
+    /// or takes it out; with Shift shows the run of groups from the last clicked one, with Ctrl+Shift adds that run —
+    /// Explorer's selection keys (<see cref="GroupSelection.Click"/>). Several groups are merged into one list. Typing
+    /// goes back to the search box, which then searches the groups shown.
+    /// </summary>
+    /// <param name="groupId">The clicked group.</param>
+    /// <remarks>
+    /// The modifiers are read when the click arrives, like a card's Shift+click: a Button's Click carries none. The UI
+    /// thread's key state is current because the panel is the foreground window while it is clicked.
+    /// </remarks>
+    private void ClickGroup(long groupId)
     {
-        ViewModel.SelectedGroupId = groupId;
+        ViewModel.ClickGroup(groupId, ctrl: IsKeyDown(VirtualKey.Control), shift: IsKeyDown(VirtualKey.Shift));
         SearchBox.Focus(FocusState.Programmatic);
     }
 
@@ -1571,8 +1607,8 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// One group icon: click shows the group (click again: back to everything), right-click opens its menu,
-    /// and it accepts dropped cards.
+    /// One group icon: click shows the group (click again: back to everything), Ctrl+click or Shift+click shows it
+    /// together with other groups (<see cref="ClickGroup"/>), right-click opens its menu, and it accepts dropped cards.
     /// </summary>
     /// <param name="group">The group.</param>
     /// <returns>The button (its <see cref="FrameworkElement.Tag"/> is the group id).</returns>
@@ -1586,9 +1622,13 @@ public sealed partial class ClipboardFlyout : Window
             AllowDrop = true,
         };
         string count = group.ItemCount == 1 ? "1 item" : $"{group.ItemCount:N0} items";
-        ToolTipService.SetToolTip(button, $"{group.Name} · {count}");
+
+        // The tooltip is where a mouse user meets the multi-selection; screen readers get it as help text (their
+        // route is the icon menu's "Add to view", since an invoke is a plain click).
+        ToolTipService.SetToolTip(button, $"{group.Name} · {count}\n{MultiSelectHint}");
         AutomationProperties.SetName(button, $"{group.Name} group, {count}");
-        button.Click += (_, _) => SelectGroup(ViewModel.SelectedGroupId == group.Id ? null : group.Id);
+        AutomationProperties.SetHelpText(button, MultiSelectHint);
+        button.Click += (_, _) => ClickGroup(group.Id);
         button.RightTapped += (_, e) =>
         {
             ShowGroupMenu(group, button, e.GetPosition(button));
@@ -1601,17 +1641,22 @@ public sealed partial class ClipboardFlyout : Window
         return button;
     }
 
-    /// <summary>Highlights the regular-view logo or the selected group icon (only while the column is open).</summary>
+    /// <summary>
+    /// Highlights the regular-view logo or every group icon shown (one, or several merged), only while the column is
+    /// open, and tells screen readers which icons are shown (their item status), since they cannot see the highlight.
+    /// </summary>
     private void UpdateGroupSelectionVisuals()
     {
-        long? selected = ViewModel.SelectedGroupId;
+        var selection = ViewModel.GroupSelection;
         foreach (var button in GroupButtons.Children.OfType<Button>())
         {
-            button.Style = GroupStyle(selected: button.Tag is long id && id == selected);
+            bool shown = button.Tag is long id && selection.Contains(id);
+            button.Style = GroupStyle(selected: shown);
+            AutomationProperties.SetItemStatus(button, shown ? ShownItemStatus : string.Empty);
         }
 
         // Style resets Width: set it again right after, the logo's width depends on the column state.
-        LogoButton.Style = GroupStyle(selected: groupsPaneOpen && selected is null);
+        LogoButton.Style = GroupStyle(selected: groupsPaneOpen && selection.IsEmpty);
         LogoButton.Width = groupsPaneOpen ? LogoOpenDip : LogoClosedDip;
         LogoButton.Height = 32;
     }
@@ -1627,7 +1672,8 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="on">Highlight on.</param>
     private void SetDropHighlight(Button button, bool on)
     {
-        bool selected = button.Tag is long id && id == ViewModel.SelectedGroupId;
+        // Back to its own look afterwards: selected while its group is one of those shown.
+        bool selected = button.Tag is long id && ViewModel.GroupSelection.Contains(id);
         button.Style = on ? (Style)Application.Current.Resources["GroupButtonDropTargetStyle"] : GroupStyle(selected);
     }
 
@@ -1744,13 +1790,44 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>The right-click menu of a group icon: rename, change icon, delete.</summary>
+    /// <summary>
+    /// Takes a card out of several groups (a merged view's "Remove from Work and Home"), one after the other: the card
+    /// leaves the view with the last of them, and only that last removal restarts its retention clock (if it is then in
+    /// no group at all).
+    /// </summary>
+    /// <param name="item">The card.</param>
+    /// <param name="groups">The groups to take it out of.</param>
+    /// <returns>A task completing when all are stored (each failure is logged and the rest still run).</returns>
+    private async Task RemoveFromGroupsAsync(ClipItemViewModel item, IReadOnlyList<ClipGroup> groups)
+    {
+        foreach (var group in groups)
+        {
+            await RemoveFromGroupAsync(item, group);
+        }
+    }
+
+    /// <summary>
+    /// The right-click menu of a group icon: add it to the view or take it out (while other groups are shown), rename,
+    /// change icon, delete.
+    /// </summary>
     /// <param name="group">The group.</param>
     /// <param name="button">Its icon (placement target).</param>
     /// <param name="position">Position relative to <paramref name="button"/>.</param>
     private void ShowGroupMenu(ClipGroup group, Button button, global::Windows.Foundation.Point position)
     {
         var menu = new MenuFlyout();
+
+        // Merging groups without Ctrl or Shift: touch and pen have neither, and a screen reader's invoke is a plain
+        // click. Offered only while some group is shown — in the regular view a plain click already shows this one, and
+        // when it is the only one shown the logo goes back to everything.
+        var selection = ViewModel.GroupSelection;
+        if (!selection.IsEmpty && !(selection.Ids is [var only] && only == group.Id))
+        {
+            bool shown = selection.Contains(group.Id);
+            menu.Items.Add(MenuItem(shown ? "Remove from view" : "Add to view", shown ? "\uE738" : "\uE710", "Ctrl+Click",
+                () => ViewModel.ToggleGroupInView(group.Id)));
+            menu.Items.Add(new MenuFlyoutSeparator());
+        }
 
         // The follow-up flyouts open after the menu has closed (queued), never on top of it.
         menu.Items.Add(MenuItem("Rename…", "\uE8AC", null, () => DispatcherQueue.TryEnqueue(() => ShowRenameFlyout(group, button))));
@@ -1931,18 +2008,17 @@ public sealed partial class ClipboardFlyout : Window
         flyout.ShowAt(anchor);
     }
 
-    /// <summary>Deletes a group (failures logged); a deleted selected group falls back to the regular view.</summary>
+    /// <summary>
+    /// Deletes a group (failures logged). A shown group leaves the view first: the other groups shown stay, and when it
+    /// was the only one the list falls back to the regular view.
+    /// </summary>
     /// <param name="group">The group.</param>
     /// <returns>A task completing when stored.</returns>
     private async Task DeleteGroupAsync(ClipGroup group)
     {
         try
         {
-            if (ViewModel.SelectedGroupId == group.Id)
-            {
-                ViewModel.SelectedGroupId = null;
-            }
-
+            ViewModel.RemoveGroupFromView(group.Id);
             await controller.History.DeleteGroupAsync(group.Id);
         }
         catch (Exception ex)
@@ -2120,6 +2196,15 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="text">The text.</param>
     /// <returns>Visibility.</returns>
     public Visibility TextVisibility(string? text) => string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
+
+    /// <summary>
+    /// x:Bind helper: the header's group names as its tooltip, without the "› " in front. A merged view's names trim
+    /// early in the header (next to the Paused chip "Work + Home" read "Work +…" in the e2e run), so hovering the title
+    /// shows them all.
+    /// </summary>
+    /// <param name="title">The header's group text (<see cref="FlyoutViewModel.GroupTitle"/>), e.g. "› Work + Home".</param>
+    /// <returns>The names, e.g. "Work + Home"; <see langword="null"/> (no tooltip) in the regular view.</returns>
+    public string? GroupTitleTooltip(string? title) => string.IsNullOrEmpty(title) ? null : title.TrimStart('›', ' ');
 
     /// <summary>
     /// x:Bind helper: the ".*" toggle's style — red-outlined while its pattern is why the list is empty

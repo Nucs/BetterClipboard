@@ -78,6 +78,7 @@
                     FontSize="15"
                     FontWeight="SemiBold"
                     Text="Clipboard" />
+                <!--  The tooltip names every group shown: merged names trim early next to the Paused chip ("Work +…").  -->
                 <TextBlock
                     Grid.Column="1"
                     Margin="8,0,0,0"
@@ -86,6 +87,7 @@
                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                     Text="{x:Bind ViewModel.GroupTitle, Mode=OneWay}"
                     TextTrimming="CharacterEllipsis"
+                    ToolTipService.ToolTip="{x:Bind GroupTitleTooltip(ViewModel.GroupTitle), Mode=OneWay}"
                     Visibility="{x:Bind TextVisibility(ViewModel.GroupTitle), Mode=OneWay}" />
                 <Border
                     x:Name="PausedChip"
@@ -177,7 +179,10 @@
             </StackPanel>
         </Grid>
 
-        <!--  Groups column: the user's group icons, "+" at the bottom. Cards dropped on an icon join that group.  -->
+        <!--
+            Groups column: the user's group icons, "+" at the bottom. Cards dropped on an icon join that group. A click
+            shows one group; Ctrl+click and Shift+click show several, merged into one list (code-behind: ClickGroup).
+        -->
         <Grid
             x:Name="GroupsPane"
             Grid.Row="1"

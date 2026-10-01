@@ -477,6 +477,22 @@ public sealed class ClipHistoryService : IAsyncDisposable
     public Task<IReadOnlyList<ClipGroup>> GetGroupsAsync() => Task.Run(store.GetGroups);
 
     /// <summary>
+    /// Counts the entries in at least one of several groups on the thread pool (see <see cref="ClipStore.CountInGroups"/>):
+    /// the footer of a view that merges groups, where an entry in two of them must count once.
+    /// </summary>
+    /// <param name="groupIds">Group ids (unknown ones count nothing). The list is copied before the pool reads it.</param>
+    /// <returns>The number of distinct entries; 0 for no ids.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="groupIds"/> is <see langword="null"/>.</exception>
+    public Task<long> CountInGroupsAsync(IReadOnlyCollection<long> groupIds)
+    {
+        ArgumentNullException.ThrowIfNull(groupIds);
+
+        // Copied on the caller's thread: the caller may hand over a list it keeps changing (the panel's selection).
+        long[] ids = [.. groupIds];
+        return Task.Run(() => store.CountInGroups(ids));
+    }
+
+    /// <summary>
     /// Creates a group through the worker.
     /// </summary>
     /// <param name="name">Display name (trimmed; 1–<see cref="ClipGroup.MaxNameLength"/> characters).</param>

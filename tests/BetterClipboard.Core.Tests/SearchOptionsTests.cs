@@ -248,7 +248,7 @@ public sealed class SearchOptionsStoreTests : IDisposable
 
         var group = store.CreateGroup("Work", Presentation.GroupIconCatalog.All[0].Glyph, TestData.Now);
         store.AddToGroup(ids[2], group.Id, TestData.Now);
-        Assert.Equal(["item 2"], Previews(store.Query(new ClipQuery { SearchText = regex, SearchOptions = SearchOptions.Regex, GroupId = group.Id })));
+        Assert.Equal(["item 2"], Previews(store.Query(new ClipQuery { SearchText = regex, SearchOptions = SearchOptions.Regex, GroupIds = [group.Id] })));
 
         // A plain query on the same (pooled) connection afterwards is unaffected by the function.
         Assert.Equal(6, store.Query(new ClipQuery()).Count);
