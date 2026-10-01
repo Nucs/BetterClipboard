@@ -1,0 +1,25 @@
+VERIFICATION
+Verification is intended to assist the Chocolatey moderators and community
+in verifying that this package's contents are trustworthy.
+
+This package is published by BetterClipboard's author, Eli Belash, from the same
+release workflow that builds the GitHub release. Each archive in the package's
+tools folder is an asset of that release, byte for byte:
+
+{{ARCHIVES}}
+The release's SHA256SUMS.txt lists the same checksums:
+  https://github.com/Nucs/BetterClipboard/releases/download/{{RELEASE_TAG}}/SHA256SUMS.txt
+
+To verify:
+  1. Download the archive from its URL above (release page:
+     https://github.com/Nucs/BetterClipboard/releases/tag/{{RELEASE_TAG}}).
+  2. Get its SHA-256 with PowerShell (Get-FileHash <file> -Algorithm SHA256)
+     or with Chocolatey's checksum tool (checksum -t=sha256 -f="<file>").
+  3. Compare it with the checksum above and with the archive in this package.
+
+Each .7z holds the same files as the release's .zip download for that
+architecture, compressed with 7-Zip (LZMA2) so both architectures fit in one
+package. The release workflow (.github/workflows/release.yml) builds them from
+the source code at https://github.com/Nucs/BetterClipboard, tag {{RELEASE_TAG}}.
+The install script extracts the archive matching the PC's architecture into
+tools\app and then deletes both archives from the package folder.

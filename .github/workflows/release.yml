@@ -1,8 +1,17 @@
 # Pushing a tag v<semver> builds, tests and publishes a GitHub release with:
 #   BetterClipboard-<version>-win-x64.zip, BetterClipboard-<version>-win-arm64.zip  (self-contained)
+#   BetterClipboard-<version>-win-x64.7z, BetterClipboard-<version>-win-arm64.7z    (the same files, LZMA2)
 #   SHA256SUMS.txt                                                               (install.ps1 verifies it)
 #   install.ps1                                                                  (the installer itself)
+#   betterclipboard.<version>.nupkg                                              (Chocolatey, stable only)
 # Release notes are the annotated tag's message (git tag -a v1.2.3 -F notes.md).
+#
+# Chocolatey (stable versions only: the Community Repository refuses SemVer 2 prereleases such as 1.0.0-rc.1):
+# the package embeds the two .7z archives and is installed, upgraded and uninstalled for real on this runner
+# before anything is published; it is pushed after the GitHub release exists, because its VERIFICATION.txt
+# points moderators at that release's assets. The push needs the CHOCOLATEY_API_KEY secret (the API key of the
+# community.chocolatey.org account); without it the package is only attached to the release. See
+# docs/chocolatey.md.
 name: Release
 
 on:
@@ -41,13 +50,36 @@ jobs:
         shell: pwsh
         run: tools/release/package.ps1 -Version ${{ steps.version.outputs.version }} -OutputDirectory artifacts/release
 
+      # The exact .nupkg that is pushed below, tested by a real install/upgrade/uninstall on this disposable runner
+      # (Chocolatey's own verifier cannot: its Windows Server 2019 is older than the app's minimum).
+      - name: Chocolatey package
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
+        shell: pwsh
+        run: |
+          tools/release/package-chocolatey.ps1 -Version ${{ steps.version.outputs.version }} -ArtifactsDirectory artifacts/release
+          tools/release/test-chocolatey.ps1 -Version ${{ steps.version.outputs.version }} -PackageDirectory artifacts/release
+
       - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = '${{ steps.version.outputs.version }}'
-          $assets = @(Get-ChildItem artifacts/release/*.zip | ForEach-Object FullName) + @('artifacts/release/SHA256SUMS.txt', 'install.ps1')
+          $assets = @(Get-ChildItem artifacts/release/*.zip, artifacts/release/*.7z, artifacts/release/*.nupkg | ForEach-Object FullName) + @('artifacts/release/SHA256SUMS.txt', 'install.ps1')
           $prerelease = if ($version -match '-') { '--prerelease' } else { $null }
           gh release create '${{ github.ref_name }}' @assets --title "BetterClipboard $version" --notes-from-tag --verify-tag $prerelease
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)." }
+
+      - name: Push to Chocolatey
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
+        shell: pwsh
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+        run: |
+          $package = 'artifacts/release/betterclipboard.${{ steps.version.outputs.version }}.nupkg'
+          if (-not $env:CHOCOLATEY_API_KEY) {
+            Write-Warning "No CHOCOLATEY_API_KEY secret: $package was attached to the release but not pushed. Push it with: choco push <file> --source https://push.chocolatey.org/ --api-key <key>"
+            exit 0
+          }
+          choco push $package --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
+          if ($LASTEXITCODE -ne 0) { throw "choco push failed ($LASTEXITCODE)." }

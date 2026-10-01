@@ -335,6 +335,40 @@ function Remove-FromUserPath([string] $Directory) {
     return $true
 }
 
+function Get-ChocolateyCopy {
+    <#
+    .SYNOPSIS
+        BetterClipboard.exe of a Chocolatey install (the betterclipboard package), or $null without one.
+    .DESCRIPTION
+        Both copies use the same history, so neither may undo the other's "Start with Windows" entry or Win+V
+        release; the package (packaging/chocolatey) applies the same rule the other way round.
+    .OUTPUTS
+        System.String, or $null.
+    #>
+    $root = if ($env:ChocolateyInstall) { $env:ChocolateyInstall } else { Join-Path $env:ProgramData 'chocolatey' }
+    $exe = Join-Path $root 'lib\betterclipboard\tools\app\BetterClipboard.exe'
+    if (Test-Path -LiteralPath $exe) { return $exe }
+    return $null
+}
+
+function Get-RunTarget {
+    <#
+    .SYNOPSIS
+        Executable the "Start with Windows" value starts, or '' when there is none or it has another shape.
+    .DESCRIPTION
+        The value is '"<exe>" --background', the format of the app's own toggle and of this installer; the quoted
+        path is returned.
+    .OUTPUTS
+        System.String.
+    #>
+    $item = Get-ItemProperty -Path $RunKeyPath -ErrorAction SilentlyContinue
+    if ($item -and $item.PSObject.Properties[$AppName] -and ([string] $item.$AppName) -match '^\s*"([^"]+)"') {
+        return $Matches[1]
+    }
+
+    return ''
+}
+
 function Test-Elevated {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -354,6 +388,11 @@ function Start-AppUnelevated([string] $Exe) {
 function Install-BetterClipboard {
     if (Test-Elevated) {
         Write-Warning 'Running elevated. BetterClipboard installs per user; a normal (non-admin) PowerShell is recommended.'
+    }
+
+    $chocolateyCopy = Get-ChocolateyCopy
+    if ($chocolateyCopy) {
+        Write-Warning "BetterClipboard is also installed with Chocolatey ($chocolateyCopy); 'choco upgrade betterclipboard' updates that copy. Both copies use the same history."
     }
 
     $arch = Get-OsArchitecture
@@ -435,10 +474,17 @@ function Install-BetterClipboard {
     }
 
     if (-not $NoStartup) {
-        Write-Step 'Starting with Windows (Settings > Start with Windows toggles this)'
-        # Exactly the format StartupRegistration writes, so the app's own toggle shows it as on.
-        New-Item -Path $RunKeyPath -Force | Out-Null
-        Set-ItemProperty -Path $RunKeyPath -Name $AppName -Value "`"$exe`" --background" -Type String
+        $startupTarget = Get-RunTarget
+        if ($startupTarget -and $chocolateyCopy -and [string]::Equals($startupTarget, $chocolateyCopy, [StringComparison]::OrdinalIgnoreCase)) {
+            # One value for both copies: taking it over would leave no copy starting once this one is uninstalled.
+            Write-Note "Start with Windows stays with the Chocolatey copy ($chocolateyCopy); both use the same history."
+        }
+        else {
+            Write-Step 'Starting with Windows (Settings > Start with Windows toggles this)'
+            # Exactly the format StartupRegistration writes, so the app's own toggle shows it as on.
+            New-Item -Path $RunKeyPath -Force | Out-Null
+            Set-ItemProperty -Path $RunKeyPath -Name $AppName -Value "`"$exe`" --background" -Type String
+        }
     }
 
     Write-Step 'Registering in Settings > Apps > Installed apps'
@@ -527,7 +573,16 @@ function Uninstall-BetterClipboard {
     Stop-RunningApp $exe
 
     Write-Step 'Removing the startup entry, shortcut and Installed-apps entry'
-    Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
+    # The startup entry goes unless it starts another copy that still exists (the Chocolatey one): a stale entry
+    # pointing at a missing file is cleaned up as before.
+    $startupTarget = Get-RunTarget
+    if (-not $startupTarget -or $startupTarget.StartsWith($InstallDir, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $startupTarget)) {
+        Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
+    }
+    else {
+        Write-Note "Kept the startup entry: it starts the copy at $startupTarget."
+    }
+
     Remove-Item -Path $ShortcutPath -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $UninstallKeyPath -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -537,10 +592,17 @@ function Uninstall-BetterClipboard {
         Write-Note "Removed $InstallDir from your user PATH."
     }
 
-    # Without BetterClipboard, a released Win+V would do nothing at all - give it back to Windows.
+    # Without BetterClipboard, a released Win+V would do nothing at all - give it back to Windows. Unless the
+    # Chocolatey copy remains: it still uses the release.
+    $chocolateyCopy = Get-ChocolateyCopy
     if (-not $KeepWinVReleased -and (Test-WinVReleased)) {
-        Set-WinVReleased $false | Out-Null
-        Restart-Explorer
+        if ($chocolateyCopy) {
+            Write-Note "Win+V stays released from Explorer: the Chocolatey copy ($chocolateyCopy) still uses it."
+        }
+        else {
+            Set-WinVReleased $false | Out-Null
+            Restart-Explorer
+        }
     }
 
     Write-Step "Removing $InstallDir"

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Template of the Chocolatey package. tools/release/package-chocolatey.ps1 fills in the double-brace placeholders
+  (package version, release tag), adds the release's 7-Zip archives to tools\ and the legal files, then packs it.
+  Never pack this file directly: the placeholders would reach the Community Repository (validator rule CPMR0019).
+  Requirements behind every element: docs/chocolatey.md section 2.
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>betterclipboard</id>
+    <version>{{PACKAGE_VERSION}}</version>
+    <packageSourceUrl>https://github.com/Nucs/BetterClipboard/tree/main/packaging/chocolatey</packageSourceUrl>
+    <!-- "owners" means the package's maintainers. The software's author maintains it, so both name him. -->
+    <owners>Eli Belash</owners>
+    <title>BetterClipboard</title>
+    <authors>Eli Belash</authors>
+    <projectUrl>https://github.com/Nucs/BetterClipboard</projectUrl>
+    <!-- Through a CDN, pinned to the release tag: raw GitHub links are refused (CPMR0076) and jsDelivr caches for good. -->
+    <iconUrl>https://cdn.jsdelivr.net/gh/Nucs/BetterClipboard@{{RELEASE_TAG}}/src/BetterClipboard.App/Assets/AppIcon.png</iconUrl>
+    <copyright>Copyright (c) 2026 Eli Belash</copyright>
+    <licenseUrl>https://github.com/Nucs/BetterClipboard/blob/{{RELEASE_TAG}}/LICENSE</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <!-- Not the project URL itself: an identical value is flagged (CPMR0041). -->
+    <projectSourceUrl>https://github.com/Nucs/BetterClipboard/tree/main/src</projectSourceUrl>
+    <docsUrl>https://github.com/Nucs/BetterClipboard#readme</docsUrl>
+    <bugTrackerUrl>https://github.com/Nucs/BetterClipboard/issues</bugTrackerUrl>
+    <tags>clipboard clipboard-manager clipboard-history win-v productivity foss</tags>
+    <summary>Persistent, searchable clipboard history that takes over Win+V</summary>
+    <description><![CDATA[BetterClipboard replaces Windows' Win+V clipboard history, which keeps 25 items and forgets them at every restart. It records what you copy in a searchable history that survives restarts, encrypted on disk and bound to your PC and Windows account. Win+V opens it.
+
+## Features
+
+- Persistent history of text, links, colors, files and images, with search and filter tabs
+- Pins, groups, and "Forget forever" for what must never be recorded again
+- Ignores password managers and copies marked as private
+- Imports what Windows' own clipboard history still remembers
+- `bclip`, a command line for scripts and AI agents (turn it on in Settings > Command line)
+
+## Package parameters
+
+- `/NoStartup` - don't start BetterClipboard when you sign in
+- `/NoShortcut` - no Start menu shortcut
+- `/NoLaunch` - don't start it after installing
+
+Example: `choco install betterclipboard --params "'/NoStartup'"`
+
+When uninstalling:
+
+- `/KeepWinVReleased` - if you released Win+V from Explorer in BetterClipboard's settings, keep it that way. By default the uninstall gives Win+V back to Windows, which restarts Explorer.
+
+## Notes
+
+- Requires Windows 10 version 2004 (build 19041) or later, x64 or ARM64.
+- Installed to `%ChocolateyInstall%\lib\betterclipboard\tools\app`; `bclip` and `BetterClipboard` are on the PATH.
+- "Start with Windows" and the first launch are for the user who installs the package; other users turn it on in Settings. Nothing is set or started when the package is installed as SYSTEM.
+- Upgrades close BetterClipboard first and start it again afterwards when it was running.
+- Your history stays in `%LOCALAPPDATA%\BetterClipboard`; uninstalling keeps it.
+- The package embeds the release's 7-Zip archives; `legal\VERIFICATION.txt` says how to check them.]]></description>
+    <releaseNotes>https://github.com/Nucs/BetterClipboard/releases/tag/{{RELEASE_TAG}}</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+    <file src="legal\**" target="legal" />
+  </files>
+</package>
