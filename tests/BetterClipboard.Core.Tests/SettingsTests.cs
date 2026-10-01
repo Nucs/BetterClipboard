@@ -41,6 +41,31 @@ public sealed class SettingsTests : IDisposable
         Assert.True(new AppSettings().ShowEverythingTab);
     }
 
+    /// <summary>
+    /// The panel's size defaults to 400 × 560 DIPs (also for a settings file written before it could be resized), a
+    /// resized panel's size persists, and sizes from a hand-edited file are kept inside the panel's limits.
+    /// </summary>
+    [Fact]
+    public void FlyoutSize_DefaultsPersistsAndClamps()
+    {
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, "{ \"MaxItems\": 50 }");
+        var store = new SettingsStore(path);
+        Assert.Equal((AppSettings.DefaultFlyoutWidth, AppSettings.DefaultFlyoutHeight), (store.Load().FlyoutWidth, store.Current.FlyoutHeight));
+        Assert.Equal((400, 560), (new AppSettings().FlyoutWidth, new AppSettings().FlyoutHeight));
+
+        store.Update(s => s with { FlyoutWidth = 612, FlyoutHeight = 830 });
+        var reloaded = new SettingsStore(path).Load();
+        Assert.Equal((612, 830), (reloaded.FlyoutWidth, reloaded.FlyoutHeight));
+
+        // Too small would cut the header off; absurdly large is a typo. Both come back inside the limits.
+        File.WriteAllText(path, "{ \"FlyoutWidth\": 100, \"FlyoutHeight\": 999999 }");
+        var clamped = new SettingsStore(path).Load();
+        Assert.Equal((AppSettings.MinFlyoutWidth, AppSettings.MaxFlyoutSize), (clamped.FlyoutWidth, clamped.FlyoutHeight));
+        var normalized = new AppSettings { FlyoutWidth = int.MaxValue, FlyoutHeight = -3 }.Normalize();
+        Assert.Equal((AppSettings.MaxFlyoutSize, AppSettings.MinFlyoutHeight), (normalized.FlyoutWidth, normalized.FlyoutHeight));
+    }
+
     /// <summary>A corrupt file is quarantined (recoverable) and defaults are used.</summary>
     [Fact]
     public void Load_CorruptFile_IsQuarantined()

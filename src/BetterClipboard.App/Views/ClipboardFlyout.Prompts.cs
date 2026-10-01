@@ -23,7 +23,7 @@ public sealed partial class ClipboardFlyout
     /// <param name="agent">The agent whose archive or reader changed.</param>
     private void OnPromptsStatusChanged(object? sender, PromptAgent agent)
     {
-        UpdatePromptTabs(applyWidth: true);
+        UpdatePromptTabs();
         if (IsOpen && ViewModel.IsPromptView && ViewModel.CurrentAgent == agent)
         {
             _ = ReloadPromptTabAsync();
@@ -47,21 +47,13 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Shows each prompt tab while its setting is on and the agent's folder or the archive has prompts. A tab that disappears
-    /// while selected falls back to "All".
+    /// while selected falls back to "All". The tab strip scrolls when the tabs no longer fit (its arrows follow the strip's
+    /// new width by themselves).
     /// </summary>
-    /// <param name="applyWidth">
-    /// Refit the open window to the visible tabs when one appeared or disappeared (<see langword="false"/> from
-    /// <see cref="ShowAt"/>, which measures the tabs itself right after).
-    /// </param>
-    private void UpdatePromptTabs(bool applyWidth)
+    private void UpdatePromptTabs()
     {
-        bool changed = SetTabVisible(ClaudeFilter, controller.IsPromptTabAvailable(PromptAgent.ClaudeCode), ClipFilter.ClaudeCode)
-            | SetTabVisible(CodexFilter, controller.IsPromptTabAvailable(PromptAgent.Codex), ClipFilter.Codex);
-        if (changed && applyWidth && IsOpen)
-        {
-            // The bar does not scroll: the window grows or shrinks so every visible tab fits.
-            ApplyTabsWidth();
-        }
+        SetTabVisible(ClaudeFilter, controller.IsPromptTabAvailable(PromptAgent.ClaudeCode), ClipFilter.ClaudeCode);
+        SetTabVisible(CodexFilter, controller.IsPromptTabAvailable(PromptAgent.Codex), ClipFilter.Codex);
     }
 
     /// <summary>

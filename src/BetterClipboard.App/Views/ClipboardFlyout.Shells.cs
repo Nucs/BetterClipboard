@@ -23,7 +23,7 @@ public sealed partial class ClipboardFlyout
     /// <param name="e">Unused.</param>
     private void OnShellHistoryStatusChanged(object? sender, EventArgs e)
     {
-        UpdateShellTabs(applyWidth: true);
+        UpdateShellTabs();
         if (IsOpen && ViewModel.IsShellView)
         {
             _ = ViewModel.ReloadAsync();
@@ -33,21 +33,13 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Shows the Pwsh tab while its setting is on and PowerShell's history file exists, and the Cmd tab while its
     /// setting is on. A tab that disappears while selected falls back to "All", so the list never stays filtered by an
-    /// invisible tab.
+    /// invisible tab. The tab strip scrolls when the tabs no longer fit (its arrows follow the strip's new width by
+    /// themselves).
     /// </summary>
-    /// <param name="applyWidth">
-    /// Refit the open window to the visible tabs when one appeared or disappeared (<see langword="false"/> from
-    /// <see cref="ShowAt"/>, which measures the tabs itself right after).
-    /// </param>
-    private void UpdateShellTabs(bool applyWidth)
+    private void UpdateShellTabs()
     {
-        bool changed = SetTabVisible(PwshFilter, controller.IsPowerShellTabAvailable, ClipFilter.PowerShell)
-            | SetTabVisible(CmdFilter, controller.IsCmdTabAvailable, ClipFilter.Cmd);
-        if (changed && applyWidth && IsOpen)
-        {
-            // The bar does not scroll: the window grows or shrinks so every visible tab fits.
-            ApplyTabsWidth();
-        }
+        SetTabVisible(PwshFilter, controller.IsPowerShellTabAvailable, ClipFilter.PowerShell);
+        SetTabVisible(CmdFilter, controller.IsCmdTabAvailable, ClipFilter.Cmd);
     }
 
     /// <summary>Shows or hides one tab, leaving it for "All" when it disappears while selected.</summary>

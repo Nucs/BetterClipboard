@@ -41,6 +41,35 @@ public enum AppTheme
 /// </remarks>
 public sealed record AppSettings
 {
+    /// <summary>
+    /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).
+    /// The outer window's width, frame included, without the groups column.
+    /// </summary>
+    public const int DefaultFlyoutWidth = 400;
+
+    /// <summary>The panel's height when nothing was resized yet, in DIPs (the outer window's, frame included).</summary>
+    public const int DefaultFlyoutHeight = 560;
+
+    /// <summary>
+    /// The narrowest the user can make the panel, in DIPs (without the groups column): the header's logo, "Clipboard", the
+    /// "Paused" chip and its four buttons still fit side by side, and the search box keeps room for text left of its
+    /// Aa / W / .* toggles. Narrower, the header's title would be cut off. Enforced while resizing and when loading.
+    /// </summary>
+    public const int MinFlyoutWidth = 360;
+
+    /// <summary>
+    /// The lowest the user can make the panel, in DIPs: header, search box, tabs and footer take ~180 of them, so the list
+    /// keeps room for about two cards. Enforced while resizing and when loading.
+    /// </summary>
+    public const int MinFlyoutHeight = 320;
+
+    /// <summary>
+    /// The largest size kept, in DIPs, either side: a sanity bound for hand-edited files, not a layout rule — the panel is
+    /// shrunk to the monitor's work area when it is shown anyway (a size dragged across two monitors is kept, but shown
+    /// at most as large as the monitor it opens on).
+    /// </summary>
+    public const int MaxFlyoutSize = 8192;
+
     /// <summary>Settings file format version, for future migrations.</summary>
     public int SchemaVersion { get; init; } = 1;
 
@@ -91,6 +120,26 @@ public sealed record AppSettings
     /// then grows to the left). Remembered so the column is there again on the next Win+V.
     /// </summary>
     public bool ShowGroupsPane { get; init; }
+
+    /// <summary>
+    /// The panel's width the user last dragged it to, in DIPs (device-independent pixels, 1/96 inch): the outer window,
+    /// frame included, without the groups column — which adds its own width on the left while it is open, so opening or
+    /// closing the column never changes this.
+    /// </summary>
+    /// <remarks>
+    /// Saved once when a resize ends (never during the drag), and only for a resize the user made: the panel moving to a
+    /// monitor with another scale changes its pixels, not this. Every summon opens the panel at this size next to the
+    /// caret, shrunk to the monitor's work area when larger (the shrunk size is not saved). Kept in
+    /// <see cref="MinFlyoutWidth"/>..<see cref="MaxFlyoutSize"/>; resizing the panel wider shows more of the filter tabs,
+    /// which scroll sideways when they do not all fit.
+    /// </remarks>
+    public int FlyoutWidth { get; init; } = DefaultFlyoutWidth;
+
+    /// <summary>
+    /// The panel's height the user last dragged it to, in DIPs: the outer window, frame included. Saved and applied like
+    /// <see cref="FlyoutWidth"/>, kept in <see cref="MinFlyoutHeight"/>..<see cref="MaxFlyoutSize"/>.
+    /// </summary>
+    public int FlyoutHeight { get; init; } = DefaultFlyoutHeight;
 
     /// <summary>
     /// The panel search box's "Aa" toggle: words match only with the same upper and lower case
@@ -295,6 +344,10 @@ public sealed record AppSettings
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
             MaxTotalSizeMB = Math.Clamp(MaxTotalSizeMB, 0, 1_048_576),
+
+            // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
+            FlyoutWidth = Math.Clamp(FlyoutWidth, MinFlyoutWidth, MaxFlyoutSize),
+            FlyoutHeight = Math.Clamp(FlyoutHeight, MinFlyoutHeight, MaxFlyoutSize),
             IgnoredApps = withCatalog,
             SeededIgnoredApps = seen,
             Placement = Enum.IsDefined(Placement) ? Placement : FlyoutPlacement.NearCaret,

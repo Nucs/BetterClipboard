@@ -48,7 +48,7 @@ public sealed record KnownCredentialApp(string Product, CredentialAppKind Kind, 
 /// <c>auth.exe</c>). Users can add such names by hand.
 /// </para>
 /// <para>
-/// <b>Adding entries later</b> needs no migration code: <see cref="Seed"/> offers every catalog name that a
+/// <b>Adding entries later</b> needs no migration code: <see cref="Seed(IReadOnlyList{string}, IReadOnlyList{string})"/> offers every catalog name that a
 /// settings file has not seen yet exactly once (tracked in <see cref="AppSettings.SeededIgnoredApps"/>), so
 /// existing users receive new names on update while names they deleted stay deleted.
 /// </para>
@@ -119,7 +119,7 @@ public static class KnownPasswordManagers
 
     /// <summary>
     /// Adds every catalogued process name that is not on <paramref name="ignoredApps"/> yet — the explicit
-    /// "Add known password managers" action, which (unlike <see cref="Seed"/>) also restores names the user
+    /// "Add known password managers" action, which (unlike <see cref="Seed(IReadOnlyList{string}, IReadOnlyList{string})"/>) also restores names the user
     /// deleted earlier.
     /// </summary>
     /// <param name="ignoredApps">The user's list (entries may still carry <c>.exe</c> or a path).</param>

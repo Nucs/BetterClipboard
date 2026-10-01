@@ -268,12 +268,12 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings, logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, and `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (707 tests, one class at a time — §4: the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule) (208 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (717 tests, one class at a time — §4: the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum) (211 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push). |
@@ -385,7 +385,8 @@ window). It has no title bar, so any background press can drag it.
   `Root`. Buttons, text boxes, `AutoSuggestBox`, `SelectorItem` (cards), `SelectorBarItem`, `RangeBase`,
   `Thumb` and `ToggleSwitch` are not background. Everything else is: title, icons, chip, footer, gaps, and
   the empty space of the list and the filter bar. For touch and pen the whole list is excluded, because
-  there they pan it.
+  there they pan it. The filter bar's strip (`TabsScroller`) is excluded for every pointer while it can scroll,
+  because a drag there pulls the tabs sideways (§2.23); while every tab fits, its empty space moves the window.
 - **Setup:** `Root` needs `Background="Transparent"`, or its empty areas aren't hit-testable. The press
   handler is registered with `handledEventsToo`.
 - **The drag itself:** `CapturePointer` + `WindowDragTracker` (pure, unit-tested: 4-DIP threshold, 10 for
@@ -745,6 +746,8 @@ that source]** unless marked.
     flyout − 24 padding + 8 negative margin), and it does not scroll. The first screenshot showed "Shar".
   - The fix: 9 px padding (implicit style in `SelectorBar.Resources`); the tabs need 351–366 px now.
   - Measured afterwards: the ShareX tab is 61 px wide with 28 px to spare.
+  - Superseded 2026-10-01 (§2.23): the tabs scroll sideways (a carousel) and the panel is resizable; the 9 px
+    padding stays, so more tabs show before the strip has to scroll.
 - **Limits:**
   - Captures that ShareX only uploads or only copies are not files. The copies still arrive through
     normal capture, into the same tab.
@@ -1138,7 +1141,8 @@ fixes. The research it stands on follows below ("Research").
 - **Dev/test:** `BETTERCLIPBOARD_EVERYTHING_INSTANCE=<name>` pins the client to one named instance and skips the
   registry, so the user's Everything is never contacted (§3).
 
-**Tab width.** With ShareX and Run, nine tabs need 482 DIP and the bar does not scroll, so the window grows
+**Tab width** (history; superseded 2026-10-01 by the tab carousel and the resizable panel, §2.23 — the code below is
+gone). With ShareX and Run, nine tabs needed 482 DIP and the bar did not scroll, so the window grew
 (`MeasureTabsExtraDip`): the labels (a detached `TextBlock` with the template's font + 2 × 9 padding; once laid out
 the tabs measured exactly the same) against the content's room — `WidthDip` minus the window frame
 (`WindowFrameDip` = `AppWindow.Size − ClientSize`, 14 DIP: `MoveAndResize` sizes the outer window) − 24 + 8.
@@ -1548,8 +1552,8 @@ or add to the front; evictions only drop from the end).
   log ("Ran entry N as a Win+R command: Started.").
 
 **UI and CLI.**
-- Run tab (`RunFilter`, a text tab after ShareX) while the setting is on; the window widens when the visible tabs
-  need more than the bar (the Everything work's `MeasureTabsExtraDip`). Footer: `FlyoutViewModel.KeyHint` = "↵
+- Run tab (`RunFilter`, a text tab after ShareX) while the setting is on; the tab strip scrolls when the visible tabs
+  need more than its width (§2.23; until then the window widened, `MeasureTabsExtraDip`). Footer: `FlyoutViewModel.KeyHint` = "↵
   paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin" in the Run tab, status "N commands kept". Empty state explains
   both setting states.
 - Settings card status: "Watching Windows' Win+R list: Windows remembers N of its 26 commands." plus runs
@@ -1737,7 +1741,7 @@ BetterClipboard). Settings › Integrations › *Pwsh tab* / *Cmd tab* (`AppSett
   Paste, Copy only, Pin (keep in history), Groups, Hide until typed again (ED1A), Forget forever… No "Run": a history
   line has no safe place to run (its directory and variables are gone).
 - Footer: "500 of 2,952 commands in PowerShell's history · 3 kept" / "12 Command Prompt commands · 1 open window";
-  key hint "↵ paste · Ctrl+P pin · Del hide". The window widens for the two labels like for any tab (`MeasureTabsExtraDip`).
+  key hint "↵ paste · Ctrl+P pin · Del hide". The tab strip scrolls to make room for the two labels like for any tab (§2.23).
 - `bclip list -f pwsh` (also `powershell`) / `-f cmd`: the stored halves, origins `powershell` / `cmd`.
 
 **Verified:** Core tests (`ShellHistoryTests.cs`: 32 — parsing, keys, `NewSince` cases, kept list, merge, hides,
@@ -2023,7 +2027,7 @@ reaches the history through the clipboard anyway, and the pixel hash merges the 
 
 **UI and CLI.**
 - **Tab:** "Snipping" after ShareX (tooltip names both tools). It shows while the setting is on, and falls back to All when
-  it disappears while selected; the window widens for it like for any tab. Cards are ordinary image cards: "Snipping
+  it disappears while selected; the tab strip scrolls to make room for it like for any tab (§2.23). Cards are ordinary image cards: "Snipping
   Tool · just now · 480 × 270", "Win+PrtScn · …", "Screenshots folder · …".
 - **Empty state:** "No screenshots yet" — "Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up
   here the moment Windows saves it."
@@ -2047,13 +2051,102 @@ reaches the history through the clipboard anyway, and the pixel hash merges the 
 - *Show in Explorer* / *Paste as file* (needs a stored path);
 - storing only the PNG and making the DIBV5 at paste.
 
+### 2.23 Resizable panel and the tab carousel — `ClipboardFlyout.Size.cs`, `ClipboardFlyout.TabStrip.cs` (built 2026-10-01)
+
+User request (2026-10-01): "1. make the width resizable and height resizable, both persisted. 2. make the All, Pinned,
+Text and so on to be a horizontal scroll sort of carrousel with arrows > and < if scrolled and no on edge appearing.
+resizing expands this and this area responds to middle mouse scrolls and drag and drop scroll."
+
+Read as: the mouse wheel scrolls the strip ("middle mouse scrolls"), and dragging it scrolls it ("drag and drop
+scroll"); a middle-button drag pulls it too.
+
+**Resizing** (`ConfigureChrome`: `OverlappedPresenter.IsResizable = true`).
+- **Windows' own border drag.** WM_NCHITTEST, measured: LEFT / RIGHT / BOTTOM in the invisible frame just outside the
+  visible edges, BOTTOMRIGHT at the corner, and TOP on the top pixel row *inside* the visible top. WinAppSDK provides
+  that row for a window without a title bar, so no `InputNonClientPointerSource` region was needed.
+- **Remembered:** `AppSettings.FlyoutWidth` / `FlyoutHeight`.
+  - Whole DIPs of the outer window, frame included; the width without the groups column.
+  - Defaults 400 × 560, the old fixed size. `Normalize` clamps them to 360..8192 × 320..8192.
+- **Applied at every summon:** `FlyoutSizing.ToPixels` at the anchor monitor's scale → `FlyoutPositioner.Compute`
+  (which still shrinks the size to the work area, without saving that) → `ExtendLeft` for an open column.
+- **Saved once per resize, and only the user's** (`Interop/WindowSizeHook`, comctl32 `SetWindowSubclass`):
+  - A `WM_SIZING` between `WM_ENTERSIZEMOVE` and `WM_EXITSIZEMOVE` means the user resized (a move loop never gets
+    `WM_SIZING`), so `UserResized` fires once at the end.
+  - Then `FlyoutSizing.ToDips` → `Settings.Update` from the dispatcher queue. One write per resize, never per mouse
+    move: `SettingsStore.Update` writes the file on every call.
+  - Size changes the panel makes itself are never saved: the summon, the groups column, a move to another monitor's
+    scale, the work-area shrink.
+- **Minimum:** 360 × 320 DIPs (+44 with the column), answered in `WM_GETMINMAXINFO` from the window's scale at that
+  moment (`FlyoutSizing.MinimumTrackSize`).
+  - 360 is the header: logo, "Clipboard", the "Paused" chip and four buttons take 312 of the 322 content DIPs.
+  - Not `OverlappedPresenter.PreferredMinimumWidth`: it takes raw pixels and keeps them when the window moves to a
+    monitor with another scale (microsoft-ui-xaml issues 10452, 10475).
+- **Gone:** the window no longer grows for the tabs (`MeasureTabsExtraDip`, `WindowFrameDip`, `ApplyTabsWidth`, the
+  `applyWidth` parameters; §2.14 "Tab width"). The width is the user's, and the tabs scroll.
+
+**The carousel** (`TabStrip` in the XAML).
+- **Layout:** the `SelectorBar` sits in `TabsScroller`, a horizontal `ScrollViewer` with its scroll bar hidden, which
+  gives the bar its full width.
+- **Arrows:** `TabsBackButton` / `TabsForwardButton` lie over the strip's edges.
+  - RepeatButtons in `TabScrollButtonStyle`: chevrons E76B / E76C (thin "<" ">", checked by rendering), 24 DIP wide,
+    WinUI TabView's subtle fills, Delay 350 / Interval 150, never focused.
+  - Shown only while there is more that way (`TabStripScroll.CanScrollBack` / `CanScrollForward`, ½-DIP tolerance).
+  - The strip is clipped under a shown arrow (`TabsScroller.Clip`), so no label runs beneath one.
+- **Gestures:**
+  - An arrow reveals the next hidden tab right next to it (`TabStripScroll.Step`), and snaps to the end when less than an
+    arrow's width would be left. Held, it walks on tab by tab.
+  - The wheel scrolls 60 DIPs a notch, down = later tabs; a tilt wheel goes sideways. Quick notches add up
+    (`tabsScrollTarget`: the target of the scroll still animating).
+  - A left- or middle-button drag pulls the strip past the 4-DIP threshold. It captures the pointer, so the release
+    never reaches the tab: ItemsView selects on `PointerReleased` (microsoft-ui-xaml source, `ItemsViewInteractions.cpp`).
+    A click without travel still picks the tab. After a drag the search box gets the keyboard back.
+  - The capture goes through the pressed tab (`TakeOverTabPress`): the tab captures first, the viewer takes it over,
+    and the tab's `PointerCaptureLost` makes it forget the press. Capturing on the viewer alone left the tab drawn
+    pressed (dimmed) after the drag, seen in the live test's captures, and still counting as pressed: a later release
+    over it would have picked it (`ItemContainer.cpp` resets only on exit, cancel or capture loss).
+  - Touch pans natively.
+- **Window drag:** `IsDragSurface` treats `TabsScroller` as a control while it can scroll; while every tab fits, its
+  empty space moves the window, as before.
+- **Bring into view:**
+  - A clicked or focused tab raises `BringIntoViewRequested`. `Filters_BringIntoViewRequested` widens the rect by an
+    arrow on each side before the outer viewer acts, so the tab ends clear of the arrows.
+  - A selection from code (`SelectFilter`) reveals the tab itself (`RevealSelectedTab`).
+  - Every summon resets the strip to its start, where "All" is.
+
+**The SelectorBar's template, adjusted** (`PrepareTabBarTemplate`, at `Filters.Loaded`; both found as descendants, so a
+future template without them only loses the fix).
+- **Its `ItemsView.ScrollView`** (InteractionTracker-based) would redirect touch, pen and the wheel to its compositor
+  tracker (`CapableTouchpadAndPointerWheel`, ScrollPresenter source) although it never has anything to scroll here. Its
+  scroll modes are set to Disabled, and `IgnoredInputKinds = Touch | Pen | MouseWheel`. The keyboard stays with it: the
+  arrow-key navigation between tabs is ItemsView's.
+- **Its `ItemsRepeater` virtualized** (`HorizontalCacheLength="0"` in ItemsView's template).
+  - Inside a scrolling viewer it realized only the tabs in view and estimated the rest's width.
+  - Found by the first live run: 9 of 11 tabs in the UIA tree, arrow steps of a few DIPs, 15 presses to reach the end,
+    a wheel turn jumping to 87 %.
+  - `HorizontalCacheLength = 64` viewports now realizes every tab: the width is exact, and every tab can be measured,
+    focused and read by screen readers.
+
+**Pieces** (all unit-tested except the App's):
+- Core `Presentation/TabStripScroll` (`Step`, `Reveal`, `Wheel`, `Drag`, `Clamp`, the arrow rules; `TabExtent`).
+- Windows `Input/FlyoutSizing` (`ToDips`, `ToPixels`, `MinimumTrackSize`).
+- App `Interop/WindowSizeHook`, `ClipboardFlyout.Size.cs`, `ClipboardFlyout.TabStrip.cs`; `TabScrollButtonStyle` in
+  App.xaml.
+
+**Verified:** see §5.
+
+**Not built:**
+- a "Reset size" button in Settings;
+- keyboard shortcuts that switch tabs (Ctrl+Tab);
+- a fade under the arrows instead of the hard clip (the panel's acrylic has no solid color to fade to);
+- inertia after a drag.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 915 tests (912 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 928 tests (925 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -2528,9 +2621,20 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
     window), so "is it scrolled into view" checks built on rectangles prove nothing. Look at a capture.
 - **`AppWindow.MoveAndResize` sizes the outer window.** The content is narrower by the frame
   (`AppWindow.Size − ClientSize`: 14 DIP on Windows 11, the invisible resize borders), so layout math in DIPs must
-  subtract it (`ClipboardFlyout.WindowFrameDip`). Lesson (2026-10-01): the tab-bar widening assumed the full width,
-  and the last tab was clipped ("Rur" with eight tabs, "Everythin" with nine) although every UIA rectangle lay
-  inside the window. Zoom into a screenshot of the last tab; rectangles alone did not show it.
+  subtract it. Lesson (2026-10-01): the tab-bar widening assumed the full width, and the last tab was clipped ("Rur"
+  with eight tabs, "Everythin" with nine) although every UIA rectangle lay inside the window. Zoom into a screenshot
+  of the last tab; rectangles alone did not show it. (That widening is gone, §2.23. The remembered panel size is an
+  outer size too — `FlyoutSizing` converts outer pixels, the same `AppWindow.Size` and `MoveAndResize` use.)
+- **Items of an `ItemsView`/`SelectorBar` inside a scrolling viewer are virtualized.** The ItemsView template's
+  `ItemsRepeater` has `HorizontalCacheLength="0"` and follows every scrolling ancestor's viewport, so items out of view
+  are not realized: they have no size, the content width is an estimate, and UIA cannot see them (their rectangles read
+  (0, 0, 0, 0)). The tab carousel raises the cache (§2.23). Anything else that measures or reaches items of such a list
+  must do the same, or work only with what is realized.
+- **Capturing the pointer on an ancestor leaves a pressed WinUI item stale.** An `ItemContainer` (SelectorBarItem,
+  ItemsView items) forgets a press only on its own exit, cancel or `PointerCaptureLost`; a capture taken by an ancestor
+  gives it none, so it stays drawn pressed and still counts as pressed. Let the item capture first and take the capture
+  from it (`ClipboardFlyout.TakeOverTabPress`), and ignore the item's `PointerCaptureLost` bubbling into the ancestor's
+  handler (check `OriginalSource`).
 - **Global hotkeys beat the foreground window, also for injected keys.** Before giving the panel an Alt+letter
   shortcut, or injecting a chord in a test, probe the chord with `RegisterHotKey` (`MOD_NOREPEAT`, released at
   once; a 1409 means someone owns it). An owned chord goes to its owner, and the foreground guard does not help.
@@ -2575,6 +2679,7 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 
 | Feature | How | Result |
 |---|---|---|
+| Resizable panel and tab carousel, live (2026-10-01, §2.23). Isolated copy of the dev build next to the user's app: own data dir, capture paused, `PasteOnSelect` off, ShareX / Screenshots / PSReadLine / Claude / Codex folders, the Win+R key and the Everything instance all pointed at scratch or BC-TEST data, eleven tabs. Opens at 400 × 560 with only "›"; WM_NCHITTEST LEFT / RIGHT / BOTTOM in the invisible frame, BOTTOMRIGHT at the corner, TOP on the top pixel row inside. "›" takes exactly one press per hidden tab (5), the last tab whole at the end; "‹" walks back (4) and hides. Two wheel notches scroll 120.0 DIPs, a tilt 60.0, a left drag on a tab 150.0 and a middle drag 100.0 DIPs with the pointer, picking no tab and not moving the window; a plain click still picks a tab. The right border +160 px and the top edge −120 px resize and are saved (560 × 560, then 560 × 680 DIPs); dragging the right border −900 px stops at 360 DIPs (saved 360). At 760 DIPs every tab fits: no arrows, nothing to scroll, and the strip's empty space moves the window again. Esc, re-summon: 760 × 680. The groups column grows the window 44 px on the left and closing it gives the same window back, the remembered size unchanged. 0 WRN/ERR in the test log; the user's PIDs unchanged; scratch removed | UIA invokes on the arrows and the groups toggle; real mouse input only after `WindowFromPoint` → `GA_ROOT` was the test window, stopped by any cursor movement of the user's (the run that hit the screen's bottom edge stopped there: the drag now picks the edge with room); Esc only while the panel was in front; `PrintWindow` captures; summoned only after the terminal was in front twice with 3 s of no input (`carousel_e2e.py`, scratch) | ✅ 35/35 (run 3). Runs 1–2 found the virtualized tabs (9 of 11 realized, 15 presses to the end, a wheel turn to 87 %; fixed by `HorizontalCacheLength`), and run 3's captures showed the tabs a drag started on staying drawn pressed. Added after run 3, not yet re-checked live (the user was away from the terminal; the harness waits for a quiet moment): the capture hand-over through the tab (with its fallback), the clip cache, and two new checks — the dragged-from tabs look untouched afterwards (label pixels), and a summon after leaving the strip scrolled starts at "All" |
 | `0.2.4-dev.74594fb` installed on this PC as the user's app (2026-10-01, "Build and install dev", §3.1): x64 zip built from a worktree at `74594fb` (`main`, every feature through the Snipping tab), 70.9 MB. The side-by-side dev copy was closed first (scoped `--exit`). `install.ps1` verified the SHA-256, closed the running 0.2.4 gracefully and swapped. Started through Explorer (`--background`): parent `explorer.exe`, 74 environment variables without `CLAUDECODE`/`MSYSTEM` (a process of this session: 142, both present). Run value and shortcut unchanged, Installed apps and `installer.json` say `0.2.4-dev.74594fb`, `DisabledHotkeys` still `V`. Log after "starting": 0 WRN/ERR. First imports on the real data: Claude Code 17,198 prompts in 13.5 s, Codex 2,279 prompts from 720 files (417 left out) in 21.2 s, Win+R 24 new of 26, 1 new Windows item; the Screenshots folder and ShareX watched; Win+V by `RegisterHotKey` | worktree + `package.ps1` + `install-local.ps1` (Windows PowerShell 5.1, env stripped) + scratch `launch_background.ps1`, `install_state.ps1` (before/after), `env_names.py` (variable names from the PEB, checked against a control) | ✅. The first `install-local.ps1` run stopped at parameter binding (forward-slash path, §3.1) before changing anything |
 | Snipping tab on screen (2026-10-01). Isolated copy of the dev build, three BC-TEST screenshots imported with capture on, then the instance restarted paused before any UI. The panel opened only after the terminal was in front for two checks with 3 s without input. The tabs read All … Files, ShareX, Snipping, Run (the fake ShareX folder counts as installed), all inside the window. The Snipping tab was selected through UIA and holds 3 cards captioned "Screenshots folder · just now · 300 × 300", "Win+PrtScn · just now · 640 × 200" and "Snipping Tool · just now · 480 × 270", with thumbnails. Settings: the card (scissors glyph, header, switch on) and its status "Watching …\Screenshots." + "Snipping Tool 11.2607.23.0 saves every snip here, and copies it to the clipboard (both become one entry).", read from the real Snipping Tool's settings. The user's PIDs were unchanged, and the scratch was removed | UIA (SelectionItemPattern, texts) + PrintWindow captures of the test windows only (`snip_e2e/ui.py`, scratch) | ✅ 10/10, then 5/5 Settings-only. One earlier run found no panel within 10 s; it did not recur in the next two |
 | Snipping tab, headless (2026-10-01). Isolated copy, with overrides for every source. Three screenshots were listed by `bclip list -f snipping` 401–434 ms after their files were written (polling included), as origin `screenshot` with sources Snipping Tool / Win+PrtScn / Screenshots folder and PNG + CF_DIBV5. Not imported: an archive file from before the first activation, a file copied in with a 2020 write time (logged as skipped), and a `.txt`. A screenshot written while the instance was stopped arrived at its restart, logged as "Imported 1 screenshot saved while BetterClipboard was not watching". The log had 0 WRN/ERR, and the user's PIDs were unchanged | `snip_e2e/run.py` (scratch) | ✅ 16/16 |
@@ -2611,7 +2716,7 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 912 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 915 = Core 707 + Windows 208, with the Snipping tab (Core 34, Windows 22). Before it, 856 pass + 3 skipped: 859 = Core 673 + Windows 186, with the prompt archive (`7cb8ab2`: 88 new tests, Core 77 + Windows 11, plus 3 new cases of existing theories), in the shared tree; one full run before it had `ClientHangUp_CancelsHandler` exceed its wait again (3 of 3 alone passed). Before it, 765 pass + 3 skipped: 768 = Core 593 + Windows 175, with the Pwsh and Cmd tabs (`ec4db1f`: Core 32, Windows 6, not yet counted in its docs) and the Third party catalog (Core 29), built and run in a separate worktree holding exactly `ec4db1f` + the Third party change; before them, 701 = Core 532 + Windows 169, with merged group views (built and run in a separate worktree holding only that change, while another session's half-done work kept the shared tree from building); before them, 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 925 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 928 = Core 717 + Windows 211, with the tab carousel and the resizable panel (§2.23: Core 10, Windows 3; each test project's executable run whole). Before it, 912 pass + 3 skipped: 915 = Core 707 + Windows 208, with the Snipping tab (Core 34, Windows 22). Before it, 856 pass + 3 skipped: 859 = Core 673 + Windows 186, with the prompt archive (`7cb8ab2`: 88 new tests, Core 77 + Windows 11, plus 3 new cases of existing theories), in the shared tree; one full run before it had `ClientHangUp_CancelsHandler` exceed its wait again (3 of 3 alone passed). Before it, 765 pass + 3 skipped: 768 = Core 593 + Windows 175, with the Pwsh and Cmd tabs (`ec4db1f`: Core 32, Windows 6, not yet counted in its docs) and the Third party catalog (Core 29), built and run in a separate worktree holding exactly `ec4db1f` + the Third party change; before them, 701 = Core 532 + Windows 169, with merged group views (built and run in a separate worktree holding only that change, while another session's half-done work kept the shared tree from building); before them, 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -2751,6 +2856,9 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
   - `bclip prompts --project PATH` / `--session ID`, and an MCP tool over the same archive for agents;
   - keeping attached images (today counted only), with the size budget in mind;
   - a third agent with the same machinery (e.g. Gemini CLI's history), now that the reader is agent-agnostic.
+- Resizable panel and tab carousel (§2.23), next steps: a "Reset size" button in Settings; Ctrl+Tab / Ctrl+Shift+Tab to
+  switch tabs from the keyboard (the strip would follow through `RevealSelectedTab`); a fade under the arrows instead of
+  the hard clip; inertia after a drag.
 - Third party (§2.20), next steps:
   - a scheduled link check (every catalog link still answers 200 at its address), e.g. a weekly CI job; the unit
     tests stay offline on purpose;

@@ -14,22 +14,12 @@ public sealed partial class ClipboardFlyout
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
-    private void OnSnippingStatusChanged(object? sender, EventArgs e) => UpdateSnippingTab(applyWidth: true);
+    private void OnSnippingStatusChanged(object? sender, EventArgs e) => UpdateSnippingTab();
 
     /// <summary>
     /// Shows the Snipping tab while Settings › Snipping Tool and Win+PrtScn is on. If it disappears while selected, the
-    /// panel falls back to "All", so the list never stays filtered by an invisible tab.
+    /// panel falls back to "All", so the list never stays filtered by an invisible tab. The tab strip scrolls when the tabs
+    /// no longer fit (its arrows follow the strip's new width by themselves).
     /// </summary>
-    /// <param name="applyWidth">
-    /// Refit the open window to the visible tabs when the tab appeared or disappeared (<see langword="false"/> from
-    /// <see cref="ShowAt"/>, which measures the tabs itself right after).
-    /// </param>
-    private void UpdateSnippingTab(bool applyWidth)
-    {
-        if (SetTabVisible(SnippingFilter, controller.IsSnippingTabAvailable, ClipFilter.Snipping) && applyWidth && IsOpen)
-        {
-            // The bar does not scroll: the window grows or shrinks so every visible tab fits.
-            ApplyTabsWidth();
-        }
-    }
+    private void UpdateSnippingTab() => SetTabVisible(SnippingFilter, controller.IsSnippingTabAvailable, ClipFilter.Snipping);
 }

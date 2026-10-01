@@ -259,103 +259,139 @@
             </AutoSuggestBox.Description>
         </AutoSuggestBox>
 
-        <!--  Filters  -->
-        <SelectorBar
-            x:Name="Filters"
+        <!--
+            Filters: a carousel (code-behind: ClipboardFlyout.TabStrip.cs). The SelectorBar sits in a ScrollViewer that
+            gives it all the width it wants, so the tabs scroll sideways when they do not fit; resizing the panel wider
+            shows more of them. "<" and ">" (RepeatButtons over the strip's edges) show only while there is more to that
+            side, and the strip is clipped under them (TabsScroller.Clip), so no tab label runs under an arrow. The mouse
+            wheel (also the tilt wheel) and dragging the strip with the left or middle button scroll it; touch pans it
+            natively. The window used to grow to fit every tab instead (MeasureTabsExtraDip, until 2026-10-01).
+        -->
+        <Grid
+            x:Name="TabStrip"
             Grid.Row="2"
             Grid.Column="1"
-            Margin="-4,0,-4,0"
-            SelectionChanged="Filters_SelectionChanged">
-            <SelectorBar.Resources>
-                <!--
-                    9 instead of WinUI's 12 px side padding: with the ShareX tab, seven labels at the default
-                    padding need 393-408 px (measured, Segoe UI Variable 14 px) but the bar has 384 (400 DIP
-                    flyout - 24 padding + 8 negative margin), so the last tab was clipped. At 9 they need
-                    351-366 px. The bar does not scroll: when the visible tabs need more (the Everything tab),
-                    the window grows just enough (code-behind: MeasureTabsExtraDip, which measures the labels and
-                    adds TabSidePaddingDip per side: keep that constant equal to this padding).
-                -->
-                <Style TargetType="SelectorBarItem">
-                    <Setter Property="Padding" Value="9,10,9,7" />
-                </Style>
-            </SelectorBar.Resources>
-            <SelectorBarItem IsSelected="True" Tag="All" Text="All" />
-            <SelectorBarItem Tag="Pinned" Text="Pinned" />
-            <SelectorBarItem Tag="Text" Text="Text" />
-            <SelectorBarItem Tag="Images" Text="Images" />
-            <SelectorBarItem Tag="Links" Text="Links" />
-            <SelectorBarItem
-                Tag="Files"
-                Text="Files"
-                ToolTipService.ToolTip="Files copied in Explorer, and copied text that is nothing but paths" />
-            <!--  Only while ShareX is installed (code-behind: UpdateShareXTab).  -->
-            <SelectorBarItem
-                x:Name="ShareXFilter"
-                Tag="ShareX"
-                Text="ShareX"
-                ToolTipService.ToolTip="Screenshots saved by ShareX and everything copied from it"
-                Visibility="Collapsed" />
+            Margin="-4,0,-4,0">
+            <ScrollViewer
+                x:Name="TabsScroller"
+                HorizontalScrollBarVisibility="Hidden"
+                HorizontalScrollMode="Enabled"
+                VerticalScrollBarVisibility="Disabled"
+                VerticalScrollMode="Disabled"
+                ZoomMode="Disabled">
+                <SelectorBar x:Name="Filters" SelectionChanged="Filters_SelectionChanged">
+                    <SelectorBar.Resources>
+                        <!--
+                            9 instead of WinUI's 12 px side padding: more tabs fit next to each other before the strip has
+                            to scroll (seven labels need 351-366 px at 9, 393-408 at 12; measured, Segoe UI Variable 14 px).
+                        -->
+                        <Style TargetType="SelectorBarItem">
+                            <Setter Property="Padding" Value="9,10,9,7" />
+                        </Style>
+                    </SelectorBar.Resources>
+                    <SelectorBarItem IsSelected="True" Tag="All" Text="All" />
+                    <SelectorBarItem Tag="Pinned" Text="Pinned" />
+                    <SelectorBarItem Tag="Text" Text="Text" />
+                    <SelectorBarItem Tag="Images" Text="Images" />
+                    <SelectorBarItem Tag="Links" Text="Links" />
+                    <SelectorBarItem
+                        Tag="Files"
+                        Text="Files"
+                        ToolTipService.ToolTip="Files copied in Explorer, and copied text that is nothing but paths" />
+                    <!--  Only while ShareX is installed (code-behind: UpdateShareXTab).  -->
+                    <SelectorBarItem
+                        x:Name="ShareXFilter"
+                        Tag="ShareX"
+                        Text="ShareX"
+                        ToolTipService.ToolTip="Screenshots saved by ShareX and everything copied from it"
+                        Visibility="Collapsed" />
+                    <!--
+                        Only while Settings › Snipping Tool and Win+PrtScn is on (code-behind: UpdateSnippingTab,
+                        ClipboardFlyout.Snipping.cs). Its Tag is the ClipFilter name.
+                    -->
+                    <SelectorBarItem
+                        x:Name="SnippingFilter"
+                        Tag="Snipping"
+                        Text="Snipping"
+                        ToolTipService.ToolTip="Screenshots saved by Snipping Tool (Win+Shift+S, PrtScn) and Win+PrtScn, and everything Snipping Tool copied"
+                        Visibility="Collapsed" />
+                    <!--
+                        Only while Settings › Win+R history is on (code-behind: UpdateRunTab). Entering it rescans Windows'
+                        Win+R list first (the live watch normally has everything already).
+                    -->
+                    <SelectorBarItem
+                        x:Name="RunFilter"
+                        Tag="Run"
+                        Text="Run"
+                        ToolTipService.ToolTip="Commands you ran with Win+R, kept after Windows forgets them (Ctrl+Enter runs one again)"
+                        Visibility="Collapsed" />
+                    <!--
+                        The shell tabs (code-behind: UpdateShellTabs, ClipboardFlyout.Shells.cs). Pwsh only while Settings › Pwsh tab
+                        is on and PowerShell's history file exists; Cmd while Settings › Cmd tab is on. Their Tags are ClipFilter names.
+                    -->
+                    <SelectorBarItem
+                        x:Name="PwshFilter"
+                        Tag="PowerShell"
+                        Text="Pwsh"
+                        ToolTipService.ToolTip="Every command you typed in PowerShell, newest first, searchable (from PowerShell's own history file)"
+                        Visibility="Collapsed" />
+                    <SelectorBarItem
+                        x:Name="CmdFilter"
+                        Tag="Cmd"
+                        Text="Cmd"
+                        ToolTipService.ToolTip="Commands typed in Command Prompt windows, kept after the window closes"
+                        Visibility="Collapsed" />
+                    <!--
+                        The prompt tabs (code-behind: UpdatePromptTabs, ClipboardFlyout.Prompts.cs): each while its Settings switch is
+                        on and the agent's folder or the prompt archive has prompts. Entering one catches the archive up first. Their
+                        Tags are ClipFilter names.
+                    -->
+                    <SelectorBarItem
+                        x:Name="ClaudeFilter"
+                        Tag="ClaudeCode"
+                        Text="Claude"
+                        ToolTipService.ToolTip="Every prompt you sent to Claude Code, newest first, searchable, kept after Claude Code prunes its history"
+                        Visibility="Collapsed" />
+                    <SelectorBarItem
+                        x:Name="CodexFilter"
+                        Tag="Codex"
+                        Text="Codex"
+                        ToolTipService.ToolTip="Every prompt you sent to Codex (the app, the CLI, the IDE extension), newest first, searchable"
+                        Visibility="Collapsed" />
+                    <!--  Only while voidtools Everything is installed or running and the tab is on (code-behind: UpdateEverythingTab).  -->
+                    <SelectorBarItem
+                        x:Name="EverythingFilter"
+                        Tag="Everything"
+                        Text="Everything"
+                        ToolTipService.ToolTip="Files you opened in Everything, newest first, and everything copied from it"
+                        Visibility="Collapsed" />
+                </SelectorBar>
+            </ScrollViewer>
             <!--
-                Only while Settings › Snipping Tool and Win+PrtScn is on (code-behind: UpdateSnippingTab,
-                ClipboardFlyout.Snipping.cs). Its Tag is the ClipFilter name.
+                The carousel's arrows: over the strip's edges, shown only while there is more to that side
+                (UpdateTabArrows). RepeatButtons, like WinUI's TabView scroll buttons: each repeat reveals the next tab
+                (TabStripScroll.Step), so holding one walks through the tabs. They never take focus: a click must
+                leave the caret in the search box.
             -->
-            <SelectorBarItem
-                x:Name="SnippingFilter"
-                Tag="Snipping"
-                Text="Snipping"
-                ToolTipService.ToolTip="Screenshots saved by Snipping Tool (Win+Shift+S, PrtScn) and Win+PrtScn, and everything Snipping Tool copied"
+            <RepeatButton
+                x:Name="TabsBackButton"
+                HorizontalAlignment="Left"
+                AutomationProperties.Name="Scroll tabs left"
+                Click="TabsBackButton_Click"
+                Content="&#xE76B;"
+                Style="{StaticResource TabScrollButtonStyle}"
+                ToolTipService.ToolTip="Earlier tabs"
                 Visibility="Collapsed" />
-            <!--
-                Only while Settings › Win+R history is on (code-behind: UpdateRunTab). Entering it rescans Windows'
-                Win+R list first (the live watch normally has everything already).
-            -->
-            <SelectorBarItem
-                x:Name="RunFilter"
-                Tag="Run"
-                Text="Run"
-                ToolTipService.ToolTip="Commands you ran with Win+R, kept after Windows forgets them (Ctrl+Enter runs one again)"
+            <RepeatButton
+                x:Name="TabsForwardButton"
+                HorizontalAlignment="Right"
+                AutomationProperties.Name="Scroll tabs right"
+                Click="TabsForwardButton_Click"
+                Content="&#xE76C;"
+                Style="{StaticResource TabScrollButtonStyle}"
+                ToolTipService.ToolTip="More tabs"
                 Visibility="Collapsed" />
-            <!--
-                The shell tabs (code-behind: UpdateShellTabs, ClipboardFlyout.Shells.cs). Pwsh only while Settings › Pwsh tab
-                is on and PowerShell's history file exists; Cmd while Settings › Cmd tab is on. Their Tags are ClipFilter names.
-            -->
-            <SelectorBarItem
-                x:Name="PwshFilter"
-                Tag="PowerShell"
-                Text="Pwsh"
-                ToolTipService.ToolTip="Every command you typed in PowerShell, newest first, searchable (from PowerShell's own history file)"
-                Visibility="Collapsed" />
-            <SelectorBarItem
-                x:Name="CmdFilter"
-                Tag="Cmd"
-                Text="Cmd"
-                ToolTipService.ToolTip="Commands typed in Command Prompt windows, kept after the window closes"
-                Visibility="Collapsed" />
-            <!--
-                The prompt tabs (code-behind: UpdatePromptTabs, ClipboardFlyout.Prompts.cs): each while its Settings switch is
-                on and the agent's folder or the prompt archive has prompts. Entering one catches the archive up first. Their
-                Tags are ClipFilter names.
-            -->
-            <SelectorBarItem
-                x:Name="ClaudeFilter"
-                Tag="ClaudeCode"
-                Text="Claude"
-                ToolTipService.ToolTip="Every prompt you sent to Claude Code, newest first, searchable, kept after Claude Code prunes its history"
-                Visibility="Collapsed" />
-            <SelectorBarItem
-                x:Name="CodexFilter"
-                Tag="Codex"
-                Text="Codex"
-                ToolTipService.ToolTip="Every prompt you sent to Codex (the app, the CLI, the IDE extension), newest first, searchable"
-                Visibility="Collapsed" />
-            <!--  Only while voidtools Everything is installed or running and the tab is on (code-behind: UpdateEverythingTab).  -->
-            <SelectorBarItem
-                x:Name="EverythingFilter"
-                Tag="Everything"
-                Text="Everything"
-                ToolTipService.ToolTip="Files you opened in Everything, newest first, and everything copied from it"
-                Visibility="Collapsed" />
-        </SelectorBar>
+        </Grid>
 
         <!--  History  -->
         <!--  CanDragItems is switched on with the groups column (a drag needs a drop target).  -->

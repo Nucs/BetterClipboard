@@ -2,7 +2,7 @@ namespace BetterClipboard.Core.Model;
 
 /// <summary>
 /// An immutable snapshot of one persisted history row (without its format payloads, which are loaded on
-/// demand via <see cref="Storage.ClipStore.GetFormats"/> because they can be megabytes).
+/// demand via <see cref="Storage.ClipStore.GetFormats(long)"/> because they can be megabytes).
 /// </summary>
 /// <remarks>
 /// Snapshots never change after being read; mutations (pin, touch, delete) go through the store and a

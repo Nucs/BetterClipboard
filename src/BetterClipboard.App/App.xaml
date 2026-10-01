@@ -57,6 +57,72 @@
                 <Setter Property="BorderThickness" Value="1" />
             </Style>
 
+            <!--
+                The "<" / ">" arrows of the panel's tab carousel (ClipboardFlyout's TabStrip): WinUI TabView's scroll buttons
+                in look and timing — subtle fills from the theme, secondary glyph, a first repeat after a short hold
+                (Delay) and then a steady walk (Interval) — with a chevron instead of TabView's solid caret, read as "<" and
+                ">". 24 DIPs wide: ClipboardFlyout.TabStrip.cs reads this Width as the strip width each arrow covers (and
+                clips). They never take focus (AllowFocusOnInteraction, IsTabStop): a click must leave the caret in the
+                search box. States are template setters with ThemeResource values, so they follow the flyout's own theme.
+            -->
+            <Style x:Key="TabScrollButtonStyle" TargetType="RepeatButton">
+                <Setter Property="Width" Value="24" />
+                <Setter Property="Margin" Value="0,4,0,7" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Delay" Value="350" />
+                <Setter Property="Interval" Value="150" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="AllowFocusOnInteraction" Value="False" />
+                <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="CornerRadius" Value="{ThemeResource ControlCornerRadius}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RepeatButton">
+                            <Border
+                                x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Chrome.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+                                                <Setter Target="Glyph.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Chrome.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
+                                                <Setter Target="Glyph.Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="Glyph.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter
+                                    x:Name="Glyph"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Content="{TemplateBinding Content}"
+                                    FontFamily="{TemplateBinding FontFamily}"
+                                    FontSize="{TemplateBinding FontSize}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <!-- A toolbar icon button in its "on" state (the groups toggle while the column is open). -->
             <Style x:Key="IconButtonActiveStyle" TargetType="Button" BasedOn="{StaticResource IconButtonStyle}">
                 <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />

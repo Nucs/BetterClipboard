@@ -35,8 +35,11 @@ namespace BetterClipboard.App.Views;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Chrome.</b> Caption-less, non-resizable, always-on-top, hidden from Alt+Tab and the taskbar, with
-/// a desktop-acrylic backdrop and DWM rounded corners — the look of a system flyout.
+/// <b>Chrome.</b> Caption-less, always-on-top, hidden from Alt+Tab and the taskbar, with a desktop-acrylic backdrop and
+/// DWM rounded corners — the look of a system flyout — but resizable by its borders: width and height are remembered
+/// (<see cref="AppSettings.FlyoutWidth"/> / <see cref="AppSettings.FlyoutHeight"/>, ClipboardFlyout.Size.cs) and every
+/// summon opens it at that size next to the caret. Wider shows more of the filter tabs, which scroll sideways when they do
+/// not fit (ClipboardFlyout.TabStrip.cs).
 /// </para>
 /// <para>
 /// <b>Dismissal.</b> Like a flyout it hides when it loses activation, except while one of its own popups
@@ -69,20 +72,6 @@ namespace BetterClipboard.App.Views;
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
 {
-    /// <summary>Flyout size in DIPs (Win+V is ~360×450; a little larger shows two more cards).</summary>
-    private const double WidthDip = 400;
-
-    /// <summary>
-    /// Left and right padding of every filter tab, in DIPs. Must equal the side padding of the implicit
-    /// <c>SelectorBarItem</c> style in <c>ClipboardFlyout.xaml</c> (<c>9,10,9,7</c>): <see cref="MeasureTabDip"/> adds it
-    /// to each label because a tab that was never laid out has no padding to read yet. Change both together, or the
-    /// window is sized for tabs of the wrong width.
-    /// </summary>
-    private const double TabSidePaddingDip = 9;
-
-    /// <summary>Flyout height in DIPs.</summary>
-    private const double HeightDip = 560;
-
     /// <summary>Gap between caret and flyout, in DIPs.</summary>
     private const double GapDip = 8;
 
@@ -146,12 +135,6 @@ public sealed partial class ClipboardFlyout : Window
     private uint dragPointerId;
 
     /// <summary>
-    /// How much wider than <see cref="WidthDip"/> the window is so every visible filter tab fits (0 while they fit):
-    /// the bar does not scroll, and with ShareX's and Everything's tabs it needs ~50 DIP more (CLAUDE.md §2.14).
-    /// </summary>
-    private double tabsExtraDip;
-
-    /// <summary>
     /// Creates the (hidden) flyout window.
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -162,6 +145,7 @@ public sealed partial class ClipboardFlyout : Window
         InitializeComponent();
         hwnd = WindowNative.GetWindowHandle(this);
         ConfigureChrome();
+        sizeHook = CreateSizeHook();
 
         Activated += OnActivated;
         AppWindow.Closing += OnClosing;
@@ -175,8 +159,8 @@ public sealed partial class ClipboardFlyout : Window
         controller.GroupsChanged += OnGroupsChanged;
         ViewModel.GroupsReloaded += (_, _) => RebuildGroupButtons();
 
-        // On the very first show the tabs are measured before they exist (0 wide); once they do, fit them again.
-        Filters.Loaded += (_, _) => ApplyTabsWidth();
+        // The filter tabs scroll sideways when they do not fit (arrows, wheel, drags): ClipboardFlyout.TabStrip.cs.
+        InitializeTabStrip();
         ViewModel.PropertyChanged += (_, e) =>
         {
             // Any route to another view (icon click with or without Ctrl/Shift, the icon menu, reset on show, a deleted
@@ -248,16 +232,17 @@ public sealed partial class ClipboardFlyout : Window
             controller.ApplyTheme(Root);
             ViewModel.ResetForShow();
             UpdateShareXTab();
-            UpdateSnippingTab(applyWidth: false);
+            UpdateSnippingTab();
             UpdateEverythingTab();
-            UpdateRunTab(applyWidth: false);
-            UpdateShellTabs(applyWidth: false);
-            UpdatePromptTabs(applyWidth: false);
+            UpdateRunTab();
+            UpdateShellTabs();
+            UpdatePromptTabs();
             SelectFilter(ClipFilter.All);
 
-            // With the tabs' visibility settled, the window gets the width they need (placed below as a whole).
-            tabsExtraDip = MeasureTabsExtraDip();
-            groupsPaneOpen = controller.Settings.Current.ShowGroupsPane;
+            // "All" is the first tab: the strip starts at its beginning again, wherever the last summon left it.
+            ResetTabStrip();
+            var settings = controller.Settings.Current;
+            groupsPaneOpen = settings.ShowGroupsPane;
             ApplyGroupsPaneLayout();
 
             // Show and take focus FIRST, load after: keys typed right after the shortcut must land in our
@@ -271,8 +256,11 @@ public sealed partial class ClipboardFlyout : Window
             var (workArea, scale) = placement == FlyoutPlacement.CenterScreen && context.TargetWindow != 0
                 ? MonitorLookup.FromWindow(context.TargetWindow)
                 : MonitorLookup.FromPoint(anchorPoint);
-            var bounds = FlyoutPositioner.Compute(placement, context, workArea,
-                (int)Math.Round((WidthDip + tabsExtraDip) * scale), (int)Math.Round(HeightDip * scale), (int)Math.Round(GapDip * scale));
+
+            // The size the user last dragged the panel to (without the column, added below), in this monitor's pixels;
+            // Compute shrinks it to a smaller work area without changing what is remembered.
+            var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
+            var bounds = FlyoutPositioner.Compute(placement, context, workArea, width, height, (int)Math.Round(GapDip * scale));
             if (groupsPaneOpen)
             {
                 // Place the list where it always goes, then add the column on its left.
@@ -330,6 +318,7 @@ public sealed partial class ClipboardFlyout : Window
     public void CloseForExit()
     {
         closingForExit = true;
+        sizeHook?.Dispose();
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.SnippingStatusChanged -= OnSnippingStatusChanged;
@@ -346,7 +335,10 @@ public sealed partial class ClipboardFlyout : Window
         Title = "BetterClipboard";
         AppWindow.SetIcon(AppController.IconPath);
         var presenter = OverlappedPresenter.Create();
-        presenter.IsResizable = false;
+
+        // Resizable by its borders (the size is remembered: ClipboardFlyout.Size.cs); never maximized or minimized, which
+        // a flyout cannot be. Its minimum size comes from WM_GETMINMAXINFO (the size hook), per monitor scale.
+        presenter.IsResizable = true;
         presenter.IsMaximizable = false;
         presenter.IsMinimizable = false;
         presenter.IsAlwaysOnTop = true;
@@ -727,10 +719,12 @@ public sealed partial class ClipboardFlyout : Window
     /// </summary>
     /// <remarks>
     /// Walks from the pressed element up to <see cref="Root"/>. Any control on the way (buttons, the search
-    /// box, filter pills, cards, scroll bars) means "not background". Plain visuals — the title, icons,
-    /// the paused chip, the footer, gaps, the list's and the filter bar's empty space — are background.
-    /// Touch and pen inside the list are not, because a finger drag there must keep scrolling the list.
-    /// A source outside Root's tree (popups) is never background.
+    /// box, filter pills, the tab arrows, cards, scroll bars) means "not background". Plain visuals — the title, icons,
+    /// the paused chip, the footer, gaps, the list's empty space — are background. The filter tabs' strip is background
+    /// only while every tab fits: once it can scroll, a drag there pulls the tabs sideways (any pointer: the mouse through
+    /// ClipboardFlyout.TabStrip.cs, touch and pen natively), never the window. Touch and pen inside the list are not
+    /// background either, because a finger drag there must keep scrolling the list. A source outside Root's tree
+    /// (popups) is never background.
     /// </remarks>
     /// <param name="source">The element that received the press (<see cref="RoutedEventArgs.OriginalSource"/>).</param>
     /// <param name="device">Pointer type.</param>
@@ -750,6 +744,8 @@ public sealed partial class ClipboardFlyout : Window
                     or SelectorItem or SelectorBarItem or RangeBase or Thumb or ToggleSwitch:
                     return false;
                 case ListViewBase when device != PointerDeviceType.Mouse:
+                    return false;
+                case ScrollViewer tabs when ReferenceEquals(tabs, TabsScroller) && IsTabStripScrollable:
                     return false;
             }
         }
@@ -1329,15 +1325,14 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Everything started, stopped, finished loading, or the tab was switched (UI thread): show or hide the tab, fit
-    /// the window to the tabs, and reload the tab when it is showing.
+    /// Everything started, stopped, finished loading, or the tab was switched (UI thread): show or hide the tab (the tab
+    /// strip scrolls when the tabs no longer fit), and reload the tab when it is showing.
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
     private void OnEverythingStatusChanged(object? sender, EventArgs e)
     {
         UpdateEverythingTab();
-        ApplyTabsWidth();
         if (IsOpen && ViewModel.IsEverythingView)
         {
             _ = ViewModel.ReloadAsync();
@@ -1356,122 +1351,6 @@ public sealed partial class ClipboardFlyout : Window
         {
             SelectFilter(ClipFilter.All);
         }
-    }
-
-    /// <summary>
-    /// The extra window width the visible filter tabs need beyond the bar's room at <see cref="WidthDip"/>: each visible
-    /// tab's label measured the way its template draws it (<see cref="MeasureTabDip"/>), summed, against the bar's room
-    /// (the window's content width at <see cref="WidthDip"/> − 24 padding + 8 negative margin), plus a little slack for
-    /// rounding. 0 when they fit.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Measures the labels, never the <see cref="SelectorBarItem"/>s: a tab that was collapsed until now (ShareX, Run,
-    /// Everything) has not been laid out, so measuring the item itself did not count it, the window kept its 400 DIP
-    /// and the last tabs were cut off (reported 2026-10-01 with the ShareX and Run tabs showing). A label measures the
-    /// same whether or not its tab was ever on screen, so the width is right on the very first summon too. (Measuring
-    /// the items before the first layout is wrong the other way: the bar's 9 DIP padding style is not applied yet, so
-    /// nine tabs measured 536 DIP instead of 482.) Once laid out, labels and tabs measured the same: 482 DIP.
-    /// </para>
-    /// <para>
-    /// The room is the content's, not the window's: <c>MoveAndResize</c> sizes the outer window, which includes its
-    /// frame (<see cref="WindowFrameDip"/>, 14 DIP: Windows' invisible resize borders), so at 400 + 102 DIP the bar had
-    /// 472 DIP and the selected "Everything" tab read "Everythin" (isolated e2e run with all nine tabs, 2026-10-01).
-    /// </para>
-    /// </remarks>
-    /// <returns>Extra DIPs (whole numbers).</returns>
-    private double MeasureTabsExtraDip()
-    {
-        const double SlackDip = 4;
-        double barDip = WidthDip - WindowFrameDip() - 24 + 8;
-        double needed = 0;
-        foreach (var tab in Filters.Items)
-        {
-            if (tab.Visibility == Visibility.Visible)
-            {
-                needed += MeasureTabDip(tab.Text);
-            }
-        }
-
-        return Math.Max(0, Math.Ceiling(needed + SlackDip - barDip));
-    }
-
-    /// <summary>
-    /// The width of the window's frame, both sides together, in DIPs: what <c>MoveAndResize</c>'s outer size has beyond
-    /// the content (<c>AppWindow.Size</c> − <c>AppWindow.ClientSize</c>). Fixed by the window style, so it is right also
-    /// while the window is hidden, and the same in DIPs on any monitor.
-    /// </summary>
-    /// <returns>The frame in DIPs (14 at 100 % on Windows 11: two 7 px resize borders); 0 when it cannot be read.</returns>
-    private double WindowFrameDip()
-    {
-        int frame = AppWindow.Size.Width - AppWindow.ClientSize.Width;
-        if (frame <= 0)
-        {
-            return 0;
-        }
-
-        // The frame is sized by the window's own DPI: its XAML scale once loaded, else its monitor's (never shown yet).
-        double scale = Content?.XamlRoot?.RasterizationScale
-            ?? MonitorLookup.FromPoint(new ScreenPoint(AppWindow.Position.X, AppWindow.Position.Y)).Scale;
-        return scale > 0 ? frame / scale : frame;
-    }
-
-    /// <summary>
-    /// One tab's width in the bar, in DIPs: its label in a detached <see cref="TextBlock"/> with the tab template's
-    /// text properties (the theme's control font family and size, normal weight; WinUI's <c>SelectorBarItem</c>
-    /// template binds exactly those), plus <see cref="TabSidePaddingDip"/> on each side.
-    /// </summary>
-    /// <param name="label">The tab's text; <see langword="null"/> or empty counts as the padding only.</param>
-    /// <returns>The tab's width in DIPs.</returns>
-    private static double MeasureTabDip(string? label)
-    {
-        var text = new TextBlock { Text = label ?? string.Empty };
-
-        // The theme resources the template uses; a TextBlock's own defaults (14 DIP, the system UI font) are the same
-        // values, so a lookup that finds nothing still measures right.
-        var resources = Application.Current.Resources;
-        if (resources.TryGetValue("ControlContentThemeFontSize", out var size) && size is double fontSize)
-        {
-            text.FontSize = fontSize;
-        }
-
-        if (resources.TryGetValue("ContentControlThemeFontFamily", out var family) && family is FontFamily fontFamily)
-        {
-            text.FontFamily = fontFamily;
-        }
-
-        text.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        return text.DesiredSize.Width + (2 * TabSidePaddingDip);
-    }
-
-    /// <summary>
-    /// Re-fits the window to the tabs while it is showing (a tab appeared or vanished, or the first show measured them
-    /// before they existed): the window grows or shrinks on its right edge, kept inside the work area. Hidden, only
-    /// the number is updated — the next summon sizes the window as a whole.
-    /// </summary>
-    private void ApplyTabsWidth()
-    {
-        double extra = MeasureTabsExtraDip();
-        if (Math.Abs(extra - tabsExtraDip) < 0.5)
-        {
-            return;
-        }
-
-        double delta = extra - tabsExtraDip;
-        tabsExtraDip = extra;
-        if (!IsOpen)
-        {
-            return;
-        }
-
-        var position = AppWindow.Position;
-        var size = AppWindow.Size;
-        int width = size.Width + (int)Math.Round(delta * Scale);
-        var work = MonitorLookup.FromWindow(hwnd).WorkArea;
-
-        // Grow to the right, but never past the work area: then the left edge moves instead.
-        int left = Math.Max(work.Left, Math.Min(position.X, work.Right - width));
-        AppWindow.MoveAndResize(new RectInt32(left, position.Y, width, size.Height));
     }
 
     /// <summary>The selected card, if any.</summary>
@@ -2146,17 +2025,14 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>The Win+R history was switched on or off, read, or recorded a run (UI thread): show or hide the Run tab.</summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
-    private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => UpdateRunTab(applyWidth: true);
+    private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => UpdateRunTab();
 
     /// <summary>
     /// Shows the Run tab only while Settings › Win+R history is on. If it disappears while selected, falls back to
-    /// "All" so the list never stays filtered by an invisible tab.
+    /// "All" so the list never stays filtered by an invisible tab. The tab strip scrolls when the tabs no longer fit
+    /// (its arrows follow the strip's new width by themselves).
     /// </summary>
-    /// <param name="applyWidth">
-    /// Refit the open window to the visible tabs when the tab appeared or disappeared (<see langword="false"/> from
-    /// <see cref="ShowAt"/>, which measures the tabs itself right after).
-    /// </param>
-    private void UpdateRunTab(bool applyWidth)
+    private void UpdateRunTab()
     {
         bool available = controller.IsRunTabAvailable;
         var visibility = available ? Visibility.Visible : Visibility.Collapsed;
@@ -2169,12 +2045,6 @@ public sealed partial class ClipboardFlyout : Window
         if (!available && ViewModel.Filter == ClipFilter.Run)
         {
             SelectFilter(ClipFilter.All);
-        }
-
-        if (applyWidth && IsOpen)
-        {
-            // The bar does not scroll: the window grows or shrinks so every visible tab fits.
-            ApplyTabsWidth();
         }
     }
 
@@ -2209,7 +2079,11 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Selects a filter pill without raising a reload (used on show).</summary>
+    /// <summary>
+    /// Selects a filter pill from code (on show, and when the selected tab disappears). While the panel is open the tab
+    /// strip then scrolls the pill into view: unlike a click or a key, a selection from code brings nothing into view by
+    /// itself. (On show the strip is reset to its start right after, where "All" is.)
+    /// </summary>
     /// <param name="filter">The filter.</param>
     private void SelectFilter(ClipFilter filter)
     {
@@ -2219,6 +2093,11 @@ public sealed partial class ClipboardFlyout : Window
             {
                 Filters.SelectedItem = item;
             }
+        }
+
+        if (IsOpen)
+        {
+            RevealSelectedTab(animate: true);
         }
     }
 

@@ -144,6 +144,59 @@ public sealed class InputTests
         Assert.Equal(flyout, FlyoutPositioner.ExtendLeft(flyout, -5, Work));
     }
 
+    /// <summary>
+    /// A resized panel's pixels become whole DIPs without the groups column, and come back as the same pixels: at 150 %
+    /// 678 × 900 px is 452 × 600 DIPs; with the 44-DIP column open at 125 % the column's pixels are left out of the
+    /// remembered width and added again when applied.
+    /// </summary>
+    [Fact]
+    public void Sizing_PixelsAndDipsRoundTrip()
+    {
+        Assert.Equal((678, 900), FlyoutSizing.ToPixels(452, 600, 1.5, extraWidthDip: 0));
+        Assert.Equal((452, 600), FlyoutSizing.ToDips(678, 900, 1.5, extraWidthDip: 0));
+
+        Assert.Equal((555, 700), FlyoutSizing.ToPixels(400, 560, 1.25, extraWidthDip: 44));
+        Assert.Equal((400, 560), FlyoutSizing.ToDips(555, 700, 1.25, extraWidthDip: 44));
+
+        // Never drifts: at every Windows scale, DIPs → pixels → DIPs gives the DIPs back (pixel rounding < half a DIP).
+        foreach (double scale in new[] { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0, 3.5 })
+        {
+            for (int dip = AppSettings.MinFlyoutWidth; dip <= 1300; dip += 7)
+            {
+                var (width, height) = FlyoutSizing.ToPixels(dip, dip, scale, extraWidthDip: 44);
+                Assert.Equal((dip, dip), FlyoutSizing.ToDips(width, height, scale, extraWidthDip: 44));
+            }
+        }
+    }
+
+    /// <summary>
+    /// A size read from a window is kept inside the panel's limits (the minimum keeps the header whole), and a scale a
+    /// window reports before it has a monitor (0, NaN) counts as 100 % instead of dividing by zero.
+    /// </summary>
+    [Fact]
+    public void Sizing_ClampsAndToleratesBadScales()
+    {
+        Assert.Equal((AppSettings.MinFlyoutWidth, AppSettings.MinFlyoutHeight), FlyoutSizing.ToDips(100, 100, 1.0, extraWidthDip: 0));
+        Assert.Equal((AppSettings.MaxFlyoutSize, AppSettings.MaxFlyoutSize), FlyoutSizing.ToDips(100_000, 100_000, 1.0, extraWidthDip: 0));
+        Assert.Equal((400, 560), FlyoutSizing.ToDips(400, 560, 0, extraWidthDip: 0));
+        Assert.Equal((400, 560), FlyoutSizing.ToDips(400, 560, double.NaN, extraWidthDip: -10));
+        Assert.Equal((400, 560), FlyoutSizing.ToPixels(400, 560, -2, extraWidthDip: 0));
+    }
+
+    /// <summary>
+    /// The minimum the user can drag the panel to follows the monitor's scale (unlike WinAppSDK's PreferredMinimumWidth,
+    /// which keeps raw pixels) and includes the groups column while it is open; it rounds up, so the minimum DIPs always fit.
+    /// </summary>
+    [Fact]
+    public void Sizing_MinimumTrackSizeFollowsScaleAndColumn()
+    {
+        Assert.Equal((360, 320), FlyoutSizing.MinimumTrackSize(1.0, extraWidthDip: 0));
+        Assert.Equal((606, 480), FlyoutSizing.MinimumTrackSize(1.5, extraWidthDip: 44));
+        Assert.Equal((450, 400), FlyoutSizing.MinimumTrackSize(1.25, extraWidthDip: 0));
+        Assert.Equal((630, 560), FlyoutSizing.MinimumTrackSize(1.75, extraWidthDip: 0));
+        Assert.Equal((360, 320), FlyoutSizing.MinimumTrackSize(double.NaN, extraWidthDip: 0));
+    }
+
     /// <summary>On a monitor smaller than the flyout it shrinks to fit instead of spilling off-screen.</summary>
     [Fact]
     public void Positioner_ShrinksOnTinyScreens()
