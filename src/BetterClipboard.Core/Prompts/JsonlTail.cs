@@ -3,7 +3,11 @@ using System.Security.Cryptography;
 
 namespace BetterClipboard.Core.Prompts;
 
-/// <summary>What a file's state is when <see cref="JsonlTail.Read"/> opens it — from the open handle, not the folder.</summary>
+/// <summary>
+/// What a file's state is when
+/// <see cref="JsonlTail.Read(Stream, TailFileState, TailCheckpoint, TailLineHandler, CancellationToken)"/> opens it — from
+/// the open handle, not the folder.
+/// </summary>
 /// <param name="Length">Its length in bytes, read from the open stream. The folder's copy of it can be stale: a file an
 /// agent keeps open for appending shows its old size there until something opens it (CLAUDE.md §2.21, measured).</param>
 /// <param name="LastWriteUtc">Its last write time (diagnostics and the cheap "unchanged" test of a reconcile scan).</param>
@@ -60,7 +64,10 @@ public sealed record TailCheckpoint
     public int Rewrites { get; init; }
 }
 
-/// <summary>What <see cref="JsonlTail.Read"/> found the file to be since the checkpoint.</summary>
+/// <summary>
+/// What <see cref="JsonlTail.Read(Stream, TailFileState, TailCheckpoint, TailLineHandler, CancellationToken)"/> found the
+/// file to be since the checkpoint.
+/// </summary>
 public enum TailChange
 {
     /// <summary>No checkpoint: the whole file was read.</summary>
@@ -82,7 +89,9 @@ public enum TailChange
     Replaced,
 }
 
-/// <summary>The outcome of one <see cref="JsonlTail.Read"/>.</summary>
+/// <summary>
+/// The outcome of one <see cref="JsonlTail.Read(Stream, TailFileState, TailCheckpoint, TailLineHandler, CancellationToken)"/>.
+/// </summary>
 /// <param name="Change">What happened to the file since the checkpoint.</param>
 /// <param name="Checkpoint">The checkpoint to keep for the next read (store it only together with what was read).</param>
 /// <param name="BytesRead">Bytes read past the checkpoint (or from the start after a reset), for the log and Settings.</param>
@@ -94,7 +103,10 @@ public sealed record TailReadResult(TailChange Change, TailCheckpoint Checkpoint
     public bool IsReset => Change is TailChange.Truncated or TailChange.Rewritten or TailChange.Replaced;
 }
 
-/// <summary>Receives one complete line (without its line break) during <see cref="JsonlTail.Read"/>.</summary>
+/// <summary>
+/// Receives one complete line (without its line break) during
+/// <see cref="JsonlTail.Read(Stream, TailFileState, TailCheckpoint, TailLineHandler, CancellationToken)"/>.
+/// </summary>
 /// <param name="line">The line's bytes; only valid during the call (the buffer is reused).</param>
 public delegate void TailLineHandler(ReadOnlySpan<byte> line);
 
@@ -230,7 +242,11 @@ public static class JsonlTail
     /// <param name="length">Its current length.</param>
     /// <param name="fileId">Its current id, or <see langword="null"/>.</param>
     /// <param name="checkpoint">The checkpoint.</param>
-    /// <returns><see cref="TailChange.Appended"/> when only appended to (<see cref="Read"/> narrows it to Unchanged when no line followed), else the reset reason.</returns>
+    /// <returns>
+    /// <see cref="TailChange.Appended"/> when only appended to
+    /// (<see cref="Read(Stream, TailFileState, TailCheckpoint, TailLineHandler, CancellationToken)"/> narrows it to
+    /// Unchanged when no line followed), else the reset reason.
+    /// </returns>
     /// <exception cref="IOException">Reading failed.</exception>
     private static TailChange Classify(Stream stream, long length, string? fileId, TailCheckpoint checkpoint)
     {

@@ -43,10 +43,10 @@ internal static class PromptFileAccess
     /// <summary>Largest paste-cache file read back into a Claude Code prompt.</summary>
     public const long MaxPasteBytes = 64L * 1024 * 1024;
 
-    /// <summary><c>ERROR_SHARING_VIOLATION</c> as an <see cref="IOException.HResult"/>.</summary>
+    /// <summary><c>ERROR_SHARING_VIOLATION</c> as an <see cref="IOException"/>'s <see cref="Exception.HResult"/>.</summary>
     private const int SharingViolation = unchecked((int)0x80070020);
 
-    /// <summary><c>ERROR_LOCK_VIOLATION</c> as an <see cref="IOException.HResult"/>.</summary>
+    /// <summary><c>ERROR_LOCK_VIOLATION</c> as an <see cref="IOException"/>'s <see cref="Exception.HResult"/>.</summary>
     private const int LockViolation = unchecked((int)0x80070021);
 
     /// <summary>

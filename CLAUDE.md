@@ -2237,6 +2237,22 @@ Snipping tab (2026-10-01), with a copy of the dev build:
     back afterwards.
   - Bump commits keep `Directory.Build.props` alone, and their message carries the drafted tag notes
     (`git log -1 --format=%B`) until the release.
+- **Dev build on this PC** ("Build and install dev", 2026-10-01): the same install, of `main`'s latest commit.
+  - Build from a separate worktree at that commit (`git worktree add --detach <scratch>/wt <sha>`), never from the
+    shared tree: other sessions' uncommitted, half-done work would ship into the user's real app. Remove the worktree
+    afterwards.
+  - Version `X.Y.Z-dev.<short sha>`, a pre-release of the upcoming release (`-Version 0.2.4-dev.74594fb`
+    `-Architectures x64`, 68 s). Installed apps and `installer.json` show it; the exe's product version is
+    `0.2.4-dev.74594fb+<full sha>`; its file version stays `0.2.4.0`.
+  - **Close the side-by-side dev copy first** (`python tools/launch_dev.py --exit`), and wait until no test instance
+    of another session runs. `install.ps1`'s `Stop-RunningApp` sends `--exit` to the default instance only, then
+    waits 15 s for *every* `BetterClipboard.exe` in the session and force-kills the rest: the scoped dev copy and
+    any test instance would be killed.
+  - Pass Windows paths (`cygpath -w`): run as `-File C:/…/install-local.ps1` with forward slashes, Windows
+    PowerShell 5.1 left `$PSScriptRoot` empty in its parameter defaults and stopped at binding, before changing
+    anything. Passing `-ReleaseDirectory` and `-Installer` explicitly avoids the defaults altogether.
+  - Then steps 3 and 4 above. The first start of a build with new integrations imports for real (the user's prompt
+    histories, Win+R list); see the §5 row.
 
 ### 3.2 Chocolatey: the `betterclipboard` package (built 2026-10-01; not published yet)
 
@@ -2365,6 +2381,10 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 - **Documentation is mandatory** (user rule): every member gets XML docs whose summary explains
   consequence/tradeoff; every param/return/exception documented; non-obvious bodies get *why* comments.
   Core and Windows fail the build on CS1591.
+  - Count doc warnings on a full rebuild (`--no-incremental`). An incremental build prints warnings only for the
+    projects it recompiles: on 2026-10-01 a "0 doc warnings" check on an App build missed seven broken `cref`s in
+    Core and Windows, which the release publish showed. Doc warnings are CS1570–CS1599 plus CS0419 (an ambiguous
+    `cref`, e.g. once a second overload exists: name the signature, `Read(Stream, TailFileState, …)`).
 - **Namespace trap:** inside `BetterClipboard.*`, `Windows.Foundation…` resolves to our
   `BetterClipboard.Windows` namespace. Use `using Windows.X;` at file top or `global::Windows.X` inline.
   Also avoid `using Windows.UI.Core;` in WinUI files (`WindowActivatedEventArgs` becomes ambiguous).
@@ -2555,6 +2575,7 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 
 | Feature | How | Result |
 |---|---|---|
+| `0.2.4-dev.74594fb` installed on this PC as the user's app (2026-10-01, "Build and install dev", §3.1): x64 zip built from a worktree at `74594fb` (`main`, every feature through the Snipping tab), 70.9 MB. The side-by-side dev copy was closed first (scoped `--exit`). `install.ps1` verified the SHA-256, closed the running 0.2.4 gracefully and swapped. Started through Explorer (`--background`): parent `explorer.exe`, 74 environment variables without `CLAUDECODE`/`MSYSTEM` (a process of this session: 142, both present). Run value and shortcut unchanged, Installed apps and `installer.json` say `0.2.4-dev.74594fb`, `DisabledHotkeys` still `V`. Log after "starting": 0 WRN/ERR. First imports on the real data: Claude Code 17,198 prompts in 13.5 s, Codex 2,279 prompts from 720 files (417 left out) in 21.2 s, Win+R 24 new of 26, 1 new Windows item; the Screenshots folder and ShareX watched; Win+V by `RegisterHotKey` | worktree + `package.ps1` + `install-local.ps1` (Windows PowerShell 5.1, env stripped) + scratch `launch_background.ps1`, `install_state.ps1` (before/after), `env_names.py` (variable names from the PEB, checked against a control) | ✅. The first `install-local.ps1` run stopped at parameter binding (forward-slash path, §3.1) before changing anything |
 | Snipping tab on screen (2026-10-01). Isolated copy of the dev build, three BC-TEST screenshots imported with capture on, then the instance restarted paused before any UI. The panel opened only after the terminal was in front for two checks with 3 s without input. The tabs read All … Files, ShareX, Snipping, Run (the fake ShareX folder counts as installed), all inside the window. The Snipping tab was selected through UIA and holds 3 cards captioned "Screenshots folder · just now · 300 × 300", "Win+PrtScn · just now · 640 × 200" and "Snipping Tool · just now · 480 × 270", with thumbnails. Settings: the card (scissors glyph, header, switch on) and its status "Watching …\Screenshots." + "Snipping Tool 11.2607.23.0 saves every snip here, and copies it to the clipboard (both become one entry).", read from the real Snipping Tool's settings. The user's PIDs were unchanged, and the scratch was removed | UIA (SelectionItemPattern, texts) + PrintWindow captures of the test windows only (`snip_e2e/ui.py`, scratch) | ✅ 10/10, then 5/5 Settings-only. One earlier run found no panel within 10 s; it did not recur in the next two |
 | Snipping tab, headless (2026-10-01). Isolated copy, with overrides for every source. Three screenshots were listed by `bclip list -f snipping` 401–434 ms after their files were written (polling included), as origin `screenshot` with sources Snipping Tool / Win+PrtScn / Screenshots folder and PNG + CF_DIBV5. Not imported: an archive file from before the first activation, a file copied in with a 2020 write time (logged as skipped), and a `.txt`. A screenshot written while the instance was stopped arrived at its restart, logged as "Imported 1 screenshot saved while BetterClipboard was not watching". The log had 0 WRN/ERR, and the user's PIDs were unchanged | `snip_e2e/run.py` (scratch) | ✅ 16/16 |
 | Snipping tab tests: Core 34 (name shapes incl. a Hebrew name with U+200F marks, Chinese without a space, and the clash suffix; images; sources; freshness; completeness per format; Snipping Tool's settings; the filter; the hybrid merge rules; pause and ignored apps; the relabel fix-up; CLI; the setting) and Windows 22 (each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, the clipboard copy and the file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule) | tests; the new Windows classes 6 times in a row | ✅ all green, 6/6 repeats; full suite 912 pass + 3 skipped (915 = Core 707 + Windows 208) |
