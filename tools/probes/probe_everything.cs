@@ -606,6 +606,9 @@ static class IsolatedProbe
             ("user text, two words", "clip store", 1),
             ("ext:cs", "ext:cs", 1),
             ("ext:png newest first", "ext:png", 14),
+            // The "picked in Everything" tab's query (the run history section made a few picks before this).
+            ("run history: runcount: by date run", "runcount:", 26),
+            ("run history: runcount: by run count", "runcount:", 20),
         })
         {
             var times = Enumerable.Range(0, 5).Select(_ => ipc.Time(hwnd, search, max: 50, sort: sort)).Where(t => t is not null).Select(t => t!.Value).ToArray();

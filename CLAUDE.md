@@ -998,6 +998,9 @@ same counter the result list increments.
   - A pick shows up in the very next query.
   - `runcount:>1`, `daterun:today` and `dr:today` work in both versions. The 1.5 spellings `run-count:` and
     `date-run:` return 0 in 1.4, so use the short ones.
+  - Cost of the tab's query over 278,182 indexed items (C:\Windows plus BC-TEST): `runcount:` by date run
+    2.1 ms (1.4) / 3.1 ms (1.5), by run count 2.0 / 2.6 ms. It grows with the index (sub-millisecond at
+    ~350 items), so expect tens of ms on a multi-million-file disk index: run it off the UI thread.
 - **Run-count IPC:** `WM_COPYDATA`, dwData 20 = get (the answer is the count), 24 = increment (the answer is the
   new count), 22 = set ({DWORD count, path}). Set also stamps the date run.
   - 1.4 refuses a path that is not indexed (answer 0, nothing kept).
