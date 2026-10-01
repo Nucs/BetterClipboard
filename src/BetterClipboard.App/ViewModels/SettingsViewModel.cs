@@ -1,5 +1,6 @@
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Integrations;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Windows.Clipboard;
 using BetterClipboard.Windows.Input;
@@ -48,6 +49,21 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>Data folder path.</summary>
     public string DataFolder => controller.Paths.DataDirectory;
+
+    /// <summary>
+    /// Rows of Third party › Works with: the apps BetterClipboard reads from (Everything, PowerShell, ShareX) and their
+    /// official sites. Listed whether or not they are installed, since the card is also where to get them from their
+    /// makers.
+    /// </summary>
+    /// <remarks>An array on purpose: a plain array is what WinRT's list marshaling handles most directly.</remarks>
+    public IReadOnlyList<ThirdPartyItemViewModel> WorksWith { get; } = ThirdPartyCatalog.Integrations.Select(ThirdPartyItemViewModel.From).ToArray();
+
+    /// <summary>Rows of Third party › Built with: the components inside BetterClipboard, their licenses and official links.</summary>
+    /// <remarks>An array, like <see cref="WorksWith"/>.</remarks>
+    public IReadOnlyList<ThirdPartyItemViewModel> BuiltWith { get; } = ThirdPartyCatalog.Components.Select(ThirdPartyItemViewModel.From).ToArray();
+
+    /// <summary>The full license notices (<c>THIRD-PARTY-NOTICES.md</c> on GitHub), for the Built with card's link.</summary>
+    public Uri NoticesLink => ThirdPartyCatalog.NoticesLink;
 
     /// <summary>
     /// One-paragraph description of how the history is protected on disk (cipher, key sealing, store id,

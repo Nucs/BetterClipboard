@@ -264,12 +264,12 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), settings, logging, presentation helpers. **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), settings, logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20). **CS1591 = error.** |
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (532 tests, one class at a time — §4: the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything) (169 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (593 tests, one class at a time — §4: the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format) (175 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -1727,13 +1727,76 @@ interactive walk, filters, tombstone, `ForgetText`, pause and ignore) and Window
 temp BC-TEST files incl. a file held open for writing, the helper's wire format and argument checks), the helper end
 to end above, and the dev copy started with "Reading Command Prompt windows' history (the Cmd tab)" and 0 WRN/ERR.
 
+### 2.20 Third party — Settings' credits and official links (built 2026-10-01)
+
+User request (2026-10-01): "We have many integrations, some of them are other projects. Have in settings at the
+bottom sort of third party section with official links to all we use or integrate with".
+
+**What the user gets** (the last section of `SettingsWindow.xaml`).
+- **Works with** (Puzzle `EA86`): Everything (voidtools), PowerShell (Microsoft; the Pwsh tab, §2.19) and ShareX
+  (ShareX team), each "· separate app", one line on what BetterClipboard reads from it, and its official site.
+  Listed whether or not they are installed: the card is also where to get them from their makers.
+- **Built with** (Library `E8F1`): the ten components inside the download — .NET, C#/WinRT,
+  CommunityToolkit.Mvvm, Microsoft.Data.Sqlite, SQLite, SQLite3 Multiple Ciphers, SQLitePCLRaw, WebView2 SDK,
+  Windows App SDK, Windows SDK — each "maker · license", one line on its job, and its official link.
+  - *License notices* (the card's action) opens `THIRD-PARTY-NOTICES.md` on GitHub (`main`). The copy next to the
+    installed exe was not chosen: a `.md` file may have no app registered to open it, and a browser always does.
+- **A row** (`ThirdPartyRowTemplate` in the window's resources):
+  - the name and the credit as two runs of one text block (the credit's two leading spaces are in the bound value,
+    so XAML whitespace rules cannot swallow them), then the use as a caption;
+  - a `HyperlinkButton` with `NavigateUri`, showing the site — the host without `www.`, plus owner/repository on a
+    code host (`ThirdPartyCatalog.LinkText`) — and the open-in-new-window glyph `E8A7`;
+  - the tooltip is the whole address. The accessible name leads with the project ("SQLite: sqlite.org"), because
+    sites repeat: learn.microsoft.com serves four rows.
+
+**Scope.**
+- Integrations are other makers' apps that BetterClipboard reads from. Windows' own features — Win+V's history,
+  Win+R, Command Prompt (the Cmd tab), Explorer — are the platform, have their own Settings cards, and are not listed.
+- Components are what the release zip redistributes, transitive packages included. Build- and test-only packages
+  (`Microsoft.Windows.SDK.BuildTools`, its `.MSIX` dependency, `xunit.v3`) are not.
+- Also not listed: the password-manager catalog (§2.8; its sources are in `docs/password-managers.md`), Windows'
+  own fonts (Segoe Fluent Icons, Cascadia Mono: never shipped), and the research tools.
+
+**The official-link rule** (`ThirdPartyCatalog` remarks).
+- The project's own website when it has one, otherwise its source repository. For a NuGet package: the project URL
+  the package itself declares.
+- Always the final https address: no `aka.ms` (it can be repointed), no language segment (`/en-us/`, so Microsoft's
+  sites pick the viewer's language), no tracking parameters.
+- One exception: `Microsoft.Windows.SDK.NET.Ref` declares another package's NuGet page (`aka.ms/WinSDKProjectURL` →
+  `Microsoft.Windows.SDK.Contracts`), so the Windows SDK's own page is used.
+- Checked 2026-10-01: all 14 links answered 200. The only redirects were learn.microsoft.com and
+  dotnet.microsoft.com adding the viewer's language.
+
+**Keeping it complete** (`ThirdPartyCatalogTests`: 9 tests, 29 cases).
+- **Packages.** Every package in `Directory.Packages.props` is credited by a component or listed as build-only. So
+  is every package the App and `bclip` restore: their `obj/project.assets.json`, transitive ones included; the test
+  skips on a fresh clone. Mutation check: dropping WebView2's package failed with `Not found: "Microsoft.Web.WebView2"`.
+- **Notices.** Every component has exactly one `THIRD-PARTY-NOTICES.md` row starting `| [Name](`, whose last cell
+  is the same license text. Every row there is a component, and integrations have none.
+- **Form.** Names are unique and alphabetical within each role (ordinal, ignoring case); uses end with a period;
+  links follow the checkable half of the rule.
+- **Footgun: no test can see a new integration.** A new Settings card under Integrations for another maker's app
+  needs its catalog entry by hand. PowerShell was added this way, while the Pwsh tab was still being built.
+
+**Found on the way** (fixed in `THIRD-PARTY-NOTICES.md`).
+- **WebView2 was missing.** `Microsoft.Web.WebView2` 1.0.3719.77 comes with `Microsoft.WindowsAppSDK.WinUI` 2.3.9,
+  so `Microsoft.Web.WebView2.Core.dll` and `WebView2Loader.dll` ship in every build, under BSD-3-Clause.
+  BetterClipboard hosts no WebView2.
+- **The Windows App SDK is not MIT.** Each of its packages' `license.txt` is the "Microsoft Software License Terms —
+  Microsoft Windows App SDK" (distributable code: section 3). The MIT license on GitHub covers the source.
+- **Nor is the Windows SDK projection.** `Microsoft.Windows.SDK.NET.dll` comes from `Microsoft.Windows.SDK.NET.Ref`
+  10.0.26100.57, which the TFM downloads, under the Windows SDK license terms (`aka.ms/WinSDKLicenseURL`). It has
+  its own row now; C#/WinRT (`WinRT.Runtime.dll`) stays MIT.
+
+**Verified:** see §5.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 701 tests (698 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 768 tests (765 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -2005,7 +2068,8 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
   Camera E722 (ShareX card), Add E710 (new group), Tag E8EC (Groups submenu), Rename E8AC, Remove E738,
   Blocked E733 (Forget forever; a circle with a slash, checked by rendering), and for the Everything tab
   (checked by rendering): Document E8A5 (a file pick), Search E721 (Settings card, *Show in Everything*),
-  OpenFile E8E5 (*Open*), Hide ED1A (an eye with a slash: *Hide until opened again*).
+  OpenFile E8E5 (*Open*), Hide ED1A (an eye with a slash: *Hide until opened again*), and for Settings › Third
+  party (checked by rendering): Puzzle EA86 (*Works with*), Library E8F1 (*Built with*).
   Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
   on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did, and on 2026-10-01 nine of
   them in the pick menu (the editing tool turned `\uXXXX` written in an edit into the raw character). Sweep new
@@ -2109,6 +2173,12 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
     have noticed.
   - What to do: let TemplateBindings carry colors, and show or hide template parts in the states by another
     property (`Opacity`, `Visibility`). Pixel-sample state changes that a style swap can reach.
+- **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
+  - A package that ships: credit it in a component's `Packages`, or add a component plus its
+    `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
+  - An integration with another maker's app: add its `Integration` entry with the feature. **No test notices a
+    missing one.**
+  - Links follow the official-link rule: the final https address, no `aka.ms`, no `/en-us/`.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -2143,11 +2213,12 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 698 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 701 = Core 532 + Windows 169, with merged group views (built and run in a separate worktree holding only that change, while another session's half-done work kept the shared tree from building); before them, 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 765 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 768 = Core 593 + Windows 175, with the Pwsh and Cmd tabs (`ec4db1f`: Core 32, Windows 6, not yet counted in its docs) and the Third party catalog (Core 29), built and run in a separate worktree holding exactly `ec4db1f` + the Third party change; before them, 701 = Core 532 + Windows 169, with merged group views (built and run in a separate worktree holding only that change, while another session's half-done work kept the shared tree from building); before them, 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
 | Settings › Ignored apps: scrollable list + *Add known password managers* | XAML builds | ⚠️ not visually verified (opening Settings would steal the user's focus) |
+| Settings › Third party (2026-10-01, §2.20): the catalog tests (9 tests, 29 cases: link wording, the official-link rule, every package in `Directory.Packages.props` and in the App's and `bclip`'s restore output credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`; a mutation that dropped WebView2's credit failed); the whole suite on exactly `ec4db1f` + this change in a separate worktree (768 = Core 593 + Windows 175, 3 skipped, 0 failed); all 14 links answered 200 | tests + worktree + a scratch link check (`check_urls.py`) | ✅ for those. ⚠️ The section on screen (UIA + guarded screenshots of an isolated instance, `third_party_e2e.py` in scratch) is still open: the user was away from the terminal for 12+ minutes, so the guarded run never started its instance (one earlier run did start one, then stopped at a bug in the script's UIA call, and exited the instance cleanly) |
 | `bclip` published build next to the user's running app: status (auto-starts the scoped instance), list, search, grep, get (exact bytes, Hebrew/✓, HTML fragment, file list), image → exit 2 without `-o` / PNG with `-o`, `--json`, pin + pinned filter, `--since`, wait timeout (1), not found (1), usage (2), access off (3, starts nothing); audit log; no LL hook; user's PID unchanged | isolated seeded store + `run.sh` | ✅ (after the ShellExecute fix) |
 | `put`/`copy` write the clipboard, `wait` sees the next copy | CLI end-to-end tests in the isolated window station | ✅ |
 | `install.ps1 -AddToPath` / uninstall PATH helpers | AST-loaded functions on a scratch key, PS 5.1 + 7 | ✅ (15/15) |
@@ -2289,3 +2360,8 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms
   (trim, case, JSON pretty), large preview pane, drag-out, sync between PCs, MSIX packaging.
+- Third party (§2.20), next steps:
+  - a scheduled link check (every catalog link still answers 200 at its address), e.g. a weekly CI job; the unit
+    tests stay offline on purpose;
+  - the full license texts in the release zip next to `THIRD-PARTY-NOTICES.md`, which links to them today (MIT and
+    BSD-3-Clause ask for the notice text with binary copies).

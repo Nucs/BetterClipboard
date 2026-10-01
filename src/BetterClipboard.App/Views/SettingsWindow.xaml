@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Main/settings window (Mica, custom title bar). Sections mirror the Windows 11 Settings app so it
-  feels native: Shortcut, History, Pasting, Privacy, Windows clipboard, App.
+  feels native: Shortcut, History, Pasting, Privacy, Windows clipboard, Integrations, App, and Third
+  party (credits and official links) at the bottom.
 -->
 <Window
     x:Class="BetterClipboard.App.Views.SettingsWindow"
@@ -14,6 +15,47 @@
     mc:Ignorable="d">
 
     <Grid x:Name="Root">
+        <Grid.Resources>
+            <!--
+              One project in Third party (both cards): name + credit, what it is for, and its official link. The top
+              border divides the rows; on the first row it separates the list from the card's header. The link opens
+              in the browser through NavigateUri; its accessible name says which project it belongs to, since bare
+              sites repeat (learn.microsoft.com twice), and the tooltip shows the whole address.
+            -->
+            <DataTemplate x:Key="ThirdPartyRowTemplate" x:DataType="vm:ThirdPartyItemViewModel">
+                <Grid
+                    Padding="0,8,0,8"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="0,1,0,0"
+                    ColumnSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <!--  The runs stay on one line: whitespace between them would become text.  -->
+                        <TextBlock TextWrapping="Wrap"><Run Text="{x:Bind Name}" /><Run FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="{x:Bind CreditRun}" /></TextBlock>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind Use}"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+                    <HyperlinkButton
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        AutomationProperties.Name="{x:Bind LinkName}"
+                        NavigateUri="{x:Bind Link}"
+                        ToolTipService.ToolTip="{x:Bind LinkTip}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{x:Bind LinkText}" />
+                            <!--  E8A7 = OpenInNewWindow: the link leaves the app for the browser.  -->
+                            <FontIcon FontSize="12" Glyph="&#xE8A7;" />
+                        </StackPanel>
+                    </HyperlinkButton>
+                </Grid>
+            </DataTemplate>
+        </Grid.Resources>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -520,6 +562,47 @@
                     Glyph="&#xE946;"
                     Header="About BetterClipboard">
                     <Button Click="Exit_Click" Content="Exit BetterClipboard" />
+                </controls:SettingsCard>
+
+                <!--
+                  Third party: the apps BetterClipboard works with and the components it ships, each with its official
+                  link. The rows come from Core's ThirdPartyCatalog, whose tests keep it in step with
+                  THIRD-PARTY-NOTICES.md and with the packages the app restores (CLAUDE.md, "Third party" section).
+                  EA86 = Puzzle, E8F1 = Library (both checked by rendering).
+                -->
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="Third party" />
+                <controls:SettingsCard
+                    Description="Apps by other makers that BetterClipboard reads from while their setting above is on. BetterClipboard is not affiliated with them; get them from their official sites."
+                    Glyph="&#xEA86;"
+                    Header="Works with">
+                    <controls:SettingsCard.Footer>
+                        <ItemsControl
+                            AutomationProperties.Name="Apps BetterClipboard works with"
+                            IsTabStop="False"
+                            ItemTemplate="{StaticResource ThirdPartyRowTemplate}"
+                            ItemsSource="{x:Bind ViewModel.WorksWith}" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="The components inside BetterClipboard, each under its own license."
+                    Glyph="&#xE8F1;"
+                    Header="Built with">
+                    <HyperlinkButton
+                        AutomationProperties.Name="License notices"
+                        NavigateUri="{x:Bind ViewModel.NoticesLink}"
+                        ToolTipService.ToolTip="{x:Bind ViewModel.NoticesLink.AbsoluteUri}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="License notices" />
+                            <FontIcon FontSize="12" Glyph="&#xE8A7;" />
+                        </StackPanel>
+                    </HyperlinkButton>
+                    <controls:SettingsCard.Footer>
+                        <ItemsControl
+                            AutomationProperties.Name="Components inside BetterClipboard"
+                            IsTabStop="False"
+                            ItemTemplate="{StaticResource ThirdPartyRowTemplate}"
+                            ItemsSource="{x:Bind ViewModel.BuiltWith}" />
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
             </StackPanel>
         </ScrollViewer>

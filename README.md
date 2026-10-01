@@ -279,5 +279,6 @@ Releases are built by [`.github/workflows/release.yml`](.github/workflows/releas
 
 ## License
 
-[MIT](LICENSE). Third-party components are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
-BetterClipboard is not affiliated with Microsoft.
+[MIT](LICENSE). Third-party components are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), and in
+the app under *Settings › Third party*, together with the apps it works with (ShareX, Everything, PowerShell), each
+with its official link. BetterClipboard is not affiliated with Microsoft, voidtools or the ShareX team.
