@@ -981,6 +981,45 @@ the official portable builds 1.4.1.1032 and 1.5.0.1423b (SHA-256 matched voidtoo
 - Any process, a low-integrity one included, can create a window with that class name and receive the copied
   paths sent in queries. Verify the owner first: image `Everything*.exe`, signed by voidtools.
 
+**Run history: what you picked in Everything.** Follow-up request (2026-10-01): "things you searched in
+everything and clicked/picked to be in a tab". Discovery only; picks were simulated with the run-count IPC, the
+same counter the result list increments.
+- **What counts** **[docs]**: an item *executed* (opened) from Everything's result list gets run count + 1 and a
+  new last run date.
+  - It is not an event log: one row per path, holding the count and the last date only.
+  - Copying a result (Ctrl+C = the items, Ctrl+Shift+C = the full path) is not a run. Those copies already
+    reach BetterClipboard as normal captures, source app "Everything" (FileDescription; the exe is
+    `Everything.exe`).
+- **Defaults** (the ini Everything rewrites at exit): run history is on and kept forever in both versions.
+  Search history is off in 1.4 but **on in 1.5** (`search_history_enabled=1`); the docs page still says "off".
+- **Live query, both versions:**
+  - `runcount:` = every pick, sorted by date run newest first (sort 26) or by run count (20).
+  - Request flags 0x400 (run count, DWORD) and 0x800 (date run, FILETIME) come back in one reply (0xC04).
+  - A pick shows up in the very next query.
+  - `runcount:>1`, `daterun:today` and `dr:today` work in both versions. The 1.5 spellings `run-count:` and
+    `date-run:` return 0 in 1.4, so use the short ones.
+- **Run-count IPC:** `WM_COPYDATA`, dwData 20 = get (the answer is the count), 24 = increment (the answer is the
+  new count), 22 = set ({DWORD count, path}). Set also stamps the date run.
+  - 1.4 refuses a path that is not indexed (answer 0, nothing kept).
+  - 1.5 keeps such picks (they reach the file), but search results only ever contain indexed, existing items.
+- **Renames and deletes:** the history is keyed by path.
+  - A renamed pick loses its count: the new name has 0, and the old name keeps 1 but drops out of results.
+  - A deleted pick drops out of results but stays in the file.
+- **`Run History.csv`:** in `%APPDATA%\Everything`, or next to the exe with app_data=0; a named instance adds
+  `-<instance>`.
+  - Header `Filename,Run Count,Last Run Date`; each row is a quoted path, the count, and a FILETIME in decimal.
+  - Written only on a save (IPC 408) or at exit, never on a pick. Watching the file misses every pick until
+    Everything exits, but it is complete while Everything is not running.
+  - The history came back after a restart.
+- **The typed searches:** `Search History.csv` holds search, count and last search date as a FILETIME
+  **[docs/forum]**.
+  - It is saved only when a search window closes, and there is no IPC for it.
+  - Our IPC queries never produced a search-history file, not even in 1.5 where it is on.
+- **Tab bar:** the 7 tabs take 351–366 of 384 px (§2.10). An "Everything" tab needs ~83 px (a Pillow estimate
+  calibrated on the ShareX tab: 60 px estimated vs 61 measured), so the bar would be 50 px over; even "Runs"
+  is 15 px over.
+  - All 8 tabs fit only at 4–5 px item padding (from 9), or with a wider flyout or icon tabs.
+
 **Proposal.** The ranked options are in §6. Everything only answers *where* a path is and *whether* it exists;
 `PathDetector` stays pure, so verdicts stay deterministic and storable.
 
@@ -1281,6 +1320,12 @@ ShareX end-to-end (2026-09-25), with the dev build:
      without touching the disk or a dead share.
   3. **"Files on this PC" in the flyout's search:** paste a file you never copied.
   4. **`bclip resolve <id>`** for agents.
+  5. **An "Everything" tab with what you picked there** (asked for 2026-10-01; facts in §2.14, run history):
+     - Picks come from a live `runcount:` query by date run (~1 ms when the flyout opens), or from
+       `Run History.csv` while Everything is not running.
+     - Next to them, copies made in Everything, via a source-app filter like the ShareX tab's.
+     - Open choices: a live view (Everything owns the data; a rename drops a pick) or stored entries like
+       ShareX screenshots (searchable, pinnable; a catch-up marker on the date run); and room in the tab bar.
   - Not planned: classifying by the index (verdicts must stay deterministic), imports from the index journal,
     and bundling Everything or the SDK DLLs.
 - An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out

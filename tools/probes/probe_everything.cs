@@ -14,8 +14,9 @@ using static Native;
 //       Isolated. Copies that exe (+ Everything.lng) into %TEMP%\bc-everything-probe-<pid>\bin, writes a BC-TEST
 //       file tree next to it and starts the copy as a private NAMED instance (-instance, -startup, -config, -db)
 //       that indexes only that tree: no NTFS/ReFS volumes, no tray icon, no update check, no elevation, no
-//       service. Then probes the WM_COPYDATA IPC (Everything 1.4 and 1.5) and, when present, the 1.5 named
-//       pipe; asks the instance to exit (EVERYTHING_IPC_EXIT) and deletes the folder (unless --keep).
+//       service. Then probes the WM_COPYDATA IPC (Everything 1.4 and 1.5), the run history (picks simulated with
+//       the run-count IPC, Run History.csv, a restart) and, when present, the 1.5 named pipe; asks the instance
+//       to exit (EVERYTHING_IPC_EXIT) and deletes the folder (unless --keep).
 //       Paths are printed relative to the BC-TEST tree only. --also-index adds a big real folder (a folder
 //       index: a read-only directory scan, no admin) for timings at scale; it prints counts and times only.
 //   --attach [--instance NAME]
@@ -114,7 +115,7 @@ static class IsolatedProbe
         var tree = Path.Combine(work, "tree");
         Directory.CreateDirectory(bin);
         var failures = 0;
-        Process? everything = null;
+        Process? everything = null, restarted = null;
         using var ipc = new IpcWindows();
         try
         {
@@ -162,13 +163,7 @@ static class IsolatedProbe
 
             var created = RegisterWindowMessageW("EVERYTHING_IPC_CREATED");
             var start = Stopwatch.StartNew();
-            everything = Process.Start(new ProcessStartInfo(exeCopy)
-            {
-                // ShellExecute: the child must not inherit this console's handles (CLAUDE.md §4).
-                UseShellExecute = true,
-                ArgumentList = { "-instance", instance, "-startup", "-config", config, "-db", db },
-                WorkingDirectory = bin,
-            });
+            everything = StartInstance(exeCopy, instance, config, db, bin);
             if (everything is null) { Console.WriteLine("FAIL: Process.Start returned no process"); return 3; }
 
             var hwnd = IpcWindows.WaitForEverything(instance, TimeSpan.FromSeconds(15));
@@ -187,17 +182,7 @@ static class IsolatedProbe
             // sent now, during the load, on the second reply window: is it dropped, or queued and answered later?
             var early = ipc.Send(hwnd, "wfn:\"notes.md\"", Query2.FullPath, 10, 1, window: 1);
             var ready = Stopwatch.StartNew();
-            var limit = options.AlsoIndex is null ? TimeSpan.FromSeconds(20) : TimeSpan.FromMinutes(8);
-            var reported = TimeSpan.Zero;
-            while (ready.Elapsed < limit && !(Ask(hwnd, 401) == 1 && Ask(hwnd, 402) == 0))
-            {
-                if (ready.Elapsed - reported >= TimeSpan.FromSeconds(15))
-                {
-                    reported = ready.Elapsed;
-                    Console.WriteLine($"  … {reported.TotalSeconds:0} s: db_loaded={Ask(hwnd, 401)} db_busy={Ask(hwnd, 402)}");
-                }
-                ipc.Pump(TimeSpan.FromMilliseconds(200));
-            }
+            WaitForDatabase(ipc, hwnd, options.AlsoIndex is null ? TimeSpan.FromSeconds(20) : TimeSpan.FromMinutes(8));
             Console.WriteLine($"database loaded and idle after {ready.ElapsedMilliseconds:N0} ms more");
             ipc.Pump(TimeSpan.FromMilliseconds(500));
             Console.WriteLine($"query sent during the load: {(ipc.ReplyDelay(early) is { } late ? $"answered {late:N0} ms after sending" : "never answered")}");
@@ -212,6 +197,7 @@ static class IsolatedProbe
             failures += RunQueryCases(ipc, hwnd, tree);
             RunLatency(ipc, hwnd, tree);
             failures += RunConcurrency(ipc, hwnd);
+            failures += RunHistory(ipc, hwnd, tree, work);
             if (options.AlsoIndex is { } big) RunScale(ipc, hwnd, big);
             failures += PipeProbe.Run(instance, tree, ownerPid);
 
@@ -219,19 +205,38 @@ static class IsolatedProbe
             var foregroundAfter = Foreground.Describe();
             Console.WriteLine($"foreground after: {foregroundAfter} ({(foregroundAfter == foregroundBefore ? "unchanged" : "CHANGED")})");
 
-            // EVERYTHING_IPC_EXIT returns 1 when the instance closes.
-            var exitAnswer = SendMessageTimeoutW(hwnd, EVERYTHING_WM_IPC, (nint)EVERYTHING_IPC_EXIT, 0, SMTO_ABORTIFHUNG, 2000, out var exitResult);
-            var exited = everything.WaitForExit(10_000);
-            Console.WriteLine($"exit request: answered={exitAnswer != 0} result={exitResult}; process exited: {exited}");
+            Console.WriteLine($"exit request: {Exit(hwnd, everything)}");
             ReportWrittenFiles(work, tree);
+            ReportHistoryDefaults(config);
+
+            // Persistence: is the run history back after a restart, i.e. loaded from Run History.csv?
+            Console.WriteLine("── restart: run history after a restart ──");
+            restarted = StartInstance(exeCopy, instance, config, db, bin);
+            var hwnd2 = restarted is null ? 0 : IpcWindows.WaitForEverything(instance, TimeSpan.FromSeconds(15));
+            if (hwnd2 == 0) { failures++; Console.WriteLine("FAIL restart: no IPC window"); }
+            else
+            {
+                WaitForDatabase(ipc, hwnd2, TimeSpan.FromSeconds(20));
+                var list = ipc.Query(hwnd2, "runcount:", Query2.FullPath | Query2.RunCount | Query2.DateRun, max: 50, sort: 26);
+                // notes.md, the report and the xlsx must be back; the renamed readme only if run history follows renames.
+                var ok = list?.Total >= 3;
+                if (!ok) failures++;
+                Console.WriteLine($"{(ok ? "ok  " : "FAIL")} runcount: after restart: total={list?.Total.ToString() ?? "no reply"} (want >= 3)");
+                foreach (var item in list?.Items ?? [])
+                    Console.WriteLine($"       {Relative(tree, item.FullPath)} runs={item.RunCount} date_run={(item.DateRun is { } d ? d.ToString("HH:mm:ss") + "Z" : "none")}");
+                Console.WriteLine($"exit request: {Exit(hwnd2, restarted!)}");
+            }
             return failures == 0 ? 0 : 1;
         }
         finally
         {
-            if (everything is { HasExited: false })
+            foreach (var started in new[] { everything, restarted })
             {
-                // Only the process this probe started, and only when it ignored the exit request.
-                try { everything.Kill(); everything.WaitForExit(5000); } catch (Exception e) { Console.WriteLine("kill: " + e.Message); }
+                if (started is { HasExited: false })
+                {
+                    // Only processes this probe started, and only when they ignored the exit request.
+                    try { started.Kill(); started.WaitForExit(5000); } catch (Exception e) { Console.WriteLine("kill: " + e.Message); }
+                }
             }
             if (!options.Keep)
             {
@@ -245,6 +250,158 @@ static class IsolatedProbe
             }
             else Console.WriteLine($"work folder kept: {work}");
         }
+    }
+
+    /// <summary>Starts the private instance (startup = no window; ShellExecute so it inherits no console handle).</summary>
+    /// <param name="exeCopy">The probe's copy of Everything.exe.</param>
+    /// <param name="instance">Private instance name.</param>
+    /// <param name="config">The probe's ini.</param>
+    /// <param name="db">The probe's database file.</param>
+    /// <param name="bin">Working directory (the copy's folder).</param>
+    /// <returns>The process, or <see langword="null"/> when none was started.</returns>
+    static Process? StartInstance(string exeCopy, string instance, string config, string db, string bin) =>
+        Process.Start(new ProcessStartInfo(exeCopy)
+        {
+            // ShellExecute: the child must not inherit this console's handles (CLAUDE.md §4).
+            UseShellExecute = true,
+            ArgumentList = { "-instance", instance, "-startup", "-config", config, "-db", db },
+            WorkingDirectory = bin,
+        });
+
+    /// <summary>Waits until the database is loaded and idle (401 = 1, 402 = 0), reporting every 15 s.</summary>
+    /// <param name="ipc">Pump.</param>
+    /// <param name="hwnd">Everything's IPC window.</param>
+    /// <param name="limit">Longest wait; the caller's queries fail afterwards if the load is still running.</param>
+    static void WaitForDatabase(IpcWindows ipc, nint hwnd, TimeSpan limit)
+    {
+        var wait = Stopwatch.StartNew();
+        var reported = TimeSpan.Zero;
+        while (wait.Elapsed < limit && !(Ask(hwnd, 401) == 1 && Ask(hwnd, 402) == 0))
+        {
+            if (wait.Elapsed - reported >= TimeSpan.FromSeconds(15))
+            {
+                reported = wait.Elapsed;
+                Console.WriteLine($"  … {reported.TotalSeconds:0} s: db_loaded={Ask(hwnd, 401)} db_busy={Ask(hwnd, 402)}");
+            }
+            ipc.Pump(TimeSpan.FromMilliseconds(200));
+        }
+    }
+
+    /// <summary>Asks the instance to exit (EVERYTHING_IPC_EXIT answers 1 when it closes) and waits for the process.</summary>
+    /// <param name="hwnd">Everything's IPC window.</param>
+    /// <param name="process">The started process.</param>
+    /// <returns>A one-line description of what happened.</returns>
+    static string Exit(nint hwnd, Process process)
+    {
+        var answered = SendMessageTimeoutW(hwnd, EVERYTHING_WM_IPC, (nint)EVERYTHING_IPC_EXIT, 0, SMTO_ABORTIFHUNG, 2000, out var result);
+        var exited = process.WaitForExit(10_000);
+        return $"answered={answered != 0} result={result}; process exited: {exited}";
+    }
+
+    /// <summary>A path relative to the BC-TEST tree, or the path itself when it lies outside (BC-TEST paths only).</summary>
+    /// <param name="tree">The BC-TEST tree.</param>
+    /// <param name="full">A full path from a reply.</param>
+    /// <returns>The display text.</returns>
+    static string Relative(string tree, string? full) =>
+        full is null ? "?" : full.StartsWith(tree + "\\", StringComparison.OrdinalIgnoreCase) ? full[(tree.Length + 1)..] : full;
+
+    /// <summary>
+    /// The history defaults of a fresh instance: Everything rewrites its ini with every setting at exit, and the
+    /// probe's ini set none of these, so the values printed are the defaults.
+    /// </summary>
+    /// <param name="config">The probe's ini (rewritten by Everything at exit).</param>
+    static void ReportHistoryDefaults(string config)
+    {
+        string[] keys = ["run_history_enabled", "run_history_days_to_keep", "run_history_keep_forever",
+                         "search_history_enabled", "search_history_days_to_keep", "search_history_keep_forever"];
+        var lines = File.Exists(config) ? File.ReadAllLines(config) : [];
+        var found = keys.Select(k => lines.FirstOrDefault(l => l.StartsWith(k + "=", StringComparison.Ordinal)) ?? k + " (absent)");
+        Console.WriteLine("history defaults (rewritten ini): " + string.Join(", ", found));
+    }
+
+    /// <summary>
+    /// Run history, the record of results picked (opened) in Everything: simulates picks with the documented
+    /// run-count IPC (the counter a double-click or Enter on a result increments), then checks what a "picked in
+    /// Everything" tab could rely on: run counts, date run, order, query spellings, renames and deletes, and when
+    /// Run History.csv is written. Prints BC-TEST paths only (the private instance has no other history).
+    /// </summary>
+    /// <param name="ipc">Reply windows and pump.</param>
+    /// <param name="hwnd">Everything's IPC window.</param>
+    /// <param name="tree">The BC-TEST tree (two of its files are renamed and deleted here).</param>
+    /// <param name="work">The probe's work folder, searched for the history files.</param>
+    /// <returns>Number of failed expectations.</returns>
+    static int RunHistory(IpcWindows ipc, nint hwnd, string tree, string work)
+    {
+        Console.WriteLine("── run history (picks simulated with INC/SET_RUN_COUNTW) ──");
+        var failures = 0;
+        byte[] Path16(string path) => Encoding.Unicode.GetBytes(path + "\0");
+        nint Get(string path) => ipc.SendCopyData(hwnd, 20, Path16(path));
+        nint Inc(string path) => ipc.SendCopyData(hwnd, 24, Path16(path));
+        nint Set(string path, uint count) => ipc.SendCopyData(hwnd, 22, [.. BitConverter.GetBytes(count), .. Path16(path)]);
+        string HistoryFiles() => string.Join(", ", Directory.EnumerateFiles(work, "*History*.csv", SearchOption.AllDirectories)
+            .Select(f => $"{Path.GetRelativePath(work, f)} ({new FileInfo(f).Length} bytes, written {File.GetLastWriteTimeUtc(f):HH:mm:ss.fff}Z)")) is { Length: > 0 } s ? s : "none";
+
+        var notes = Path.Combine(tree, @"docs\notes.md");
+        var report = Path.Combine(tree, @"a b\My Report (final).pdf");
+        var moved = Path.Combine(tree, @"moved\report-2026.xlsx");
+        var readme = Path.Combine(tree, @"Case\ReadMe.TXT");
+        var renamed = Path.Combine(tree, @"Case\ReadMe-renamed.TXT");
+        var bang = Path.Combine(tree, @"weird\bang!name.txt");
+        var notOnDisk = @"C:\BC-TEST-not-indexed\outside.txt";
+        var notIndexed = Environment.ProcessPath!;   // a real file outside the private index
+
+        Console.WriteLine($"  history files before any pick: {HistoryFiles()}");
+        Console.WriteLine($"  run count of notes.md before: {Get(notes)}");
+        var start = DateTime.UtcNow;
+        Console.WriteLine($"  t+0.0 s INC notes.md -> {Inc(notes)}");
+        ipc.Pump(TimeSpan.FromMilliseconds(1100));   // a second apart, so date run orders them
+        Console.WriteLine($"  t+1.1 s INC notes.md -> {Inc(notes)}, INC My Report (final).pdf -> {Inc(report)}");
+        ipc.Pump(TimeSpan.FromMilliseconds(1100));
+        Console.WriteLine($"  t+2.2 s SET report-2026.xlsx=5 -> {Set(moved, 5)}, INC ReadMe.TXT -> {Inc(readme)}, INC bang!name.txt -> {Inc(bang)}, " +
+                          $"INC not-on-disk path -> {Inc(notOnDisk)}, INC real file outside the index -> {Inc(notIndexed)}");
+        Console.WriteLine($"  run counts now: notes.md={Get(notes)} report={Get(report)} xlsx={Get(moved)} readme={Get(readme)} bang={Get(bang)} " +
+                          $"not-on-disk={Get(notOnDisk)} outside-index={Get(notIndexed)} never-picked={Get(Path.Combine(tree, @"docs\notes.md.bak"))}");
+
+        void List(string label, string search, uint sort, uint? want = null)
+        {
+            var list = ipc.Query(hwnd, search, Query2.FullPath | Query2.RunCount | Query2.DateRun, max: 50, sort: sort);
+            var ok = want is null || list?.Total == want;
+            if (!ok) failures++;
+            Console.WriteLine($"  {(want is null ? "info" : ok ? "ok  " : "FAIL")} {label}: " +
+                              (list is null ? "no reply" : $"total={list.Total}{(want is { } w ? $" (want {w})" : "")} sort={list.Sort} flags=0x{list.RequestFlags:X}"));
+            foreach (var item in list?.Items ?? [])
+                Console.WriteLine($"         {Relative(tree, item.FullPath)}  runs={item.RunCount}  date_run=" +
+                                  (item.DateRun is { } d ? $"t{(d - start).TotalSeconds:+0.0;-0.0} s" : "none"));
+        }
+
+        // Picked and indexed: notes.md, the report, the xlsx (set, never opened), readme, bang = 5.
+        List("runcount: by date run, newest first (sort 26)", "runcount:", 26, 5);
+        List("runcount: by run count, highest first (sort 20)", "runcount:", 20, 5);
+        List("runcount:>1", "runcount:>1", 26, 2);
+        List("daterun:today", "daterun:today", 26);
+        List("run-count: (1.5 spelling)", "run-count:", 26);
+        List("date-run:today (1.5 spelling)", "date-run:today", 26);
+        List("dr:today (short form?)", "dr:today", 26);
+
+        // A pick renamed or deleted afterwards (the folder index is monitored, so Everything sees both).
+        File.Move(readme, renamed);
+        File.Delete(bang);
+        ipc.Pump(TimeSpan.FromSeconds(2));
+        List("runcount: after renaming ReadMe.TXT and deleting bang!name.txt", "runcount:", 26);
+        Console.WriteLine($"  run count by path: old readme={Get(readme)} renamed readme={Get(renamed)} deleted bang={Get(bang)}");
+
+        // When does Run History.csv appear? Not after a pick (checked above and here); then force a save.
+        Console.WriteLine($"  history files after the picks, before saving: {HistoryFiles()}");
+        Console.WriteLine($"  EVERYTHING_IPC_SAVE_RUN_HISTORY (408) -> {Ask(hwnd, 408)}");
+        ipc.Pump(TimeSpan.FromMilliseconds(300));
+        Console.WriteLine($"  history files after saving: {HistoryFiles()}");
+        foreach (var file in Directory.EnumerateFiles(work, "*History*.csv", SearchOption.AllDirectories))
+        {
+            Console.WriteLine($"  {Path.GetRelativePath(work, file)} content (tree prefix shortened):");
+            foreach (var line in File.ReadAllLines(file))
+                Console.WriteLine("     | " + line.Replace(tree, "<tree>", StringComparison.OrdinalIgnoreCase).Replace(notIndexed, "<this probe's exe>", StringComparison.OrdinalIgnoreCase));
+        }
+        return failures;
     }
 
     /// <summary>
@@ -641,6 +798,10 @@ static class Query2
     public const uint DateModified = 0x40;
     /// <summary>Attributes: DWORD.</summary>
     public const uint Attributes = 0x100;
+    /// <summary>Run count (how often the item was opened from Everything): DWORD.</summary>
+    public const uint RunCount = 0x400;
+    /// <summary>Date run (when it was last opened from Everything): 8-byte FILETIME (UTC).</summary>
+    public const uint DateRun = 0x800;
 }
 
 /// <summary>One result of a QUERY2 reply.</summary>
@@ -649,7 +810,9 @@ static class Query2
 /// <param name="Size">Size in bytes, when requested and returned.</param>
 /// <param name="Modified">Date modified (UTC), when requested and returned.</param>
 /// <param name="Attributes">File attributes, when requested and returned.</param>
-sealed record EvItem(uint Flags, string? FullPath, long? Size, DateTime? Modified, uint? Attributes)
+/// <param name="RunCount">Run count, when requested and returned.</param>
+/// <param name="DateRun">Date run (UTC), when requested, returned and set.</param>
+sealed record EvItem(uint Flags, string? FullPath, long? Size, DateTime? Modified, uint? Attributes, uint? RunCount = null, DateTime? DateRun = null)
 {
     /// <summary>Whether Everything flagged the result as a folder.</summary>
     public bool IsFolder => (Flags & 1) != 0;
@@ -681,7 +844,9 @@ sealed record EvList(uint Total, uint Offset, uint RequestFlags, uint Sort, EvIt
         {
             var itemFlags = U32(20 + i * 8);
             var p = (int)U32(20 + i * 8 + 4);
-            string? fullPath = null; long? size = null; DateTime? modified = null; uint? attributes = null;
+            string? fullPath = null; long? size = null; DateTime? modified = null, dateRun = null; uint? attributes = null, runCount = null;
+            // FILETIME 0 or all-ones means "not set" (e.g. no date run for an item never opened).
+            DateTime? FileTime() { var ft = BitConverter.ToInt64(data, p); p += 8; return ft is > 0 and < 0x7FFF_FFFF_FFFF_FFFF ? DateTime.FromFileTimeUtc(ft) : null; }
             // DWORD length in characters (without the terminator), the characters, then a NUL.
             string Text() { var len = (int)U32(p); var s = Encoding.Unicode.GetString(data, p + 4, len * 2); p += 4 + (len + 1) * 2; return s; }
             for (var bit = 1u; bit <= 0x8000; bit <<= 1)
@@ -692,16 +857,14 @@ sealed record EvList(uint Total, uint Offset, uint RequestFlags, uint Sort, EvIt
                     case 0x1 or 0x2 or 0x8 or 0x200 or 0x2000 or 0x4000 or 0x8000: _ = Text(); break;   // name, path, ext, file list, highlights
                     case 0x4: fullPath = Text(); break;
                     case 0x10: size = BitConverter.ToInt64(data, p); p += 8; break;
-                    case 0x40:
-                        var ft = BitConverter.ToInt64(data, p); p += 8;
-                        modified = ft is > 0 and < 0x7FFF_FFFF_FFFF_FFFF ? DateTime.FromFileTimeUtc(ft) : null;
-                        break;
-                    case 0x20 or 0x80 or 0x800 or 0x1000: p += 8; break;   // created, accessed, run date, recently changed
+                    case 0x40: modified = FileTime(); break;
+                    case 0x800: dateRun = FileTime(); break;
+                    case 0x20 or 0x80 or 0x1000: p += 8; break;   // created, accessed, recently changed
                     case 0x100: attributes = U32(p); p += 4; break;
-                    case 0x400: p += 4; break;   // run count
+                    case 0x400: runCount = U32(p); p += 4; break;
                 }
             }
-            items[i] = new EvItem(itemFlags, fullPath, size, modified, attributes);
+            items[i] = new EvItem(itemFlags, fullPath, size, modified, attributes, runCount, dateRun);
         }
         return new EvList(total, offset, flags, sort, items, data.Length);
     }
@@ -823,6 +986,25 @@ sealed class IpcWindows : IDisposable
             return answered != 0 && result != 0 ? id : 0;
         }
         finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    /// <summary>
+    /// Sends a run-history <c>WM_COPYDATA</c> command and returns Everything's answer (the <c>SendMessage</c>
+    /// result): GET_RUN_COUNTW 20 (payload: path) answers the run count, INC_RUN_COUNTW 24 (path) and
+    /// SET_RUN_COUNTW 22 ({DWORD count, path}) change it. wParam is a window of ours, as everything_ipc.h asks.
+    /// </summary>
+    /// <param name="everything">Everything's IPC window.</param>
+    /// <param name="dwData">EVERYTHING_IPC_COPYDATA_* command.</param>
+    /// <param name="payload">Command data; paths are NUL-terminated UTF-16.</param>
+    /// <returns>The answer, or -1 when the window did not answer within 2 s.</returns>
+    public unsafe nint SendCopyData(nint everything, uint dwData, byte[] payload)
+    {
+        fixed (byte* data = payload)
+        {
+            // The system copies the buffer into Everything's process during the call; pinning it for the call is enough.
+            var cds = new COPYDATASTRUCT { dwData = dwData, cbData = (uint)payload.Length, lpData = (nint)data };
+            return SendMessageTimeoutW(everything, WM_COPYDATA, replyWindows[0], (nint)(&cds), SMTO_ABORTIFHUNG, 2000, out var result) == 0 ? -1 : result;
+        }
     }
 
     /// <summary>Takes a received reply.</summary>
