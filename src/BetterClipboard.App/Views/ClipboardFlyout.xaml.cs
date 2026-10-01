@@ -169,6 +169,7 @@ public sealed partial class ClipboardFlyout : Window
         controller.ShareXStatusChanged += OnShareXStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
+        controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
         controller.GroupsChanged += OnGroupsChanged;
         ViewModel.GroupsReloaded += (_, _) => RebuildGroupButtons();
 
@@ -247,6 +248,7 @@ public sealed partial class ClipboardFlyout : Window
             UpdateShareXTab();
             UpdateEverythingTab();
             UpdateRunTab(applyWidth: false);
+            UpdateShellTabs(applyWidth: false);
             SelectFilter(ClipFilter.All);
 
             // With the tabs' visibility settled, the window gets the width they need (placed below as a whole).
@@ -909,6 +911,11 @@ public sealed partial class ClipboardFlyout : Window
             return ShowPickMenu(item, pick, target, position);
         }
 
+        if (item.Command is not null)
+        {
+            return ShowCommandMenu(item, target, position);
+        }
+
         var menu = new MenuFlyout();
         menu.Items.Add(MenuItem("Paste", "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
         if (item.Entry.HasRichFormats || item.Kind == ClipKind.Files)
@@ -1005,6 +1012,20 @@ public sealed partial class ClipboardFlyout : Window
             return;
         }
 
+        if (item.Command is { } command)
+        {
+            // Like a pick: the shell's history is never changed, so Delete hides the command until it is typed again.
+            ViewModel.RemoveItem(item);
+            _ = controller.HideCommandAsync(command.Shell, command.ContentHash, command.Count);
+            return;
+        }
+
+        if (ViewModel.IsShellView && ViewModel.FindLiveCommand(item.Entry.ContentHash) is { } live)
+        {
+            // A kept command deleted in its tab: hide the live one too, or it would take the card's place next time.
+            _ = controller.HideCommandAsync(live.Shell, live.ContentHash, live.Count);
+        }
+
         if (ViewModel.IsEverythingView && item.Kind == ClipKind.Files)
         {
             _ = DeleteFromEverythingTabAsync(item.Id);
@@ -1068,6 +1089,9 @@ public sealed partial class ClipboardFlyout : Window
             Text = item.Pick is not null
                 ? "It leaves this tab, and BetterClipboard never records this file again, whichever app copies it. " +
                   "Everything itself is not changed. To allow it again, use Settings › Forgotten forever."
+                : item.Command is not null
+                ? "It leaves this tab, and BetterClipboard never records this command again, whichever app copies it. " +
+                  "The shell's own history is not changed. To allow it again, use Settings › Forgotten forever."
                 : "It is deleted now, and BetterClipboard never records it again, whichever app copies it. " +
                   "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.",
             Opacity = 0.8,
@@ -1105,6 +1129,14 @@ public sealed partial class ClipboardFlyout : Window
             // A stored copy goes through the Removed events; the pick card itself has none.
             ViewModel.RemoveItem(item);
             await controller.ForgetPickAsync(pick);
+            return;
+        }
+
+        if (item.Command is { } command)
+        {
+            // Same for a shell command: its stored copies (if any) leave through the Removed events.
+            ViewModel.RemoveItem(item);
+            await controller.ForgetCommandAsync(command);
             return;
         }
 
@@ -1169,23 +1201,28 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// Pastes (or only copies) a card: a stored entry is replayed; a file opened in Everything pastes the file (or its
-    /// path) and is recorded like a copy.
+    /// path) and is recorded like a copy; a shell tab's live command pastes its text (plain either way) and is recorded
+    /// too.
     /// </summary>
     /// <param name="item">The card.</param>
     /// <param name="plainText">Plain text / the path as text.</param>
     /// <param name="paste">Inject Ctrl+V (otherwise only copy).</param>
     /// <returns>A task completing when done (failures are logged by the controller).</returns>
     private Task PasteItemAsync(ClipItemViewModel item, bool plainText, bool paste = true) =>
-        item.Pick is { } pick ? controller.PastePickAsync(pick, plainText, paste) : controller.PasteAsync(item.Entry, plainText, paste);
+        item.Pick is { } pick ? controller.PastePickAsync(pick, plainText, paste)
+        : item.Command is { } command ? controller.PasteCommandAsync(command, paste)
+        : controller.PasteAsync(item.Entry, plainText, paste);
 
     /// <summary>
-    /// Ctrl+P / "Pin": toggles a stored entry's pin; a file opened in Everything is kept in the history as a pinned
-    /// entry, which then replaces the pick in the tab.
+    /// Ctrl+P / "Pin": toggles a stored entry's pin; a file opened in Everything, or a shell tab's live command, is kept
+    /// in the history as a pinned entry, which then replaces it in the tab.
     /// </summary>
     /// <param name="item">The card.</param>
     /// <returns>A task completing when stored.</returns>
     private Task TogglePinAsync(ClipItemViewModel item) =>
-        item.Pick is { } pick ? controller.KeepPickAsync(pick, pin: true) : controller.History.SetPinnedAsync(item.Id, !item.IsPinned);
+        item.Pick is { } pick ? controller.KeepPickAsync(pick, pin: true)
+        : item.Command is { } command ? controller.KeepCommandAsync(command, pin: true)
+        : controller.History.SetPinnedAsync(item.Id, !item.IsPinned);
 
     /// <summary>Keeps a file opened in Everything and adds it to a group (the Groups submenu and drops of a pick).</summary>
     /// <param name="pick">The pick.</param>
@@ -1442,6 +1479,7 @@ public sealed partial class ClipboardFlyout : Window
             // IsChecked has already flipped when Click arrives: it is the requested state. A file opened in
             // Everything is in no group yet: checking one keeps it in the history first.
             toggle.Click += (_, _) => _ = item.Pick is { } pick ? KeepAndAddToGroupAsync(pick, group)
+                : item.Command is { } command ? KeepCommandAndAddToGroupAsync(command, group)
                 : toggle.IsChecked ? AddToGroupAsync([item.Id], group) : RemoveFromGroupAsync(item, group);
             submenu.Items.Add(toggle);
         }
@@ -1748,6 +1786,12 @@ public sealed partial class ClipboardFlyout : Window
                          && await controller.KeepPickAsync(pick, pin: false) is { } entry)
                 {
                     stored.Add(entry.Id);
+                }
+                else if (ViewModel.Items.FirstOrDefault(i => i.Id == id)?.Command is { } command
+                         && await controller.KeepCommandAsync(command, pin: false) is { } kept)
+                {
+                    // A shell tab's live command: kept first, like a pick.
+                    stored.Add(kept.Id);
                 }
             }
 

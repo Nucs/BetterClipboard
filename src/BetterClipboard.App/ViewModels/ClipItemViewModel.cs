@@ -143,9 +143,10 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// Fluent glyph describing the kind. Text that is nothing but paths gets the folder of a file list, since it
     /// is listed in the Files tab next to them. A file opened in Everything shows a document (E8A5), a folder the
     /// folder (both checked by rendering). A command run with Win+R shows the command prompt (E756) wherever it is
-    /// listed, so it stands out as runnable (Ctrl+Enter) also outside the Run tab.
+    /// listed, so it stands out as runnable (Ctrl+Enter) also outside the Run tab. A shell command (a Pwsh or Cmd tab's
+    /// live command, or one kept from there) shows it too.
     /// </summary>
-    public string KindGlyph => Pick is { } pick ? (pick.IsFolder ? "\uE8B7" : "\uE8A5") : Entry.HasRunHistory ? "\uE756" : Entry.IsPathText ? "\uE8B7" : Kind switch
+    public string KindGlyph => Pick is { } pick ? (pick.IsFolder ? "\uE8B7" : "\uE8A5") : Entry.HasRunHistory || IsShellCommandCard ? "\uE756" : Entry.IsPathText ? "\uE8B7" : Kind switch
     {
         ClipKind.RichText => "\uE8D3", // FontColor
         ClipKind.Link => "\uE71B",     // Link
@@ -159,10 +160,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// Human label of the kind (tooltips, accessibility): "Path"/"Paths" for text that is nothing but paths,
     /// which a screen reader would otherwise announce as plain text inside the Files tab; for a pick, where it
     /// comes from ("File opened in Everything"); and "Win+R command" for a command run with Win+R, so a screen
-    /// reader announces that Ctrl+Enter runs it.
+    /// reader announces that Ctrl+Enter runs it. A shell command names its shell ("PowerShell command").
     /// </summary>
     public string KindLabel => Pick is { } pick ? (pick.IsFolder ? "Folder opened in Everything" : "File opened in Everything")
         : Entry.HasRunHistory ? "Win+R command"
+        : ShellCommandLabel is { } shellLabel ? shellLabel
         : Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
     {
         ClipKind.RichText => "Formatted text",
@@ -187,9 +189,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     /// <summary>
     /// Monospace for code-looking text and for text that is nothing but paths; the UI font otherwise — also for a
-    /// pick, whose preview is a file name over its folder, not code.
+    /// pick, whose preview is a file name over its folder, not code. A shell command is always monospace: it is code.
     /// </summary>
-    public FontFamily BodyFontFamily => Pick is null && Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)) ? MonoFont : UiFont;
+    public FontFamily BodyFontFamily => Pick is null && (IsShellCommandCard || (Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)))) ? MonoFont : UiFont;
 
     /// <summary>Accessible name for screen readers.</summary>
     public string AutomationName => $"{KindLabel}: {Preview}";
@@ -272,6 +274,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <returns>The caption.</returns>
     private string BuildCaption()
     {
+        if (Command is { } command)
+        {
+            return CommandCaption(command);
+        }
+
         if (Pick is { } pick)
         {
             // When it was last opened, and how often: Everything keeps one row per file, not one per opening.

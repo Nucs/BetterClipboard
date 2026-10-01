@@ -441,6 +441,35 @@
                             TextWrapping="Wrap" />
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <!--  The shell tabs (CLAUDE.md §2.19). E756 = CommandPrompt, like the Run tab's commands.  -->
+                <controls:SettingsCard
+                    Description="The panel gets a Pwsh tab with every command you typed in PowerShell, newest first and searchable — also the ones older than the 4,096 PowerShell itself loads. It reads PowerShell's own history file (shared by Windows PowerShell and PowerShell 7) when the tab opens, and never changes it. A command is kept in your history only when you paste, copy or pin it there."
+                    Glyph="&#xE756;"
+                    Header="Pwsh tab (PowerShell history)">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.ShowPowerShellTab, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.PowerShellHistoryStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="Command Prompt keeps no history file: a window's commands vanish when it closes. With this on, BetterClipboard reads open Command Prompt windows every 30 seconds (through a short helper process, only windows you opened) and keeps their commands, encrypted, in a Cmd tab. Pause capturing stops the keeping; off deletes what was kept."
+                    Glyph="&#xE756;"
+                    Header="Cmd tab (Command Prompt history)">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.ShowCmdTab, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.CmdHistoryStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
 
                 <!--  App  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="App" />

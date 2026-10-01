@@ -1317,4 +1317,124 @@ internal static partial class NativeMethods
     /// <returns>0 when the signature is valid and trusted; an HRESULT-style error otherwise.</returns>
     [LibraryImport("wintrust.dll")]
     internal static partial int WinVerifyTrust(nint hwnd, in Guid pgActionID, ref WINTRUST_DATA pWVTData);
+
+    // ───── Console command history (the Cmd tab) and process snapshots ─────
+
+    /// <summary>
+    /// Attaches the calling process to another process's console. Only ever called by the short-lived helper
+    /// (<c>--read-console-history</c>): a process still attached when that console closes is terminated with it.
+    /// </summary>
+    /// <param name="dwProcessId">A process using the console.</param>
+    /// <returns><see langword="true"/> on success (fails when already attached to a console, or the process has none).</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool AttachConsole(uint dwProcessId);
+
+    /// <summary>Detaches the calling process from its console.</summary>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool FreeConsole();
+
+    /// <summary>
+    /// Adds or removes a console control handler; with a 0 handler and <paramref name="add"/> set, the process ignores
+    /// Ctrl+C (never Ctrl+Break or a closing console, which end it regardless).
+    /// </summary>
+    /// <param name="handler">A <c>HandlerRoutine</c>, or 0.</param>
+    /// <param name="add">Add (<see langword="true"/>) or remove.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetConsoleCtrlHandler(nint handler, [MarshalAs(UnmanagedType.Bool)] bool add);
+
+    /// <summary>
+    /// Size of the attached console's command history for one program (what <c>doskey /history</c> reads), in bytes.
+    /// </summary>
+    /// <param name="exeName">The program's exe name, e.g. <c>cmd.exe</c> (pinned, NUL-terminated).</param>
+    /// <returns>The size in bytes; 0 when there is none.</returns>
+    [LibraryImport("kernel32.dll", EntryPoint = "GetConsoleCommandHistoryLengthW", SetLastError = true)]
+    internal static unsafe partial uint GetConsoleCommandHistoryLength(char* exeName);
+
+    /// <summary>
+    /// Copies the attached console's command history for one program: UTF-16 commands, each NUL-terminated, oldest
+    /// first.
+    /// </summary>
+    /// <param name="commands">Output buffer (pinned).</param>
+    /// <param name="commandBufferLength">Its size in bytes.</param>
+    /// <param name="exeName">The program's exe name (pinned, NUL-terminated).</param>
+    /// <returns>Bytes copied; 0 on failure.</returns>
+    [LibraryImport("kernel32.dll", EntryPoint = "GetConsoleCommandHistoryW", SetLastError = true)]
+    internal static unsafe partial uint GetConsoleCommandHistory(byte* commands, uint commandBufferLength, char* exeName);
+
+    /// <summary><c>TH32CS_SNAPPROCESS</c>: include every process in the snapshot.</summary>
+    internal const uint TH32CS_SNAPPROCESS = 0x00000002;
+
+    /// <summary>Returned by <see cref="CreateToolhelp32Snapshot"/> on failure.</summary>
+    internal static readonly nint INVALID_HANDLE_VALUE = -1;
+
+    /// <summary>Takes a snapshot of the running processes (ids, parents, image names).</summary>
+    /// <param name="dwFlags"><see cref="TH32CS_SNAPPROCESS"/>.</param>
+    /// <param name="th32ProcessID">0.</param>
+    /// <returns>The snapshot (close with <see cref="CloseHandle"/>), or <see cref="INVALID_HANDLE_VALUE"/>.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    internal static partial nint CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
+
+    /// <summary>One process of a toolhelp snapshot.</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal unsafe struct PROCESSENTRY32W
+    {
+        /// <summary>Size of this struct; set before the first call.</summary>
+        public uint dwSize;
+
+        /// <summary>Unused (0).</summary>
+        public uint cntUsage;
+
+        /// <summary>The process id.</summary>
+        public uint th32ProcessID;
+
+        /// <summary>Unused.</summary>
+        public nint th32DefaultHeapID;
+
+        /// <summary>Unused.</summary>
+        public uint th32ModuleID;
+
+        /// <summary>Thread count.</summary>
+        public uint cntThreads;
+
+        /// <summary>The id of the process that created it (it may have exited, and its id may be reused).</summary>
+        public uint th32ParentProcessID;
+
+        /// <summary>Base priority.</summary>
+        public int pcPriClassBase;
+
+        /// <summary>Unused.</summary>
+        public uint dwFlags;
+
+        /// <summary>The image name (no folder), NUL-terminated.</summary>
+        public fixed char szExeFile[260];
+    }
+
+    /// <summary>First process of a snapshot.</summary>
+    /// <param name="hSnapshot">The snapshot.</param>
+    /// <param name="lppe">Entry with <c>dwSize</c> set.</param>
+    /// <returns><see langword="true"/> when an entry was returned.</returns>
+    [LibraryImport("kernel32.dll", EntryPoint = "Process32FirstW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool Process32First(nint hSnapshot, ref PROCESSENTRY32W lppe);
+
+    /// <summary>Next process of a snapshot.</summary>
+    /// <param name="hSnapshot">The snapshot.</param>
+    /// <param name="lppe">Entry with <c>dwSize</c> set.</param>
+    /// <returns><see langword="true"/> when an entry was returned; <see langword="false"/> at the end.</returns>
+    [LibraryImport("kernel32.dll", EntryPoint = "Process32NextW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool Process32Next(nint hSnapshot, ref PROCESSENTRY32W lppe);
+
+    /// <summary>The Remote Desktop session a process runs in.</summary>
+    /// <param name="dwProcessId">The process id.</param>
+    /// <param name="pSessionId">The session id.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ProcessIdToSessionId(uint dwProcessId, out uint pSessionId);
 }

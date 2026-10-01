@@ -158,6 +158,30 @@ public sealed record AppSettings
     /// </remarks>
     public bool ShowEverythingTab { get; init; } = true;
 
+    /// <summary>
+    /// Show the panel's Pwsh tab: every command in PowerShell's own history file (PSReadLine's, shared by Windows
+    /// PowerShell and PowerShell 7), newest first, searchable beyond the 4,096 PowerShell itself loads.
+    /// </summary>
+    /// <remarks>
+    /// On by default: PowerShell already keeps these commands in plain text, the tab only reads that file (when it
+    /// opens, never in between), and nothing is stored until you paste, copy or keep (pin, group) a command there.
+    /// The file is never written. Off hides the tab and stops reading it; commands kept from the tab stay.
+    /// </remarks>
+    public bool ShowPowerShellTab { get; init; } = true;
+
+    /// <summary>
+    /// Show the panel's Cmd tab: the commands typed in Command Prompt windows. cmd keeps no history file, so
+    /// BetterClipboard reads open windows' histories (every 30 seconds while one is open, and when the tab opens) and
+    /// keeps what it saw, encrypted — the commands then survive their window.
+    /// </summary>
+    /// <remarks>
+    /// On by default. Each read runs a short helper process that attaches to the window's console for a moment (never
+    /// BetterClipboard itself: a console that closes while a process is attached ends that process). Only windows a
+    /// person opened are read — consoles started by tools are skipped. Pause capturing stops the reading. Off stops
+    /// it and forgets the kept list; commands kept from the tab as history entries stay.
+    /// </remarks>
+    public bool ShowCmdTab { get; init; } = true;
+
     /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
     /// <remarks>
     /// Starts out holding <see cref="KnownPasswordManagers.All"/>: <see cref="Normalize"/> merges every

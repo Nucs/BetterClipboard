@@ -292,6 +292,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 await Task.Delay(120, cancellation.Token);
             }
 
+            if (IsShellView)
+            {
+                // A shell tab: kept commands merged with the shell's live ones (FlyoutViewModel.Shells.cs), no paging.
+                await ReloadShellAsync(cancellation.Token);
+                return;
+            }
+
             if (IsEverythingView)
             {
                 // Two bounded lists merged (stored entries, Everything's picks): no paging.
@@ -507,8 +514,10 @@ public sealed partial class FlyoutViewModel : ObservableObject
         UpdateGroupTexts();
 
         // The Run tab is where Ctrl+Enter runs a command (it works on any card with a run time, but only the
-        // Run tab has room to say so).
-        KeyHint = value == ClipFilter.Run ? RunKeyHint : DefaultKeyHint;
+        // Run tab has room to say so). In a shell tab Delete hides a command rather than deleting anything.
+        KeyHint = value == ClipFilter.Run ? RunKeyHint
+            : value is ClipFilter.PowerShell or ClipFilter.Cmd ? ShellKeyHint
+            : DefaultKeyHint;
         if (!suppressReload)
         {
             _ = ReloadAsync();
@@ -602,6 +611,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
         GroupTitle = groups.Count == 0 ? string.Empty : "› " + GroupViewText.Title(groups);
         SearchPlaceholder = groups.Count > 0 ? $"Search in {GroupViewText.ShortName(groups)}…"
             : IsEverythingView ? EverythingSearchPlaceholder
+            : IsShellView ? ShellSearchPlaceholder
             : DefaultSearchPlaceholder;
     }
 
@@ -722,6 +732,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
         if (IsEverythingView)
         {
             UpdateEverythingEmptyState();
+            return;
+        }
+
+        if (IsShellView)
+        {
+            UpdateShellEmptyState();
             return;
         }
 
@@ -863,6 +879,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
             if (IsEverythingView)
             {
                 StatusText = EverythingStatusText();
+                return;
+            }
+
+            if (IsShellView)
+            {
+                StatusText = ShellStatusText();
                 return;
             }
 

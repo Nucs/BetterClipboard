@@ -161,6 +161,8 @@ public sealed class CliCommandProcessor
                 ClipOrigin.RunDialog => "run",
                 ClipOrigin.RunDialogHistory => "run-history",
                 ClipOrigin.Everything => "everything",
+                ClipOrigin.PowerShell => "powershell",
+                ClipOrigin.Cmd => "cmd",
                 _ => "copied",
             },
             FirstCopied = entry.CreatedUtc,
@@ -205,6 +207,8 @@ public sealed class CliCommandProcessor
             "sharex" => ClipFilter.ShareX,
             "run" or "runs" => ClipFilter.Run,
             "everything" => ClipFilter.Everything,
+            "pwsh" or "powershell" => ClipFilter.PowerShell,
+            "cmd" => ClipFilter.Cmd,
             _ => (ClipFilter)(-1),
         };
         return Enum.IsDefined(filter);

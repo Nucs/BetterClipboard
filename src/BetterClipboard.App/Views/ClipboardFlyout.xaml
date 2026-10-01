@@ -305,6 +305,22 @@
                 Text="Run"
                 ToolTipService.ToolTip="Commands you ran with Win+R, kept after Windows forgets them (Ctrl+Enter runs one again)"
                 Visibility="Collapsed" />
+            <!--
+                The shell tabs (code-behind: UpdateShellTabs, ClipboardFlyout.Shells.cs). Pwsh only while Settings › Pwsh tab
+                is on and PowerShell's history file exists; Cmd while Settings › Cmd tab is on. Their Tags are ClipFilter names.
+            -->
+            <SelectorBarItem
+                x:Name="PwshFilter"
+                Tag="PowerShell"
+                Text="Pwsh"
+                ToolTipService.ToolTip="Every command you typed in PowerShell, newest first, searchable (from PowerShell's own history file)"
+                Visibility="Collapsed" />
+            <SelectorBarItem
+                x:Name="CmdFilter"
+                Tag="Cmd"
+                Text="Cmd"
+                ToolTipService.ToolTip="Commands typed in Command Prompt windows, kept after the window closes"
+                Visibility="Collapsed" />
             <!--  Only while voidtools Everything is installed or running and the tab is on (code-behind: UpdateEverythingTab).  -->
             <SelectorBarItem
                 x:Name="EverythingFilter"

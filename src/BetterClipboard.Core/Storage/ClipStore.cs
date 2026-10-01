@@ -2,6 +2,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Shells;
 using Microsoft.Data.Sqlite;
 
 namespace BetterClipboard.Core.Storage;
@@ -551,7 +552,8 @@ public sealed class ClipStore
     /// than its snapshot of Windows' Run history, so it is always a new run — the old list that could bring a
     /// deleted command back arrives as <see cref="ClipOrigin.RunDialogHistory"/>, an import.
     /// <see cref="ClipOrigin.Everything"/> lifts tombstones too: such a row is only ever written because the user
-    /// pasted, copied or kept that file in the panel's Everything tab.
+    /// pasted, copied or kept that file in the panel's Everything tab. So do <see cref="ClipOrigin.PowerShell"/> and
+    /// <see cref="ClipOrigin.Cmd"/>, for the same reason (a command pasted, copied or kept in a shell tab).
     /// <para>
     /// Both Win+R origins also set <c>run_last_utc</c> to the capture time (never moving it back), on a new row,
     /// a bumped one, and an existing row an import leaves otherwise untouched — the Run tab then lists the
@@ -595,8 +597,9 @@ public sealed class ClipStore
             }
         }
 
-        // Everything picks are stored only when the user pastes, copies or keeps one in the panel: as explicit as a copy.
-        if (capture.Origin is ClipOrigin.Captured or ClipOrigin.RunDialog or ClipOrigin.Everything)
+        // Everything picks and shell commands are stored only when the user pastes, copies or keeps one in the
+        // panel: as explicit as a copy.
+        if (capture.Origin is ClipOrigin.Captured or ClipOrigin.RunDialog or ClipOrigin.Everything or ClipOrigin.PowerShell or ClipOrigin.Cmd)
         {
             using var untomb = Command(connection, "DELETE FROM deleted_hashes WHERE content_hash = $hash;");
             untomb.Parameters.AddWithValue("$hash", hash);
@@ -1236,6 +1239,61 @@ public sealed class ClipStore
     }
 
     /// <summary>
+    /// Forgets a text forever, whether or not it is stored — for text shown without being a history entry (the
+    /// shell tabs' live commands). Its fingerprint is <see cref="ForgetFingerprint.ForText"/>, exactly what a copy of
+    /// that text is checked against, and every stored entry with that fingerprint (the text itself and its
+    /// look-alikes: other line endings, surrounding whitespace) is deleted.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="Forget"/>: already-forgotten content keeps its list entry (and counters), pins and groups
+    /// protect nothing, no tombstone is written, and it is one transaction.
+    /// </remarks>
+    /// <param name="text">The text.</param>
+    /// <param name="sourceAppName">Where it was seen (shown in Settings' list), or <see langword="null"/>.</param>
+    /// <param name="now">When it was forgotten.</param>
+    /// <returns>The list entry and the deleted entry ids (empty when none was stored).</returns>
+    /// <exception cref="ArgumentException"><paramref name="text"/> is null, empty or only whitespace (whitespace has no text fingerprint).</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public ForgetResult ForgetText(string text, string? sourceAppName, DateTimeOffset now)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        var fingerprint = ForgetFingerprint.ForText(text)
+            ?? throw new ArgumentException("Whitespace-only text has no text fingerprint.", nameof(text));
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using (var insert = Command(connection,
+            """
+            INSERT OR IGNORE INTO forgotten (fingerprint, kind, text_length, file_count, image_width, image_height, source_app_name, forgotten_utc)
+            VALUES ($fp, $kind, $textLength, NULL, NULL, NULL, $source, $now);
+            """))
+        {
+            insert.Parameters.AddWithValue("$fp", fingerprint);
+            insert.Parameters.AddWithValue("$kind", (int)ClipKind.Text);
+            insert.Parameters.AddWithValue("$textLength", text.Length);
+            insert.Parameters.AddWithValue("$source", string.IsNullOrWhiteSpace(sourceAppName) ? DBNull.Value : (object)sourceAppName);
+            insert.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            insert.ExecuteNonQuery();
+        }
+
+        // Ids start at 1 (AUTOINCREMENT), so 0 excludes nothing: the text itself is one of its own look-alikes.
+        var removed = FindTextLookAlikes(connection, 0, text, fingerprint);
+        using (var delete = Command(connection, "DELETE FROM clips WHERE id = $id;"))
+        {
+            var idParameter = delete.Parameters.Add("$id", SqliteType.Integer);
+            foreach (var removedId in removed)
+            {
+                idParameter.Value = removedId;
+                delete.ExecuteNonQuery();
+            }
+        }
+
+        var item = ReadForgotten(connection, fingerprint)
+            ?? throw new InvalidOperationException("The forgotten entry vanished inside its own transaction.");
+        transaction.Commit();
+        return new ForgetResult(item, removed);
+    }
+
+    /// <summary>
     /// Whether content with this fingerprint was forgotten forever (the capture path's check).
     /// </summary>
     /// <param name="fingerprint">A <see cref="ForgetFingerprint"/>.</param>
@@ -1755,6 +1813,12 @@ public sealed class ClipStore
         // The stored half of the Everything tab: kept or pasted picks, and copies Everything.exe made itself
         // (Ctrl+C / Ctrl+Shift+C on a result; its file description is "Everything"). The tab adds the live picks.
         ClipFilter.Everything => $"(c.origin = {(int)ClipOrigin.Everything} OR c.source_app_path LIKE '%\\Everything.exe' OR c.source_app_name = 'Everything')",
+
+        // The stored halves of the shell tabs: commands kept from them. A keep that bumped an older row (the command
+        // was copied before) leaves its origin but sets the source name, which nothing else produces: copies made in
+        // a terminal belong to the terminal's window (Windows Terminal, the console host), never to the shell.
+        ClipFilter.PowerShell => $"(c.origin = {(int)ClipOrigin.PowerShell} OR c.source_app_name = '{ShellSources.PowerShellName}')",
+        ClipFilter.Cmd => $"(c.origin = {(int)ClipOrigin.Cmd} OR c.source_app_name = '{ShellSources.CmdName}')",
         _ => null,
     };
 

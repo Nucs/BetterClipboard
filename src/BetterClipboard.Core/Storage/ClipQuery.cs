@@ -49,6 +49,23 @@ public enum ClipFilter
     /// history entries, so this filter alone (the command line's <c>-f everything</c>) never returns them.
     /// </remarks>
     Everything = 8,
+
+    /// <summary>
+    /// The stored half of the panel's Pwsh tab: PowerShell commands pasted, copied or kept from the tab
+    /// (<see cref="Model.ClipOrigin.PowerShell"/>, or a row such a keep bumped, whose source app became "PowerShell").
+    /// </summary>
+    /// <remarks>
+    /// The tab also lists every command in PowerShell's history file, read live; those are not history entries, so
+    /// this filter alone (the command line's <c>-f pwsh</c>) never returns them.
+    /// </remarks>
+    PowerShell = 9,
+
+    /// <summary>
+    /// The stored half of the panel's Cmd tab: Command Prompt commands pasted, copied or kept from the tab
+    /// (<see cref="Model.ClipOrigin.Cmd"/>, or a row such a keep bumped, whose source app became "Command Prompt").
+    /// </summary>
+    /// <remarks>The commands read from cmd windows (and kept after they closed) are not history entries.</remarks>
+    Cmd = 10,
 }
 
 /// <summary>

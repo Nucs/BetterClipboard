@@ -1335,7 +1335,7 @@ User request (2026-10-01): "What about the Win+R's as a new tab 'Run' history?" 
 ShareX it fits (333 px). Run + Everything would be 476 px (92 over), so more source tabs need a tab-bar
 redesign: a "Sources" overflow, icon tabs, or a wider flyout.
 
-### 2.16 PowerShell and cmd.exe history — verified facts for "Pwsh"/"Cmd" tabs (2026-10-01; nothing built yet)
+### 2.16 PowerShell and cmd.exe history — verified facts for "Pwsh"/"Cmd" tabs (2026-10-01; built in §2.19)
 
 User request (2026-10-01): "What if we use the powershell history and cmd history? "Pwsh" "Cmd" tabs? discover".
 Discovery only, measured with [`probe_shellhistory.cs`](tools/probes/probe_shellhistory.cs) (commit `46a0dd0` has
@@ -1643,6 +1643,86 @@ writes its file.
   DIBV5.
 
 The proposal (one "Screenshots" integration in the ShareX mould, the live check first) is in §6.
+
+### 2.19 Pwsh and Cmd tabs — PowerShell and Command Prompt history (built 2026-10-01)
+
+User request (2026-10-01), after the §2.16 discovery: "I dont see Pwsh or Cmd in the dev build version, fix". Two
+tabs after Run: **Pwsh** (PowerShell's own history file) and **Cmd** (open Command Prompt windows, kept by
+BetterClipboard). Settings › Integrations › *Pwsh tab* / *Cmd tab* (`AppSettings.ShowPowerShellTab`,
+`ShowCmdTab`, **both on by default**).
+
+**A live view, stored only on action** — the Everything tab's design (§2.14), not the Run tab's.
+- **Why:** PowerShell's file holds thousands of commands (5,837 here). Importing them as history entries would bury
+  the clipboard history in "All" and spend its 10,000-item limit (retention would start deleting real copies).
+- **What is stored:** a command becomes an entry only when the user pastes, copies, pins or groups it:
+  `ClipOrigin.PowerShell` (7) / `ClipOrigin.Cmd` (8), source `ShellSources.For` (process `powershell` / `cmd`,
+  display "PowerShell" / "Command Prompt"). They behave like an Everything keep: a new event (pause, ignored apps,
+  size, Forget forever apply), a duplicate is bumped, a tombstone is lifted.
+- **Stored half of a tab:** `ClipFilter.PowerShell` (9) / `Cmd` (10) = that origin, or that source name. A keep that
+  bumped an older copy keeps the old origin but takes the source name, which nothing else produces (a copy made in a
+  terminal belongs to the terminal's window).
+
+**Pieces.**
+- **Core `Shells/`** (pure, tested): `ShellCommand` (text, count, last seen, source; `ClipboardText` with CRLF, and
+  `ContentHash`/`Fingerprint` computed from it exactly like a stored copy), `PsReadLineHistory` (PSReadLine's
+  reading rules: CRLF/LF/CR end a line, a trailing backtick continues, an unfinished last record is dropped),
+  `CmdHistory` (`NewSince`, the kept list), `ShellTab` (merge, hides), `InteractiveConsoles`, `ShellSources`.
+- **Windows:** `Integrations/PowerShellHistorySource`, `Integrations/CmdHistorySource`, `Shell/ConsoleCommandHistory`
+  (the helper). **Store:** `ClipStore.ForgetText` + `ClipHistoryService.ForgetTextAsync` (forget a text that is not
+  stored: list it, delete stored look-alikes).
+- **App:** partial files `AppController.Shells.cs`, `ClipboardFlyout.Shells.cs`, `FlyoutViewModel.Shells.cs`,
+  `ClipItemViewModel.Shells.cs`, `SettingsViewModel.Shells.cs`, plus small hooks next to the Everything picks'.
+
+**Pwsh** (`PowerShellHistorySource`).
+- Reads every `*_history.txt` in `%APPDATA%\Microsoft\Windows\PowerShell\PSReadLine` (the known folder) when the tab
+  loads, never on a timer; a file is parsed again only when its size or write time changed. The most recently written
+  file comes first; a command typed in two hosts shows once, counts added; the caption names the host
+  ("PowerShell", "PowerShell in VS Code").
+- Opens with `FileShare.ReadWrite | Delete` and never takes PSReadLine's mutex (§2.16: anything else shows errors in
+  the user's console or delays its writes). Files over 32 MB are read from their end. Never written.
+- The tab shows while the setting is on and the folder has a history file (looked up on the pool when the panel
+  opens: the folder may be redirected to a share). Cards have no time — the file keeps none — only "typed N times".
+- `BETTERCLIPBOARD_PSREADLINE_DIR` replaces the folder (tests, isolated runs), like the ShareX/RunMRU overrides.
+
+**Cmd** (`CmdHistorySource`).
+- **Reading:** every 30 s while on, and when the tab loads (at most every 2 s): a process snapshot, then for each
+  *interactive* cmd.exe of this session one helper, `BetterClipboard.exe --read-console-history <pid>`
+  (`Program.Main` runs it before anything else: no lock, no XAML), at most 4 at a time, 3 s each. The helper
+  attaches, reads `GetConsoleCommandHistoryW("cmd.exe")`, detaches, and writes UTF-8 + NUL to the stdout pipe it was
+  given. Never in-process: a console closing while attached ends the process (§2.16). Measured on the dev build: the
+  helper read 3 BC-TEST commands from a hidden pseudoconsole cmd in 59–61 ms (206 ms cold); a pid without a console
+  exits 3.
+- **Interactive** (`InteractiveConsoles`): walk up through cmd/PowerShell/conhost to the first other ancestor; Explorer,
+  Windows Terminal, IDEs, terminal emulators, Task Manager and BetterClipboard itself (the Run tab's Ctrl+Enter) count,
+  anything else (node, claude, codex, a browser) does not; an exited parent counts. This PC's 158 tool-started cmd.exe
+  are skipped (§2.16).
+- **Kept list:** state `cmd.kept` (one line per command: ticks, count, text; newest 1,000), written only when it
+  changed and never while paused. A window read before is diffed (`NewSince`: eviction from the front, appends, a
+  moved command, a cleared history) so a command typed again counts again; a window seen first adds its commands
+  without counting known ones again (the app restarted, the window did not). Off stops the timer and deletes the list.
+- **Limits:** cmd notifies nobody, so a window closed within 30 s of its last read loses what came after. Times are
+  when BetterClipboard saw a command, not when it was typed. Clink's own history file is not read (not installed here).
+
+**The tabs** (`ShellTab.Merge`, `FlyoutViewModel.Shells.cs`).
+- Rows: the stored half first (pinned on top when that setting asks, then most recently used), then the live commands
+  in the shell's order, at most 500 (no paging). A live command that is also stored shows once, as the entry; forgotten
+  ones never show (fingerprints via `FindForgottenAsync`); the search box narrows both halves with the same toggles
+  (`SearchMatcher`, on the pool).
+- **Delete hides** a live command until it is typed again: state `pwsh.hidden` / `cmd.hidden` = count + content hash
+  (never the text), newest 1,000; a higher count shows it again. Delete on a stored command in its tab hides its live
+  twin too, or it would take the card's place at the next load.
+- Cards: the command-prompt glyph E756 (live and kept ones, everywhere), monospace, label "PowerShell command" /
+  "Command Prompt command", caption "PowerShell · typed 3 times" or "Command Prompt · 5 min ago · typed once". Menu:
+  Paste, Copy only, Pin (keep in history), Groups, Hide until typed again (ED1A), Forget forever… No "Run": a history
+  line has no safe place to run (its directory and variables are gone).
+- Footer: "500 of 2,952 commands in PowerShell's history · 3 kept" / "12 Command Prompt commands · 1 open window";
+  key hint "↵ paste · Ctrl+P pin · Del hide". The window widens for the two labels like for any tab (`MeasureTabsExtraDip`).
+- `bclip list -f pwsh` (also `powershell`) / `-f cmd`: the stored halves, origins `powershell` / `cmd`.
+
+**Verified:** Core tests (`ShellHistoryTests.cs`: 32 — parsing, keys, `NewSince` cases, kept list, merge, hides,
+interactive walk, filters, tombstone, `ForgetText`, pause and ignore) and Windows tests (6: the PowerShell source on
+temp BC-TEST files incl. a file held open for writing, the helper's wire format and argument checks), the helper end
+to end above, and the dev copy started with "Reading Command Prompt windows' history (the Cmd tab)" and 0 WRN/ERR.
 
 ---
 
@@ -1957,6 +2037,7 @@ Everything tab (2026-10-01):
 
 | Feature | How | Result |
 |---|---|---|
+| Pwsh and Cmd tabs (2026-10-01, §2.19): the real helper (`BetterClipboard.exe --read-console-history <pid>` of the dev build) read 3 BC-TEST commands in order from a hidden pseudoconsole cmd, 59–61 ms per read warm (206 ms cold), and exited 3 for a process without a console; the PowerShell source read BC-TEST files of two hosts (merged, newest file first, counts added) incl. one held open for writing; the dev copy started its Cmd reading with 0 WRN/ERR next to the user's app | Core + Windows tests (38), scratch `verify_cmd_helper.cs` (built from the probe's pseudoconsole code), `tools/launch_dev.py` | ✅ (the panel itself not checked with UIA yet: the foreground was never a terminal) |
 | Several groups at once, live on an isolated instance next to the user's app (2026-10-01; seven BC-TEST items in Work / Home / Ideas seeded through `MachineBoundHistory`, capture paused, `PasteOnSelect` off). A plain click shows Work (3 cards, "3 in Work"). Ctrl+click Home merges them: 5 cards newest first with the shared card once, header "› Work + Home", footer "5 in Work + Home", both icons' `ItemStatus` "Shown". The search "report" keeps the 3 matching cards of both groups; "zzz-none" shows "Nothing in Work or Home contains “zzz-none”.". Shift+click Ideas shows the run from the anchor (Home + Ideas, 4 cards); Ctrl+Shift+click Work adds Work..Home (all three, 6). The icon menu's *Remove from view* takes Ideas out; the card menu's *Remove from Work and Home* takes the shared card out of the view ("4 in Work + Home"). A plain click on Work shows it alone (2), again: everything (7). 0 WRN/ERR; the user's PIDs unchanged | UIA reads and plain invokes; real Ctrl / Shift / Ctrl+Shift clicks and two right-clicks only after checking that the test panel is in front and owns the point; cards never invoked (`groups_e2e/run.py`, scratch) | ✅ 11/11 on the first run, on the shared tree's build (the same feature code, without the header tooltip). Its screenshot showed the header trimmed to "Work +…" next to the Paused chip, hence the title's tooltip. The exact commit's build (a separate worktree) and the tooltip's hover check were not run live: three waits for the terminal to be in front skipped (the user was away with another app in front) |
 | Everything tab on an isolated instance next to the user's app (2026-10-01): a private, windowless Everything 1.5.0.1423b (`BCTEST-E2E`, only a BC-TEST tree, four picks through the run-count IPC), the store seeded with BC-TEST items, overrides for Everything, ShareX and Win+R. The app verified the instance ("signed by voidtools PTY LTD"). All nine tabs fit: window 518 px outer / 504 visible, "Everything" 83 px with 13 to spare. The tab lists the four picks newest first ("File/Folder opened in Everything", "opened 3 times"), then the path copied in Everything; footer "4 opened in Everything · 1 kept". Ctrl+P on a pick: a pinned history entry in its place (`bclip`: `files everything pinned Everything`). Delete on a pick: hidden, also after reopening the panel. User's PIDs unchanged, scratch removed | UIA (select-only) + Ctrl+P/Delete/Esc sent only while the test panel was in front + two guarded screenshots (`ev_e2e/run.sh`, scratch) | ✅ after two fixes it found: the tab bar ignored the window frame ("Everythin", fixed by `WindowFrameDip`), and the first run's helper invoked a card (it pasted a BC-TEST file reference into the user's clipboard and terminal; select-only since, §4) |
 | Everything against real builds: live picks (run counts, dates, newest first, search words), then the saved `Run History.csv` after the instance exited, all through the real owner check | `RealEverythingTests` with `BETTERCLIPBOARD_EVERYTHING_EXE`, one private instance per run | ✅ 1.4.1.935, 1005, 1026, 1032 and 1.5.0.1423b. 1.4 needs a save for the file (no search window ever opened; see §2.14 "Run history saving") |
@@ -2106,28 +2187,16 @@ Everything tab (2026-10-01):
   - `bclip run <id>` for scripts and agents, with the same "only commands run before" rule;
   - a maximum wait for the watch's debounce: scripted bursts (writes < 150 ms apart) are read as one batch, and
     with more than 26 in one burst the oldest are lost (measured: 26 of 30 at 50 ms; 30 of 30 at 400 ms).
-- "Pwsh" and "Cmd" tabs (asked for 2026-10-01; facts in §2.16):
-  - **PowerShell, store don't mirror:**
-    - **Watch and read:** watch the PSReadLine folder (`*_history.txt`) and read the new bytes from a stored
-      offset (`FileShare.ReadWrite | Delete`, never the mutex). Take complete records only and decode the
-      backtick breaks.
-    - **Marker:** one per file in `state.pwsh.<host>`, holding the offset plus a hash of the bytes before it. A
-      shorter or different file means a resync from 0; the content hash dedupes.
-    - **Times:** a new record's time is accurate (written at Enter). The backlog has order only, so import it
-      once as an import origin with synthesized times, like the Run tab.
-    - **Privacy:** opt-in, with a secret filter before storing (2.0.0's regex plus `ghp_`, `github_pat_`, `sk-`,
-      `AKIA`, `xox?-`, Bearer, `-p<pass>`, `curl -u`). Forget forever and pause apply, and the file is never
-      written. Settings must say that deleting `ConsoleHost_history.txt` does not delete BetterClipboard's copy.
-    - **Keys:** Enter pastes; no "run" (no safe target for an arbitrary history line).
-  - **cmd, best effort:**
-    - **When:** on tab entry, and every 30–60 s while interactive cmd windows exist.
-    - **How:** a helper process per console reads its 50 entries, after tool-started consoles are filtered out
-      by parent. Diff per console (PID + start time) with the Run tab's rule.
-    - **Limits:** commands from a window closed between scans are lost.
-    - **Clink:** when installed, its file takes the PowerShell path.
-    - **Or** no Cmd tab, with a hint about Clink.
-  - **Git Bash:** `~/.bash_history` the PowerShell way; it arrives at shell exit.
-  - **Tab bar:** one "Commands" tab with chips (Win+R, PowerShell, cmd, Bash) instead of four tabs.
+- Pwsh and Cmd tabs, next steps (built 2026-10-01 as live views, §2.19; facts in §2.16):
+  - live updates while the Pwsh tab is open (a `FileSystemWatcher` on the PSReadLine folder; today reopening reloads);
+  - a PowerShell history moved by a profile (`Set-PSReadLineOption -HistorySavePath`): a folder setting, since reading
+    the profile would mean running it;
+  - Clink's `%LOCALAPPDATA%\clink\clink_history` as the Cmd tab's source when installed (a real file, no helpers);
+  - Git Bash `~/.bash_history` the PowerShell way (it arrives at shell exit);
+  - an optional secret filter for what the tabs show (2.0.0's regex plus `ghp_`, `github_pat_`, `sk-`, `AKIA`,
+    Bearer, `-p<pass>`, `curl -u`), next to Forget forever;
+  - the tab bar: with ShareX, Run, Pwsh, Cmd and Everything the window is ~600 DIP wide; one "Commands" tab with
+    chips (Win+R, PowerShell, cmd, Bash) would keep it at 400.
 - An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms

@@ -289,6 +289,37 @@ public sealed class ClipHistoryService : IAsyncDisposable
     }
 
     /// <summary>
+    /// Forgets a text forever, stored or not (the shell tabs' live commands): it is kept out of the history from now
+    /// on, and stored copies and their look-alikes are deleted (see <see cref="ClipStore.ForgetText"/>). Through the
+    /// worker, so a copy queued right after this is processed after it and kept out.
+    /// </summary>
+    /// <param name="text">The text, as it would be stored (e.g. <see cref="Shells.ShellCommand.ClipboardText"/>).</param>
+    /// <param name="sourceAppName">Where it was seen (Settings' list shows it), or <see langword="null"/>.</param>
+    /// <returns>The list entry and the deleted entry ids.</returns>
+    /// <exception cref="ArgumentException"><paramref name="text"/> is null, empty or only whitespace.</exception>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    /// <exception cref="Microsoft.Data.Sqlite.SqliteException">The write failed.</exception>
+    public Task<ForgetResult> ForgetTextAsync(string text, string? sourceAppName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+        return EnqueueAsync(() =>
+        {
+            var result = store.ForgetText(text, sourceAppName, time.GetUtcNow());
+            anyForgotten = true;
+            foreach (var removedId in result.RemovedIds)
+            {
+                Raise(new ClipChangedEventArgs(ClipChangeKind.Removed, entryId: removedId));
+            }
+
+            RaiseForgottenChanged();
+
+            // Content-free: counts only, never the text.
+            AppLog.Info($"Forgot a command forever ({result.RemovedIds.Count} history entr{(result.RemovedIds.Count == 1 ? "y" : "ies")} deleted).");
+            return Task.FromResult(result);
+        });
+    }
+
+    /// <summary>
     /// Reads the "Forget forever" list on the thread pool (most recently forgotten first).
     /// </summary>
     /// <returns>The entries.</returns>
@@ -696,8 +727,10 @@ public sealed class ClipHistoryService : IAsyncDisposable
         // A ShareX screenshot or a Win+R run is a new event like a live copy, so "pause capturing" covers it too —
         // the user pausing for privacy expects nothing new to be recorded, whatever the channel. The commands
         // Windows already remembered (RunDialogHistory) are an import, like Windows' own clipboard history. A file
-        // pasted, copied or kept from the Everything tab is a new event too: pause means nothing new is recorded.
-        bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX or ClipOrigin.RunDialog or ClipOrigin.Everything;
+        // pasted, copied or kept from the Everything tab is a new event too: pause means nothing new is recorded. So is
+        // a command pasted, copied or kept from a shell tab (Pwsh, Cmd).
+        bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX or ClipOrigin.RunDialog or ClipOrigin.Everything
+            or ClipOrigin.PowerShell or ClipOrigin.Cmd;
         if (isNewEvent && rules.IsPaused)
         {
             return null;

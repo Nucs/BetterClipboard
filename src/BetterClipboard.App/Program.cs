@@ -14,12 +14,27 @@ public static class Program
     /// </summary>
     /// <param name="args">
     /// Command line: <c>--background</c> starts without showing a window (used by "start with Windows");
-    /// <c>--show-flyout</c> / <c>--exit</c> drive an already-running instance.
+    /// <c>--show-flyout</c> / <c>--exit</c> drive an already-running instance;
+    /// <c>--read-console-history &lt;pid&gt;</c> is the Cmd tab's helper (see remarks).
     /// </param>
-    /// <returns>Process exit code (0).</returns>
+    /// <returns>Process exit code (0; the helper's own codes for <c>--read-console-history</c>).</returns>
+    /// <remarks>
+    /// The helper mode runs first and alone: no single-instance lock, no XAML, no settings or store — it attaches to
+    /// one console, reads its cmd history, detaches and writes it to the standard output the running app gave it
+    /// (<see cref="BetterClipboard.Windows.Shell.ConsoleCommandHistory"/>). It is a separate process because a console that closes
+    /// while a process is attached ends that process, and that must never be the app itself.
+    /// </remarks>
     [STAThread]
     public static int Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == BetterClipboard.Windows.Shell.ConsoleCommandHistory.HelperSwitch)
+        {
+            // Open standard output before attaching: attaching to a console may swap the process's console handles,
+            // and the app reads the result from the pipe it handed over at start.
+            using var output = Console.OpenStandardOutput();
+            return BetterClipboard.Windows.Shell.ConsoleCommandHistory.RunHelper(args, output);
+        }
+
         var options = StartupOptions.Parse(args);
         WinRT.ComWrappersSupport.InitializeComWrappers();
 

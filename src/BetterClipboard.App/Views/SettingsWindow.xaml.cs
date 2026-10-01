@@ -49,6 +49,7 @@ public sealed partial class SettingsWindow : Window
         controller.ShareXStatusChanged += OnShareXStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
+        controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
         controller.ForgottenChanged += OnForgottenChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
@@ -66,6 +67,7 @@ public sealed partial class SettingsWindow : Window
         ViewModel.RefreshShareXStatus();
         ViewModel.RefreshEverythingStatus();
         ViewModel.RefreshRunHistoryStatus();
+        ViewModel.RefreshShellHistoryStatus();
 
         // Also refreshes the stats line, which counts the forgotten items.
         _ = ViewModel.RefreshForgottenAsync();
@@ -99,6 +101,7 @@ public sealed partial class SettingsWindow : Window
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
+        controller.ShellHistoryStatusChanged -= OnShellHistoryStatusChanged;
         controller.ForgottenChanged -= OnForgottenChanged;
         controller.Settings.Changed -= OnSettingsChanged;
     }
@@ -147,6 +150,11 @@ public sealed partial class SettingsWindow : Window
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
     private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshRunHistoryStatus();
+
+    /// <summary>A shell tab was switched, PowerShell's file found or lost, or the Cmd tab kept new commands: refresh their cards.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnShellHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshShellHistoryStatus();
 
     /// <summary>The bclip pipe started, stopped or failed: refresh its card.</summary>
     /// <param name="sender">Controller.</param>

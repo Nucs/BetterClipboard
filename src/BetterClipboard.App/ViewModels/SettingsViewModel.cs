@@ -270,12 +270,15 @@ public sealed partial class SettingsViewModel : ObservableObject
             EnableCommandLine = settings.EnableCommandLine;
             ImportShareXScreenshots = settings.ImportShareXScreenshots;
             ShowEverythingTab = settings.ShowEverythingTab;
+            ShowPowerShellTab = settings.ShowPowerShellTab;
+            ShowCmdTab = settings.ShowCmdTab;
             RecordRunHistory = settings.RecordRunHistory;
             RefreshHotkeyStatus();
             RefreshCommandLineStatus();
             RefreshShareXStatus();
             RefreshEverythingStatus();
             RefreshRunHistoryStatus();
+            RefreshShellHistoryStatus();
         }
         finally
         {

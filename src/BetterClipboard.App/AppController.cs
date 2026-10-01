@@ -40,7 +40,7 @@ namespace BetterClipboard.App;
 /// created lazily: the flyout once (then shown/hidden), the settings window on demand (closed = freed).
 /// </para>
 /// </remarks>
-public sealed class AppController
+public sealed partial class AppController
 {
     private readonly DispatcherQueue ui;
     private readonly StartupOptions options;
@@ -257,6 +257,10 @@ public sealed class AppController
         runHistory.StatusChanged += (_, _) => ui.TryEnqueue(() => RunHistoryStatusChanged?.Invoke(this, EventArgs.Empty));
         _ = StartRunHistoryAsync(runHistory, settings.Current.RecordRunHistory);
 
+        // The shell tabs (Pwsh, Cmd): PowerShell's file is only read when its tab loads; cmd windows are read on a
+        // timer while that tab is on, through helper processes (AppController.Shells.cs).
+        StartShellHistories();
+
         if (settings.Current.EnableCommandLine)
         {
             _ = SetCommandLineAsync(enabled: true);
@@ -296,6 +300,9 @@ public sealed class AppController
 
         // Everything may have started or exited since the last look; the tab follows when the refresh lands (ms).
         _ = everything?.RefreshAsync();
+
+        // Same for PowerShell's history file (a profile may have just created it): the Pwsh tab follows in ms.
+        RefreshPowerShellAvailability();
         EnsureFlyout().ShowAt(context, Settings.Current.Placement);
     }
 
@@ -617,6 +624,9 @@ public sealed class AppController
             await runHistory.DisposeAsync();
         }
 
+        // The cmd reader writes its kept list through the history: stop it (a read in flight finishes) first.
+        await DisposeShellHistoriesAsync();
+
         // Its reply window lives on its own thread; nothing it holds needs the history.
         everything?.Dispose();
         everything = null;
@@ -739,6 +749,12 @@ public sealed class AppController
             if (runHistory is not null && !exiting)
             {
                 await runHistory.SetEnabledAsync(next.RecordRunHistory);
+            }
+
+            // Idempotent like the others: the Cmd tab's reading starts or stops; both shell tabs follow.
+            if (!exiting)
+            {
+                await ApplyShellSettingsAsync(next);
             }
 
             if (next.ShowEverythingTab != (everything is not null) && !exiting)

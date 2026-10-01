@@ -66,4 +66,23 @@ public enum ClipOrigin
     /// acts on are stored; the rest of Everything's run history stays in Everything, shown live by the tab.
     /// </remarks>
     Everything = 6,
+
+    /// <summary>
+    /// A PowerShell command from the panel's Pwsh tab (read live from PowerShell's history file) that the user
+    /// pasted, copied or kept there (pin, group).
+    /// </summary>
+    /// <remarks>
+    /// An explicit action, never a background scan, so it behaves like a live <see cref="Captured"/> copy (the
+    /// <see cref="Everything"/> rules): a duplicate is bumped, a tombstone is lifted, and pause, ignored apps
+    /// ("PowerShell"), the size limit and "Forget forever" apply. The thousands of commands in the file stay there —
+    /// only the ones acted on become history (see <see cref="Shells.ShellTab"/>).
+    /// </remarks>
+    PowerShell = 7,
+
+    /// <summary>
+    /// A Command Prompt command from the panel's Cmd tab (read from open cmd windows, or kept by BetterClipboard
+    /// after its window closed) that the user pasted, copied or kept there.
+    /// </summary>
+    /// <remarks>Behaves exactly like <see cref="PowerShell"/>; ignored apps match "cmd".</remarks>
+    Cmd = 8,
 }
