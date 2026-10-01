@@ -1,6 +1,7 @@
 using System.Runtime.ExceptionServices;
 using System.Text;
 using BetterClipboard.Core.Content;
+using BetterClipboard.Core.Integrations;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Prompts;
 using BetterClipboard.Core.Shells;
@@ -554,7 +555,8 @@ public sealed partial class ClipStore
     /// A live copy removes any tombstone for its hash: copying something again is explicit consent to keep it.
     /// <see cref="ClipOrigin.ShareX"/> is the hybrid. The caller bumps its duplicates (it is a new
     /// screenshot), but it never lifts a tombstone and is skipped when older than the last clear, because the
-    /// startup catch-up can rediscover a screenshot file the user deleted from history.
+    /// startup catch-up can rediscover a screenshot file the user deleted from history. So is
+    /// <see cref="ClipOrigin.WindowsScreenshot"/> (Snipping Tool's and Win+PrtScn's files), for the same reason.
     /// <see cref="ClipOrigin.RunDialog"/> lifts tombstones like a live copy: a rescan reports only runs newer
     /// than its snapshot of Windows' Run history, so it is always a new run — the old list that could bring a
     /// deleted command back arrives as <see cref="ClipOrigin.RunDialogHistory"/>, an import.
@@ -1843,6 +1845,13 @@ public sealed partial class ClipStore
         // copies made in Everything. Codex's executables carry no description, so only keeps produce "Codex".
         ClipFilter.ClaudeCode => $"(c.origin = {(int)ClipOrigin.ClaudeCode} OR c.source_app_name = '{PromptAgents.ClaudeCodeName}')",
         ClipFilter.Codex => $"(c.origin = {(int)ClipOrigin.Codex} OR c.source_app_name = '{PromptAgents.CodexName}')",
+
+        // The Snipping tab: screenshot files picked up from the Screenshots folder, and everything Snipping Tool put on the
+        // clipboard (every snip — the file may be off or come second). An import that bumped an older row keeps that row's
+        // origin but takes the tool's source name. A Win+PrtScn shot's own clipboard copy, if Windows makes one, belongs to
+        // explorer.exe and is matched once the file has merged into it.
+        ClipFilter.Snipping => $"(c.origin = {(int)ClipOrigin.WindowsScreenshot} OR c.source_app_path LIKE '%\\{WindowsScreenshots.SnippingToolExecutableName}' " +
+                               $"OR c.source_app_name IN ('{WindowsScreenshots.SnippingToolName}', '{WindowsScreenshots.WinPrtScnName}'))",
         _ => null,
     };
 
@@ -1851,17 +1860,52 @@ public sealed partial class ClipStore
     /// runs exactly once per database (no schema version bump — older builds can still open the file).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>fixup.import_source.v1</c>: v0.1.0 stamped every imported item with a made-up source app named
     /// "Windows clipboard history" (Windows does not report the real one), which the panel then showed on
     /// every imported card. Imports now carry no source; this clears the stored label from older rows.
     /// A row that was later re-copied live has a real app path and is left alone.
+    /// </para>
+    /// <para>
+    /// <c>fixup.snipping_tool_name.v1</c>: Snipping Tool's executable describes itself as "SnippingTool.exe" (its file
+    /// name; the product name is "Snipping Tool"), and the source resolver used to take that description, so every snip
+    /// copied before the resolver skipped such descriptions is labeled "SnippingTool.exe". This renames those rows; it
+    /// touches only rows whose path is Snipping Tool's executable.
+    /// </para>
     /// </remarks>
     /// <param name="connection">Open connection (outside any transaction).</param>
     private static void ApplyDataFixups(SqliteConnection connection)
     {
+        ApplyDataFixup(connection, "fixup.import_source.v1",
+            $"""
+            UPDATE clips SET source_app_name = NULL
+            WHERE origin IN ({(int)ClipOrigin.WindowsHistory}, {(int)ClipOrigin.WindowsPinned})
+              AND source_app_path IS NULL
+              AND source_app_name = '{LegacyImportSourceName}';
+            """);
+        ApplyDataFixup(connection, "fixup.snipping_tool_name.v1",
+            $"""
+            UPDATE clips SET source_app_name = '{WindowsScreenshots.SnippingToolName}'
+            WHERE source_app_name = '{WindowsScreenshots.SnippingToolExecutableName}'
+              AND source_app_path LIKE '%\{WindowsScreenshots.SnippingToolExecutableName}';
+            """);
+    }
+
+    /// <summary>
+    /// Runs one fix-up unless its flag says it already ran: flag and change commit together, so a crash in between
+    /// neither loses the change nor runs it twice.
+    /// </summary>
+    /// <param name="connection">Open connection (outside any transaction).</param>
+    /// <param name="flagKey">The <c>meta</c> key that marks it as done (one per fix-up; never reuse a key).</param>
+    /// <param name="sql">The change, built from constants only.</param>
+    /// <exception cref="SqliteException">The change failed (the transaction rolls back and the next start retries).</exception>
+    private static void ApplyDataFixup(SqliteConnection connection, string flagKey, string sql)
+    {
         using var transaction = connection.BeginTransaction();
-        using (var flag = Command(connection, "INSERT OR IGNORE INTO meta (key, value) VALUES ('fixup.import_source.v1', '1');"))
+        using (var flag = Command(connection, "INSERT OR IGNORE INTO meta (key, value) VALUES ($key, '1');"))
         {
+            flag.Parameters.AddWithValue("$key", flagKey);
+
             // Zero rows inserted = already applied on an earlier start.
             if (flag.ExecuteNonQuery() == 0)
             {
@@ -1869,13 +1913,7 @@ public sealed partial class ClipStore
             }
         }
 
-        Execute(connection,
-            $"""
-            UPDATE clips SET source_app_name = NULL
-            WHERE origin IN ({(int)ClipOrigin.WindowsHistory}, {(int)ClipOrigin.WindowsPinned})
-              AND source_app_path IS NULL
-              AND source_app_name = '{LegacyImportSourceName}';
-            """);
+        Execute(connection, sql);
         transaction.Commit();
     }
 

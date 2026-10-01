@@ -47,6 +47,7 @@ public sealed partial class SettingsWindow : Window
         controller.HistoryChanged += OnHistoryChanged;
         controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
+        controller.SnippingStatusChanged += OnSnippingStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
@@ -66,6 +67,7 @@ public sealed partial class SettingsWindow : Window
         ViewModel.RefreshSystemStatus();
         ViewModel.RefreshHotkeyStatus();
         ViewModel.RefreshShareXStatus();
+        ViewModel.RefreshSnippingStatus();
         ViewModel.RefreshEverythingStatus();
         ViewModel.RefreshRunHistoryStatus();
         ViewModel.RefreshShellHistoryStatus();
@@ -101,6 +103,7 @@ public sealed partial class SettingsWindow : Window
         controller.HistoryChanged -= OnHistoryChanged;
         controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
+        controller.SnippingStatusChanged -= OnSnippingStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged -= OnShellHistoryStatusChanged;
@@ -143,6 +146,11 @@ public sealed partial class SettingsWindow : Window
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
     private void OnShareXStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshShareXStatus();
+
+    /// <summary>The Screenshots folder watch started or stopped, the folder or Snipping Tool changed, or a screenshot came in: refresh its card.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnSnippingStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshSnippingStatus();
 
     /// <summary>Everything started, stopped, finished loading or was found installed, or the tab was switched: refresh its card.</summary>
     /// <param name="sender">Controller.</param>

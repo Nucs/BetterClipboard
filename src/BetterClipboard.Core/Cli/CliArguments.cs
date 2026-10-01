@@ -171,11 +171,13 @@ public static class CliArguments
         CliCommands.List => """
             bclip list [-n N] [--offset N] [-f FILTER] [-s SINCE] [--full] [--json]
               Recent items, newest first: id (* = pinned), kind, age, source app, first line.
-              FILTER: all | pinned | text | images | links | files | run | sharex | everything | pwsh | cmd |
-                      claude | codex.
+              FILTER: all | pinned | text | images | links | files | run | sharex | snipping | everything |
+                      pwsh | cmd | claude | codex.
               --full adds each item's whole text.
               files = copied files plus text that is nothing but paths (kind "path"; JSON: "paths": N).
               run = commands run with Win+R, kept beyond Windows' 26 (JSON: "lastRun").
+              snipping = screenshots Snipping Tool or Win+PrtScn saved (origin "screenshot"), and everything
+              Snipping Tool copied.
               everything = what was copied from voidtools Everything, or pasted/kept from the panel's
               Everything tab (origin "everything"); the files only opened in Everything stay in Everything.
               pwsh / cmd = commands pasted or kept from the panel's Pwsh / Cmd tab (origins "powershell" /

@@ -454,6 +454,21 @@
                             TextWrapping="Wrap" />
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <!--  Windows' own screenshots (CLAUDE.md §2.18). E8C6 = Cut, a pair of scissors (checked by rendering).  -->
+                <controls:SettingsCard
+                    Description="Every screenshot Windows saves — Snipping Tool's (Win+Shift+S, PrtScn) and Win+PrtScn's — shows up in your history the moment the file is written, and the panel gets a Snipping tab with them and everything Snipping Tool copied. BetterClipboard only reads your Screenshots folder. Pause capturing, Ignored apps (add SnippingTool or Win+PrtScn to skip them) and the size limit apply."
+                    Glyph="&#xE8C6;"
+                    Header="Snipping Tool and Win+PrtScn">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.ImportWindowsScreenshots, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.SnippingStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="While voidtools Everything is installed or running, the panel gets an Everything tab: the files and folders you open from Everything, newest first, next to everything copied from it. BetterClipboard only reads from Everything. A file is kept in your history only when you paste, copy or pin it there."
                     Glyph="&#xE721;"

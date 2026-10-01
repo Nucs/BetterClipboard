@@ -792,6 +792,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 ? "Take a screenshot with ShareX — it shows up here the moment ShareX saves it."
                 : "Turn on “Import ShareX screenshots” in Settings to collect them here. Copies from ShareX still show up.";
         }
+        else if (Filter == ClipFilter.Snipping)
+        {
+            EmptyTitle = "No screenshots yet";
+            EmptyMessage = controller.Settings.Current.ImportWindowsScreenshots
+                ? "Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up here the moment Windows saves it."
+                : "Turn on “Snipping Tool and Win+PrtScn” in Settings to collect Windows' screenshots here.";
+        }
         else if (Filter == ClipFilter.Files)
         {
             EmptyTitle = "No files or paths yet";

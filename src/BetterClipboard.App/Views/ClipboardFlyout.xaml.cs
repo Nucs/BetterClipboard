@@ -167,6 +167,7 @@ public sealed partial class ClipboardFlyout : Window
         AppWindow.Closing += OnClosing;
         controller.HistoryChanged += OnHistoryChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
+        controller.SnippingStatusChanged += OnSnippingStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
@@ -247,6 +248,7 @@ public sealed partial class ClipboardFlyout : Window
             controller.ApplyTheme(Root);
             ViewModel.ResetForShow();
             UpdateShareXTab();
+            UpdateSnippingTab(applyWidth: false);
             UpdateEverythingTab();
             UpdateRunTab(applyWidth: false);
             UpdateShellTabs(applyWidth: false);
@@ -330,6 +332,7 @@ public sealed partial class ClipboardFlyout : Window
         closingForExit = true;
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
+        controller.SnippingStatusChanged -= OnSnippingStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.PromptsStatusChanged -= OnPromptsStatusChanged;

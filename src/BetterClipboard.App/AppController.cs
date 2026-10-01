@@ -246,6 +246,10 @@ public sealed partial class AppController
         shareX.StatusChanged += (_, _) => ui.TryEnqueue(() => ShareXStatusChanged?.Invoke(this, EventArgs.Empty));
         _ = StartShareXAsync(shareX, settings.Current.ImportShareXScreenshots);
 
+        // Windows' own screenshots (the Snipping tab): the Screenshots folder is looked up on the pool, then watched
+        // (AppController.Snipping.cs).
+        StartSnipping();
+
         // Everything is only talked to while its tab is wanted; the first lookup (window, registry) runs on the pool.
         if (settings.Current.ShowEverythingTab)
         {
@@ -310,6 +314,9 @@ public sealed partial class AppController
 
         // And for the agents' prompts (an agent installed or first used meanwhile): the Claude and Codex tabs follow.
         RefreshPromptAvailability();
+
+        // A Screenshots folder that did not exist may have been created by the first screenshot: look again (only then).
+        RefreshSnippingIfWaiting();
         EnsureFlyout().ShowAt(context, Settings.Current.Placement);
     }
 
@@ -332,6 +339,9 @@ public sealed partial class AppController
         // Opening Settings is when a user who just installed ShareX looks for it: re-locate now instead of
         // waiting for the periodic check.
         _ = shareX?.RefreshAsync();
+
+        // Same for the Screenshots folder and Snipping Tool: its card shows the folder and Snipping Tool's saving as of now.
+        _ = snipping?.RefreshAsync();
 
         // Same for Everything: its card shows the install and the running state as of now.
         _ = everything?.RefreshAsync(forceInstallation: true);
@@ -624,6 +634,9 @@ public sealed partial class AppController
             await shareX.DisposeAsync();
         }
 
+        // Same for the Screenshots folder watch (the Snipping tab).
+        await DisposeSnippingAsync();
+
         // Same for the Win+R watch: its snapshot must only move past runs that were really stored, and a rescan
         // in flight is cancelled (the next start finds those runs again).
         if (runHistory is not null)
@@ -752,6 +765,13 @@ public sealed partial class AppController
             if (shareX is not null && !exiting)
             {
                 await shareX.SetEnabledAsync(next.ImportShareXScreenshots);
+            }
+
+            // Idempotent too: the Screenshots folder watch starts (first activation: from now on) or stops (forgetting its
+            // marker); the Snipping tab follows the setting.
+            if (!exiting)
+            {
+                await ApplySnippingSettingsAsync(next);
             }
 
             // Idempotent too; switching on imports what Windows remembers now, off clears the snapshot. The tab

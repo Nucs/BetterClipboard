@@ -285,6 +285,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             LaunchAtStartup = StartupRegistration.IsEnabled(AppController.ExecutablePath);
             EnableCommandLine = settings.EnableCommandLine;
             ImportShareXScreenshots = settings.ImportShareXScreenshots;
+            ImportWindowsScreenshots = settings.ImportWindowsScreenshots;
             ShowEverythingTab = settings.ShowEverythingTab;
             ShowPowerShellTab = settings.ShowPowerShellTab;
             ShowCmdTab = settings.ShowCmdTab;
@@ -294,6 +295,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RefreshHotkeyStatus();
             RefreshCommandLineStatus();
             RefreshShareXStatus();
+            RefreshSnippingStatus();
             RefreshEverythingStatus();
             RefreshRunHistoryStatus();
             RefreshShellHistoryStatus();

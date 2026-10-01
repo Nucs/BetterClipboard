@@ -268,12 +268,12 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings, logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings, logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (673 tests, one class at a time — §4: the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves) (186 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (707 tests, one class at a time — §4: the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule) (208 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push). |
@@ -304,6 +304,11 @@ History worker (single consumer Channel) ── classify → WIC analyze (thumbn
 "ShareX" FileSystemWatchers (only while ShareX is installed and Settings › ShareX screenshots is on) ── pool
  thread events → 250 ms debounce per path → one file at a time: wait for the writer, decode (WIC) →
  ClipHistoryService.AddAsync (the worker) → Handled → catch-up marker (state.sharex.last_seen_utc), §2.10
+
+"Screenshots" FileSystemWatcher (only while Settings › Snipping Tool and Win+PrtScn is on) ── the Screenshots folder,
+ not recursive → pool thread events → 250 ms debounce per path → one file at a time: read with every sharing mode
+ granted until its bytes are complete, fresh-write check, decode (WIC) → ClipHistoryService.AddAsync (the worker) →
+ Handled → catch-up marker (state.screenshots.last_seen_utc); the locator on the pool every 5 min, §2.22
 
 "Win+R history watch" thread (only while Settings › Win+R history is on) ── RegNotifyChangeKeyValue on RunMRU
  (or its parent while missing) → Changed → 150 ms debounce → rescan on the pool under one gate: read once the key
@@ -1554,7 +1559,7 @@ or add to the front; evictions only drop from the end).
 **Not built (yet):** the modern Run dialog's own history (its location cannot be verified: 26200 GA has no
 modern dialog); an opt-in delete-through to `RunMRU`.
 
-### 2.18 Windows' own screenshots: Win+PrtScn and Snipping Tool's auto-save (2026-10-01; nothing built yet)
+### 2.18 Windows' own screenshots: Win+PrtScn and Snipping Tool's auto-save (2026-10-01; built in §2.22)
 
 User request (2026-10-01): "We have many integrations in the app, consider integration with: Snipping Tool auto-save
 (on by default), Win+PrtScn". Discovery only, measured with [`probe_screenshots.cs`](tools/probes/probe_screenshots.cs):
@@ -1657,7 +1662,8 @@ writes its file.
 - **Cost,** as for any image copy: PNG + DIBV5. This PC's 3840×1080 Win+PrtScn is 1.1 MB of PNG plus 16.6 MB of
   DIBV5.
 
-The proposal (one "Screenshots" integration in the ShareX mould, the live check first) is in §6.
+The proposal was one "Screenshots" integration in the ShareX mould. Built as the **Snipping tab**, with ShareX keeping its
+own tab (§2.22); the live check with real screenshots is still open (§6).
 
 ### 2.19 Pwsh and Cmd tabs — PowerShell and Command Prompt history (built 2026-10-01)
 
@@ -1960,13 +1966,94 @@ file open, archive move + zstd compression, the mandatory lock, pause and off/on
 and both tabs on screen on an isolated instance with BC-TEST prompts: cards, captions, footers, placeholder, key hint
 (15 checks, §5).
 
+### 2.22 Snipping tab — Windows' own screenshots: Snipping Tool's auto-save and Win+PrtScn (built 2026-10-01)
+
+User request (2026-10-01), after the §2.18 research: "ShareX stays and "Snipping" is for snipping tool". Every screenshot
+Windows saves into the Screenshots folder becomes a history entry the moment its file is complete, and the panel gets a
+**Snipping** tab right after ShareX's. Settings › Integrations › *Snipping Tool and Win+PrtScn*
+(`AppSettings.ImportWindowsScreenshots`, **on by default**, like ShareX's: the files are on disk anyway, and Snipping
+Tool already copies every snip to the clipboard). Win+PrtScn shots share the tab, since they share the folder.
+
+**The ShareX model, not a live view.** Every file is stored (unlike the Everything and Pwsh tabs), because a snip
+reaches the history through the clipboard anyway, and the pixel hash merges the file with that copy into one entry.
+
+**Pieces.**
+- **Core `Integrations/WindowsScreenshots`** (pure, tested):
+  - `Classify`: Snipping Tool's `<prefix> yyyy-MM-dd HHmmss[ (N)].png` first, then Win+PrtScn's `<prefix>[ ](N).png`, else
+    other. Shapes only: the prefixes are localized, and a Hebrew UI starts with two U+200F marks.
+  - `SourceFor`: Snipping Tool = process `SnippingTool` (the process name its clipboard copies carry, so one Ignored apps
+    entry skips both), display "Snipping Tool", path of the installed exe; `WinPrtScnSource` = "Win+PrtScn" with no
+    process, so Explorer is not blamed; any other image = "Screenshots folder" (process `Screenshots`).
+  - `IsFresh` (2-minute window), `IsImageFile`, `LooksComplete`.
+  - `SnippingToolSettings.Parse` (the two saving values, timestamps stripped).
+- **Windows `Integrations/`:**
+  - `WindowsScreenshotsLocator`: `FOLDERID_Screenshots` via `SHGetKnownFolderPath(KF_FLAG_DONT_VERIFY)`; Snipping
+    Tool via the per-user AppModel package list; its settings from a private copy of `settings.dat` (`RegLoadAppKey` +
+    raw `RegQueryValueEx`, cached by the hive's size and write time).
+  - `WindowsScreenshotWatcher`; `WindowsScreenshotsIntegration` (ShareX's life cycle, without its config watch).
+  - The display-name rule in `Clipboard/SourceAppResolver.ChooseDisplayName`.
+- **Store:**
+  - `ClipOrigin.WindowsScreenshot` (11): ShareX's hybrid. It is bumped and paused like a live copy, never lifts a
+    tombstone, and is skipped when older than the last clear.
+  - `ClipFilter.Snipping` (13) = that origin, or a source path ending `\SnippingTool.exe`, or the source names
+    "Snipping Tool" / "Win+PrtScn".
+  - Fix-up `fixup.snipping_tool_name.v1`: rows labeled "SnippingTool.exe" with Snipping Tool's path become
+    "Snipping Tool". `ApplyDataFixups` now runs each fix-up under its own flag; the old one returned early on its single
+    flag.
+- **App:** partial files `AppController.Snipping.cs`, `ClipboardFlyout.Snipping.cs`, `SettingsViewModel.Snipping.cs`,
+  plus the tab, the card, an empty state and the event wiring.
+
+**The watcher** (§2.18 has why each rule exists).
+- **Watch:** the one folder, not recursive (both tools save straight into it; subfolders are the user's own sorting).
+  Image files only; Created/Changed/Renamed are debounced 250 ms per path.
+- **Never locks a writer out:** reads with `FileShare.ReadWrite | Delete`. A file is complete when its bytes say so
+  (PNG's IEND chunk, JPEG's FFD9, GIF's trailer, BMP's declared size), and for formats without an end marker when its
+  size and write time held still 300 ms. It is never read with `FileShare.Read`, ShareX's way, which denies writing.
+- **Fresh writes only:** a live event's file older than 2 minutes once complete was copied or moved in, and is skipped
+  (logged, not "handled"). The catch-up decides by its marker instead.
+- **Skips:** cloud placeholders (never opened: reading one downloads it), animated GIFs, files over the size limit, and
+  undecodable files (logged).
+- **Dedupe** by size + write time, not the path, so a rename right after the save does not import the file again.
+- **Catch-up marker** `state.screenshots.last_seen_utc`:
+  - the first activation starts at now, so the folder's archive is never imported;
+  - each start imports at most the 100 newest files written since;
+  - off clears the marker; exiting does not.
+- **Locate again:** every 5 minutes, when Settings opens, and when the panel opens while nothing is watched. A folder that
+  did not exist is waited for, and the screenshot that created it is caught up.
+
+**UI and CLI.**
+- **Tab:** "Snipping" after ShareX (tooltip names both tools). It shows while the setting is on, and falls back to All when
+  it disappears while selected; the window widens for it like for any tab. Cards are ordinary image cards: "Snipping
+  Tool · just now · 480 × 270", "Win+PrtScn · …", "Screenshots folder · …".
+- **Empty state:** "No screenshots yet" — "Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up
+  here the moment Windows saves it."
+- **Settings card:** Cut glyph `E8C6` (scissors, checked by rendering). The status line names the watched or awaited
+  folder and what Snipping Tool's own switches mean: it saves here and copies (one entry), auto-save is off (clipboard
+  copies only), or a folder of its own (not watched). It counts the screenshots added this session.
+- **CLI:** `bclip list -f snipping` (also `snip`, `screenshots`), origin `screenshot`.
+- **Dev/test:** `BETTERCLIPBOARD_SCREENSHOTS_DIR` replaces the folder.
+
+**Verified** (rows in §5):
+- **Tests:** Core 34 and Windows 22. The Windows watcher and integration classes passed 6 of 6 repeated runs.
+- **Merging:** a clipboard copy and its file become one entry, both for a DIBV5 and for a 32-bit BI_RGB DIB whose fourth
+  bytes are 0 (a GDI screen capture's layout). So a Win+PrtScn clipboard copy, if Windows makes one, merges.
+- **Headless on an isolated instance:** 16 of 16 checks.
+- **On screen:** 10 of 10 UI checks, plus 5 Settings-only checks.
+
+**Not built (yet):**
+- the live check with real Win+PrtScn and Win+Shift+S shots (`probe_screenshots.cs --watch`, the user's own);
+- following a custom Snipping Tool folder, kept in its FutureAccessList in a form not known;
+- Snipping Tool recordings (`.mp4`), Game Bar and NVIDIA captures;
+- *Show in Explorer* / *Paste as file* (needs a stored path);
+- storing only the PNG and making the DIBV5 at paste.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 859 tests (856 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 915 tests (912 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -2065,6 +2152,23 @@ Everything tab (2026-10-01):
   Keys (Ctrl+P, Delete, Esc) only after a check that the test panel is the foreground window. Wait for the
   terminal to be in front for two checks before each summon; another session's own UI test can hold the
   foreground (seen 2026-10-01): wait until only the user's `BetterClipboard.exe` processes remain.
+
+Snipping tab (2026-10-01), with a copy of the dev build:
+- **Overrides for every source**, so nothing of the user's is read or watched:
+  - `BETTERCLIPBOARD_SCREENSHOTS_DIR` = a scratch "Screenshots" folder;
+  - the ShareX, PSReadLine, Claude and Codex folders as empty scratch folders;
+  - a nonexistent scratch `RunMRU` key, and an Everything instance name nobody uses.
+  The real Snipping Tool package and settings are still read; they are read-only, and the status line shows them.
+  - **Footgun:** an existing `BETTERCLIPBOARD_SHAREX_DIR` folder counts as an installed ShareX, so its tab shows.
+- **Import phase with capture on:** pause skips screenshots by design. Write BC-TEST PNGs named like each tool, check
+  them through `bclip list -f snipping --json` (origin `screenshot`), and `--exit` while one is written for the catch-up.
+- **UI phase with capture paused:** restart with `IsCapturePaused` true before any UI shows, so none of the user's copies
+  can reach the test panel.
+- **Settings window:** a plain launch with the same environment opens the running scoped instance's Settings. Its title
+  is "BetterClipboard", like the panel's: find it as the instance's other window.
+- **Scrolling:** `ScrollItemPattern.ScrollIntoView` leaves a card's header at the bottom edge; a few `ScrollPattern`
+  small steps bring the card up.
+- Scratch scripts: `snip_e2e/run.py` (headless) and `snip_e2e/ui.py` (on screen), in session 66f12277's scratchpad.
 
 ### 3.1 Release & install
 
@@ -2351,6 +2455,16 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 - **Registry watch tests: one parent key per test.** While a key is missing, the watch observes its parent, and
   test classes run in parallel: with a shared parent, another test's keys coming and going raised spurious
   changes (6 of 6 runs), and one test's cleanup could delete the parent under another's watch.
+- **Reading another app's freshly written file: never deny it writing.**
+  - An open with `FileShare.Read` ("is the writer done?") makes the writer's own reopen for writing fail if it lands
+    inside that open, and WinRT's StorageFile closes and reopens files.
+  - Read with `FileShare.ReadWrite | Delete`, and tell completeness from the bytes (PNG's IEND, JPEG's FFD9) or from size
+    and write time holding still. `WindowsScreenshotWatcher` does this; the older `ShareXScreenshotWatcher` still uses
+    `FileShare.Read`.
+  - Don't poll `FileProcessIdsUsingFileInformation` (which processes hold a file): ~137 ms per call here. In a
+    `FileSystemWatcher` handler it delays every later event, because events are raised one after another (§2.18).
+  - A file copied into a watched folder shows a write time of "now" until the copy finishes, so judge freshness once
+    the file is complete.
 - **Third-party source in `refs/`** (git-ignored, e.g. ShareX, GPL-3.0): study it for interoperability,
   never copy code from it, and cite the commit with any fact taken from it. Never open ShareX's
   `UploadersConfig.json` (upload credentials), and never trigger real ShareX captures; use a fake personal
@@ -2441,6 +2555,9 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 
 | Feature | How | Result |
 |---|---|---|
+| Snipping tab on screen (2026-10-01). Isolated copy of the dev build, three BC-TEST screenshots imported with capture on, then the instance restarted paused before any UI. The panel opened only after the terminal was in front for two checks with 3 s without input. The tabs read All … Files, ShareX, Snipping, Run (the fake ShareX folder counts as installed), all inside the window. The Snipping tab was selected through UIA and holds 3 cards captioned "Screenshots folder · just now · 300 × 300", "Win+PrtScn · just now · 640 × 200" and "Snipping Tool · just now · 480 × 270", with thumbnails. Settings: the card (scissors glyph, header, switch on) and its status "Watching …\Screenshots." + "Snipping Tool 11.2607.23.0 saves every snip here, and copies it to the clipboard (both become one entry).", read from the real Snipping Tool's settings. The user's PIDs were unchanged, and the scratch was removed | UIA (SelectionItemPattern, texts) + PrintWindow captures of the test windows only (`snip_e2e/ui.py`, scratch) | ✅ 10/10, then 5/5 Settings-only. One earlier run found no panel within 10 s; it did not recur in the next two |
+| Snipping tab, headless (2026-10-01). Isolated copy, with overrides for every source. Three screenshots were listed by `bclip list -f snipping` 401–434 ms after their files were written (polling included), as origin `screenshot` with sources Snipping Tool / Win+PrtScn / Screenshots folder and PNG + CF_DIBV5. Not imported: an archive file from before the first activation, a file copied in with a 2020 write time (logged as skipped), and a `.txt`. A screenshot written while the instance was stopped arrived at its restart, logged as "Imported 1 screenshot saved while BetterClipboard was not watching". The log had 0 WRN/ERR, and the user's PIDs were unchanged | `snip_e2e/run.py` (scratch) | ✅ 16/16 |
+| Snipping tab tests: Core 34 (name shapes incl. a Hebrew name with U+200F marks, Chinese without a space, and the clash suffix; images; sources; freshness; completeness per format; Snipping Tool's settings; the filter; the hybrid merge rules; pause and ignored apps; the relabel fix-up; CLI; the setting) and Windows 22 (each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, the clipboard copy and the file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule) | tests; the new Windows classes 6 times in a row | ✅ all green, 6/6 repeats; full suite 912 pass + 3 skipped (915 = Core 707 + Windows 208) |
 | Chocolatey package, the real 0.2.4 payload (2026-10-01): installed, upgraded to `0.2.4.1` with a scoped test instance running from the package, and uninstalled in a private Chocolatey root (a copy of `choco.exe` 2.3.0, `ChocolateyInstall` set for the process only), not elevated, next to the user's `install.ps1` install with Win+V released. The test instance had capture paused, no imports, and the Win+R, ShareX and Everything overrides | `real-package-test.ps1` (scratch), backups of the user's shortcut and Run value with restore-on-change | ✅ 28/28. Two shims and three markers; `bclip 0.2.4` through the shim; the user's shortcut and Run value not taken over; the test instance closed by before-modify; no `lib-bkp`; the state file consumed; the package folder gone after the uninstall (`/KeepWinVReleased`). The user's shortcut, Run value, `DisabledHotkeys` and PIDs were unchanged. Not covered here (CI on the next push): the admin install, the Win+V restore, the graceful `--exit`, the relaunch |
 | Chocolatey mechanics (2026-10-01): shims, `.ignore`/`.gui`, ARM64 seen as 32-bit, upgrades with a running app, files written after install, uninstall leftovers | [`probe_chocolatey.ps1`](tools/probes/probe_chocolatey.ps1), private root, BC-TEST package | ✅ 28/28 on Chocolatey CLI 2.3.0. One hypothesis was corrected by it: upgrades do not leave files from older versions |
 | Claude and Codex tabs on an isolated instance next to the user's app (2026-10-01, §2.21; fake agent folders through `BETTERCLIPBOARD_CLAUDE_DIR` / `_CODEX_DIR` with BC-TEST prompts only, capture paused, `PasteOnSelect` off, the other integrations off). The first import stored 6 Claude Code and 2 Codex sends: a subagent thread's prompt left out, a CLI-history line merged into its session record. The Claude tab lists 5 cards, newest first, one per text: the image prompt ("· 1 image"), "BC-TEST continue" ("sent 2 times", the project of its last send), the slash command labeled "Claude Code slash command", the expanded paste on two lines, the oldest. Footer "5 prompts (6 sent)", key hint "↵ paste · Ctrl+P pin · Del delete", placeholder "Search prompts you sent to Claude Code…". The Codex tab: 2 cards, footer "2 prompts" (twin merged; unmerged would read "(3 sent)"), caption "Codex · gamma · 10 min ago · 1 image". A line appended while paused is not shown. Window 510 px, every tab label whole ("Codex" last), the Message glyph on every card; the ShareX tab showed because ShareX is installed here (its import was off). User's PIDs unchanged, scratch removed | UIA select-only on the tabs, no injected input. The panel was summoned only after the terminal had been in front for two checks with no user input for 3 s (§4). Two `PrintWindow` captures of the test window (`prompts_ui.py`, scratch) | ✅ 15/15. The two runs before it stopped at bugs in the script, not the app: a generic UIA `Control` has no `GetSelectionItemPattern`, and GDI handles passed without `ctypes` prototypes overflowed. An earlier attempt skipped after 10 minutes because its terminal list lacked the user's terminal (§4) |
@@ -2473,7 +2590,7 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 856 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 859 = Core 673 + Windows 186, with the prompt archive (`7cb8ab2`: 88 new tests, Core 77 + Windows 11, plus 3 new cases of existing theories), in the shared tree; one full run before it had `ClientHangUp_CancelsHandler` exceed its wait again (3 of 3 alone passed). Before it, 765 pass + 3 skipped: 768 = Core 593 + Windows 175, with the Pwsh and Cmd tabs (`ec4db1f`: Core 32, Windows 6, not yet counted in its docs) and the Third party catalog (Core 29), built and run in a separate worktree holding exactly `ec4db1f` + the Third party change; before them, 701 = Core 532 + Windows 169, with merged group views (built and run in a separate worktree holding only that change, while another session's half-done work kept the shared tree from building); before them, 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 912 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 915 = Core 707 + Windows 208, with the Snipping tab (Core 34, Windows 22). Before it, 856 pass + 3 skipped: 859 = Core 673 + Windows 186, with the prompt archive (`7cb8ab2`: 88 new tests, Core 77 + Windows 11, plus 3 new cases of existing theories), in the shared tree; one full run before it had `ClientHangUp_CancelsHandler` exceed its wait again (3 of 3 alone passed). Before it, 765 pass + 3 skipped: 768 = Core 593 + Windows 175, with the Pwsh and Cmd tabs (`ec4db1f`: Core 32, Windows 6, not yet counted in its docs) and the Third party catalog (Core 29), built and run in a separate worktree holding exactly `ec4db1f` + the Third party change; before them, 701 = Core 532 + Windows 169, with merged group views (built and run in a separate worktree holding only that change, while another session's half-done work kept the shared tree from building); before them, 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -2552,34 +2669,18 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
   - watching a moved `CustomHotkeysConfigPath` file (today the 5-minute refresh catches it);
   - verifying the Microsoft Store build's folders;
   - Greenshot folders with the same watcher (Snipping Tool and Win+PrtScn: the next item).
-- Windows' own screenshots: Win+PrtScn and Snipping Tool's auto-save (asked for 2026-10-01; facts in §2.18).
-  - **First, the live check** (`probe_screenshots.cs --watch`, the user's own Win+PrtScn and Win+Shift+S). It
-    decides whether Win+PrtScn shots are new to the history or a second copy of a clipboard copy, and whether the
-    pixel hash merges the two.
-  - **A name fix that stands alone:** `SourceAppResolver.ReadDisplayName` skips a FileDescription that equals the
-    exe's own file name, so Snipping Tool's copies read "Snipping Tool" (its ProductName), not "SnippingTool.exe".
-  - **Watcher:** generalize `ShareXScreenshotWatcher` into folder rules, and add a `WindowsScreenshotsIntegration`
-    that watches `FOLDERID_Screenshots`:
-    - non-recursively, and its parent while the folder is missing;
-    - images only, never recordings;
-    - a file whose write time, once complete, is older than ~2 minutes was copied or moved in: not a screenshot;
-    - reads never deny a writer: every sharing mode granted, IEND/EOI checked, a quiet period.
-  - **Source by name:** "Snipping Tool", "Win+PrtScn", else "Screenshots folder". Test Snipping Tool's shape first,
-    because a collision suffix on it would also match Win+PrtScn's. Prefixes are localized and may start with
-    format characters, so match the shapes only.
-  - **Store:**
-    - a new origin with ShareX's hybrid rules: bumped and paused like a live copy, never lifting a tombstone,
-      skipped when older than the last clear;
-    - a catch-up marker `state.screenshots.last_seen_utc` like ShareX's: the first activation starts now, at most
-      the 100 newest files, cloud placeholders skipped (reading one makes OneDrive download it).
-  - **Tab:** rename "ShareX" to "Screenshots" and widen its filter to every screenshot tool (recommended, since nine
-    tabs already widen the window), or add a tenth tab.
-    - Filter by origin as well as source. A Win+PrtScn copy owned by explorer.exe that bumps the entry must keep it
-      in the tab.
-    - Keep the tool's name on such a bump, instead of "Windows Explorer".
-  - **Settings:** Integrations › *Windows screenshots*, on by default like the other integrations, with a status
-    line. When Snipping Tool saves to a custom folder (its FutureAccessList form is unknown), show a hint and
-    *Also watch a folder…*.
+- Windows' own screenshots: Win+PrtScn and Snipping Tool's auto-save (asked for 2026-10-01; facts in §2.18). **Built
+  2026-10-01 as the Snipping tab (§2.22)**, with ShareX keeping its own tab (the user's call, against the proposal to
+  merge them). Built as proposed: the stand-alone name fix, the watcher's rules, the source by name shape, the hybrid
+  origin, the catch-up marker, the filter by origin and source, Settings on by default. Next:
+  - **The live check** (`probe_screenshots.cs --watch`, the user's own Win+PrtScn and Win+Shift+S). It decides whether
+    Win+PrtScn shots are new to the history or a second copy of a clipboard copy. The merge itself is verified offline
+    for both bitmap kinds (§2.22).
+  - **If Win+PrtScn does copy:** keep the tool's name when its explorer.exe-owned copy bumps the entry after the file
+    (today the card would then read "Windows Explorer"; the entry stays in the tab by its origin).
+  - **A custom Snipping Tool folder:** a hint is shown; *Also watch a folder…* would follow it (its FutureAccessList form
+    is unknown).
+  - **ShareX's watcher:** move it to the same writer-friendly read (it still opens with `FileShare.Read`, §4).
   - **Later:**
     - Snipping Tool recordings as file entries;
     - Game Bar and NVIDIA captures;

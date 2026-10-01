@@ -168,6 +168,7 @@ public sealed class CliCommandProcessor
                 ClipOrigin.Cmd => "cmd",
                 ClipOrigin.ClaudeCode => "claude",
                 ClipOrigin.Codex => "codex",
+                ClipOrigin.WindowsScreenshot => "screenshot",
                 _ => "copied",
             },
             FirstCopied = entry.CreatedUtc,
@@ -216,6 +217,7 @@ public sealed class CliCommandProcessor
             "cmd" => ClipFilter.Cmd,
             "claude" or "claude-code" => ClipFilter.ClaudeCode,
             "codex" => ClipFilter.Codex,
+            "snipping" or "snip" or "screenshots" => ClipFilter.Snipping,
             _ => (ClipFilter)(-1),
         };
         return Enum.IsDefined(filter);

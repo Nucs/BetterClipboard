@@ -134,6 +134,20 @@ public sealed record AppSettings
     public bool ImportShareXScreenshots { get; init; } = true;
 
     /// <summary>
+    /// Add every screenshot Windows' own tools save — Snipping Tool's auto-save (Win+Shift+S, PrtScn) and Win+PrtScn —
+    /// to history the moment the file is written into the Screenshots folder, and show the panel's Snipping tab.
+    /// </summary>
+    /// <remarks>
+    /// On by default, like ShareX's: the files are on disk anyway, and Snipping Tool already copies every snip to the
+    /// clipboard, so the history records snips either way — this adds the files' screenshots (Win+PrtScn's, and snips
+    /// taken while BetterClipboard was not running, through the startup catch-up), the tools' names, and the tab. Only
+    /// the Screenshots folder is watched, never written. Off stops watching and forgets the catch-up marker, so on
+    /// again does not import what was saved meanwhile. Pause, ignored apps ("SnippingTool", "Win+PrtScn") and the size
+    /// limit apply; the tab keeps showing Snipping Tool's clipboard copies only while this is on (it is hidden when off).
+    /// </remarks>
+    public bool ImportWindowsScreenshots { get; init; } = true;
+
+    /// <summary>
     /// Keep every command run with Win+R (the Run dialog) in the history, and show the panel's Run tab.
     /// </summary>
     /// <remarks>

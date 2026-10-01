@@ -84,6 +84,17 @@ public enum ClipFilter
     /// </summary>
     /// <remarks>The archived prompts are not history entries (see <see cref="ClaudeCode"/>).</remarks>
     Codex = 12,
+
+    /// <summary>
+    /// The panel's Snipping tab: screenshots Windows' own tools saved — Snipping Tool's auto-save and Win+PrtScn
+    /// (<see cref="Model.ClipOrigin.WindowsScreenshot"/>) — and whatever Snipping Tool put on the clipboard (source
+    /// <c>SnippingTool.exe</c>), which is how a snip arrives when its file is not saved or came first.
+    /// </summary>
+    /// <remarks>
+    /// Also matched by the source names the import gives ("Snipping Tool", "Win+PrtScn"): an import that bumped a row
+    /// first stored by an earlier copy keeps that row's origin but takes the source name.
+    /// </remarks>
+    Snipping = 13,
 }
 
 /// <summary>

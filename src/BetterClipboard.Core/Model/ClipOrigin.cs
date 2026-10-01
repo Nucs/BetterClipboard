@@ -101,4 +101,17 @@ public enum ClipOrigin
     /// <summary>A prompt from the panel's Codex tab that the user pasted, copied or kept there.</summary>
     /// <remarks>Behaves exactly like <see cref="ClaudeCode"/>; ignored apps match "codex".</remarks>
     Codex = 10,
+
+    /// <summary>
+    /// A screenshot Windows' own tools saved to the Screenshots folder — Snipping Tool's auto-save (Win+Shift+S, PrtScn)
+    /// or Win+PrtScn — picked up by the Windows screenshots integration (the panel's Snipping tab).
+    /// </summary>
+    /// <remarks>
+    /// The same hybrid as <see cref="ShareX"/>, for the same reasons. Like a live copy it is a new event: an existing
+    /// duplicate is bumped — Snipping Tool copies every snip to the clipboard too, and the pixel hash merges the file with
+    /// that copy — and pause, ignored apps (the source tells the tool: "SnippingTool", "Win+PrtScn"), the size limit and
+    /// "Forget forever" apply. Like an import it never lifts a tombstone and is skipped when older than the last "clear
+    /// history": the startup catch-up rediscovers files, and must not bring back a screenshot the user deleted.
+    /// </remarks>
+    WindowsScreenshot = 11,
 }

@@ -116,28 +116,46 @@ public sealed class SourceAppResolver
     /// <summary>Reads the friendly name from the executable's version resource.</summary>
     /// <param name="path">Executable path.</param>
     /// <returns>
-    /// The file description, else the product name, skipping runtime names such as "Electron";
-    /// <see langword="null"/> when nothing meaningful is present (the caller then shows the process name).
+    /// The file description, else the product name (see <see cref="ChooseDisplayName"/>); <see langword="null"/> when
+    /// nothing meaningful is present (the caller then shows the process name).
     /// </returns>
     private static string? ReadDisplayName(string path)
     {
         try
         {
             var info = FileVersionInfo.GetVersionInfo(path);
-            foreach (var candidate in new[] { info.FileDescription, info.ProductName })
-            {
-                var name = candidate?.Trim();
-                if (!string.IsNullOrEmpty(name) && !GenericDescriptions.Contains(name))
-                {
-                    return name;
-                }
-            }
-
-            return null;
+            return ChooseDisplayName(info.FileDescription, info.ProductName, Path.GetFileName(path));
         }
         catch (FileNotFoundException)
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Picks the name a card shows for an executable: its file description, else its product name — skipping runtime
+    /// names such as "Electron", and a description that is just the executable's own file name.
+    /// </summary>
+    /// <remarks>
+    /// Snipping Tool is why the second rule exists: <c>SnippingTool.exe</c> describes itself as "SnippingTool.exe" and
+    /// names its product "Snipping Tool", so every snip used to be labeled with the file name (CLAUDE.md §2.18; stored rows
+    /// are renamed once by the store's <c>fixup.snipping_tool_name.v1</c>).
+    /// </remarks>
+    /// <param name="fileDescription">The version resource's FileDescription.</param>
+    /// <param name="productName">The version resource's ProductName.</param>
+    /// <param name="fileName">The executable's file name, e.g. <c>SnippingTool.exe</c>.</param>
+    /// <returns>The name, or <see langword="null"/> when neither is meaningful.</returns>
+    internal static string? ChooseDisplayName(string? fileDescription, string? productName, string fileName)
+    {
+        foreach (var candidate in new[] { fileDescription, productName })
+        {
+            var name = candidate?.Trim();
+            if (!string.IsNullOrEmpty(name) && !GenericDescriptions.Contains(name) && !name.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+            {
+                return name;
+            }
+        }
+
+        return null;
     }
 }

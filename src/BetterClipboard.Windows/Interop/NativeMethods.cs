@@ -956,6 +956,57 @@ internal static partial class NativeMethods
         nint lpcbSecurityDescriptor,
         out long lpftLastWriteTime);
 
+    // ───── Windows' screenshots (the Snipping tab) ─────
+
+    /// <summary>
+    /// <c>KF_FLAG_DONT_VERIFY</c>: resolve a known folder's path without checking that it exists (and without creating
+    /// it): a profile that never took a screenshot has no Screenshots folder yet, and the watch waits for it.
+    /// </summary>
+    internal const uint KF_FLAG_DONT_VERIFY = 0x00004000;
+
+    /// <summary><c>KEY_READ</c>: query values, enumerate subkeys, notify — read access to a key (here: a private hive copy).</summary>
+    internal const uint KEY_READ = 0x00020019;
+
+    /// <summary>
+    /// Resolves a known folder (for the Snipping tab: <c>FOLDERID_Screenshots</c>, which follows a redirected Pictures
+    /// folder, e.g. OneDrive's folder backup). The returned string is allocated by the shell, also on some failures, and
+    /// must be freed with <see cref="Marshal.FreeCoTaskMem"/> either way.
+    /// </summary>
+    /// <param name="rfid">The KNOWNFOLDERID.</param>
+    /// <param name="dwFlags"><c>KF_FLAG_*</c>.</param>
+    /// <param name="hToken">User token; 0 = the calling user.</param>
+    /// <param name="ppszPath">Receives the path (CoTaskMem).</param>
+    /// <returns>An HRESULT, 0 on success (for example <c>E_FAIL</c> for a folder redirected to something unreachable).</returns>
+    [LibraryImport("shell32.dll")]
+    internal static partial int SHGetKnownFolderPath(in Guid rfid, uint dwFlags, nint hToken, out nint ppszPath);
+
+    /// <summary>
+    /// Loads an application hive (an app-data <c>settings.dat</c>) privately: invisible to other processes, unloaded when
+    /// the last handle closes. Loading may replay the hive's logs into the file, so it is only ever given a private copy.
+    /// </summary>
+    /// <param name="lpFile">The hive file (a copy).</param>
+    /// <param name="phkResult">Receives the hive's root key.</param>
+    /// <param name="samDesired">Access (<c>KEY_READ</c>).</param>
+    /// <param name="dwOptions">0 (sharing with other loaders allowed).</param>
+    /// <param name="reserved">0.</param>
+    /// <returns>A Win32 error code, 0 on success (the registry API does not set the last error).</returns>
+    [LibraryImport("advapi32.dll", EntryPoint = "RegLoadAppKeyW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int RegLoadAppKey(string lpFile, out Microsoft.Win32.SafeHandles.SafeRegistryHandle phkResult, uint samDesired, uint dwOptions, uint reserved);
+
+    /// <summary>
+    /// Reads a value's raw type and bytes. Needed for ApplicationData's own value types (0x5F5E1xx), which
+    /// <see cref="Microsoft.Win32.RegistryKey.GetValue(string)"/> does not return.
+    /// </summary>
+    /// <param name="hKey">Open key with <c>KEY_QUERY_VALUE</c> access.</param>
+    /// <param name="lpValueName">Value name.</param>
+    /// <param name="lpReserved">0.</param>
+    /// <param name="lpType">Receives the registry type.</param>
+    /// <param name="lpData">Receives the data; <see langword="null"/> to ask for the size only.</param>
+    /// <param name="lpcbData">In: buffer size; out: the data's size.</param>
+    /// <returns>A Win32 error code: 0, <c>ERROR_FILE_NOT_FOUND</c> (2) for a missing value, <c>ERROR_MORE_DATA</c> (234) for a short buffer.</returns>
+    [LibraryImport("advapi32.dll", EntryPoint = "RegQueryValueExW", StringMarshalling = StringMarshalling.Utf16)]
+    internal static unsafe partial int RegQueryValueEx(Microsoft.Win32.SafeHandles.SafeRegistryHandle hKey, string lpValueName, nint lpReserved, out uint lpType, byte* lpData, ref uint lpcbData);
+
     // ───── Running commands like Win+R ─────
 
     /// <summary><c>SEE_MASK_INVOKEIDLIST</c>: let the item's shell context-menu handlers run the verb (what the Run dialog does).</summary>

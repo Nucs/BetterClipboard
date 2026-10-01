@@ -595,9 +595,9 @@ public sealed class ShareXScreenshotWatcherTests : IDisposable
     internal static Task<byte[]> PngAsync(int width, int height, byte seed) =>
         ImageCodec.ToPngAsync(DibImage.ToBmpFile(DibImage.CreateDibV5(Pixels(width, height, seed), width, height)), TestContext.Current.CancellationToken);
 
-    /// <summary>Encodes a two-frame GIF (what a ShareX GIF screen recording is).</summary>
+    /// <summary>Encodes a two-frame GIF (what a ShareX GIF screen recording is; the Snipping tab's tests reuse it).</summary>
     /// <returns>GIF bytes.</returns>
-    private static async Task<byte[]> AnimatedGifAsync()
+    internal static async Task<byte[]> AnimatedGifAsync()
     {
         using var stream = new InMemoryRandomAccessStream();
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.GifEncoderId, stream);

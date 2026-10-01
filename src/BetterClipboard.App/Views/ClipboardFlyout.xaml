@@ -296,6 +296,16 @@
                 ToolTipService.ToolTip="Screenshots saved by ShareX and everything copied from it"
                 Visibility="Collapsed" />
             <!--
+                Only while Settings › Snipping Tool and Win+PrtScn is on (code-behind: UpdateSnippingTab,
+                ClipboardFlyout.Snipping.cs). Its Tag is the ClipFilter name.
+            -->
+            <SelectorBarItem
+                x:Name="SnippingFilter"
+                Tag="Snipping"
+                Text="Snipping"
+                ToolTipService.ToolTip="Screenshots saved by Snipping Tool (Win+Shift+S, PrtScn) and Win+PrtScn, and everything Snipping Tool copied"
+                Visibility="Collapsed" />
+            <!--
                 Only while Settings › Win+R history is on (code-behind: UpdateRunTab). Entering it rescans Windows'
                 Win+R list first (the live watch normally has everything already).
             -->
