@@ -144,9 +144,10 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// is listed in the Files tab next to them. A file opened in Everything shows a document (E8A5), a folder the
     /// folder (both checked by rendering). A command run with Win+R shows the command prompt (E756) wherever it is
     /// listed, so it stands out as runnable (Ctrl+Enter) also outside the Run tab. A shell command (a Pwsh or Cmd tab's
-    /// live command, or one kept from there) shows it too.
+    /// live command, or one kept from there) shows it too. A prompt sent to an AI agent (a Claude or Codex tab's archived
+    /// prompt, or one kept from there) shows a speech bubble (<see cref="PromptGlyph"/>).
     /// </summary>
-    public string KindGlyph => Pick is { } pick ? (pick.IsFolder ? "\uE8B7" : "\uE8A5") : Entry.HasRunHistory || IsShellCommandCard ? "\uE756" : Entry.IsPathText ? "\uE8B7" : Kind switch
+    public string KindGlyph => Pick is { } pick ? (pick.IsFolder ? "\uE8B7" : "\uE8A5") : IsPromptCard ? PromptGlyph : Entry.HasRunHistory || IsShellCommandCard ? "\uE756" : Entry.IsPathText ? "\uE8B7" : Kind switch
     {
         ClipKind.RichText => "\uE8D3", // FontColor
         ClipKind.Link => "\uE71B",     // Link
@@ -160,11 +161,13 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// Human label of the kind (tooltips, accessibility): "Path"/"Paths" for text that is nothing but paths,
     /// which a screen reader would otherwise announce as plain text inside the Files tab; for a pick, where it
     /// comes from ("File opened in Everything"); and "Win+R command" for a command run with Win+R, so a screen
-    /// reader announces that Ctrl+Enter runs it. A shell command names its shell ("PowerShell command").
+    /// reader announces that Ctrl+Enter runs it. A shell command names its shell ("PowerShell command"), a prompt its agent
+    /// ("Claude Code prompt").
     /// </summary>
     public string KindLabel => Pick is { } pick ? (pick.IsFolder ? "Folder opened in Everything" : "File opened in Everything")
         : Entry.HasRunHistory ? "Win+R command"
         : ShellCommandLabel is { } shellLabel ? shellLabel
+        : PromptLabel is { } promptLabel ? promptLabel
         : Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
     {
         ClipKind.RichText => "Formatted text",
@@ -277,6 +280,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
         if (Command is { } command)
         {
             return CommandCaption(command);
+        }
+
+        if (Prompt is { } prompt)
+        {
+            return PromptCaption(prompt);
         }
 
         if (Pick is { } pick)

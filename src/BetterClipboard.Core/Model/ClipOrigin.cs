@@ -85,4 +85,20 @@ public enum ClipOrigin
     /// </summary>
     /// <remarks>Behaves exactly like <see cref="PowerShell"/>; ignored apps match "cmd".</remarks>
     Cmd = 8,
+
+    /// <summary>
+    /// A prompt from the panel's Claude tab (one the user sent to Claude Code, kept in the prompt archive) that the user
+    /// pasted, copied or kept there (pin, group).
+    /// </summary>
+    /// <remarks>
+    /// An explicit action, never a background scan, so it behaves like a live <see cref="Captured"/> copy (the
+    /// <see cref="PowerShell"/> rules): a duplicate is bumped, a tombstone is lifted, and pause, ignored apps ("claude"),
+    /// the size limit and "Forget forever" apply. The archive itself is not history: its thousands of prompts stay in
+    /// their own table (<see cref="Prompts.PromptAgent"/>, CLAUDE.md §2.21) until one is acted on.
+    /// </remarks>
+    ClaudeCode = 9,
+
+    /// <summary>A prompt from the panel's Codex tab that the user pasted, copied or kept there.</summary>
+    /// <remarks>Behaves exactly like <see cref="ClaudeCode"/>; ignored apps match "codex".</remarks>
+    Codex = 10,
 }

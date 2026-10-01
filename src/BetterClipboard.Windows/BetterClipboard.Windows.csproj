@@ -21,6 +21,8 @@
 
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <!-- Reads Codex session files that Codex compressed (.jsonl.zst): .NET 10 has no zstd decoder of its own. -->
+    <PackageReference Include="ZstdSharp.Port" />
   </ItemGroup>
 
   <ItemGroup>

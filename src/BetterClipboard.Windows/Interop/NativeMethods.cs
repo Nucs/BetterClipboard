@@ -1437,4 +1437,87 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool ProcessIdToSessionId(uint dwProcessId, out uint pSessionId);
+
+    /// <summary>
+    /// What <see cref="GetFileInformationByHandle"/> returns: attributes, times, size, link count, and the file's identity on
+    /// its volume (serial number + index). The prompt archive uses the identity to tell an appended file from one replaced
+    /// under the same name; the times are FILETIME halves (low, high).
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct BY_HANDLE_FILE_INFORMATION
+    {
+        /// <summary>File attributes.</summary>
+        public uint dwFileAttributes;
+
+        /// <summary>Creation time, low half.</summary>
+        public uint ftCreationTimeLow;
+
+        /// <summary>Creation time, high half.</summary>
+        public uint ftCreationTimeHigh;
+
+        /// <summary>Last access time, low half.</summary>
+        public uint ftLastAccessTimeLow;
+
+        /// <summary>Last access time, high half.</summary>
+        public uint ftLastAccessTimeHigh;
+
+        /// <summary>Last write time, low half.</summary>
+        public uint ftLastWriteTimeLow;
+
+        /// <summary>Last write time, high half.</summary>
+        public uint ftLastWriteTimeHigh;
+
+        /// <summary>Serial number of the volume holding the file.</summary>
+        public uint dwVolumeSerialNumber;
+
+        /// <summary>File size, high half.</summary>
+        public uint nFileSizeHigh;
+
+        /// <summary>File size, low half.</summary>
+        public uint nFileSizeLow;
+
+        /// <summary>Hard links to the file.</summary>
+        public uint nNumberOfLinks;
+
+        /// <summary>File index (identity on the volume), high half. Stable across renames and moves within the volume on NTFS.</summary>
+        public uint nFileIndexHigh;
+
+        /// <summary>File index, low half.</summary>
+        public uint nFileIndexLow;
+    }
+
+    /// <summary>
+    /// Reads a file's information from an open handle — current even while another process keeps the file open for
+    /// appending, unlike the folder's copy of its size and times (which NTFS updates only when a handle closes or another
+    /// one opens: measured, CLAUDE.md §2.21).
+    /// </summary>
+    /// <param name="hFile">The open file.</param>
+    /// <param name="lpFileInformation">The information.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetFileInformationByHandle(Microsoft.Win32.SafeHandles.SafeFileHandle hFile, out BY_HANDLE_FILE_INFORMATION lpFileInformation);
+
+    /// <summary>
+    /// <c>THREAD_MODE_BACKGROUND_BEGIN</c>: the calling thread enters background processing mode — lower CPU, I/O and memory
+    /// priority — so a long scan (the prompt archive's first import reads gigabytes) never competes with what the user is
+    /// doing. Only valid for the current thread; ended by <see cref="THREAD_MODE_BACKGROUND_END"/>.
+    /// </summary>
+    internal const int THREAD_MODE_BACKGROUND_BEGIN = 0x00010000;
+
+    /// <summary><c>THREAD_MODE_BACKGROUND_END</c>: the calling thread leaves background processing mode.</summary>
+    internal const int THREAD_MODE_BACKGROUND_END = 0x00020000;
+
+    /// <summary>The pseudo handle of the calling thread (never closed).</summary>
+    /// <returns>The pseudo handle.</returns>
+    [LibraryImport("kernel32.dll")]
+    internal static partial nint GetCurrentThread();
+
+    /// <summary>Sets a thread's priority, or (for the calling thread) enters or leaves background processing mode.</summary>
+    /// <param name="hThread">The thread (<see cref="GetCurrentThread"/> for the background modes).</param>
+    /// <param name="nPriority">A priority or <see cref="THREAD_MODE_BACKGROUND_BEGIN"/> / <see cref="THREAD_MODE_BACKGROUND_END"/>.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetThreadPriority(nint hThread, int nPriority);
 }

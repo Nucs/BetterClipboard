@@ -512,6 +512,50 @@
                             TextWrapping="Wrap" />
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <!--
+                    The prompt archives (ViewModel: SettingsViewModel.Prompts.cs). Robot glyph E99A, checked by rendering. Off keeps
+                    what is stored; "Delete stored prompts…" (confirmed) is the way to remove it.
+                -->
+                <controls:SettingsCard
+                    Description="Keeps every prompt you send in Claude Code, encrypted, in a Claude tab: newest first, searchable, one card per prompt with how often you sent it. Read from Claude Code's prompt history (pastes included) the moment Claude Code saves it, only the new bytes; Claude Code prunes its history after its cleanup period, BetterClipboard keeps it. Claude Code's files are never changed. Pause capturing skips prompts sent while paused; off stops reading and keeps what is stored."
+                    Glyph="&#xE99A;"
+                    Header="Claude Code prompts">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.KeepClaudeCodePrompts, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                IsTextSelectionEnabled="True"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.ClaudeCodePromptsStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <Button
+                                Click="DeleteClaudeCodePrompts_Click"
+                                Content="Delete stored prompts…"
+                                IsEnabled="{x:Bind ViewModel.HasClaudeCodePrompts, Mode=OneWay}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="Keeps every prompt you send in Codex (the app, the CLI, the IDE extension), encrypted, in a Codex tab. Read from Codex's session files and its CLI history as Codex writes them, only the new bytes; compressed session files are read too. Threads started by agents, codex exec runs and MCP sessions are left out: their prompts were written by programs. Codex's files are never changed."
+                    Glyph="&#xE99A;"
+                    Header="Codex prompts">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.KeepCodexPrompts, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                IsTextSelectionEnabled="True"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.CodexPromptsStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <Button
+                                Click="DeleteCodexPrompts_Click"
+                                Content="Delete stored prompts…"
+                                IsEnabled="{x:Bind ViewModel.HasCodexPrompts, Mode=OneWay}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
 
                 <!--  App  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="App" />

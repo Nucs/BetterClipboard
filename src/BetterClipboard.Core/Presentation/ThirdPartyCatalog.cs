@@ -8,7 +8,7 @@ namespace BetterClipboard.Core.Presentation;
 public enum ThirdPartyRole
 {
     /// <summary>
-    /// A separate app BetterClipboard reads from while its setting is on (ShareX, Everything, PowerShell). It is never
+    /// A separate app BetterClipboard reads from while its setting is on (ShareX, Everything, PowerShell, Claude Code, Codex). It is never
     /// shipped, so no license is credited, and its link is where to get the app from its makers rather than from a
     /// download mirror.
     /// </summary>
@@ -107,6 +107,24 @@ public static class ThirdPartyCatalog
     /// </summary>
     public static IReadOnlyList<ThirdPartyProject> All { get; } =
     [
+        // The prompt archive (CLAUDE.md §2.21) reads Claude Code's prompt history and Codex's session files; neither app is
+        // shipped or changed.
+        new(
+            Name: "Claude Code",
+            Role: ThirdPartyRole.Integration,
+            Maker: "Anthropic",
+            License: null,
+            Use: "Every prompt you send in Claude Code (from its prompt history), kept in the panel's Claude tab.",
+            Link: new("https://claude.com/product/claude-code"),
+            Packages: []),
+        new(
+            Name: "Codex",
+            Role: ThirdPartyRole.Integration,
+            Maker: "OpenAI",
+            License: null,
+            Use: "Every prompt you send in Codex (from its session files), kept in the panel's Codex tab.",
+            Link: new("https://openai.com/codex/"),
+            Packages: []),
         new(
             Name: "Everything",
             Role: ThirdPartyRole.Integration,
@@ -237,6 +255,16 @@ public static class ThirdPartyCatalog
             Use: "Windows' API definitions for .NET, which the Windows import and image decoding call.",
             Link: new("https://learn.microsoft.com/windows/apps/windows-sdk/"),
             Packages: ["Microsoft.Windows.SDK.NET.Ref"]),
+
+        // .NET 10 has no zstd decoder: Codex compresses its cold session files (.jsonl.zst), and the prompt archive reads them.
+        new(
+            Name: "ZstdSharp",
+            Role: ThirdPartyRole.Component,
+            Maker: "Oleg Stepanischev",
+            License: "MIT",
+            Use: "Reads the Codex session files Codex compressed, for the Codex tab.",
+            Link: new("https://github.com/oleg-st/ZstdSharp"),
+            Packages: ["ZstdSharp.Port"]),
     ];
 
     /// <summary>The apps BetterClipboard works with, for the "Works with" card (a new list on every call).</summary>

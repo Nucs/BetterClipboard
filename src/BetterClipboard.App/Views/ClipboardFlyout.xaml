@@ -321,6 +321,23 @@
                 Text="Cmd"
                 ToolTipService.ToolTip="Commands typed in Command Prompt windows, kept after the window closes"
                 Visibility="Collapsed" />
+            <!--
+                The prompt tabs (code-behind: UpdatePromptTabs, ClipboardFlyout.Prompts.cs): each while its Settings switch is
+                on and the agent's folder or the prompt archive has prompts. Entering one catches the archive up first. Their
+                Tags are ClipFilter names.
+            -->
+            <SelectorBarItem
+                x:Name="ClaudeFilter"
+                Tag="ClaudeCode"
+                Text="Claude"
+                ToolTipService.ToolTip="Every prompt you sent to Claude Code, newest first, searchable, kept after Claude Code prunes its history"
+                Visibility="Collapsed" />
+            <SelectorBarItem
+                x:Name="CodexFilter"
+                Tag="Codex"
+                Text="Codex"
+                ToolTipService.ToolTip="Every prompt you sent to Codex (the app, the CLI, the IDE extension), newest first, searchable"
+                Visibility="Collapsed" />
             <!--  Only while voidtools Everything is installed or running and the tab is on (code-behind: UpdateEverythingTab).  -->
             <SelectorBarItem
                 x:Name="EverythingFilter"

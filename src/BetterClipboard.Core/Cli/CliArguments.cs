@@ -59,12 +59,15 @@ public static class CliArguments
         ["forget"] = CliCommands.Forget,
         ["wait"] = CliCommands.Wait, ["watch"] = CliCommands.Wait,
         ["status"] = CliCommands.Status, ["stats"] = CliCommands.Status,
+        ["prompts"] = CliCommands.Prompts,
+        ["prompt"] = CliCommands.Prompt,
     };
 
     /// <summary>Options that take a value.</summary>
     private static readonly HashSet<string> ValueOptions = new(StringComparer.Ordinal)
     {
         "-n", "--limit", "--offset", "-f", "--filter", "-s", "--since", "-r", "--recent", "--format", "-o", "--out", "-t", "--timeout",
+        "-a", "--agent",
     };
 
     /// <summary>
@@ -140,7 +143,7 @@ public static class CliArguments
                 return new CliInvocation { ShowHelp = true, HelpTopic = command };
             }
 
-            if (!ValueOptions.Contains(name) && name is not ("-i" or "--ignore-case" or "--full" or "--plain" or "--json"))
+            if (!ValueOptions.Contains(name) && name is not ("-i" or "--ignore-case" or "--full" or "--plain" or "--json" or "--all"))
             {
                 return Fail($"Unknown option '{name}' for {command}. Run 'bclip help {command}'.");
             }
@@ -168,7 +171,8 @@ public static class CliArguments
         CliCommands.List => """
             bclip list [-n N] [--offset N] [-f FILTER] [-s SINCE] [--full] [--json]
               Recent items, newest first: id (* = pinned), kind, age, source app, first line.
-              FILTER: all | pinned | text | images | links | files | run | sharex | everything | pwsh | cmd.
+              FILTER: all | pinned | text | images | links | files | run | sharex | everything | pwsh | cmd |
+                      claude | codex.
               --full adds each item's whole text.
               files = copied files plus text that is nothing but paths (kind "path"; JSON: "paths": N).
               run = commands run with Win+R, kept beyond Windows' 26 (JSON: "lastRun").
@@ -176,6 +180,8 @@ public static class CliArguments
               Everything tab (origin "everything"); the files only opened in Everything stay in Everything.
               pwsh / cmd = commands pasted or kept from the panel's Pwsh / Cmd tab (origins "powershell" /
               "cmd"); the commands only in PowerShell's history file or a cmd window stay there.
+              claude / codex = prompts pasted or kept from the panel's Claude / Codex tab (origins "claude" /
+              "codex"); every prompt you sent is in the prompt archive instead: bclip prompts.
             """,
         CliCommands.Search => """
             bclip search <words...> [-n N] [-f FILTER] [-s SINCE] [--full] [--json]
@@ -204,6 +210,18 @@ public static class CliArguments
         CliCommands.Status => """
             bclip status [--json]
               Version, item count and size, whether capture is paused, and listener statistics.
+            """,
+        CliCommands.Prompts => """
+            bclip prompts [WORDS...] [-a claude|codex] [-n N] [--offset N] [-s SINCE] [--all] [--full] [--json]
+              Prompts you sent to Claude Code and Codex, newest first, from BetterClipboard's prompt archive
+              (Settings › Claude Code prompts / Codex prompts): id, agent, age, project folder, times sent, first line.
+              WORDS narrow it like search (every word, case-insensitive substring); exit code 1 when nothing matches.
+              One row per prompt text (with how often it was sent); --all lists every send with its own time.
+              --full adds each prompt's whole text. The ids are the archive's: print one with bclip prompt ID.
+            """,
+        CliCommands.Prompt => """
+            bclip prompt <ID> [-o FILE] [--json]
+              Prints one archived prompt's full text exactly (the id from bclip prompts).
             """,
         CliCommands.Grep => """
             bclip grep <regex> [-i] [-n N] [-f FILTER] [-s SINCE] [--full] [--json]
@@ -242,11 +260,13 @@ public static class CliArguments
               forget <ID>           Delete an item and never record its content again
               wait                  Wait for the next copy and print it
               status                Version, item counts, capture statistics
+              prompts [WORDS...]    Prompts you sent to Claude Code and Codex (see: bclip help prompts)
+              prompt <ID>           Print one of those prompts exactly
 
             Options:
               -n, --limit N         Maximum items (default 20)        --offset N  Skip N items
               -f, --filter F        all | pinned | text | images | links | files | run | sharex | everything |
-                                    pwsh | cmd
+                                    pwsh | cmd | claude | codex
               -s, --since T         Used within T (30s, 10m, 2h, 7d, 2w) or since a date/time
               -r, --recent N        Target the N-th most recent item (1 = latest) instead of an ID
               -i, --ignore-case     grep: ignore case
@@ -255,6 +275,8 @@ public static class CliArguments
               -o, --out FILE        get/wait: write the content to FILE (required for images)
                   --plain           copy: plain text only
               -t, --timeout S       wait: seconds to wait (default 60)
+              -a, --agent A         prompts: claude | codex (default both)
+                  --all             prompts: every send instead of one row per prompt text
                   --json            Machine-readable output (for scripts and AI agents)
 
             Exit codes: 0 ok · 1 nothing found / timeout · 2 bad usage · 3 BetterClipboard not
@@ -291,6 +313,25 @@ public static class CliArguments
                 }
 
                 request = request with { Query = positional[0] };
+                break;
+
+            case CliCommands.Prompts:
+                // Words are optional: without them the newest prompts are listed.
+                if (positional.Count > 0)
+                {
+                    request = request with { Query = string.Join(' ', positional) };
+                }
+
+                break;
+
+            case CliCommands.Prompt:
+                if (positional.Count != 1
+                    || !long.TryParse(positional[0], NumberStyles.None, CultureInfo.InvariantCulture, out long promptId) || promptId <= 0)
+                {
+                    return Fail("prompt needs one prompt id (the numbers shown by bclip prompts).");
+                }
+
+                request = request with { Id = promptId };
                 break;
 
             case CliCommands.Put:
@@ -348,7 +389,7 @@ public static class CliArguments
                 case "--filter":
                     if (!CliCommandProcessor.TryParseFilter(value, out _))
                     {
-                        return Fail($"Unknown filter '{value}' (use all, pinned, text, images, links, files, run, sharex, everything, pwsh or cmd).");
+                        return Fail($"Unknown filter '{value}' (use all, pinned, text, images, links, files, run, sharex, everything, pwsh, cmd, claude or codex).");
                     }
 
                     request = request with { Filter = value!.Trim().ToLowerInvariant() };
@@ -372,6 +413,17 @@ public static class CliArguments
                     break;
                 case "--plain":
                     request = request with { PlainText = true };
+                    break;
+                case "--agent":
+                    if (!Prompts.PromptAgents.TryParse(value, out var agent))
+                    {
+                        return Fail($"Unknown agent '{value}' (use claude or codex).");
+                    }
+
+                    request = request with { Agent = Prompts.PromptAgents.WireName(agent) };
+                    break;
+                case "--all":
+                    request = request with { AllSends = true };
                     break;
                 case "--out" or "--json":
                     break; // client-side only, handled below
@@ -442,6 +494,7 @@ public static class CliArguments
         "-o" => "--out",
         "-t" => "--timeout",
         "-i" => "--ignore-case",
+        "-a" => "--agent",
         _ => name,
     };
 

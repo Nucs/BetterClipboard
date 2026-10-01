@@ -66,6 +66,24 @@ public enum ClipFilter
     /// </summary>
     /// <remarks>The commands read from cmd windows (and kept after they closed) are not history entries.</remarks>
     Cmd = 10,
+
+    /// <summary>
+    /// The stored half of the panel's Claude tab: prompts pasted, copied or kept from the tab
+    /// (<see cref="Model.ClipOrigin.ClaudeCode"/>, or a row such a keep bumped), and anything Claude Code itself put on the
+    /// clipboard (source app "Claude Code": its executable describes itself so).
+    /// </summary>
+    /// <remarks>
+    /// The tab also lists every prompt in the prompt archive; those are not history entries, so this filter alone (the
+    /// command line's <c>-f claude</c>) never returns them — <c>bclip prompts</c> does.
+    /// </remarks>
+    ClaudeCode = 11,
+
+    /// <summary>
+    /// The stored half of the panel's Codex tab: prompts pasted, copied or kept from the tab
+    /// (<see cref="Model.ClipOrigin.Codex"/>, or a row such a keep bumped, whose source app became "Codex").
+    /// </summary>
+    /// <remarks>The archived prompts are not history entries (see <see cref="ClaudeCode"/>).</remarks>
+    Codex = 12,
 }
 
 /// <summary>

@@ -41,6 +41,15 @@ public static class CliCommands
 
     /// <summary>Version, counts and capture statistics.</summary>
     public const string Status = "status";
+
+    /// <summary>
+    /// Prompts sent to Claude Code and Codex, from the prompt archive (not history items), newest first — one row per
+    /// distinct text unless <see cref="CliRequest.AllSends"/>.
+    /// </summary>
+    public const string Prompts = "prompts";
+
+    /// <summary>One archived prompt's full text, exactly (by the id <see cref="Prompts"/> shows).</summary>
+    public const string Prompt = "prompt";
 }
 
 /// <summary>Machine-readable error categories in <see cref="CliResponse.ErrorCode"/> (stable across versions).</summary>
@@ -115,6 +124,12 @@ public sealed record CliRequest
 
     /// <summary><c>wait</c>: seconds to wait for a new copy (server default 60, clamped to 1–3600).</summary>
     public int? TimeoutSeconds { get; init; }
+
+    /// <summary><c>prompts</c>: <c>claude</c> or <c>codex</c> (<see cref="Prompts.PromptAgents.WireName"/>); <see langword="null"/> = both.</summary>
+    public string? Agent { get; init; }
+
+    /// <summary><c>prompts</c>: one row per send (with its own time, session and folder) instead of one per distinct text.</summary>
+    public bool AllSends { get; init; }
 }
 
 /// <summary>The server's answer to one <see cref="CliRequest"/>.</summary>
@@ -146,6 +161,9 @@ public sealed record CliResponse
 
     /// <summary><c>grep</c>: how many items were scanned (tells a caller whether history was searched exhaustively).</summary>
     public int? Scanned { get; init; }
+
+    /// <summary><c>prompts</c> (and <c>prompt</c>, with its one prompt): archived prompts, newest send first.</summary>
+    public IReadOnlyList<CliPrompt>? Prompts { get; init; }
 
     /// <summary>Creates a failure response.</summary>
     /// <param name="code">One of <see cref="CliErrorCodes"/>.</param>
@@ -180,8 +198,10 @@ public sealed record CliItem
 
     /// <summary>
     /// <c>copied</c> (seen live), <c>windows-history</c> or <c>windows-pinned</c> (imported from Win+V), <c>sharex</c>
-    /// (a ShareX screenshot), <c>run</c> (a Win+R run seen live) or <c>run-history</c> (a command Windows' Win+R
-    /// history still held when it was first read). The origin is where the item was first created from.
+    /// (a ShareX screenshot), <c>run</c> (a Win+R run seen live), <c>run-history</c> (a command Windows' Win+R
+    /// history still held when it was first read), <c>everything</c>, <c>powershell</c> or <c>cmd</c> (pasted or kept from
+    /// the panel's Everything, Pwsh or Cmd tab), <c>claude</c> or <c>codex</c> (a prompt pasted or kept from the panel's
+    /// Claude or Codex tab). The origin is where the item was first created from.
     /// </summary>
     public string Origin { get; init; } = string.Empty;
 
@@ -221,6 +241,49 @@ public sealed record CliItem
 
     /// <summary><c>grep</c>: the matching lines.</summary>
     public IReadOnlyList<CliMatch>? Matches { get; init; }
+}
+
+/// <summary>
+/// One archived prompt as seen by <c>bclip prompts</c>: a prompt sent to Claude Code or Codex, read from the agent's own files
+/// into the encrypted prompt archive (CLAUDE.md §2.21). Not a history item: its id is the archive's, for <c>bclip prompt ID</c>.
+/// </summary>
+public sealed record CliPrompt
+{
+    /// <summary>The archive id of this send (in distinct mode: of the newest send of the text); pass it to <c>bclip prompt</c>.</summary>
+    public long Id { get; init; }
+
+    /// <summary><c>claude</c> or <c>codex</c>.</summary>
+    public string Agent { get; init; } = string.Empty;
+
+    /// <summary>Display preview (first lines, up to 1000 characters).</summary>
+    public string Preview { get; init; } = string.Empty;
+
+    /// <summary>The full text when requested with <see cref="CliRequest.Full"/> (always for <c>bclip prompt</c>).</summary>
+    public string? Text { get; init; }
+
+    /// <summary>When it was (last) sent.</summary>
+    public DateTimeOffset LastSent { get; init; }
+
+    /// <summary>When the text was first sent (equal to <see cref="LastSent"/> for one send).</summary>
+    public DateTimeOffset FirstSent { get; init; }
+
+    /// <summary>How often the text was sent (1 per row with <c>--all</c>).</summary>
+    public int Sends { get; init; }
+
+    /// <summary>The working folder of the (newest) send, when the agent recorded one.</summary>
+    public string? Project { get; init; }
+
+    /// <summary>The agent's session (Claude Code) or thread (Codex) id of the (newest) send, when known.</summary>
+    public string? Session { get; init; }
+
+    /// <summary>Images attached to the (newest) send; omitted when none (their pixels are not archived).</summary>
+    public int? Images { get; init; }
+
+    /// <summary>Whether it is a slash command (<c>/model</c>) rather than a prompt for the model.</summary>
+    public bool Command { get; init; }
+
+    /// <summary>The full text's length in characters.</summary>
+    public int Length { get; init; }
 }
 
 /// <summary>One matching line found by <c>grep</c>.</summary>
@@ -284,6 +347,12 @@ public sealed record CliStatus
 
     /// <summary>Whether live capture is paused.</summary>
     public bool CapturePaused { get; init; }
+
+    /// <summary>
+    /// Prompts in the prompt archive (one per send, Claude Code and Codex together; 0 from servers that predate it). They
+    /// are not history items: list them with <c>bclip prompts</c>.
+    /// </summary>
+    public long Prompts { get; init; }
 
     /// <summary>Clipboard listener accounting since the app started (see the app's Settings › Capture reliability).</summary>
     public CliCaptureStats? Capture { get; init; }

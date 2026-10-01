@@ -299,6 +299,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return;
             }
 
+            if (IsPromptView)
+            {
+                // A prompt tab: kept prompts, then the archive one card per text, paged (FlyoutViewModel.Prompts.cs).
+                await ReloadPromptsAsync(cancellation.Token);
+                return;
+            }
+
             if (IsEverythingView)
             {
                 // Two bounded lists merged (stored entries, Everything's picks): no paging.
@@ -387,6 +394,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
         var token = queryCancellation?.Token ?? CancellationToken.None;
         try
         {
+            if (IsPromptView)
+            {
+                // The archive pages by its own offset (the kept prompts above it are loaded once).
+                await LoadMorePromptsAsync(token);
+                return;
+            }
+
             var entries = await controller.History.QueryAsync(CreateQuery(loaded), token);
             if (token.IsCancellationRequested)
             {
@@ -517,6 +531,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
         // Run tab has room to say so). In a shell tab Delete hides a command rather than deleting anything.
         KeyHint = value == ClipFilter.Run ? RunKeyHint
             : value is ClipFilter.PowerShell or ClipFilter.Cmd ? ShellKeyHint
+            : value is ClipFilter.ClaudeCode or ClipFilter.Codex ? PromptKeyHint
             : DefaultKeyHint;
         if (!suppressReload)
         {
@@ -612,6 +627,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
         SearchPlaceholder = groups.Count > 0 ? $"Search in {GroupViewText.ShortName(groups)}…"
             : IsEverythingView ? EverythingSearchPlaceholder
             : IsShellView ? ShellSearchPlaceholder
+            : IsPromptView ? PromptSearchPlaceholder(CurrentAgent)
             : DefaultSearchPlaceholder;
     }
 
@@ -738,6 +754,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
         if (IsShellView)
         {
             UpdateShellEmptyState();
+            return;
+        }
+
+        if (IsPromptView)
+        {
+            UpdatePromptEmptyState();
             return;
         }
 
@@ -885,6 +907,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
             if (IsShellView)
             {
                 StatusText = ShellStatusText();
+                return;
+            }
+
+            if (IsPromptView)
+            {
+                StatusText = PromptStatusText();
                 return;
             }
 

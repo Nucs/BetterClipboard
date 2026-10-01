@@ -170,6 +170,7 @@ public sealed partial class ClipboardFlyout : Window
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
+        controller.PromptsStatusChanged += OnPromptsStatusChanged;
         controller.GroupsChanged += OnGroupsChanged;
         ViewModel.GroupsReloaded += (_, _) => RebuildGroupButtons();
 
@@ -249,6 +250,7 @@ public sealed partial class ClipboardFlyout : Window
             UpdateEverythingTab();
             UpdateRunTab(applyWidth: false);
             UpdateShellTabs(applyWidth: false);
+            UpdatePromptTabs(applyWidth: false);
             SelectFilter(ClipFilter.All);
 
             // With the tabs' visibility settled, the window gets the width they need (placed below as a whole).
@@ -330,6 +332,7 @@ public sealed partial class ClipboardFlyout : Window
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
+        controller.PromptsStatusChanged -= OnPromptsStatusChanged;
         controller.GroupsChanged -= OnGroupsChanged;
         Close();
     }
@@ -815,6 +818,12 @@ public sealed partial class ClipboardFlyout : Window
             {
                 _ = RescanRunTabAsync();
             }
+
+            // Entering a prompt tab catches its archive up: the poll may not have looked at a Codex thread just written.
+            if (filter is ClipFilter.ClaudeCode or ClipFilter.Codex)
+            {
+                _ = CatchUpPromptTabAsync(filter == ClipFilter.Codex ? Core.Prompts.PromptAgent.Codex : Core.Prompts.PromptAgent.ClaudeCode);
+            }
         }
     }
 
@@ -916,6 +925,11 @@ public sealed partial class ClipboardFlyout : Window
             return ShowCommandMenu(item, target, position);
         }
 
+        if (item.Prompt is not null)
+        {
+            return ShowPromptMenu(item, target, position);
+        }
+
         var menu = new MenuFlyout();
         menu.Items.Add(MenuItem("Paste", "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
         if (item.Entry.HasRichFormats || item.Kind == ClipKind.Files)
@@ -993,7 +1007,8 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// Deletes an item, keeping the selection on its neighbor. A file opened in Everything is hidden instead (until
-    /// it is opened there again): it is not in the history, and nothing in Everything is ever changed.
+    /// it is opened there again): it is not in the history, and nothing in Everything is ever changed. An archived prompt
+    /// is deleted from the prompt archive until it is sent again (the agent's own history is never changed).
     /// </summary>
     /// <param name="item">The card.</param>
     private void DeleteItem(ClipItemViewModel item)
@@ -1024,6 +1039,21 @@ public sealed partial class ClipboardFlyout : Window
         {
             // A kept command deleted in its tab: hide the live one too, or it would take the card's place next time.
             _ = controller.HideCommandAsync(live.Shell, live.ContentHash, live.Count);
+        }
+
+        if (item.Prompt is { } prompt)
+        {
+            // An archived prompt: BetterClipboard's own archive, so Delete really deletes (every send of the text, until it
+            // is sent again); the agent's history is never changed. No history event announces it: take the card out here.
+            ViewModel.RemoveItem(item);
+            _ = controller.DeletePromptAsync(prompt.Agent, prompt.TextHash);
+            return;
+        }
+
+        if (ViewModel.IsKeptPrompt(item))
+        {
+            // A kept prompt deleted in its tab: its archived sends go too, or they would take the card's place next time.
+            _ = controller.DeletePromptAsync(ViewModel.CurrentAgent, item.Entry.ContentHash);
         }
 
         if (ViewModel.IsEverythingView && item.Kind == ClipKind.Files)
@@ -1092,6 +1122,9 @@ public sealed partial class ClipboardFlyout : Window
                 : item.Command is not null
                 ? "It leaves this tab, and BetterClipboard never records this command again, whichever app copies it. " +
                   "The shell's own history is not changed. To allow it again, use Settings › Forgotten forever."
+                : item.Prompt is not null
+                ? "It leaves this tab and the prompt archive, and BetterClipboard never records or archives this text again, " +
+                  "whichever app copies it. The agent's own history is not changed. To allow it again, use Settings › Forgotten forever."
                 : "It is deleted now, and BetterClipboard never records it again, whichever app copies it. " +
                   "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.",
             Opacity = 0.8,
@@ -1137,6 +1170,14 @@ public sealed partial class ClipboardFlyout : Window
             // Same for a shell command: its stored copies (if any) leave through the Removed events.
             ViewModel.RemoveItem(item);
             await controller.ForgetCommandAsync(command);
+            return;
+        }
+
+        if (item.Prompt is { } prompt)
+        {
+            // An archived prompt: the store deletes its archived sends with the text; stored copies leave through Removed.
+            ViewModel.RemoveItem(item);
+            await controller.ForgetPromptAsync(prompt);
             return;
         }
 
@@ -1201,8 +1242,8 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// Pastes (or only copies) a card: a stored entry is replayed; a file opened in Everything pastes the file (or its
-    /// path) and is recorded like a copy; a shell tab's live command pastes its text (plain either way) and is recorded
-    /// too.
+    /// path) and is recorded like a copy; a shell tab's live command, or a prompt tab's archived prompt, pastes its text
+    /// (plain either way) and is recorded too.
     /// </summary>
     /// <param name="item">The card.</param>
     /// <param name="plainText">Plain text / the path as text.</param>
@@ -1211,17 +1252,19 @@ public sealed partial class ClipboardFlyout : Window
     private Task PasteItemAsync(ClipItemViewModel item, bool plainText, bool paste = true) =>
         item.Pick is { } pick ? controller.PastePickAsync(pick, plainText, paste)
         : item.Command is { } command ? controller.PasteCommandAsync(command, paste)
+        : item.Prompt is { } prompt ? controller.PastePromptAsync(prompt, paste)
         : controller.PasteAsync(item.Entry, plainText, paste);
 
     /// <summary>
-    /// Ctrl+P / "Pin": toggles a stored entry's pin; a file opened in Everything, or a shell tab's live command, is kept
-    /// in the history as a pinned entry, which then replaces it in the tab.
+    /// Ctrl+P / "Pin": toggles a stored entry's pin; a file opened in Everything, a shell tab's live command or a prompt
+    /// tab's archived prompt is kept in the history as a pinned entry, which then replaces it in the tab.
     /// </summary>
     /// <param name="item">The card.</param>
     /// <returns>A task completing when stored.</returns>
     private Task TogglePinAsync(ClipItemViewModel item) =>
         item.Pick is { } pick ? controller.KeepPickAsync(pick, pin: true)
         : item.Command is { } command ? controller.KeepCommandAsync(command, pin: true)
+        : item.Prompt is { } prompt ? controller.KeepPromptAsync(prompt, pin: true)
         : controller.History.SetPinnedAsync(item.Id, !item.IsPinned);
 
     /// <summary>Keeps a file opened in Everything and adds it to a group (the Groups submenu and drops of a pick).</summary>
@@ -1480,6 +1523,7 @@ public sealed partial class ClipboardFlyout : Window
             // Everything is in no group yet: checking one keeps it in the history first.
             toggle.Click += (_, _) => _ = item.Pick is { } pick ? KeepAndAddToGroupAsync(pick, group)
                 : item.Command is { } command ? KeepCommandAndAddToGroupAsync(command, group)
+                : item.Prompt is { } prompt ? KeepPromptAndAddToGroupAsync(prompt, group)
                 : toggle.IsChecked ? AddToGroupAsync([item.Id], group) : RemoveFromGroupAsync(item, group);
             submenu.Items.Add(toggle);
         }
@@ -1792,6 +1836,12 @@ public sealed partial class ClipboardFlyout : Window
                 {
                     // A shell tab's live command: kept first, like a pick.
                     stored.Add(kept.Id);
+                }
+                else if (ViewModel.Items.FirstOrDefault(i => i.Id == id)?.Prompt is { } prompt
+                         && await controller.KeepPromptAsync(prompt, pin: false) is { } keptPrompt)
+                {
+                    // An archived prompt: kept first, like a shell command.
+                    stored.Add(keptPrompt.Id);
                 }
             }
 

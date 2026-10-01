@@ -288,6 +288,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             ShowEverythingTab = settings.ShowEverythingTab;
             ShowPowerShellTab = settings.ShowPowerShellTab;
             ShowCmdTab = settings.ShowCmdTab;
+            KeepClaudeCodePrompts = settings.KeepClaudeCodePrompts;
+            KeepCodexPrompts = settings.KeepCodexPrompts;
             RecordRunHistory = settings.RecordRunHistory;
             RefreshHotkeyStatus();
             RefreshCommandLineStatus();
@@ -295,6 +297,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RefreshEverythingStatus();
             RefreshRunHistoryStatus();
             RefreshShellHistoryStatus();
+            RefreshPromptsStatus();
         }
         finally
         {

@@ -50,6 +50,7 @@ public sealed partial class SettingsWindow : Window
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
+        controller.PromptsStatusChanged += OnPromptsStatusChanged;
         controller.ForgottenChanged += OnForgottenChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
@@ -68,6 +69,7 @@ public sealed partial class SettingsWindow : Window
         ViewModel.RefreshEverythingStatus();
         ViewModel.RefreshRunHistoryStatus();
         ViewModel.RefreshShellHistoryStatus();
+        ViewModel.RefreshPromptsStatus();
 
         // Also refreshes the stats line, which counts the forgotten items.
         _ = ViewModel.RefreshForgottenAsync();
@@ -102,6 +104,7 @@ public sealed partial class SettingsWindow : Window
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged -= OnShellHistoryStatusChanged;
+        controller.PromptsStatusChanged -= OnPromptsStatusChanged;
         controller.ForgottenChanged -= OnForgottenChanged;
         controller.Settings.Changed -= OnSettingsChanged;
     }
@@ -155,6 +158,50 @@ public sealed partial class SettingsWindow : Window
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
     private void OnShellHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshShellHistoryStatus();
+
+    /// <summary>A prompt archive started, stopped, imported or stored prompts: refresh both prompt cards.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="agent">The agent whose archive changed (both cards are cheap to refresh).</param>
+    private void OnPromptsStatusChanged(object? sender, Core.Prompts.PromptAgent agent) => ViewModel.RefreshPromptsStatus();
+
+    /// <summary>"Delete stored prompts…" on the Claude Code card, after confirmation.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void DeleteClaudeCodePrompts_Click(object sender, RoutedEventArgs e) => _ = DeleteStoredPromptsAsync(Core.Prompts.PromptAgent.ClaudeCode);
+
+    /// <summary>"Delete stored prompts…" on the Codex card, after confirmation.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void DeleteCodexPrompts_Click(object sender, RoutedEventArgs e) => _ = DeleteStoredPromptsAsync(Core.Prompts.PromptAgent.Codex);
+
+    /// <summary>
+    /// Asks before deleting an agent's prompt archive — it cannot be undone, and prompts the agent has pruned meanwhile are
+    /// gone for good — and says what happens next while the switch is on (what the agent still has is read again).
+    /// </summary>
+    /// <param name="agent">The agent.</param>
+    /// <returns>A task completing when done (never throws).</returns>
+    private async Task DeleteStoredPromptsAsync(Core.Prompts.PromptAgent agent)
+    {
+        var name = Core.Prompts.PromptAgents.NameOf(agent);
+        long count = agent == Core.Prompts.PromptAgent.Codex ? ViewModel.CodexPromptCount : ViewModel.ClaudeCodePromptCount;
+        bool on = agent == Core.Prompts.PromptAgent.Codex ? ViewModel.KeepCodexPrompts : ViewModel.KeepClaudeCodePrompts;
+        try
+        {
+            if (await ConfirmAsync(
+                    $"Delete {count:N0} stored {name} prompt{(count == 1 ? string.Empty : "s")}?",
+                    $"BetterClipboard's copy is deleted; {name}'s own files are not changed. Prompts {name} no longer has are gone for good."
+                    + (on ? $" The switch is on, so what {name} still has is read again right away — turn it off first to keep them out." : string.Empty),
+                    "Delete"))
+            {
+                await ViewModel.DeleteStoredPromptsAsync(agent);
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void's caller has nothing to catch it: a failure here must not crash the app.
+            Core.Diagnostics.AppLog.Warn($"Deleting the stored {name} prompts failed: {ex.Message}");
+        }
+    }
 
     /// <summary>The bclip pipe started, stopped or failed: refresh its card.</summary>
     /// <param name="sender">Controller.</param>

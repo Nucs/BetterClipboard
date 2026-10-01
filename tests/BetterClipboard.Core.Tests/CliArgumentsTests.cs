@@ -34,6 +34,7 @@ public sealed class CliArgumentsTests
         [
             CliCommands.List, CliCommands.Search, CliCommands.Grep, CliCommands.Get, CliCommands.Copy, CliCommands.Put,
             CliCommands.Pin, CliCommands.Unpin, CliCommands.Delete, CliCommands.Forget, CliCommands.Wait, CliCommands.Status,
+            CliCommands.Prompts, CliCommands.Prompt,
         ];
         foreach (var command in commands)
         {

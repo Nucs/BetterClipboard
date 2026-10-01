@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Prompts;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Storage;
@@ -120,6 +121,8 @@ public sealed class CliCommandProcessor
                 CliCommands.Forget => await ForgetAsync(request, cancellationToken).ConfigureAwait(false),
                 CliCommands.Wait => await WaitAsync(request, cancellationToken).ConfigureAwait(false),
                 CliCommands.Status => await StatusAsync().ConfigureAwait(false),
+                CliCommands.Prompts => await PromptsAsync(request, cancellationToken).ConfigureAwait(false),
+                CliCommands.Prompt => await PromptAsync(request).ConfigureAwait(false),
                 _ => CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown command '{request.Command}'. Run 'bclip help'."),
             };
         }
@@ -163,6 +166,8 @@ public sealed class CliCommandProcessor
                 ClipOrigin.Everything => "everything",
                 ClipOrigin.PowerShell => "powershell",
                 ClipOrigin.Cmd => "cmd",
+                ClipOrigin.ClaudeCode => "claude",
+                ClipOrigin.Codex => "codex",
                 _ => "copied",
             },
             FirstCopied = entry.CreatedUtc,
@@ -209,6 +214,8 @@ public sealed class CliCommandProcessor
             "everything" => ClipFilter.Everything,
             "pwsh" or "powershell" => ClipFilter.PowerShell,
             "cmd" => ClipFilter.Cmd,
+            "claude" or "claude-code" => ClipFilter.ClaudeCode,
+            "codex" => ClipFilter.Codex,
             _ => (ClipFilter)(-1),
         };
         return Enum.IsDefined(filter);
@@ -548,6 +555,7 @@ public sealed class CliCommandProcessor
     private async Task<CliResponse> StatusAsync()
     {
         var stats = await history.GetStatsAsync().ConfigureAwait(false);
+        var prompts = await history.GetPromptStatsAsync(null).ConfigureAwait(false);
         return new CliResponse
         {
             Ok = true,
@@ -560,7 +568,92 @@ public sealed class CliCommandProcessor
                 Forgotten = stats.ForgottenCount,
                 CapturePaused = settings().IsCapturePaused,
                 Capture = captureStats(),
+                Prompts = prompts.Sends,
             },
+        };
+    }
+
+    /// <summary>
+    /// <c>prompts</c>: a page of the prompt archive (both agents or one), newest first, narrowed by the search words like
+    /// <c>search</c> (the panel's substring search). Not history items: their ids are the archive's.
+    /// </summary>
+    /// <param name="request">Agent, words, paging, <c>--since</c>, <c>--all</c>, <c>--full</c>.</param>
+    /// <param name="cancellationToken">Cancellation (client hung up).</param>
+    /// <returns>The prompts; <see cref="CliErrorCodes.NotFound"/> when words were given and nothing matched.</returns>
+    private async Task<CliResponse> PromptsAsync(CliRequest request, CancellationToken cancellationToken)
+    {
+        PromptAgent? agent = null;
+        if (request.Agent is not null)
+        {
+            if (!PromptAgents.TryParse(request.Agent, out var parsed))
+            {
+                return CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown agent '{request.Agent}' (use claude or codex).");
+            }
+
+            agent = parsed;
+        }
+
+        var rows = await history.QueryPromptsAsync(new PromptQuery
+        {
+            Agent = agent,
+            SearchText = request.Query,
+            Distinct = !request.AllSends,
+            Offset = Math.Max(0, request.Offset ?? 0),
+            Limit = Math.Clamp(request.Limit ?? DefaultLimit, 1, 1000),
+            SentSince = request.Since,
+        }, includeText: request.Full, cancellationToken).ConfigureAwait(false);
+        if (rows.Count == 0 && !string.IsNullOrWhiteSpace(request.Query))
+        {
+            return CliResponse.Fail(CliErrorCodes.NotFound, $"No prompt contains \"{request.Query}\".");
+        }
+
+        return new CliResponse { Ok = true, Prompts = rows.Select(ToPrompt).ToList() };
+    }
+
+    /// <summary><c>prompt</c>: one archived prompt's full text, exactly (printed like <c>get</c>).</summary>
+    /// <param name="request">The prompt id.</param>
+    /// <returns>The text as content, plus the prompt itself (for <c>--json</c>).</returns>
+    private async Task<CliResponse> PromptAsync(CliRequest request)
+    {
+        if (request.Id is not { } id || id <= 0)
+        {
+            return CliResponse.Fail(CliErrorCodes.BadRequest, "prompt needs a prompt id (the numbers shown by bclip prompts).");
+        }
+
+        if (await history.GetPromptAsync(id).ConfigureAwait(false) is not { Text: { } text } prompt)
+        {
+            return CliResponse.Fail(CliErrorCodes.NotFound, $"No prompt {id} (deleted, or not an id from bclip prompts).");
+        }
+
+        return new CliResponse
+        {
+            Ok = true,
+            Prompts = [ToPrompt(prompt)],
+            Content = new CliContent { Format = "text", MediaType = "text/plain", Text = text, Bytes = Encoding.UTF8.GetByteCount(text) },
+        };
+    }
+
+    /// <summary>Converts an archive row into its wire form.</summary>
+    /// <param name="prompt">The row.</param>
+    /// <returns>The wire prompt.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="prompt"/> is <see langword="null"/>.</exception>
+    public static CliPrompt ToPrompt(PromptSummary prompt)
+    {
+        ArgumentNullException.ThrowIfNull(prompt);
+        return new CliPrompt
+        {
+            Id = prompt.Id,
+            Agent = PromptAgents.WireName(prompt.Agent),
+            Preview = prompt.Preview,
+            Text = prompt.Text,
+            LastSent = prompt.LastSentUtc,
+            FirstSent = prompt.FirstSentUtc,
+            Sends = prompt.Sends,
+            Project = prompt.Project,
+            Session = prompt.SessionId,
+            Images = prompt.ImageCount > 0 ? prompt.ImageCount : null,
+            Command = prompt.IsCommand,
+            Length = prompt.TextLength,
         };
     }
 
@@ -712,5 +805,5 @@ public sealed class CliCommandProcessor
     /// <param name="filter">The name given.</param>
     /// <returns>The response.</returns>
     private static CliResponse BadFilter(string? filter) =>
-        CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown filter '{filter}' (use all, pinned, text, images, links, files, run, sharex or everything).");
+        CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown filter '{filter}' (use all, pinned, text, images, links, files, run, sharex, everything, pwsh, cmd, claude or codex).");
 }

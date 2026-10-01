@@ -23,7 +23,7 @@ namespace BetterClipboard.Core.Services;
 /// producer cannot back-pressure the listener.
 /// </para>
 /// </remarks>
-public sealed class ClipHistoryService : IAsyncDisposable
+public sealed partial class ClipHistoryService : IAsyncDisposable
 {
     private readonly ClipStore store;
     private readonly IImageAnalyzer? imageAnalyzer;
@@ -728,9 +728,9 @@ public sealed class ClipHistoryService : IAsyncDisposable
         // the user pausing for privacy expects nothing new to be recorded, whatever the channel. The commands
         // Windows already remembered (RunDialogHistory) are an import, like Windows' own clipboard history. A file
         // pasted, copied or kept from the Everything tab is a new event too: pause means nothing new is recorded. So is
-        // a command pasted, copied or kept from a shell tab (Pwsh, Cmd).
+        // a command pasted, copied or kept from a shell tab (Pwsh, Cmd), and a prompt from a prompt tab (Claude, Codex).
         bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX or ClipOrigin.RunDialog or ClipOrigin.Everything
-            or ClipOrigin.PowerShell or ClipOrigin.Cmd;
+            or ClipOrigin.PowerShell or ClipOrigin.Cmd or ClipOrigin.ClaudeCode or ClipOrigin.Codex;
         if (isNewEvent && rules.IsPaused)
         {
             return null;

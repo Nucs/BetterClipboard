@@ -261,6 +261,10 @@ public sealed partial class AppController
         // timer while that tab is on, through helper processes (AppController.Shells.cs).
         StartShellHistories();
 
+        // The prompt tabs (Claude, Codex): each agent's files are imported once, then followed byte by byte on a
+        // background-mode thread per agent (AppController.Prompts.cs).
+        StartPromptArchives();
+
         if (settings.Current.EnableCommandLine)
         {
             _ = SetCommandLineAsync(enabled: true);
@@ -303,6 +307,9 @@ public sealed partial class AppController
 
         // Same for PowerShell's history file (a profile may have just created it): the Pwsh tab follows in ms.
         RefreshPowerShellAvailability();
+
+        // And for the agents' prompts (an agent installed or first used meanwhile): the Claude and Codex tabs follow.
+        RefreshPromptAvailability();
         EnsureFlyout().ShowAt(context, Settings.Current.Placement);
     }
 
@@ -627,6 +634,9 @@ public sealed partial class AppController
         // The cmd reader writes its kept list through the history: stop it (a read in flight finishes) first.
         await DisposeShellHistoriesAsync();
 
+        // Same for the prompt archives: a file's checkpoint must only move with the prompts stored up to it.
+        await DisposePromptArchivesAsync();
+
         // Its reply window lives on its own thread; nothing it holds needs the history.
         everything?.Dispose();
         everything = null;
@@ -755,6 +765,12 @@ public sealed partial class AppController
             if (!exiting)
             {
                 await ApplyShellSettingsAsync(next);
+            }
+
+            // Idempotent too: an agent's archive reader starts (catching up from its checkpoints) or stops (the archive stays).
+            if (!exiting)
+            {
+                await ApplyPromptSettingsAsync(next);
             }
 
             if (next.ShowEverythingTab != (everything is not null) && !exiting)

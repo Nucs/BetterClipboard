@@ -15,6 +15,7 @@ redistribute the following components, each under its own license:
 | [WebView2 SDK](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3719.77/License) (`Microsoft.Web.WebView2.Core.dll`, `WebView2Loader.dll`) | A dependency of WinUI 3; BetterClipboard itself hosts no web content | BSD-3-Clause |
 | [Windows App SDK](https://github.com/microsoft/WindowsAppSDK) (Base, Foundation, InteractiveExperiences, WinUI, DWrite) | WinUI 3 user interface, DWriteCore text rendering | Windows App SDK license terms |
 | [Windows SDK](https://learn.microsoft.com/windows/apps/windows-sdk/) projection for .NET (`Microsoft.Windows.SDK.NET.dll`) | WinRT API definitions (Windows clipboard history import, imaging) | Windows SDK license terms |
+| [ZstdSharp](https://github.com/oleg-st/ZstdSharp) (`ZstdSharp.dll`, package ZstdSharp.Port) | zstd decompression of the Codex session files Codex compressed (`.jsonl.zst`) | MIT |
 
 The full license texts are available at the links above. Apache-2.0 components are redistributed
 unmodified. The Windows App SDK binaries come under Microsoft's license terms for the Windows App SDK (the
@@ -23,6 +24,8 @@ the MIT license on GitHub covers their source. The Windows SDK projection comes 
 [Windows SDK license terms](https://aka.ms/WinSDKLicenseURL).
 
 BetterClipboard also works with [ShareX](https://getsharex.com/), [Everything](https://www.voidtools.com/) by
-voidtools and [PowerShell](https://learn.microsoft.com/powershell/)'s command history. They are separate apps by
-their own makers, not part of the download, and BetterClipboard never changes their settings or data.
+voidtools, [PowerShell](https://learn.microsoft.com/powershell/)'s command history, and the prompt histories of
+[Claude Code](https://claude.com/product/claude-code) by Anthropic and [Codex](https://openai.com/codex/) by OpenAI.
+They are separate apps by their own makers, not part of the download, and BetterClipboard never changes their
+settings or data.
 *Settings › Third party* in the app lists all of the above with their official links.

@@ -182,6 +182,32 @@ public sealed record AppSettings
     /// </remarks>
     public bool ShowCmdTab { get; init; } = true;
 
+    /// <summary>
+    /// Keep every prompt you send to Claude Code in BetterClipboard's encrypted prompt archive, and show the panel's Claude
+    /// tab: newest first, searchable, one card per text with how often it was sent.
+    /// </summary>
+    /// <remarks>
+    /// On by default: Claude Code already keeps these prompts in plain text (<c>history.jsonl</c> in its config folder, pastes
+    /// beside it) and prunes them after its cleanup period; the encrypted copy adds no exposure and stops the loss. The
+    /// first activation imports what Claude Code still has; afterwards each new prompt is read the moment Claude Code writes
+    /// it (only the new bytes). Claude Code's files are never written. Pause capturing skips prompts sent while paused, and
+    /// "Ignored apps" (add "claude") stops the archive. Off stops reading and hides the tab; the archive stays until
+    /// Settings' "Delete stored prompts". The archive is not history: no retention prunes it, and only prompts you paste,
+    /// copy or keep from the tab become history entries.
+    /// </remarks>
+    public bool KeepClaudeCodePrompts { get; init; } = true;
+
+    /// <summary>
+    /// Keep every prompt you send to Codex (the app, the CLI, the IDE extension) in the encrypted prompt archive, and show
+    /// the panel's Codex tab.
+    /// </summary>
+    /// <remarks>
+    /// On by default, like <see cref="KeepClaudeCodePrompts"/>. Read from Codex's session files (the app writes nowhere
+    /// else) and its CLI history; threads spawned by agents, <c>codex exec</c> runs and MCP sessions are left out — their
+    /// prompts were written by programs. "Ignored apps" matches "codex".
+    /// </remarks>
+    public bool KeepCodexPrompts { get; init; } = true;
+
     /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
     /// <remarks>
     /// Starts out holding <see cref="KnownPasswordManagers.All"/>: <see cref="Normalize"/> merges every

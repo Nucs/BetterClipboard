@@ -31,6 +31,12 @@
     <!-- DPAPI (CryptProtectData) for sealing the database key to the Windows account. -->
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.12" />
 
+    <!--
+      zstd decoder (pure managed port, MIT) for Codex session files Codex compressed when cold (.jsonl.zst, CLAUDE.md
+      §2.21). .NET 10 ships no Zstandard stream; drop this when the BCL gains one.
+    -->
+    <PackageVersion Include="ZstdSharp.Port" Version="0.8.8" />
+
     <!-- Tests (Microsoft.Testing.Platform runner, see global.json) -->
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
   </ItemGroup>

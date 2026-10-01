@@ -2,6 +2,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Prompts;
 using BetterClipboard.Core.Shells;
 using Microsoft.Data.Sqlite;
 
@@ -84,6 +85,11 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// older build ignores the column, and entries it bumps keep their run time.
 /// </para>
 /// <para>
+/// <b>Prompt archive.</b> <c>prompts</c>, <c>prompt_files</c> and <c>prompt_tombstones</c> keep every prompt sent to Claude
+/// Code and Codex, read from the agents' own files, apart from the history (no retention, no "All" tab): see
+/// <c>ClipStore.Prompts.cs</c>. Added idempotently like the groups. "Forget forever" deletes archived prompts too.
+/// </para>
+/// <para>
 /// <b>Threading.</b> Every public method opens its own pooled connection, so the store may be used from
 /// any thread. WAL journaling lets the UI read while the history worker writes. Writers are expected to
 /// be serialized by <see cref="Services.ClipHistoryService"/>; concurrent writers are still correct
@@ -99,7 +105,7 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// <see cref="Security.HistoryKeyVault"/>); without a key the store is plaintext, which only tests use.
 /// </para>
 /// </remarks>
-public sealed class ClipStore
+public sealed partial class ClipStore
 {
     /// <summary>Current schema version, stored in <c>PRAGMA user_version</c>.</summary>
     public const int SchemaVersion = 1;
@@ -352,6 +358,7 @@ public sealed class ClipStore
         EnsureForgottenSchema(connection);
         EnsurePathCountColumn(connection);
         EnsureRunColumn(connection);
+        EnsurePromptsSchema(connection);
         transaction.Commit();
         ApplyDataFixups(connection);
         BackfillPathCounts(connection);
@@ -597,9 +604,10 @@ public sealed class ClipStore
             }
         }
 
-        // Everything picks and shell commands are stored only when the user pastes, copies or keeps one in the
-        // panel: as explicit as a copy.
-        if (capture.Origin is ClipOrigin.Captured or ClipOrigin.RunDialog or ClipOrigin.Everything or ClipOrigin.PowerShell or ClipOrigin.Cmd)
+        // Everything picks, shell commands and archived prompts are stored only when the user pastes, copies or keeps one
+        // in the panel: as explicit as a copy.
+        if (capture.Origin is ClipOrigin.Captured or ClipOrigin.RunDialog or ClipOrigin.Everything or ClipOrigin.PowerShell or ClipOrigin.Cmd
+            or ClipOrigin.ClaudeCode or ClipOrigin.Codex)
         {
             using var untomb = Command(connection, "DELETE FROM deleted_hashes WHERE content_hash = $hash;");
             untomb.Parameters.AddWithValue("$hash", hash);
@@ -1173,6 +1181,13 @@ public sealed class ClipStore
             }
         }
 
+        // The prompt archive holds texts too (ClipStore.Prompts.cs): a forgotten prompt leaves its Claude or Codex tab now,
+        // not only the history.
+        if (textFingerprint is not null)
+        {
+            DeleteForgottenPrompts(connection, textFingerprint);
+        }
+
         var item = ReadForgotten(connection, fingerprint)
             ?? throw new InvalidOperationException("The forgotten entry vanished inside its own transaction.");
         transaction.Commit();
@@ -1286,6 +1301,9 @@ public sealed class ClipStore
                 delete.ExecuteNonQuery();
             }
         }
+
+        // An archived prompt is forgotten with its text (a prompt tab's "Forget forever" ends up here).
+        DeleteForgottenPrompts(connection, fingerprint);
 
         var item = ReadForgotten(connection, fingerprint)
             ?? throw new InvalidOperationException("The forgotten entry vanished inside its own transaction.");
@@ -1819,6 +1837,12 @@ public sealed class ClipStore
         // a terminal belong to the terminal's window (Windows Terminal, the console host), never to the shell.
         ClipFilter.PowerShell => $"(c.origin = {(int)ClipOrigin.PowerShell} OR c.source_app_name = '{ShellSources.PowerShellName}')",
         ClipFilter.Cmd => $"(c.origin = {(int)ClipOrigin.Cmd} OR c.source_app_name = '{ShellSources.CmdName}')",
+
+        // The stored halves of the prompt tabs: prompts kept from them, and — for Claude Code, whose claude.exe describes
+        // itself as "Claude Code" — whatever Claude Code put on the clipboard itself (its /copy), like the Everything tab's
+        // copies made in Everything. Codex's executables carry no description, so only keeps produce "Codex".
+        ClipFilter.ClaudeCode => $"(c.origin = {(int)ClipOrigin.ClaudeCode} OR c.source_app_name = '{PromptAgents.ClaudeCodeName}')",
+        ClipFilter.Codex => $"(c.origin = {(int)ClipOrigin.Codex} OR c.source_app_name = '{PromptAgents.CodexName}')",
         _ => null,
     };
 

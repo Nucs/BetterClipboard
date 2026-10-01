@@ -78,6 +78,11 @@ public static class CliOutput
                 return response.Item?.Text ?? response.Item?.Preview ?? string.Empty;
             case CliCommands.Status when response.Status is { } status:
                 return RenderStatus(status);
+            case CliCommands.Prompts:
+                return RenderPrompts(response.Prompts ?? [], now);
+            case CliCommands.Prompt:
+                // The prompt verbatim, like get: bclip prompt 12 > file reproduces it exactly.
+                return response.Content?.Text ?? string.Empty;
             default:
                 // Confirmations ("Pinned item 5.") are messages, not content: always a complete line.
                 return string.IsNullOrEmpty(response.Message) ? string.Empty : response.Message + "\n";
@@ -109,6 +114,43 @@ public static class CliOutput
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Renders archived prompts as aligned columns: id, agent, age of the (last) send, project folder, how often the text was
+    /// sent (<c>×3</c>), first line; with <c>--full</c>, each prompt's text indented below it.
+    /// </summary>
+    /// <param name="prompts">The prompts.</param>
+    /// <param name="now">Clock.</param>
+    /// <returns>The table.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="prompts"/> is <see langword="null"/>.</exception>
+    public static string RenderPrompts(IReadOnlyList<CliPrompt> prompts, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(prompts);
+        var builder = new StringBuilder();
+        foreach (var prompt in prompts)
+        {
+            var age = RelativeTimeFormatter.Format(prompt.LastSent, now, culture: CultureInfo.InvariantCulture);
+            var project = ProjectFolder(prompt.Project);
+            var sends = prompt.Sends > 1 ? "×" + prompt.Sends.ToString(CultureInfo.InvariantCulture) : string.Empty;
+            builder.Append(CultureInfo.InvariantCulture, $"{prompt.Id,7}  {prompt.Agent,-6} {Cut(age, 14),-14} {Cut(project, 18),-18} {sends,-5} {OneLine(prompt.Preview, PreviewWidth - 6)}").Append('\n');
+            if (prompt.Text is { } text)
+            {
+                builder.Append(Indent(text)).Append('\n');
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>The last folder of a project path (both separators: Codex may record a POSIX-style folder), or empty.</summary>
+    /// <param name="project">The path, or <see langword="null"/>.</param>
+    /// <returns>The folder name.</returns>
+    private static string ProjectFolder(string? project)
+    {
+        var trimmed = (project ?? string.Empty).TrimEnd('\\', '/');
+        int cut = trimmed.LastIndexOfAny(['\\', '/']);
+        return cut >= 0 ? trimmed[(cut + 1)..] : trimmed;
     }
 
     /// <summary>Renders grep results as <c>id:line: text</c>.</summary>
@@ -144,6 +186,12 @@ public static class CliOutput
         if (status.Forgotten > 0)
         {
             builder.Append(CultureInfo.InvariantCulture, $"Forgotten: {status.Forgotten:N0} item{(status.Forgotten == 1 ? string.Empty : "s")} never recorded (Settings › Forgotten forever)\n");
+        }
+
+        // Only when the prompt archive holds something (it is not part of the history counts above).
+        if (status.Prompts > 0)
+        {
+            builder.Append(CultureInfo.InvariantCulture, $"Prompts:  {status.Prompts:N0} sent to Claude Code and Codex, archived (bclip prompts)\n");
         }
 
         if (status.Capture is { } c)

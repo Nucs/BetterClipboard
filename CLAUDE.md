@@ -210,7 +210,11 @@ Reproduction probes that produced the verified facts live in
 [`probe_screenshots.cs`](tools/probes/probe_screenshots.cs) (Win+PrtScn and Snipping Tool's auto-save: folders, names,
 settings, a passive live watch, §2.18),
 [`probe_chocolatey.ps1`](tools/probes/probe_chocolatey.ps1) (Chocolatey's shims, ARM64 handling, upgrades and
-uninstalls, in a private Chocolatey root, §3.2).
+uninstalls, in a private Chocolatey root, §3.2),
+[`probe_agent_prompts.py`](tools/probes/probe_agent_prompts.py) (Claude Code's and Codex's prompt histories: formats,
+identities, whose prompts, rewrites — structure only, §2.21),
+[`probe_append_notify.cs`](tools/probes/probe_append_notify.cs) (what a folder watcher and the folder's listing see while
+another process appends to a file, §2.21).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -264,12 +268,12 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), settings, logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings, logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (593 tests, one class at a time — §4: the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format) (175 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (673 tests, one class at a time — §4: the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves) (186 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -310,6 +314,11 @@ History worker (single consumer Channel) ── classify → WIC analyze (thumbn
  each) → QUERY2 sent from the pool (WM_COPYDATA, ≤ 2 s to accept) → the LIST2 reply arrives here as WM_COPYDATA,
  is copied and matched by reply id → the awaiting load (3 s deadline; a newer load cancels it) → merge with the
  stored half on the pool → UI. Not running, loading or garbled: Run History.csv read on the pool instead, §2.14
+
+"Claude Code prompts" / "Codex prompts" threads (each while its Settings switch is on; Windows background mode) ── one
+ pass at a time: watcher paths (debounced 200 ms), the hot poll (every 5 s: files written within 6 h opened, real length
+ vs checkpoint), the reconcile (start, every 5 min, watcher overflow) → JsonlTail reads only the new bytes → prompts in
+ slices of 1,000 through the history worker (ClipHistoryService.IngestPromptsAsync) with the file's checkpoint, §2.21
 ```
 
 Rules: nothing heavy on the hook thread (Windows silently drops slow LL hooks); the clipboard thread only
@@ -394,7 +403,8 @@ window). It has no title bar, so any background press can drag it.
 thumbnail, path count — §2.13) · `clip_formats` (raw payloads by name, cascade) · `clips_fts` (FTS5 **trigram**, external
 content, triggers — substring search incl. Hebrew/CJK; < 3-char terms use escaped `LIKE`) ·
 `deleted_hashes` (tombstones: a deleted item is never resurrected by the next Windows import; a new live
-copy lifts the tombstone) · `meta.last_clear_utc` (imports older than the last clear are skipped).
+copy lifts the tombstone) · `meta.last_clear_utc` (imports older than the last clear are skipped) · the prompt
+archive's `prompts`, `prompts_fts`, `prompt_files`, `prompt_tombstones` (not history, §2.21).
 WAL, `synchronous=NORMAL`, `auto_vacuum=INCREMENTAL` + `incremental_vacuum` after prunes, schema version
 in `PRAGMA user_version` (newer ⇒ refuse, never downgrade). Merge rules: live duplicate ⇒ bump + replace
 formats (latest copy wins); import duplicate ⇒ untouched except adding a pin.
@@ -605,7 +615,8 @@ while on, any process running as the user can read the whole history through it 
   `copy` (`ReplayFormats.Prepare` like a paste, then MarkUsed when MoveToTopOnPaste); `put` (UnicodeText to
   the clipboard + `AddAsync` with source "bclip"; not recorded while paused); `pin`/`unpin`/`delete`
   (latest by default; delete needs an id or `-r`); `wait` (`Changed`: Added, or Updated with LastUsed ≥ the
-  start — a re-copy of an existing item; 1–3600 s); `status` (version, counts, capture statistics).
+  start — a re-copy of an existing item; 1–3600 s); `status` (version, counts, capture statistics, archived
+  prompts); `prompts` / `prompt` (the prompt archive, not history items: its own ids, §2.21).
   Ids are the numbers `list` shows, or `-r N`; no `#1` syntax (`#` starts a comment in bash/PowerShell).
 - **Output.** `get`/`wait` print the payload byte-exact (a final newline only for a human's terminal);
   everything else is line-terminated. Images never go to stdout (exit 2 with a hint; `-o file.png`).
@@ -1733,12 +1744,14 @@ User request (2026-10-01): "We have many integrations, some of them are other pr
 bottom sort of third party section with official links to all we use or integrate with".
 
 **What the user gets** (the last section of `SettingsWindow.xaml`).
-- **Works with** (Puzzle `EA86`): Everything (voidtools), PowerShell (Microsoft; the Pwsh tab, §2.19) and ShareX
-  (ShareX team), each "· separate app", one line on what BetterClipboard reads from it, and its official site.
+- **Works with** (Puzzle `EA86`): Claude Code (Anthropic) and Codex (OpenAI; the prompt archive, §2.21), Everything
+  (voidtools), PowerShell (Microsoft; the Pwsh tab, §2.19) and ShareX (ShareX team), each "· separate app", one line on
+  what BetterClipboard reads from it, and its official site.
   Listed whether or not they are installed: the card is also where to get them from their makers.
-- **Built with** (Library `E8F1`): the ten components inside the download — .NET, C#/WinRT,
+- **Built with** (Library `E8F1`): the eleven components inside the download — .NET, C#/WinRT,
   CommunityToolkit.Mvvm, Microsoft.Data.Sqlite, SQLite, SQLite3 Multiple Ciphers, SQLitePCLRaw, WebView2 SDK,
-  Windows App SDK, Windows SDK — each "maker · license", one line on its job, and its official link.
+  Windows App SDK, Windows SDK, ZstdSharp (Codex's compressed session files, §2.21) — each "maker · license", one line
+  on its job, and its official link.
   - *License notices* (the card's action) opens `THIRD-PARTY-NOTICES.md` on GitHub (`main`). The copy next to the
     installed exe was not chosen: a `.md` file may have no app registered to open it, and a browser always does.
 - **A row** (`ThirdPartyRowTemplate` in the window's resources):
@@ -1765,7 +1778,9 @@ bottom sort of third party section with official links to all we use or integrat
 - One exception: `Microsoft.Windows.SDK.NET.Ref` declares another package's NuGet page (`aka.ms/WinSDKProjectURL` →
   `Microsoft.Windows.SDK.Contracts`), so the Windows SDK's own page is used.
 - Checked 2026-10-01: all 14 links answered 200. The only redirects were learn.microsoft.com and
-  dotnet.microsoft.com adding the viewer's language.
+  dotnet.microsoft.com adding the viewer's language. The three added with the prompt archive answered 200 at their
+  final addresses: `claude.com/product/claude-code` (where `claude.com/claude-code` and `anthropic.com/claude-code`
+  redirect), `openai.com/codex/`, `github.com/oleg-st/ZstdSharp` (the package's declared project URL).
 
 **Keeping it complete** (`ThirdPartyCatalogTests`: 9 tests, 29 cases).
 - **Packages.** Every package in `Directory.Packages.props` is credited by a component or listed as build-only. So
@@ -1790,13 +1805,166 @@ bottom sort of third party section with official links to all we use or integrat
 
 **Verified:** see §5.
 
+### 2.21 Claude Code and Codex prompts — the prompt archive and the Claude / Codex tabs (built 2026-10-01)
+
+User request (2026-10-01): "Add support for claude code and codex prompts user sent, storing them, fully supported,
+including full history parse and ability to keep track and diff read over time efficiently and by keeping bytes of file
+as version control or even just watcher watching filesystem using os builtin watching efficiently". Every prompt the user
+sends to Claude Code or Codex is kept in BetterClipboard's encrypted store, read from the agents' own files the moment
+they write them (only the new bytes), and listed in two tabs.
+
+Facts are **[verified]** with [`probe_agent_prompts.py`](tools/probes/probe_agent_prompts.py) (structure only, never a
+prompt) and [`probe_append_notify.cs`](tools/probes/probe_append_notify.cs) unless marked. The agents' code was studied
+for interoperability only: Claude Code 2.1.282 (the JavaScript in its binary) and `openai/codex` at `57ac6f5`
+(Apache-2.0, 2026-10-01). Nothing was copied.
+
+**What the user gets.**
+- **Claude and Codex tabs** (after Cmd), each while its Settings switch is on and the agent's folder or the archive has
+  prompts (an agent uninstalled after use keeps its tab). One card per prompt text, newest first, 60 per page:
+  - glyph Message `E8BD` (checked by rendering), label "Claude Code prompt" / "Codex prompt" / "… slash command";
+  - caption "Claude Code · BetterClipboard · 5 min ago · sent 3 times · 1 image" (project folder of the last send;
+    images are counted, never archived);
+  - the search box and its toggles work as everywhere (FTS trigram + the matcher, §2.6.2).
+- **On a card:** Enter pastes the full text (CRLF), *Copy only*, Ctrl+P keeps it pinned, the Groups submenu or a drag
+  onto a group keeps then groups — a kept prompt is a history entry (origin `ClaudeCode` 9 / `Codex` 10, source
+  `claude` / `codex` — a new event like a shell keep: pause, ignored apps, size, Forget forever) and takes its card's
+  place. *Delete until sent again* (Del) deletes every send of the text from the archive; *Forget forever…* forgets it
+  everywhere (history, both archives, and every later read).
+- **Footer** "14,156 prompts (17,169 sent) · 3 kept"; a search shows "60+ matching of …"; the first import shows its
+  progress; key hint "↵ paste · Ctrl+P pin · Del delete". Entering a tab catches the archive up first (≤ 600 ms wait).
+- **Settings › Integrations** › *Claude Code prompts* / *Codex prompts* (`AppSettings.KeepClaudeCodePrompts` /
+  `KeepCodexPrompts`, **on by default**: the agents already keep these prompts in plain text; the encrypted copy adds no
+  exposure and stops the loss), Robot glyph `E99A` (checked by rendering), a status line (what is read, how much is
+  kept, first-import progress, files left out), *Delete stored prompts…* (confirmed).
+- **Command line:** `bclip prompts [WORDS] [-a claude|codex] [--all] [--full] [-n] [--offset] [-s]` lists the archive
+  (one row per text, or every send with `--all`; JSON `agent`, `sends`, `project`, `session`, `images`, `command`);
+  `bclip prompt ID [-o FILE]` prints one exactly; `bclip status` counts them; `list -f claude|codex` lists kept prompts.
+- **Settings › Third party:** Claude Code (Anthropic) and Codex (OpenAI) under *Works with*, ZstdSharp under *Built with*.
+
+**Claude Code: `history.jsonl` in its config folder** (`CLAUDE_CONFIG_DIR`, else `~/.claude`).
+- **Format:** one JSON object per line, LF: `{"display": text as typed, "pastedContents": {"N": {"id", "type": "text",
+  "content" | "contentHash"}}, "timestamp": Unix ms, "project": cwd, "sessionId"}`. Here 17,381 lines since 2025-10-01;
+  the first 166 (all on 2025-10-01) end with CRLF and have no session id; times never go backwards; 205 lines are exact
+  duplicates by timestamp + session, which is Claude Code's own identity of an entry (`readLogEntries`); 2,595 are slash
+  commands.
+- **Pastes:** the display keeps placeholders, grammar `\[(Pasted text|Image|Audio|\.\.\.Truncated text) #(\d+)(?:
+  \+\d+ lines)?\.*\]`. Text pastes are inline (388) or by `contentHash` in `paste-cache/<hash>.txt` (449; the name is the
+  first 16 hex characters of the text's SHA-256), written before the history line (`pendingPasteWrites` are awaited).
+  183 pastes have no placeholder left (deleted before sending) and are not part of the prompt. Images and audio are not
+  in the history.
+- **Writes and rewrites:** appended under a `proper-lockfile`-style lock, mode 0600. Claude Code also *rewrites* the
+  file: a **retention prune** drops entries older than the cleanup period through a staging copy beside it, and
+  `claude purge` filters a project's lines out. So the file is not append-only, and old prompts vanish from it — the
+  archive keeps them.
+- **The transcripts are not read** (`projects/**/*.jsonl`, 8 GB here): every user message Claude Code marks
+  `promptSource: typed|queued` (6,611) is in the history too. The rest are generated (interrupt notices, task and
+  teammate messages, command output) or come from scripts (`claude -p`, no history entry).
+- `claude.exe` describes itself as "Claude Code" (FileDescription), so anything it copies (its `/copy`) lands in the
+  Claude tab's stored half, like Everything's own copies in its tab.
+
+**Codex: session files and the CLI history** (`CODEX_HOME`, else `~/.codex`).
+- **CLI history** `history.jsonl`: `{"session_id", "ts" (Unix s), "text"}` per line, appended under `File::try_lock` —
+  on Windows a **mandatory** byte-range lock, so a read during a write fails with `ERROR_LOCK_VIOLATION` (33) and is
+  retried — and trimmed **in place** from the front when `history.max_bytes` is set (same file id, shorter). Only the
+  TUI writes it (and some app builds): 564 lines here, last written 2026-09-10, while the app kept writing session files.
+- **Session files** `sessions/YYYY/MM/DD/rollout-<time>-<thread>.jsonl` (archived: `archived_sessions/`, flat): first
+  line `session_meta` (`id`, `cwd`, `originator`, `cli_version`, `source`, `thread_source`, `forked_from_id`), then
+  events. A typed prompt is a `user_message` event (legacy history mode) or a completed `UserMessage` item (paginated
+  mode: every file here, 2,810 items; text = the text inputs joined, as Codex's `message()` does). `response_item`
+  messages with `role: user` also carry what Codex injects (AGENTS.md, environment, plugin lists) and are not read.
+- **Whose prompts** (`CodexSessions.ReadThread`): of 719 files, `(source, thread_source)` = (subagent, subagent) 386,
+  (vscode, user) 236, (vscode, —) 41, (exec, user) 31, (cli, user/—) 21, (vscode, realtime_voice) 4. Subagent, internal,
+  guardian-review and memory threads, `codex exec` runs (here: another agent's helper calls) and MCP sessions are left
+  out; the app, the TUI, the IDE extension and custom clients are the user's.
+- **Identity:** a forked thread's file repeats its parent's `UserMessage` items with the same id and text and a new time
+  (52); short item ids are per-thread counters that collide across threads with other texts (316). Key = item id + text
+  hash, no thread. The two records of one prompt (CLI history line, session item: 530 of 564 lines have a twin, median
+  0.7 s apart, 95% within 2.3 s) are merged by session + text hash + 2 minutes, in either order to the same row.
+- **Compression:** since 2026-06 Codex can compress cold session files (7+ days) to `.jsonl.zst` (zstd level 3) behind a
+  flag, and decompresses one to `.jsonl` when the thread is resumed. None here; read with ZstdSharp (.NET 10 has no zstd).
+- Codex itself tails its session files by byte offset (`thread_history_1.sqlite` › `thread_history_projection_state`:
+  `next_rollout_byte_offset`) — the same approach as the archive's.
+
+**Knowing when: three triggers, because no single one sees everything** (`AgentPromptsIntegration`).
+- **Measured** (`probe_append_notify.cs`): a file another process keeps open for appending raises **no** change
+  notification and keeps its **old size in the folder** (8 appends over 2.5 s: 0 events, 0 bytes listed) until the
+  writer closes it or another process opens it. Open-append-close raises `Changed` per append. Codex writes its session
+  files the first way; Claude Code's and Codex's histories the second.
+- **Watchers** (`FileSystemWatcher` = `ReadDirectoryChangesW`, 64 KB buffers): Claude's folder (`history.jsonl`), Codex's
+  home (`history.jsonl`), `sessions` (recursive) and `archived_sessions`. They see creations, renames (archiving,
+  compression, rename-over) and close-flushed appends. A watcher error (overflow) triggers a reconcile.
+- **Hot poll** every 5 s: the histories and the session files written or started within 6 h are opened and their real
+  length (from the handle) compared with the checkpoint; nothing is read unless it moved. Opening also syncs the folder's
+  copy (one `Changed` follows, which finds nothing new: no loop).
+- **Reconcile** at start, every 5 minutes, after a watcher overflow: every file opened once and verified — catches what
+  happened while the app was not running, and an old Codex thread resumed without its file being "hot".
+
+**Knowing what: diff reading with fingerprints, not copies** (`Core/Prompts/JsonlTail`).
+- Per file a `TailCheckpoint`: offset (end of the last complete line), length, write time, NTFS file id (volume serial +
+  file index, from the open handle), SHA-256 of the first 4 KB and of the 4 KB before the offset, the newest prompt time
+  read (high-water mark). Kept in `prompt_files`, written in the same transaction as the prompts read up to it.
+- **Classify:** another file id → *Replaced*; shorter than the offset → *Truncated*; fingerprints differ → *Rewritten*
+  (a trim from the front changes the head, a filtered line shifts the anchor); else only appended: read from the offset.
+  A reset reads from the start, and the store keeps only prompts newer than the old high-water mark minus 5 minutes
+  (older ones were stored, deleted or skipped while paused). Keys merge whatever is read twice.
+- Bytes after the last LF are a line still being written: not consumed. CR before LF is dropped. Lines over 64 MB are
+  consumed and counted, never parsed. A `.zst` file (cannot seek) is read whole when its length, time or id changed.
+- **Cost:** an unchanged file costs one open (poll) or two 4 KB reads (verify); an append, the new bytes in 256 KB chunks
+  with a byte-search prefilter (`"UserMessage"`, `"user_message"`) before any JSON parsing.
+- Session files of threads that are not the user's are read up to their first line, once; afterwards only their size is
+  followed. Session files are tracked by their plain name (`rollout-….jsonl`), so archiving, compressing and resuming
+  are not new files.
+
+**Storage** (`Storage/ClipStore.Prompts.cs`, in the encrypted store, added idempotently like the groups).
+- `prompts` (one row per send: agent, unique `prompt_key`, source, session, project, `sent_utc`, full text, search text
+  ≤ 32 K, preview, text hash = a kept copy's content hash, fingerprint, image count, slash command) + `prompts_fts`
+  (trigram, external content) + `prompt_files` + `prompt_tombstones`. **Not history:** no retention, not in "All", not
+  counted against the item limit — 17,000+ prompts would bury the clipboard history.
+- **Keys** (frozen; a change would duplicate every prompt): Claude `c1:{session}:{ms}:{hash12(display)}` (the display,
+  not the expansion, so a cleaned paste cache changes nothing); Codex history `x1:h:…`, item `x1:i:{item}:{hash12}`,
+  legacy event `x1:e:{ms}:{hash12}`. A key read again keeps the earliest time.
+- **Rules at ingest:** forgotten fingerprints never stored; a deleted text (tombstone: agent + text hash + time) stays out
+  for sends up to the deletion; the item size limit; ignored apps (`claude`, `codex`); **pause** skips prompts read
+  live (the checkpoint moves: never recorded, the Win+R rule) but not the agent's first import.
+- **Listing:** grouped by text (newest send's row via `ix_prompts_text`), paged by text, kept prompts' hashes excluded.
+- A first import is stored in slices of 1,000 through the history worker (copies queued meanwhile are not held up);
+  only the last slice moves the checkpoint.
+- Forgetting anything (a card, a text, a stored entry) deletes archived prompts with that fingerprint too.
+
+**Life cycle.** Per agent one reader on a dedicated thread in Windows' **background mode** (`THREAD_MODE_BACKGROUND_BEGIN`:
+lower CPU, I/O and memory priority), files one at a time. First activation = first import (`state.prompts.<agent>.imported`
+set when the pass completes). Off stops reading and keeps the archive and checkpoints (on again catches up); *Delete
+stored prompts* stops the reader, clears the agent's archive, files, tombstones and mark, and restarts it (while on,
+what the agent still has is imported again — the confirmation says so). Exit keeps everything. Logs: counts and file
+kinds only, never a prompt, a project or a file name.
+
+**Measured on this PC.** First import in the app: Claude Code 17,170 prompts in 8.6 s, Codex 2,279 prompts from 720
+files (417 left out) in 18.6 s, both at once in background mode. Restart catch-up: ~0.5 s wall, 0.02–0.08 s CPU. Queries
+on the 17,000-prompt archive: first page, page 50 and a word search 8–10 ms; a regular expression ~0.25 s (full scan).
+The archive with FTS: ~69 MB.
+
+**Limits.**
+- Prompts sent through Claude Code's IDE panel or the desktop app are archived only if Claude Code writes them to
+  `history.jsonl` (not verified: none here); `claude -p` runs never are (by design, like scripts).
+- Images are counted, not kept. Slash commands are archived like prompts (labeled, searchable).
+- A Codex thread resumed after days is noticed within 5 minutes (the reconcile), or when its tab is entered.
+- `codex exec` typed by hand in a terminal is left out with the agents' runs (they look the same in the file).
+- Prompts sent while paused are never archived, even after a later rewrite.
+- Dev/test: `BETTERCLIPBOARD_CLAUDE_DIR` / `BETTERCLIPBOARD_CODEX_DIR` replace the folders (tests, isolated instances).
+
+**Verified:** 88 tests (Core 77: parsers, keys' known answers, `JsonlTail` for every kind of change, the store's merges,
+tombstones, rewrites, forget, listing, search, checkpoints, schema on an older store, the service's rules and slices,
+the CLI; Windows 11 on temp folders: first import + watcher, rename-over prune, whose threads, a writer that keeps its
+file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart), a real-data run in the app
+(§5).
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 768 tests (765 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 859 tests (856 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -2072,8 +2240,8 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
   party (checked by rendering): Puzzle EA86 (*Works with*), Library E8F1 (*Built with*).
   Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
   on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did, and on 2026-10-01 nine of
-  them in the pick menu (the editing tool turned `\uXXXX` written in an edit into the raw character). Sweep new
-  C# files with an escape script before committing (never XAML files: there the escape is `&#xE8xx;`). The
+  them in the pick menu (the editing tool turned `\uXXXX` written in an edit into the raw character), and five more
+  in a new file written whole (the prompt card menu). Sweep new C# files with an escape script before committing (never XAML files: there the escape is `&#xE8xx;`). The
   reverse trap: `\u2014` inside a `///` comment stays those six characters — comments take no escapes.
 - **A `PathIcon` needs its design box as `Width`/`Height`.**
   - Why: WinUI draws its path as a `Stretch=None` shape at the geometry's own coordinates and measures it as
@@ -2117,7 +2285,8 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
 - **Quote-dense scripts:** write them to a scratch file and run the file; big inline heredocs break the
   Bash tool's `eval` wrapper (`unexpected EOF while looking for matching '`). Escapes don't survive it
   either: a `\\n` inside a heredoc'd Python edit script reached the C# source as a real line break
-  (2026-09-25). Put escape sequences in with the Edit tool. **Never with `sed`:** GNU sed reads `\u` in a
+  (2026-09-25), and on 2026-10-01 `'\\'` arrived as `'\'` (an unterminated char literal) and `\\n` again as a line break
+  (the build caught both). Put escape sequences in with the Edit tool. **Never with `sed`:** GNU sed reads `\u` in a
   replacement as "uppercase the next character", so `s/x/"\\uE768"/` wrote `"E768"` (2026-10-01). A Python
   script that builds the backslash with `chr(92)` is safe too.
 - **The real Win+R list is user data.** Tests and isolated e2e instances point the integration at a scratch key
@@ -2182,6 +2351,17 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
     have noticed.
   - What to do: let TemplateBindings carry colors, and show or hide template parts in the states by another
     property (`Opacity`, `Visibility`). Pixel-sample state changes that a style swap can reach.
+- **A folder watcher does not see appends to a file another process keeps open.**
+  - Measured (2026-10-01, `probe_append_notify.cs`): through a long-lived write handle, 8 appends over 2.5 s raised no
+    `ReadDirectoryChangesW` notification, and the folder kept listing 0 bytes (`FileInfo.Length`, a directory
+    enumeration) until the writer closed the file or another process opened it. Open-append-close notifies every time.
+  - So for another app's log-like files (Codex's session files): poll by opening the file and reading its length from
+    the handle (cheap), and keep the watcher for creations, renames and close-flushed writes (§2.21). Never decide
+    "unchanged" from the folder's size or write time of a file that may be open elsewhere.
+- **A worker that waits for a wake signal needs one for its first request.** The prompt readers queued their first pass
+  in `Start()` but never signalled the worker, which then waited for the first 5-s poll tick: every first import
+  started 5 s late. Found only because the new test class took 45 s instead of 5 (2026-10-01). Time new test classes
+  that wait on background work: a round number of seconds per test points at a timer.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
@@ -2197,6 +2377,10 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
 
 | Feature | How | Result |
 |---|---|---|
+| Prompt archive on this PC's real Claude Code and Codex folders (2026-10-01, §2.21): a copy of the dev build as an isolated instance (own data dir; capture paused; Windows import, ShareX, Win+R, Everything and the shell tabs off), next to the user's two instances. First imports, both at once in background mode: Claude Code 17,170 prompts in 8.6 s, Codex 2,279 prompts from 720 files (417 left out: agents and exec runs) in 18.6 s. `bclip status`: 19,449 prompts, 0 history items. `bclip prompts -a claude/codex`, `--all`, `prompt ID -o FILE` (exact bytes), a search with no match (exit 1). 0 WRN/ERR; the user's PIDs unchanged; scratch removed. Only counts were printed | scratch `prompts_e2e.ps1` | ✅ |
+| Prompt archive engine at scale (same data, a throwaway store in a scratch probe): 17,169 Claude Code prompts = the 17,370 lines then minus 201 duplicates; restart catch-up 0.5 s wall / 0.02 s CPU; listing 8–10 ms (first page, page 50, a word), a regular expression ~0.25 s; store with FTS ~69 MB | scratch `archive_probe.cs` | ✅ |
+| Prompt archive tests: 88 new (Core 77, Windows 11 on temp agent folders); the Windows class runs in ~5.3 s (45 s before the missing first wake-up was fixed, §4) | tests | ✅ 3 of 3 repeated runs |
+| NTFS change notifications vs a long-lived writer (no events, size listed 0 until the close; a reader's open syncs it) | `tools/probes/probe_append_notify.cs` | ✅ reproduced twice |
 | Pwsh and Cmd tabs (2026-10-01, §2.19): the real helper (`BetterClipboard.exe --read-console-history <pid>` of the dev build) read 3 BC-TEST commands in order from a hidden pseudoconsole cmd, 59–61 ms per read warm (206 ms cold), and exited 3 for a process without a console; the PowerShell source read BC-TEST files of two hosts (merged, newest file first, counts added) incl. one held open for writing; the dev copy started its Cmd reading with 0 WRN/ERR next to the user's app | Core + Windows tests (38), scratch `verify_cmd_helper.cs` (built from the probe's pseudoconsole code), `tools/launch_dev.py` | ✅ (the panel itself not checked with UIA yet: the foreground was never a terminal) |
 | Several groups at once, live on an isolated instance next to the user's app (2026-10-01; seven BC-TEST items in Work / Home / Ideas seeded through `MachineBoundHistory`, capture paused, `PasteOnSelect` off). A plain click shows Work (3 cards, "3 in Work"). Ctrl+click Home merges them: 5 cards newest first with the shared card once, header "› Work + Home", footer "5 in Work + Home", both icons' `ItemStatus` "Shown". The search "report" keeps the 3 matching cards of both groups; "zzz-none" shows "Nothing in Work or Home contains “zzz-none”.". Shift+click Ideas shows the run from the anchor (Home + Ideas, 4 cards); Ctrl+Shift+click Work adds Work..Home (all three, 6). The icon menu's *Remove from view* takes Ideas out; the card menu's *Remove from Work and Home* takes the shared card out of the view ("4 in Work + Home"). A plain click on Work shows it alone (2), again: everything (7). 0 WRN/ERR; the user's PIDs unchanged | UIA reads and plain invokes; real Ctrl / Shift / Ctrl+Shift clicks and two right-clicks only after checking that the test panel is in front and owns the point; cards never invoked (`groups_e2e/run.py`, scratch) | ✅ 11/11 on the first run, on the shared tree's build (the same feature code, without the header tooltip). Its screenshot showed the header trimmed to "Work +…" next to the Paused chip, hence the title's tooltip. The exact commit's build (a separate worktree) and the tooltip's hover check were not run live: three waits for the terminal to be in front skipped (the user was away with another app in front) |
 | Everything tab on an isolated instance next to the user's app (2026-10-01): a private, windowless Everything 1.5.0.1423b (`BCTEST-E2E`, only a BC-TEST tree, four picks through the run-count IPC), the store seeded with BC-TEST items, overrides for Everything, ShareX and Win+R. The app verified the instance ("signed by voidtools PTY LTD"). All nine tabs fit: window 518 px outer / 504 visible, "Everything" 83 px with 13 to spare. The tab lists the four picks newest first ("File/Folder opened in Everything", "opened 3 times"), then the path copied in Everything; footer "4 opened in Everything · 1 kept". Ctrl+P on a pick: a pinned history entry in its place (`bclip`: `files everything pinned Everything`). Delete on a pick: hidden, also after reopening the panel. User's PIDs unchanged, scratch removed | UIA (select-only) + Ctrl+P/Delete/Esc sent only while the test panel was in front + two guarded screenshots (`ev_e2e/run.sh`, scratch) | ✅ after two fixes it found: the tab bar ignored the window frame ("Everythin", fixed by `WindowFrameDip`), and the first run's helper invoked a card (it pasted a BC-TEST file reference into the user's clipboard and terminal; select-only since, §4) |
@@ -2369,6 +2553,14 @@ decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms
   (trim, case, JSON pretty), large preview pane, drag-out, sync between PCs, MSIX packaging.
+- Claude Code and Codex prompts (built 2026-10-01, §2.21), next steps:
+  - Claude Code's transcripts as a second source for prompts that never reach `history.jsonl` (its IDE panel or desktop
+    app, if they bypass it): only records marked `promptSource: typed|queued`, merged by session + text;
+  - Codex thread names (`session_index.jsonl` › `thread_name`) and Claude Code session titles in the captions, and a
+    project/thread chip row to narrow a tab;
+  - `bclip prompts --project PATH` / `--session ID`, and an MCP tool over the same archive for agents;
+  - keeping attached images (today counted only), with the size budget in mind;
+  - a third agent with the same machinery (e.g. Gemini CLI's history), now that the reader is agent-agnostic.
 - Third party (§2.20), next steps:
   - a scheduled link check (every catalog link still answers 200 at its address), e.g. a weekly CI job; the unit
     tests stay offline on purpose;
