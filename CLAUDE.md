@@ -206,7 +206,9 @@ Reproduction probes that produced the verified facts live in
 [`probe_sequence.cs`](tools/probes/probe_sequence.cs) (sequence-number bumps, delayed rendering, §1.9),
 [`probe_everything.cs`](tools/probes/probe_everything.cs) (voidtools Everything IPC in a private instance, §2.14),
 [`probe_runmru.py`](tools/probes/probe_runmru.py) (Win+R history structure, change watch, §2.15),
-[`probe_shellhistory.cs`](tools/probes/probe_shellhistory.cs) (PowerShell and cmd command history, §2.16).
+[`probe_shellhistory.cs`](tools/probes/probe_shellhistory.cs) (PowerShell and cmd command history, §2.16),
+[`probe_screenshots.cs`](tools/probes/probe_screenshots.cs) (Win+PrtScn and Snipping Tool's auto-save: folders, names,
+settings, a passive live watch, §2.18).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`.
 
 ### 1.9 Clipboard change notification — "can we never miss a copy?" (2026-09-25) **[verified]**
@@ -1491,6 +1493,111 @@ or add to the front; evictions only drop from the end).
 **Not built (yet):** the modern Run dialog's own history (its location cannot be verified: 26200 GA has no
 modern dialog); an opt-in delete-through to `RunMRU`.
 
+### 2.18 Windows' own screenshots: Win+PrtScn and Snipping Tool's auto-save (2026-10-01; nothing built yet)
+
+User request (2026-10-01): "We have many integrations in the app, consider integration with: Snipping Tool auto-save
+(on by default), Win+PrtScn". Discovery only, measured with [`probe_screenshots.cs`](tools/probes/probe_screenshots.cs):
+- `--inventory` is read-only and content-free: no pixel, no clipboard data, and no file name of an unknown kind
+  (Game Bar names carry window titles).
+- `--self-test` uses BC-TEST data only, in a scratch folder and a private window station: 8 of 8 checks.
+- `--watch` is the live check, run while the user takes the screenshots. It never opens the clipboard and never
+  denies a writer. **Not run yet.**
+- No screenshot was taken for this research: one would put the user's screen into their Pictures folder, their
+  clipboard and their RAM-only Win+V history.
+
+Facts are **[verified]** on this PC unless marked.
+
+**Win+PrtScn.**
+- **Who:** `twinui.dll` (10.0.26100.8328), loaded by explorer.exe. It is the only one of 4,944 binaries in System32,
+  Windows and SystemApps that mentions `ScreenshotIndex`. It also holds `Shell_ScreenshotOverlay` and imports
+  `OpenClipboard`, `EmptyClipboard`, `SetClipboardData` and `SHGetKnownFolderPath`.
+- **Name:** string 7122 of `twinui.dll.mui` + `.png`. en-US `Screenshot (%d)`; he-IL starts with two U+200F
+  right-to-left marks before "צילום מסך (%d)". `%d` is `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer`
+  `ScreenshotIndex`, the *next* number (2 here, next to the one file "(1)").
+- **What:** the whole virtual desktop. Here that is 3840×1080 (both monitors): a 1.1 MB PNG, colour type 6, chunks
+  `IHDR sRGB gAMA IDAT IEND`.
+- **Refused for DRM:** the same MUI holds "There is protected content in %1. Close it and try again."
+
+**Snipping Tool** (package `Microsoft.ScreenSketch` 11.2607.23.0: full trust, `SnippingTool\SnippingTool.exe`,
+capability `picturesLibrary`).
+- **Auto-save** is on by default since 11.2209.2.0 **[forum]**. Win+Shift+S, PrtScn (below) and the app's own
+  New all snip through it.
+- **Settings** (names found in the exe): `AutoSaveScreenshots`, `AutoSaveScreenshotsLocation`,
+  `AutoSaveImageFilePrefix`, `AutoSaveRecordings`, `AutoSaveRecordingsLocation`, `AutoSaveRecordingFilePrefix`,
+  `AutoSaveCaptures`.
+  - They live in the app-data hive `%LOCALAPPDATA%\Packages\Microsoft.ScreenSketch_8wekyb3d8bbwe\Settings\settings.dat`
+    (container `LocalState`; ApplicationData's value types, each value followed by an 8-byte timestamp).
+  - None is set here, so the defaults apply: on, the Screenshots folder.
+  - The probe reads a private copy: `RegLoadAppKey` on the live file could replay its logs into it, a write to
+    another app's data. While Snipping Tool runs, the copy may fail.
+  - A custom folder (Settings › Change) is kept through the app's FutureAccessList ("custom auto-save screenshots
+    FAL metadata"). How it is stored is unknown: none is set here.
+- **Name:** `<AutoSaveImageFilePrefix> yyyy-MM-dd HHmmss.png`. The prefix is a localized resource ("Screenshot" in
+  `resources.pri` for en-US and en-GB, the only languages installed).
+  - Unknown: a suffix for two snips in one second.
+  - Recordings: "Screen Recording" + `.mp4`, in `Videos\Screen Recordings` **[forum]** (missing here: never
+    recorded).
+- **Clipboard: yes.** Its own toast reads "Screenshot copied to clipboard" / "Automatically saved to screenshots
+  folder." (resources). The copy is a `ClipboardCopyService` with WinRT data providers ("Rendering PNG",
+  "Rendering Bitmap": delayed rendering) and `Clipboard.Flush` **[inferred from strings]**.
+- **Its PNG** has a `pHYs` chunk (`IHDR sRGB gAMA pHYs IDAT IEND`), which Win+PrtScn's has not.
+- **Mis-clicks are saved too:** all 3 auto-saved snips here (2025-11 to 2026-06) are 3×2, 15×6 and 11×49 px.
+- **Today's label:** BetterClipboard already records snips through the clipboard, as "SnippingTool.exe": the exe's
+  FileDescription is its own file name (ProductName "Snipping Tool"), and `SourceAppResolver.ReadDisplayName` takes
+  the description first.
+
+**PrtScn and the folder.**
+- **PrtScn alone** opens Snipping Tool's overlay, by default since 2023 **[news: made the default in KB5025310]**:
+  a snip is copied and auto-saved.
+  - `HKCU\Control Panel\Keyboard\PrintScreenKeyForSnippingEnabled` is absent here, i.e. the default.
+  - `twinui.pcshell.dll` reads it and launches `ms-screenclip`.
+  - Switched off, PrtScn only copies the screen and writes no file.
+- **The folder:** `FOLDERID_Screenshots` {B7BEDE81-DF94-4682-A7D8-57A52620B86F} = Pictures + "Screenshots".
+  - It follows a Pictures redirection (OneDrive folder backup) unless it is redirected itself (a
+    `User Shell Folders` value under its GUID; absent here). OneDrive is not signed in here.
+  - Resolve it with `KF_FLAG_DONT_VERIFY`: a profile that never took a screenshot has no folder yet.
+- **Nearby, not asked for:** Xbox Game Bar (7.326.8061.0, Win+Alt+PrtScn) saves into the "Captures" known folder
+  {EDC0FE71-…} = `Videos\Captures`, and NVIDIA's overlay into `Videos\NVIDIA`. Both are empty here.
+
+**Open: is a Win+PrtScn also on the clipboard?** twinui imports the clipboard calls, but Microsoft's pages only
+say it saves a file, and no capture was taken. The live check settles it, with the user's own screenshots:
+```bash
+dotnet run tools/probes/probe_screenshots.cs -- --watch 120    # then one Win+PrtScn and one Win+Shift+S
+```
+It prints:
+- per clipboard notification: the sequence number, owner process and window class, format names and the
+  foreground process;
+- per file: the events, which processes hold it, and when it is released and complete;
+- ScreenshotIndex's bump.
+
+That answers the clipboard question and the order and delay. It also shows the formats, and with them whether the
+pixel hash (straight BGRA, alpha included) merges the file with its clipboard copy. And it shows how each tool
+writes its file.
+
+**Watching a folder** (self-test, scratch folder).
+- A file **copied** in arrives as Created, at size 0 and written "now". The source's old write time appears only at
+  the end of the copy, so a rule that skips stale files must judge once the file is complete.
+- A file **moved** in from another folder of the same volume arrives as Created (not Renamed), with its old write
+  time at once. A rename inside the folder is Renamed.
+- `FileProcessIdsUsingFileInformation` (which processes have a file open) took ~137 ms per call. That is fine once,
+  but too slow to poll, and never belongs in an event handler. The watcher raises events one after another, so the
+  probe's first draft, which asked per event, delayed every later event by hundreds of milliseconds.
+- **Writer done?** `ShareXScreenshotWatcher` opens the file with `FileShare.Read`, which denies writing. A writer
+  that closes and reopens its file (a WinRT `StorageFile` pattern) would fail if its reopen landed inside that open
+  **[inferred risk, not observed]**. The probe reads with every sharing mode granted instead, waits for IEND, and
+  needs two polls in which no other process holds the file.
+- `GetUpdatedClipboardFormats` + `GetClipboardOwner` describe the clipboard without opening it: synthesized formats
+  are listed, and a delayed format is never rendered.
+
+**What an integration adds.**
+- **Snipping Tool:** its snips reach the history through the clipboard already. New: snips taken while
+  BetterClipboard was not running (catch-up), the right name, a tab, a link to the saved file.
+- **Win+PrtScn:** the same, plus the screenshots themselves if it turns out not to copy them.
+- **Cost,** as for any image copy: PNG + DIBV5. This PC's 3840×1080 Win+PrtScn is 1.1 MB of PNG plus 16.6 MB of
+  DIBV5.
+
+The proposal (one "Screenshots" integration in the ShareX mould, the live check first) is in §6.
+
 ---
 
 ## 3. Build · run · test
@@ -1896,7 +2003,40 @@ Everything tab (2026-10-01):
   - upload URLs from `History.db` (task completion) as link items next to their screenshot;
   - watching a moved `CustomHotkeysConfigPath` file (today the 5-minute refresh catches it);
   - verifying the Microsoft Store build's folders;
-  - Snipping Tool / Greenshot folders with the same watcher.
+  - Greenshot folders with the same watcher (Snipping Tool and Win+PrtScn: the next item).
+- Windows' own screenshots: Win+PrtScn and Snipping Tool's auto-save (asked for 2026-10-01; facts in §2.18).
+  - **First, the live check** (`probe_screenshots.cs --watch`, the user's own Win+PrtScn and Win+Shift+S). It
+    decides whether Win+PrtScn shots are new to the history or a second copy of a clipboard copy, and whether the
+    pixel hash merges the two.
+  - **A name fix that stands alone:** `SourceAppResolver.ReadDisplayName` skips a FileDescription that equals the
+    exe's own file name, so Snipping Tool's copies read "Snipping Tool" (its ProductName), not "SnippingTool.exe".
+  - **Watcher:** generalize `ShareXScreenshotWatcher` into folder rules, and add a `WindowsScreenshotsIntegration`
+    that watches `FOLDERID_Screenshots`:
+    - non-recursively, and its parent while the folder is missing;
+    - images only, never recordings;
+    - a file whose write time, once complete, is older than ~2 minutes was copied or moved in: not a screenshot;
+    - reads never deny a writer: every sharing mode granted, IEND/EOI checked, a quiet period.
+  - **Source by name:** "Snipping Tool", "Win+PrtScn", else "Screenshots folder". Test Snipping Tool's shape first,
+    because a collision suffix on it would also match Win+PrtScn's. Prefixes are localized and may start with
+    format characters, so match the shapes only.
+  - **Store:**
+    - a new origin with ShareX's hybrid rules: bumped and paused like a live copy, never lifting a tombstone,
+      skipped when older than the last clear;
+    - a catch-up marker `state.screenshots.last_seen_utc` like ShareX's: the first activation starts now, at most
+      the 100 newest files, cloud placeholders skipped (reading one makes OneDrive download it).
+  - **Tab:** rename "ShareX" to "Screenshots" and widen its filter to every screenshot tool (recommended, since nine
+    tabs already widen the window), or add a tenth tab.
+    - Filter by origin as well as source. A Win+PrtScn copy owned by explorer.exe that bumps the entry must keep it
+      in the tab.
+    - Keep the tool's name on such a bump, instead of "Windows Explorer".
+  - **Settings:** Integrations › *Windows screenshots*, on by default like the other integrations, with a status
+    line. When Snipping Tool saves to a custom folder (its FutureAccessList form is unknown), show a hint and
+    *Also watch a folder…*.
+  - **Later:**
+    - Snipping Tool recordings as file entries;
+    - Game Bar and NVIDIA captures;
+    - *Show in Explorer* / *Paste as file* on screenshot entries (needs a stored path);
+    - storing only the PNG and making the DIBV5 at paste, which saves 16.6 MB per 3840×1080 shot.
 - voidtools Everything (facts and the built tab in §2.14). **Built 2026-10-01:** the client (proposal option 1:
   owner check, state check, a deadline per query, latest-wins, a fake IPC window in the tests plus an opt-in real
   Everything) and the Everything tab (option 5: a live view, entries stored only when the user acts on a pick,
