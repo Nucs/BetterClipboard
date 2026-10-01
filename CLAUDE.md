@@ -208,8 +208,11 @@ Reproduction probes that produced the verified facts live in
 [`probe_runmru.py`](tools/probes/probe_runmru.py) (Win+R history structure, change watch, §2.15),
 [`probe_shellhistory.cs`](tools/probes/probe_shellhistory.cs) (PowerShell and cmd command history, §2.16),
 [`probe_screenshots.cs`](tools/probes/probe_screenshots.cs) (Win+PrtScn and Snipping Tool's auto-save: folders, names,
-settings, a passive live watch, §2.18).
-Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`.
+settings, a passive live watch, §2.18),
+[`probe_chocolatey.ps1`](tools/probes/probe_chocolatey.ps1) (Chocolatey's shims, ARM64 handling, upgrades and
+uninstalls, in a private Chocolatey root, §3.2).
+Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
+ones with `pwsh tools/probes/<name>.ps1`.
 
 ### 1.9 Clipboard change notification — "can we never miss a copy?" (2026-09-25) **[verified]**
 
@@ -1887,6 +1890,84 @@ Everything tab (2026-10-01):
   - Bump commits keep `Directory.Build.props` alone, and their message carries the drafted tag notes
     (`git log -1 --format=%B`) until the release.
 
+### 3.2 Chocolatey: what the Community Repository requires, and a package design (2026-10-01; nothing built yet)
+
+User request (2026-10-01): "Learn about chocolatey's requirements to be used as a package manager so we can deliver
+installs for BetterClipboard through choco". The full report (rule table, draft nuspec, install-script sketch,
+decisions, sources) is [`docs/chocolatey.md`](docs/chocolatey.md).
+
+**How it was checked.**
+- Sources: docs.chocolatey.org, read from the `chocolatey/docs` repo; Chocolatey's code at 2.7.4, the latest
+  release.
+- Measurements: [`probe_chocolatey.ps1`](tools/probes/probe_chocolatey.ps1), a copy of `choco.exe` in a private
+  root (`ChocolateyInstall` set for that process only), a BC-TEST package, not elevated. 28 of 28 observations
+  matched with Chocolatey CLI 2.3.0, the version installed here.
+- Re-run the probe after a Chocolatey upgrade: a CHANGED row means re-checking the design.
+
+**The gates** **[docs]**.
+- **Automated, every version:**
+  - the validator (rules CPMR0001-0076);
+  - the verifier: a Windows Server 2019 (17763) VM runs `install --x86`, upgrade, install and uninstall, 20 min
+    each, and re-tests every 2 weeks;
+  - VirusTotal, also on what the package downloads.
+- **Human, until trusted:** a moderator reviews every version until the package is marked trusted. That is a
+  manual decision after a few versions approved without changes, also for vendors.
+- **Deadlines:** an unanswered review gets a reminder after 20 days and is rejected after 35.
+- **Limits:**
+  - 200 MB per package (server-side; `chocolatey/home#82` is open);
+  - **no SemVer 2.0.0**, so our `-rc.1` tags stay off Chocolatey (or become `-rc1`).
+- **ID:** `betterclipboard` is free (the feed has no versions; `ditto` has 40).
+- **The verifier fails our install by design.** The app declares Windows 10 2004 (19041), and Chocolatey asks
+  packages to throw on unsupported Windows. Ask for an exemption in the first review; the feed shows
+  `microsoft-windows-terminal` and `powertoys` as "Exempted" today.
+
+**Chocolatey behavior the package must design around** **[source + verified]**.
+- **Shims.**
+  - Every `*.exe` under the package folder is shimmed, recursively, unless `<exe>.ignore` exists.
+  - `<exe>.gui` makes a GUI shim. GUI apps are not detected: the detection is a TODO in `ShimGenerationService`.
+  - Our zip has four exes. `createdump.exe` (.NET) and `RestartAgent.exe` (Windows App SDK) need `.ignore`, and
+    `BetterClipboard.exe` needs `.gui`. `bclip` then is on the PATH.
+  - A shim starts the real exe, so `Environment.ProcessPath` (the "Start with Windows" path) stays the `lib` path.
+- **ARM64 counts as 32-bit.**
+  - `Get-OSArchitectureWidth` returns 32 on ARM64; unchanged in 2.7.4.
+  - So `-Url64bit`/`-File64` alone fails there: "This package does not support 32 bit architecture" (probe F).
+  - The package picks the zip by `RuntimeInformation.OSArchitecture`, like `install.ps1`, and passes it as
+    `-Url` + `-Checksum`. The helpers use that on x64, ARM64 and under `--x86` (G, H).
+- **Upgrade, step by step.**
+  1. The installed version's before-modify runs; it sees the old version number.
+  2. `lib\<id>` is moved to `lib-bkp\<id>\<old>` and copied back.
+  3. Files unchanged since the old install are deleted, by its `.files` checksum snapshot.
+  4. The new install script runs.
+  5. `lib-bkp` is deleted.
+- **A running app survives the upgrade.** It moves along with the folder. The upgrade still reports success:
+  exit 0, with only a warning that the backup could not be deleted. The old binary keeps running from `lib-bkp`
+  (B).
+  - So before-modify stops the app: `--exit`, 15 s, then `Stop-Process` (D).
+- **Files written after install.** They survive the copy-back, so a before-modify marker reaches the new install
+  script. They also survive uninstall, which deletes only snapshot files, reports success and leaves the folder
+  (E). The uninstall script deletes them.
+- **Who installs.**
+  - Packages go machine-wide into `lib`, usually elevated.
+  - HKCU and `LOCALAPPDATA` belong to whoever elevated: when an admin types credentials for a standard user,
+    they are the admin's.
+  - Under Intune or an RMM tool it is SYSTEM.
+  - Non-admin installs work too.
+
+**Recommended package** (not built; the decisions are in the doc's §6).
+- **What it installs:**
+  - ID `betterclipboard`.
+  - Downloads the zip from GitHub Releases, with the SHA-256 from `SHA256SUMS.txt` pinned per version (~10 KB
+    package). Embedding both zips would take 145 MB of the 200 MB.
+  - Extracts to `tools\app`.
+- **Setup:**
+  - Start menu shortcut, for all users when elevated.
+  - The app's own Run value, for the installing user.
+  - Starts the app unelevated through Explorer, only in that user's interactive session.
+  - Parameters: `/NoStartup /NoShortcut /NoLaunch`.
+- **Removal:** before-modify stops the app; uninstall keeps the history and gives Win+V back like `install.ps1`.
+- **Release:** `choco pack` + `choco push` in `release.yml` with an API-key secret, stable versions only.
+  Chocolatey 2.7.4 is preinstalled on GitHub's Windows images.
+
 ---
 
 ## 4. Conventions (must follow)
@@ -2098,6 +2179,13 @@ Everything tab (2026-10-01):
   is set: done — `RegisterHotKey` succeeds then.)
 - Export/backup with a user password (re-seal the DEK; the database itself need not be re-encrypted).
 - Code signing (SmartScreen reputation), winget manifest, in-app update check against GitHub releases.
+- Chocolatey package (research done: §3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). Needs the maintainer's
+  decisions (the doc's §6). Then:
+  - build `packaging/chocolatey` (a nuspec plus install, before-modify and uninstall scripts);
+  - test it in Windows Sandbox or a VM: install, upgrade with the app running, uninstall;
+  - add the pack + push step to `release.yml`;
+  - open the community.chocolatey.org account and its API-key secret;
+  - ask for the verifier exemption with the first version.
 - Smaller release: trim the 26 MB `Microsoft.Windows.SDK.NET.dll` projection (needs a trim-safe audit of
   reflection-based JSON first).
 - Delete-through to Windows history (`Clipboard.DeleteItemFromHistory`) when deleting here.
