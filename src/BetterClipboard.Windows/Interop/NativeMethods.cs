@@ -894,6 +894,178 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     internal static partial nint SendMessageTimeout(nint hWnd, uint msg, nint wParam, string lParam, uint flags, uint timeout, out nint result);
 
+    // ───── Registry change notification (the Win+R history watch) ─────
+
+    /// <summary><c>REG_NOTIFY_CHANGE_NAME</c>: a subkey was added or deleted (used on the parent while the watched key does not exist).</summary>
+    internal const uint REG_NOTIFY_CHANGE_NAME = 0x00000001;
+
+    /// <summary><c>REG_NOTIFY_CHANGE_LAST_SET</c>: a value of the key was added, changed or deleted.</summary>
+    internal const uint REG_NOTIFY_CHANGE_LAST_SET = 0x00000004;
+
+    /// <summary>
+    /// Asks Windows to signal <paramref name="hEvent"/> at the next change of <paramref name="hKey"/>. One change,
+    /// one signal: call again after each one to keep watching.
+    /// </summary>
+    /// <remarks>
+    /// The registration belongs to the calling <b>thread</b>: when that thread exits, the event is signaled and the
+    /// watch ends. Make it on a thread that lives as long as the watch (never a pool thread).
+    /// </remarks>
+    /// <param name="hKey">Open key with <c>KEY_NOTIFY</c> access (<c>KEY_READ</c> includes it).</param>
+    /// <param name="bWatchSubtree">Also report changes below the key.</param>
+    /// <param name="dwNotifyFilter"><c>REG_NOTIFY_CHANGE_*</c> flags.</param>
+    /// <param name="hEvent">The event to signal (required for asynchronous use).</param>
+    /// <param name="fAsynchronous">Return at once and signal the event later (as opposed to blocking until a change).</param>
+    /// <returns>A Win32 error code, 0 on success (the registry API returns it; it does not set the last error).</returns>
+    [LibraryImport("advapi32.dll")]
+    internal static partial int RegNotifyChangeKeyValue(
+        Microsoft.Win32.SafeHandles.SafeRegistryHandle hKey,
+        [MarshalAs(UnmanagedType.Bool)] bool bWatchSubtree,
+        uint dwNotifyFilter,
+        Microsoft.Win32.SafeHandles.SafeWaitHandle hEvent,
+        [MarshalAs(UnmanagedType.Bool)] bool fAsynchronous);
+
+    /// <summary>
+    /// Reads a key's metadata. Only the last-write time is used here; every other output is optional and passed as
+    /// 0 ("not wanted"). For the Win+R history that time is when its newest command ran — the only time Windows keeps.
+    /// </summary>
+    /// <param name="hKey">Open key with <c>KEY_QUERY_VALUE</c> access.</param>
+    /// <param name="lpClass">Class buffer (0).</param>
+    /// <param name="lpcchClass">Class buffer size (0).</param>
+    /// <param name="lpReserved">Reserved (0).</param>
+    /// <param name="lpcSubKeys">Subkey count (0).</param>
+    /// <param name="lpcbMaxSubKeyLen">Longest subkey name (0).</param>
+    /// <param name="lpcbMaxClassLen">Longest class (0).</param>
+    /// <param name="lpcValues">Value count (0).</param>
+    /// <param name="lpcbMaxValueNameLen">Longest value name (0).</param>
+    /// <param name="lpcbMaxValueLen">Longest value (0).</param>
+    /// <param name="lpcbSecurityDescriptor">Security descriptor size (0).</param>
+    /// <param name="lpftLastWriteTime">Receives the last-write time as a FILETIME (UTC, 100 ns since 1601).</param>
+    /// <returns>A Win32 error code, 0 on success.</returns>
+    [LibraryImport("advapi32.dll", EntryPoint = "RegQueryInfoKeyW")]
+    internal static partial int RegQueryInfoKey(
+        Microsoft.Win32.SafeHandles.SafeRegistryHandle hKey,
+        nint lpClass,
+        nint lpcchClass,
+        nint lpReserved,
+        nint lpcSubKeys,
+        nint lpcbMaxSubKeyLen,
+        nint lpcbMaxClassLen,
+        nint lpcValues,
+        nint lpcbMaxValueNameLen,
+        nint lpcbMaxValueLen,
+        nint lpcbSecurityDescriptor,
+        out long lpftLastWriteTime);
+
+    // ───── Running commands like Win+R ─────
+
+    /// <summary><c>SEE_MASK_INVOKEIDLIST</c>: let the item's shell context-menu handlers run the verb (what the Run dialog does).</summary>
+    internal const uint SEE_MASK_INVOKEIDLIST = 0x0000000C;
+
+    /// <summary><c>SEE_MASK_NOASYNC</c>: finish all work before returning (the caller runs on its own thread, which may then end).</summary>
+    internal const uint SEE_MASK_NOASYNC = 0x00000100;
+
+    /// <summary><c>SEE_MASK_DOENVSUBST</c>: expand environment variables in the file and directory.</summary>
+    internal const uint SEE_MASK_DOENVSUBST = 0x00000200;
+
+    /// <summary><c>SEE_MASK_FLAG_NO_UI</c>: no error message boxes — the panel shows the error itself (consent prompts still appear).</summary>
+    internal const uint SEE_MASK_FLAG_NO_UI = 0x00000400;
+
+    /// <summary><c>SEE_MASK_FLAG_LOG_USAGE</c>: count the launch for Start's "most used", as the Run dialog does.</summary>
+    internal const uint SEE_MASK_FLAG_LOG_USAGE = 0x04000000;
+
+    /// <summary><c>SW_HIDE</c>: start without showing a window (tests only).</summary>
+    internal const int SW_HIDE = 0;
+
+    /// <summary><c>SW_SHOWNORMAL</c>: the Run dialog's show command (the <c>\1</c> in its history).</summary>
+    internal const int SW_SHOWNORMAL = 1;
+
+    /// <summary><c>ERROR_FILE_NOT_FOUND</c>.</summary>
+    internal const int ERROR_FILE_NOT_FOUND = 2;
+
+    /// <summary><c>ERROR_PATH_NOT_FOUND</c>.</summary>
+    internal const int ERROR_PATH_NOT_FOUND = 3;
+
+    /// <summary><c>ERROR_ACCESS_DENIED</c>.</summary>
+    internal const int ERROR_ACCESS_DENIED = 5;
+
+    /// <summary><c>ERROR_NO_ASSOCIATION</c>: no app is registered to open the file.</summary>
+    internal const int ERROR_NO_ASSOCIATION = 1155;
+
+    /// <summary><c>ERROR_CANCELLED</c>: the user declined the elevation prompt.</summary>
+    internal const int ERROR_CANCELLED = 1223;
+
+    /// <summary>
+    /// <c>SHELLEXECUTEINFOW</c>. Strings are pointers to pinned UTF-16 buffers, so the struct stays blittable;
+    /// sequential layout reproduces the native padding (112 bytes on x64 and ARM64).
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal unsafe struct SHELLEXECUTEINFOW
+    {
+        /// <summary>Struct size in bytes.</summary>
+        public uint cbSize;
+
+        /// <summary><c>SEE_MASK_*</c> flags.</summary>
+        public uint fMask;
+
+        /// <summary>Owner of any UI (consent prompt, errors).</summary>
+        public nint hwnd;
+
+        /// <summary>Verb (<c>runas</c> = as administrator), or null for the default.</summary>
+        public char* lpVerb;
+
+        /// <summary>File, folder, URI or program to open.</summary>
+        public char* lpFile;
+
+        /// <summary>Arguments for a program, or null.</summary>
+        public char* lpParameters;
+
+        /// <summary>Working directory, or null.</summary>
+        public char* lpDirectory;
+
+        /// <summary>Show command (<c>SW_*</c>).</summary>
+        public int nShow;
+
+        /// <summary>Legacy result (an error when ≤ 32).</summary>
+        public nint hInstApp;
+
+        /// <summary>Item id list (unused).</summary>
+        public nint lpIDList;
+
+        /// <summary>Class name or GUID (unused).</summary>
+        public char* lpClass;
+
+        /// <summary>Class key (unused).</summary>
+        public nint hkeyClass;
+
+        /// <summary>Hotkey (unused).</summary>
+        public uint dwHotKey;
+
+        /// <summary>Icon or monitor union (unused).</summary>
+        public nint hIconOrMonitor;
+
+        /// <summary>Process handle (only with <c>SEE_MASK_NOCLOSEPROCESS</c>, which is not used).</summary>
+        public nint hProcess;
+    }
+
+    /// <summary>Opens a file, folder, URI or program the way Explorer and the Run dialog do.</summary>
+    /// <param name="pExecInfo">What to open, how, and with which verb.</param>
+    /// <returns><see langword="true"/> on success; otherwise read the last error.</returns>
+    [LibraryImport("shell32.dll", EntryPoint = "ShellExecuteExW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ShellExecuteEx(ref SHELLEXECUTEINFOW pExecInfo);
+
+    /// <summary>
+    /// Splits a command line into a program and its arguments the strict way Windows evaluates commands (finds the
+    /// program, handles quotes); fails for anything that is not a program command (URIs, folders, documents).
+    /// </summary>
+    /// <param name="pszCmdTemplate">The command line.</param>
+    /// <param name="ppszApplication">Receives the program's full path (free with <see cref="Marshal.FreeCoTaskMem"/>).</param>
+    /// <param name="ppszCommandLine">Receives the normalized command line (free the same way).</param>
+    /// <param name="ppszParameters">Receives the arguments (free the same way; may be 0).</param>
+    /// <returns>HRESULT (0 = S_OK).</returns>
+    [LibraryImport("shell32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial int SHEvaluateSystemCommandTemplate(string pszCmdTemplate, out nint ppszApplication, out nint ppszCommandLine, out nint ppszParameters);
+
     // ───── Pointer input (dragging the flyout) ─────
 
     /// <summary>
@@ -993,4 +1165,156 @@ internal static partial class NativeMethods
     /// <returns>SECURITY_STATUS (0 = success).</returns>
     [LibraryImport("ncrypt.dll")]
     internal static partial int NCryptCloseProtectionDescriptor(nint hDescriptor);
+
+    // ───── voidtools Everything IPC (window messages) and Authenticode checks ─────
+
+    /// <summary><c>WM_COPYDATA</c>: carries a block of bytes to another process's window (Everything's queries and replies).</summary>
+    internal const uint WM_COPYDATA = 0x004A;
+
+    /// <summary><c>MSGFLT_ALLOW</c>: lets a lower-integrity process send the message to the window.</summary>
+    internal const uint MSGFLT_ALLOW = 1;
+
+    /// <summary><c>COPYDATASTRUCT</c>: the <c>lParam</c> of <see cref="WM_COPYDATA"/>; the system copies <c>lpData</c> into the receiver during the call.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct COPYDATASTRUCT
+    {
+        /// <summary>Application-defined value (Everything: the command or the reply id).</summary>
+        public nuint dwData;
+
+        /// <summary>Byte count of <see cref="lpData"/>.</summary>
+        public uint cbData;
+
+        /// <summary>The bytes; valid only during the call on the receiving side.</summary>
+        public nint lpData;
+    }
+
+    /// <summary>Finds a top-level window by class (message-only windows are never found).</summary>
+    /// <param name="lpClassName">Window class name.</param>
+    /// <param name="lpWindowName">Window title, or <see langword="null"/> for any.</param>
+    /// <returns>The window, or 0.</returns>
+    [LibraryImport("user32.dll", EntryPoint = "FindWindowW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    internal static partial nint FindWindow(string lpClassName, string? lpWindowName);
+
+    /// <summary>
+    /// Sends a message with a timeout and a pointer-sized <c>lParam</c>. With <see cref="SMTO_ABORTIFHUNG"/> a hung
+    /// receiver fails at once instead of blocking; without <c>SMTO_BLOCK</c> the calling thread keeps handling
+    /// messages sent to it while it waits.
+    /// </summary>
+    /// <param name="hWnd">Target window.</param>
+    /// <param name="msg">Message.</param>
+    /// <param name="wParam">Parameter.</param>
+    /// <param name="lParam">Parameter (e.g. a pinned <see cref="COPYDATASTRUCT"/>).</param>
+    /// <param name="flags"><c>SMTO_*</c>.</param>
+    /// <param name="timeout">Timeout in ms.</param>
+    /// <param name="result">Message result.</param>
+    /// <returns>Non-zero on success; 0 on timeout, a hung target or failure.</returns>
+    [LibraryImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    internal static partial nint SendMessageTimeout(nint hWnd, uint msg, nint wParam, nint lParam, uint flags, uint timeout, out nint result);
+
+    /// <summary>Changes which messages a window accepts across integrity levels (UIPI).</summary>
+    /// <param name="hwnd">The window.</param>
+    /// <param name="message">The message.</param>
+    /// <param name="action"><see cref="MSGFLT_ALLOW"/>.</param>
+    /// <param name="pChangeFilterStruct">Optional extended result (0).</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool ChangeWindowMessageFilterEx(nint hwnd, uint message, uint action, nint pChangeFilterStruct);
+
+    /// <summary>
+    /// Lets another process bring its window to the front. Only the process that may set the foreground itself
+    /// (the one the user is working in) can grant it, so it is called right before asking that process to show a window.
+    /// </summary>
+    /// <param name="dwProcessId">The process allowed to take the foreground.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool AllowSetForegroundWindow(uint dwProcessId);
+
+    /// <summary><c>WINTRUST_ACTION_GENERIC_VERIFY_V2</c>: Authenticode policy (signature intact, chain to a trusted root).</summary>
+    internal static readonly Guid WINTRUST_ACTION_GENERIC_VERIFY_V2 = new("00AAC56B-CD44-11d0-8CC2-00C04FC295EE");
+
+    /// <summary><c>WTD_UI_NONE</c>: never show UI.</summary>
+    internal const uint WTD_UI_NONE = 2;
+
+    /// <summary><c>WTD_REVOKE_NONE</c>: no revocation checking (no network call that could stall or fail offline).</summary>
+    internal const uint WTD_REVOKE_NONE = 0;
+
+    /// <summary><c>WTD_CHOICE_FILE</c>: the subject is a file.</summary>
+    internal const uint WTD_CHOICE_FILE = 1;
+
+    /// <summary><c>WTD_STATEACTION_IGNORE</c>: verify and free the state in one call.</summary>
+    internal const uint WTD_STATEACTION_IGNORE = 0;
+
+    /// <summary><c>WTD_CACHE_ONLY_URL_RETRIEVAL</c>: build the chain from local caches only (never fetch over the network).</summary>
+    internal const uint WTD_CACHE_ONLY_URL_RETRIEVAL = 0x1000;
+
+    /// <summary><c>WINTRUST_FILE_INFO</c>.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct WINTRUST_FILE_INFO
+    {
+        /// <summary>Size of this structure.</summary>
+        public uint cbStruct;
+
+        /// <summary>Pointer to the NUL-terminated UTF-16 path.</summary>
+        public nint pcwszFilePath;
+
+        /// <summary>Optional open file handle (0).</summary>
+        public nint hFile;
+
+        /// <summary>Optional subject type GUID pointer (0 = detect).</summary>
+        public nint pgKnownSubject;
+    }
+
+    /// <summary><c>WINTRUST_DATA</c> (with the Windows 8 <c>pSignatureSettings</c> member).</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct WINTRUST_DATA
+    {
+        /// <summary>Size of this structure.</summary>
+        public uint cbStruct;
+
+        /// <summary>Unused (0).</summary>
+        public nint pPolicyCallbackData;
+
+        /// <summary>Unused (0).</summary>
+        public nint pSIPClientData;
+
+        /// <summary><see cref="WTD_UI_NONE"/>.</summary>
+        public uint dwUIChoice;
+
+        /// <summary><see cref="WTD_REVOKE_NONE"/>.</summary>
+        public uint fdwRevocationChecks;
+
+        /// <summary><see cref="WTD_CHOICE_FILE"/>.</summary>
+        public uint dwUnionChoice;
+
+        /// <summary>Pointer to a <see cref="WINTRUST_FILE_INFO"/>.</summary>
+        public nint pFile;
+
+        /// <summary><see cref="WTD_STATEACTION_IGNORE"/>.</summary>
+        public uint dwStateAction;
+
+        /// <summary>State handle (unused with <see cref="WTD_STATEACTION_IGNORE"/>).</summary>
+        public nint hWVTStateData;
+
+        /// <summary>Unused (0).</summary>
+        public nint pwszURLReference;
+
+        /// <summary><c>WTD_*</c> provider flags.</summary>
+        public uint dwProvFlags;
+
+        /// <summary>UI context (0 = execute).</summary>
+        public uint dwUIContext;
+
+        /// <summary>Optional signature settings (0).</summary>
+        public nint pSignatureSettings;
+    }
+
+    /// <summary>Verifies a file's Authenticode signature (no UI).</summary>
+    /// <param name="hwnd">0 (no UI parent; <c>INVALID_HANDLE_VALUE</c> would also mean "no UI").</param>
+    /// <param name="pgActionID">The policy, <see cref="WINTRUST_ACTION_GENERIC_VERIFY_V2"/>.</param>
+    /// <param name="pWVTData">What to verify.</param>
+    /// <returns>0 when the signature is valid and trusted; an HRESULT-style error otherwise.</returns>
+    [LibraryImport("wintrust.dll")]
+    internal static partial int WinVerifyTrust(nint hwnd, in Guid pgActionID, ref WINTRUST_DATA pWVTData);
 }

@@ -32,6 +32,23 @@ public enum ClipFilter
     /// and anything ShareX put on the clipboard (source app <c>ShareX.exe</c>).
     /// </summary>
     ShareX = 6,
+
+    /// <summary>
+    /// Commands run with Win+R (the Run dialog): every entry with a run time (<see cref="Model.ClipEntry.LastRunUtc"/>),
+    /// whatever its origin — kept here long after Windows' own list of 26 forgot them.
+    /// </summary>
+    Run = 7,
+
+    /// <summary>
+    /// The stored half of the panel's Everything tab: items pasted, copied or kept from the tab
+    /// (<see cref="Model.ClipOrigin.Everything"/>) and anything voidtools Everything put on the clipboard (source
+    /// app <c>Everything.exe</c>, e.g. Ctrl+C or Ctrl+Shift+C on a result).
+    /// </summary>
+    /// <remarks>
+    /// The tab also lists the files opened in Everything, live from Everything's run history. Those are not
+    /// history entries, so this filter alone (the command line's <c>-f everything</c>) never returns them.
+    /// </remarks>
+    Everything = 8,
 }
 
 /// <summary>

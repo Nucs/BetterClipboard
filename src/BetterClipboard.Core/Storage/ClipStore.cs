@@ -21,7 +21,8 @@ public sealed record UpsertResult(ClipEntry Entry, bool IsNew, bool Changed);
 /// <param name="TotalBytes">Sum of stored payload sizes (excludes SQLite overhead, index and thumbnails).</param>
 /// <param name="GroupedCount">Entries in at least one group (kept like pinned ones; may overlap <paramref name="PinnedCount"/>).</param>
 /// <param name="ForgottenCount">Entries of the "Forget forever" list (content never recorded again; not history items).</param>
-public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0, long ForgottenCount = 0);
+/// <param name="RunCount">Entries with a Win+R run time — the Run tab's size (may overlap every other count).</param>
+public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0, long ForgottenCount = 0, long RunCount = 0);
 
 /// <summary>Outcome of <see cref="ClipStore.RemoveFromGroup"/>.</summary>
 /// <param name="Removed">The entry was in the group and is not anymore.</param>
@@ -72,6 +73,13 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// come from <c>search_text</c>, which equals the text for everything short enough to be paths.
 /// </para>
 /// <para>
+/// <b>Win+R history.</b> <c>clips.run_last_utc</c> is when the entry's text was last run as a Win+R command
+/// (<see cref="ClipOrigin.RunDialog"/> and <see cref="ClipOrigin.RunDialogHistory"/> captures set it; <c>NULL</c>
+/// = never), and the Run filter lists every entry that has one — so a command copied first and run later is
+/// one entry in both tabs. Added idempotently like <c>path_count</c>, with a partial index for the filter; an
+/// older build ignores the column, and entries it bumps keep their run time.
+/// </para>
+/// <para>
 /// <b>Threading.</b> Every public method opens its own pooled connection, so the store may be used from
 /// any thread. WAL journaling lets the UI read while the history worker writes. Writers are expected to
 /// be serialized by <see cref="Services.ClipHistoryService"/>; concurrent writers are still correct
@@ -112,7 +120,7 @@ public sealed class ClipStore
         "c.origin, c.source_app_name, c.source_app_path, c.size_bytes, c.format_names, c.image_width, " +
         "c.image_height, (c.thumbnail IS NOT NULL) AS has_thumbnail, " +
         "(SELECT group_concat(cg.group_id) FROM clip_groups cg WHERE cg.clip_id = c.id) AS group_ids, " +
-        "coalesce(c.path_count, 0) AS path_count";
+        "coalesce(c.path_count, 0) AS path_count, c.run_last_utc";
 
     /// <summary>
     /// <c>meta</c> flag of the path verdicts' rules (see <see cref="BackfillPathCounts"/>): a new
@@ -333,6 +341,7 @@ public sealed class ClipStore
         EnsureGroupsSchema(connection);
         EnsureForgottenSchema(connection);
         EnsurePathCountColumn(connection);
+        EnsureRunColumn(connection);
         transaction.Commit();
         ApplyDataFixups(connection);
         BackfillPathCounts(connection);
@@ -357,6 +366,34 @@ public sealed class ClipStore
         }
 
         Execute(connection, "ALTER TABLE clips ADD COLUMN path_count INTEGER;");
+    }
+
+    /// <summary>
+    /// Adds the nullable <c>clips.run_last_utc</c> column (the Win+R run time, see the class remarks) and the
+    /// partial index the Run filter uses, when missing. Additive and unversioned like <see cref="EnsurePathCountColumn"/>:
+    /// existing rows start as <c>NULL</c> = never run, which is the truth for every row of a store from before.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent. Runs inside the caller's migration transaction; a nullable column without a default is a
+    /// metadata-only change, and the partial index covers only rows with a run time, so both are instant even on
+    /// a large history.
+    /// </remarks>
+    /// <param name="connection">Open connection inside the migration transaction.</param>
+    /// <exception cref="SqliteException">The schema could not be read or altered (lock timeout, disk full); the migration transaction rolls back.</exception>
+    private static void EnsureRunColumn(SqliteConnection connection)
+    {
+        bool hasColumn;
+        using (var columns = Command(connection, "SELECT 1 FROM pragma_table_info('clips') WHERE name = 'run_last_utc';"))
+        {
+            hasColumn = columns.ExecuteScalar() is not null;
+        }
+
+        if (!hasColumn)
+        {
+            Execute(connection, "ALTER TABLE clips ADD COLUMN run_last_utc INTEGER;");
+        }
+
+        Execute(connection, "CREATE INDEX IF NOT EXISTS ix_clips_run ON clips (last_used_utc DESC) WHERE run_last_utc IS NOT NULL;");
     }
 
     /// <summary>
@@ -499,9 +536,18 @@ public sealed class ClipStore
     /// </list>
     /// A live copy removes any tombstone for its hash: copying something again is explicit consent to keep it.
     /// <see cref="ClipOrigin.ShareX"/> is the hybrid. The caller bumps its duplicates (it is a new
-    /// screenshot), but it never lifts a tombstone and is skipped when older than the last clear. Only
-    /// <see cref="ClipOrigin.Captured"/> lifts tombstones, because the startup catch-up can rediscover a
-    /// screenshot file the user deleted from history.
+    /// screenshot), but it never lifts a tombstone and is skipped when older than the last clear, because the
+    /// startup catch-up can rediscover a screenshot file the user deleted from history.
+    /// <see cref="ClipOrigin.RunDialog"/> lifts tombstones like a live copy: a rescan reports only runs newer
+    /// than its snapshot of Windows' Run history, so it is always a new run — the old list that could bring a
+    /// deleted command back arrives as <see cref="ClipOrigin.RunDialogHistory"/>, an import.
+    /// <see cref="ClipOrigin.Everything"/> lifts tombstones too: such a row is only ever written because the user
+    /// pasted, copied or kept that file in the panel's Everything tab.
+    /// <para>
+    /// Both Win+R origins also set <c>run_last_utc</c> to the capture time (never moving it back), on a new row,
+    /// a bumped one, and an existing row an import leaves otherwise untouched — the Run tab then lists the
+    /// entry whatever its origin. Other origins keep the run time a row already has.
+    /// </para>
     /// </remarks>
     /// <param name="capture">The raw capture (formats, time, source, origin, pin request).</param>
     /// <param name="classified">Its classification from <see cref="ContentClassifier.Classify"/>.</param>
@@ -522,9 +568,13 @@ public sealed class ClipStore
         var preview = classified.Kind == ClipKind.Image ? ContentClassifier.DescribeImage(image?.Width, image?.Height) : classified.Preview;
         var formatNames = string.Join(FormatNameSeparator, capture.Formats.Select(f => f.Name));
 
+        // A Win+R capture stamps its run time on the row (see remarks); every other origin leaves it as it is.
+        long? runAt = capture.Origin is ClipOrigin.RunDialog or ClipOrigin.RunDialogHistory ? when : null;
+
         long? existingId = null;
         bool existingPinned = false;
-        using (var find = Command(connection, "SELECT id, is_pinned FROM clips WHERE content_hash = $hash;"))
+        long? existingRunAt = null;
+        using (var find = Command(connection, "SELECT id, is_pinned, run_last_utc FROM clips WHERE content_hash = $hash;"))
         {
             find.Parameters.AddWithValue("$hash", hash);
             using var reader = find.ExecuteReader();
@@ -532,10 +582,12 @@ public sealed class ClipStore
             {
                 existingId = reader.GetInt64(0);
                 existingPinned = reader.GetInt64(1) != 0;
+                existingRunAt = reader.IsDBNull(2) ? null : reader.GetInt64(2);
             }
         }
 
-        if (capture.Origin == ClipOrigin.Captured)
+        // Everything picks are stored only when the user pastes, copies or keeps one in the panel: as explicit as a copy.
+        if (capture.Origin is ClipOrigin.Captured or ClipOrigin.RunDialog or ClipOrigin.Everything)
         {
             using var untomb = Command(connection, "DELETE FROM deleted_hashes WHERE content_hash = $hash;");
             untomb.Parameters.AddWithValue("$hash", hash);
@@ -557,13 +609,14 @@ public sealed class ClipStore
                 """
                 INSERT INTO clips (kind, preview, search_text, content_hash, created_utc, last_used_utc, use_count,
                                    is_pinned, pinned_utc, origin, source_app_name, source_app_path, size_bytes,
-                                   format_names, image_width, image_height, thumbnail, path_count)
+                                   format_names, image_width, image_height, thumbnail, path_count, run_last_utc)
                 VALUES ($kind, $preview, $search, $hash, $when, $when, 1, $pinned, $pinnedUtc, $origin, $srcName,
-                        $srcPath, $size, $formats, $width, $height, $thumb, $paths)
+                        $srcPath, $size, $formats, $width, $height, $thumb, $paths, $run)
                 RETURNING id;
                 """);
             insert.Parameters.AddWithValue("$kind", (int)classified.Kind);
             insert.Parameters.AddWithValue("$paths", classified.PathCount);
+            insert.Parameters.AddWithValue("$run", (object?)runAt ?? DBNull.Value);
             insert.Parameters.AddWithValue("$preview", preview);
             insert.Parameters.AddWithValue("$search", classified.SearchText);
             insert.Parameters.AddWithValue("$hash", hash);
@@ -596,11 +649,13 @@ public sealed class ClipStore
                     source_app_path = coalesce($srcPath, source_app_path),
                     size_bytes = $size, format_names = $formats,
                     image_width = coalesce($width, image_width), image_height = coalesce($height, image_height),
-                    thumbnail = coalesce($thumb, thumbnail)
+                    thumbnail = coalesce($thumb, thumbnail),
+                    run_last_utc = CASE WHEN $run IS NULL THEN run_last_utc ELSE max(coalesce(run_last_utc, 0), $run) END
                 WHERE id = $id;
                 """);
             update.Parameters.AddWithValue("$kind", (int)classified.Kind);
             update.Parameters.AddWithValue("$paths", classified.PathCount);
+            update.Parameters.AddWithValue("$run", (object?)runAt ?? DBNull.Value);
             update.Parameters.AddWithValue("$preview", preview);
             update.Parameters.AddWithValue("$search", classified.SearchText);
             update.Parameters.AddWithValue("$when", when);
@@ -634,6 +689,17 @@ public sealed class ClipStore
                 pin.Parameters.AddWithValue("$when", when);
                 pin.Parameters.AddWithValue("$id", id);
                 pin.ExecuteNonQuery();
+                changed = true;
+            }
+
+            // An imported Win+R command already in history (copied before, or recorded by an earlier activation)
+            // joins the Run tab, but keeps its place in the list: an import never reorders.
+            if (runAt is { } run && (existingRunAt is null || existingRunAt < run))
+            {
+                using var mark = Command(connection, "UPDATE clips SET run_last_utc = $run WHERE id = $id;");
+                mark.Parameters.AddWithValue("$run", run);
+                mark.Parameters.AddWithValue("$id", id);
+                mark.ExecuteNonQuery();
                 changed = true;
             }
         }
@@ -954,10 +1020,10 @@ public sealed class ClipStore
         using var connection = Open();
         using var command = Command(connection,
             "SELECT count(*), coalesce(sum(is_pinned), 0), coalesce(sum(size_bytes), 0), (SELECT count(DISTINCT clip_id) FROM clip_groups), " +
-            "(SELECT count(*) FROM forgotten) FROM clips;");
+            "(SELECT count(*) FROM forgotten), count(run_last_utc) FROM clips;");
         using var reader = command.ExecuteReader();
         reader.Read();
-        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3), reader.GetInt64(4));
+        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5));
     }
 
     /// <summary>
@@ -1034,6 +1100,65 @@ public sealed class ClipStore
             {
                 idParameter.Value = removedId;
                 delete.ExecuteNonQuery();
+            }
+        }
+
+        var item = ReadForgotten(connection, fingerprint)
+            ?? throw new InvalidOperationException("The forgotten entry vanished inside its own transaction.");
+        transaction.Commit();
+        return new ForgetResult(item, removed);
+    }
+
+    /// <summary>
+    /// Forgets a file list forever by its paths, whether or not it is stored — for files shown without being
+    /// history entries (the Everything tab's picks). Its fingerprint is the list's content hash
+    /// (<see cref="ContentHasher.ForFiles"/>, case-insensitive paths), exactly what a copy of those files is checked
+    /// against, and a stored entry with that hash is deleted (file lists have no look-alikes: the hash is unique).
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="Forget"/>: already-forgotten content keeps its list entry, pins and groups protect nothing,
+    /// no tombstone is written, and it is one transaction.
+    /// </remarks>
+    /// <param name="paths">The files, in list order.</param>
+    /// <param name="sourceAppName">Where they were seen (shown in Settings' list), or <see langword="null"/>.</param>
+    /// <param name="now">When they were forgotten.</param>
+    /// <returns>The list entry and the deleted entry ids (empty when none was stored).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="paths"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="paths"/> is empty.</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public ForgetResult ForgetFiles(IReadOnlyList<string> paths, string? sourceAppName, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count == 0)
+        {
+            throw new ArgumentException("At least one path is required.", nameof(paths));
+        }
+
+        var fingerprint = ContentHasher.ForFiles(paths);
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        using (var insert = Command(connection,
+            """
+            INSERT OR IGNORE INTO forgotten (fingerprint, kind, text_length, file_count, image_width, image_height, source_app_name, forgotten_utc)
+            VALUES ($fp, $kind, NULL, $fileCount, NULL, NULL, $source, $now);
+            """))
+        {
+            insert.Parameters.AddWithValue("$fp", fingerprint);
+            insert.Parameters.AddWithValue("$kind", (int)ClipKind.Files);
+            insert.Parameters.AddWithValue("$fileCount", paths.Count);
+            insert.Parameters.AddWithValue("$source", string.IsNullOrWhiteSpace(sourceAppName) ? DBNull.Value : (object)sourceAppName);
+            insert.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            insert.ExecuteNonQuery();
+        }
+
+        List<long> removed = [];
+        using (var delete = Command(connection, "DELETE FROM clips WHERE content_hash = $hash RETURNING id;"))
+        {
+            delete.Parameters.AddWithValue("$hash", fingerprint);
+            using var reader = delete.ExecuteReader();
+            while (reader.Read())
+            {
+                removed.Add(reader.GetInt64(0));
             }
         }
 
@@ -1533,6 +1658,13 @@ public sealed class ClipStore
         // Both ways ShareX content arrives: picked up from its folders, or copied to the clipboard by
         // ShareX.exe (then only the source app tells). LIKE is ASCII case-insensitive and treats '\' literally.
         ClipFilter.ShareX => $"(c.origin = {(int)ClipOrigin.ShareX} OR c.source_app_path LIKE '%\\ShareX.exe' OR c.source_app_name = 'ShareX')",
+
+        // Whatever the origin: a command copied first and run later carries a run time too (ix_clips_run).
+        ClipFilter.Run => "c.run_last_utc IS NOT NULL",
+
+        // The stored half of the Everything tab: kept or pasted picks, and copies Everything.exe made itself
+        // (Ctrl+C / Ctrl+Shift+C on a result; its file description is "Everything"). The tab adds the live picks.
+        ClipFilter.Everything => $"(c.origin = {(int)ClipOrigin.Everything} OR c.source_app_path LIKE '%\\Everything.exe' OR c.source_app_name = 'Everything')",
         _ => null,
     };
 
@@ -1710,6 +1842,7 @@ public sealed class ClipStore
         HasThumbnail = reader.GetInt64(15) != 0,
         GroupIds = reader.IsDBNull(16) ? [] : ParseIds(reader.GetString(16)),
         PathCount = reader.GetInt32(17),
+        LastRunUtc = reader.IsDBNull(18) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(18)),
     };
 
     /// <summary>Parses <c>group_concat</c>'s comma list (unspecified order) into ascending ids.</summary>

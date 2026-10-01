@@ -30,4 +30,40 @@ public enum ClipOrigin
     /// bring back a screenshot the user deleted.
     /// </remarks>
     ShareX = 3,
+
+    /// <summary>
+    /// A command the user ran with Win+R (the Run dialog) — seen as a change of Windows' Run history while
+    /// BetterClipboard watched it, found by a rescan since the last one, or run again from the panel.
+    /// </summary>
+    /// <remarks>
+    /// A new event like <see cref="Captured"/>: an existing duplicate is bumped (the user just ran it again),
+    /// paused capture skips it, and it lifts a tombstone — running something again is as explicit as copying
+    /// it again. Safe because a rescan only ever reports runs newer than its stored snapshot of the Run
+    /// history, never the old list (that arrives as <see cref="RunDialogHistory"/>). The store marks it with
+    /// a run time, which puts it in the Run tab.
+    /// </remarks>
+    RunDialog = 4,
+
+    /// <summary>
+    /// A Win+R command Windows still remembered when the Run history was first read (the feature switched on
+    /// for this history) — run at some unknown time before BetterClipboard watched.
+    /// </summary>
+    /// <remarks>
+    /// An import: an existing duplicate is not reordered (it only gains a run time), pause does not apply,
+    /// and it never resurrects content the user deleted or cleared — switching the feature off and on again
+    /// re-reads the same old list and must not bring deleted commands back.
+    /// </remarks>
+    RunDialogHistory = 5,
+
+    /// <summary>
+    /// A file or folder from the panel's Everything tab (something the user opened in voidtools Everything)
+    /// that the user pasted, copied or kept there (pin, group, forget).
+    /// </summary>
+    /// <remarks>
+    /// Always the result of an explicit action, never of a background scan, so it behaves exactly like a live
+    /// <see cref="Captured"/> copy: an existing duplicate is bumped, a tombstone is lifted (the user asked for
+    /// it again), and pause, ignored apps, the size limit and "Forget forever" apply. Only the files the user
+    /// acts on are stored; the rest of Everything's run history stays in Everything, shown live by the tab.
+    /// </remarks>
+    Everything = 6,
 }

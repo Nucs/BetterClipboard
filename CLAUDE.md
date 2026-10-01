@@ -257,12 +257,12 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), settings, logging, presentation helpers. **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), settings, logging, presentation helpers. **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (438 tests, one class at a time — §4: paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement (119 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (494 tests, one class at a time — §4: Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches (169 tests with the Everything work's). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -292,6 +292,11 @@ History worker (single consumer Channel) ── classify → WIC analyze (thumbn
 "ShareX" FileSystemWatchers (only while ShareX is installed and Settings › ShareX screenshots is on) ── pool
  thread events → 250 ms debounce per path → one file at a time: wait for the writer, decode (WIC) →
  ClipHistoryService.AddAsync (the worker) → Handled → catch-up marker (state.sharex.last_seen_utc), §2.10
+
+"Win+R history watch" thread (only while Settings › Win+R history is on) ── RegNotifyChangeKeyValue on RunMRU
+ (or its parent while missing) → Changed → 150 ms debounce → rescan on the pool under one gate: read once the key
+ is quiet 150 ms → runs since the snapshot → ImportAsync / AddAsync (the worker) → snapshot (state.runmru.snapshot),
+ §2.17. Entering the Run tab rescans too. Running a command: a short-lived STA thread per ShellExecuteEx.
 ```
 
 Rules: nothing heavy on the hook thread (Windows silently drops slow LL hooks); the clipboard thread only
@@ -1028,7 +1033,7 @@ same counter the result list increments.
 **Proposal.** The ranked options are in §6. Everything only answers *where* a path is and *whether* it exists;
 `PathDetector` stays pure, so verdicts stay deterministic and storable.
 
-### 2.15 Win+R run history — verified facts for a "Run" tab (2026-10-01; nothing built yet)
+### 2.15 Win+R run history — verified facts for a "Run" tab (2026-10-01; built in §2.17)
 
 User request (2026-10-01): "What about the Win+R's as a new tab 'Run' history?" Discovery only, measured with
 [`probe_runmru.py`](tools/probes/probe_runmru.py). The probe prints structure, never a typed command.
@@ -1180,13 +1185,118 @@ the full record):
 **Tab bar** (the §2.15 estimate). "Pwsh" needs ~50 px and "Cmd" ~47 px, and either alone overflows the 384-px
 bar (the 7 tabs use 351). Both are 64 px over; with Run and Everything, 189 over (still 79 at 4 px padding).
 
+### 2.17 Run tab — the Win+R history, kept for good (built 2026-10-01)
+
+User request (2026-10-01): "Do that plus rescan on entering the tab and keep history" — the §6 proposal built on
+the §2.15 facts. Every command run with Win+R becomes a history entry and stays after Windows' list of 26 forgets
+it. Settings › Integrations › *Win+R history* (`AppSettings.RecordRunHistory`, **on by default**: Windows already
+keeps these commands in plain text, the encrypted copy adds no exposure).
+
+**Pieces.**
+- **Core `Integrations/RunMru`** (pure, tested): `Parse` (letters in `MRUList` order, `\1` stripped, defensive
+  against hand edits), `Fingerprint` (first 8 bytes of SHA-256 over the upper-cased command; Python known answers
+  pin it), `RunsSince`, the snapshot (`FormatSnapshot`/`TryParseSnapshot`), `PlanCaptures`, `CreateCapture`.
+- **Windows `Integrations/`**: `RunMruReader` (reads the key, `ReadSettledAsync`), `RunMruWatcher` (the change
+  watch), `RunHistoryIntegration` (life cycle, owned by `AppController`). **`Shell/RunCommandLauncher`** runs a
+  command like the dialog.
+- **Store:** `clips.run_last_utc` (nullable INTEGER, added like the groups' column: `EnsureRunColumn` + the
+  partial index `ix_clips_run`; an older build opens the file). `ClipEntry.LastRunUtc`/`HasRunHistory`;
+  `ClipFilter.Run` = `run_last_utc IS NOT NULL`; `StoreStats.RunCount`.
+
+**Origins and merge rules** (`ClipOrigin`).
+- `RunDialog` (4) — a run seen since the last look, or run again from the panel: a **new event**. Pause skips it, a
+  duplicate is bumped to the top, it lifts a tombstone. Safe because a look only ever reports runs newer than its
+  snapshot.
+- `RunDialogHistory` (5) — what Windows remembered at the first activation: an **import**. No pause, no
+  reordering of an existing duplicate (it only gains a run time), tombstones and the last clear suppress it.
+- Both stamp `run_last_utc` (never moving it back). Other origins keep a row's run time, so a later copy of a
+  command leaves it in the Run tab. Ignored apps match the source `Win+R`; Forget forever applies to both.
+
+**Telling runs apart without times.** Windows keeps no per-entry times and reorders the list only on a run (move
+or add to the front; evictions only drop from the end).
+- `RunsSince(snapshot, list)` = the shortest prefix of the list after which the rest keeps the snapshot's
+  relative order. Theory tests cover new, evicting, re-run, several, cleared and hand-deleted lists.
+- **Snapshot:** state `runmru.snapshot` = `v1:` + comma-separated fingerprints, in the encrypted store (never a
+  command's text). No snapshot = first activation; `v1:` alone = an empty list (Win+R never used: the first run
+  is then a run, not an import).
+- **Deliberate limits:** re-running the newest command is invisible (nothing moves); so is a sequence that
+  restores the old order. More than 26 runs between two looks lose the oldest ones (only possible while the app
+  is not running, or by script).
+- **Times:** the key's last write = when the newest command ran. The first import spaces the list one second
+  apart below it; runs found later get it minus a millisecond each. Captures are stored oldest first.
+
+**Never read a half-written list** (`RunMruReader.ReadSettledAsync`).
+- One run is two writes (the command into its letter, the new `MRUList`). A read between them shows either the
+  evicted command in front or the new command at the back, and `RunsSince` takes both for real runs (at worst
+  "all 26 ran again").
+- So a read is accepted only when the key had been quiet for 150 ms (`SettleTime`, by its last-write time) and
+  was not written during the read (last write before = after). At most 10 attempts; a clock that moved backwards
+  falls back to the during-read check.
+
+**The watch** (`RunMruWatcher`, thread "Win+R history watch").
+- `RegNotifyChangeKeyValue` (LAST_SET | NAME) on the key; while the key is missing, NAME on its parent, reporting
+  only when *our* key appeared (Explorer's other subkeys come and go). Neither key nor parent, or a failed
+  registration: a 5 s poll on the last-write stamp.
+- Re-open and re-arm **before** raising `Changed`: a write after the event is reported again, one in between is
+  read by the rescan the event triggers.
+- **Footgun found while writing it:** the watched key must stay open until the wait ends. Closing a watched key
+  signals the event, so a loop that closed it before waiting would spin.
+- The integration debounces (150 ms), then rescans under one gate; the snapshot moves only after the captures
+  were handed to the history (a failure is retried by the next look). A run made while paused is skipped by the
+  history and still moves the snapshot: it is never recorded.
+
+**Life cycle** (`RunHistoryIntegration`).
+- Start: watch first, then the first look. Off: stop and clear the snapshot, so on again re-imports what Windows
+  remembers then — existing entries only gain a run time, nothing is duplicated. Exit keeps the snapshot: the
+  next start finds the runs made meanwhile.
+- **Rescan on entering the Run tab** (`ClipboardFlyout.Filters_SelectionChanged` → `RescanRunHistoryAsync`); the
+  list reloads when that stored anything (history events alone would update a bumped card in place, without
+  moving it up).
+- `BETTERCLIPBOARD_RUNMRU_KEY` points it at another key under HKCU (tests and isolated runs use scratch keys with
+  BC-TEST commands). `HKCU\`, `HKCU:\` and `HKEY_CURRENT_USER\` prefixes are accepted.
+- **Read only:** Windows' list is never written — not by runs from the panel, not by deletes here.
+
+**Running a command again** (`RunCommandLauncher`, `AppController.RunCommandAsync`).
+- Only cards with a run time offer it: Ctrl+Enter, Ctrl+Shift+Enter (as administrator), and the card menu's *Run*
+  (Play `E768`) / *Run as administrator* (`E7EF`, a window with the shield, checked by rendering). Enter still
+  pastes. Win+R cards show the command-prompt glyph `E756` everywhere, labeled "Win+R command".
+- **Parsing, like the dialog:** expand variables; a URI (a scheme of 2+ characters, never UNC) opens whole;
+  `SHEvaluateSystemCommandTemplate` splits program commands and resolves bare names through App Paths.
+  Measured on 26200: `notepad`, `chrome`, `winword`, `msedge <url>`, `explorer.exe /select,…`, `devmgmt.msc`,
+  `appwiz.cpl` and `C:\Windows\win.ini` pass; unquoted paths with spaces, folders, `%VAR%` (unexpanded), URIs,
+  `code .` and `.` fail. Then the fallbacks: a quoted file, the longest run of words naming something existing
+  (path info only; relative to the profile; `D:` = the drive root), else the first word for ShellExecute's own
+  PATH/PATHEXT search.
+- **Working directory:** the program's folder when it was named with a path, else the profile (what `cmd` from
+  Win+R starts in).
+- `ShellExecuteEx` on a short-lived STA thread with the dialog's flags (`NOASYNC | DOENVSUBST | INVOKEIDLIST |
+  FLAG_LOG_USAGE`) plus `FLAG_NO_UI`: errors show in the panel's footer ("Not run: Windows cannot find it."),
+  1223 = declined at the administrator prompt. Tests use `RunQuietlyAsync`: hidden, and no usage logging (no
+  trace in Start's "most used").
+- **Launch first, hide after:** the panel still holds the foreground while the command starts, so the new window
+  may come to the front; the panel then hides without re-activating the app below. The run is recorded
+  (`RecordRunAsync`: a `RunDialog` capture now), moving the command to the top. The command never reaches the
+  log ("Ran entry N as a Win+R command: Started.").
+
+**UI and CLI.**
+- Run tab (`RunFilter`, a text tab after ShareX) while the setting is on; the window widens when the visible tabs
+  need more than the bar (the Everything work's `MeasureTabsExtraDip`). Footer: `FlyoutViewModel.KeyHint` = "↵
+  paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin" in the Run tab, status "N commands kept". Empty state explains
+  both setting states.
+- Settings card status: "Watching Windows' Win+R list: Windows remembers N of its 26 commands." plus runs
+  recorded this session.
+- `bclip list -f run` (also `runs`): origins `run` / `run-history`, JSON `lastRun`.
+
+**Not built (yet):** the modern Run dialog's own history (its location cannot be verified: 26200 GA has no
+modern dialog); an opt-in delete-through to `RunMRU`.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 557 tests (555 run; 1 opt-in + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 663 tests (660 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -1256,6 +1366,17 @@ ShareX end-to-end (2026-09-25), with the dev build:
   foreground is a terminal/IDE. `--show-flyout` (or a plain launch for Settings), then UI Automation:
   `SelectionItemPattern.Select` on the tab, `ScrollPattern` to the card — no injected input. Screenshot only
   the test window, and only while it is the foreground.
+
+Run tab end-to-end (2026-10-01), with the dev build:
+- **Setup:**
+  - a scratch Win+R list `HKCU\Software\BetterClipboard-E2E\RunMRU`, written and "run" by a script with
+    comctl32's rules (move to front, or overwrite the oldest letter when full);
+  - export `BETTERCLIPBOARD_RUNMRU_KEY` next to the data-dir and ShareX overrides;
+  - capture **not** paused (runs are new events), so print only `-f run` rows and delete the data dir afterwards.
+- **Runnable test command:** `wscript "<scratch>\bc_test_run.vbs"`, a script that only writes a BC-TEST marker
+  file. It opens no window, so the run steals no focus.
+- **Keys:** Ctrl+Enter goes in only after a check that the test panel is the foreground window.
+- **Test PID:** take it from `Start-Process … -PassThru`, never by diffing the process list.
 
 ### 3.1 Release & install
 
@@ -1395,7 +1516,16 @@ ShareX end-to-end (2026-09-25), with the dev build:
 - **Quote-dense scripts:** write them to a scratch file and run the file; big inline heredocs break the
   Bash tool's `eval` wrapper (`unexpected EOF while looking for matching '`). Escapes don't survive it
   either: a `\\n` inside a heredoc'd Python edit script reached the C# source as a real line break
-  (2026-09-25). Put escape sequences in with the Edit tool.
+  (2026-09-25). Put escape sequences in with the Edit tool. **Never with `sed`:** GNU sed reads `\u` in a
+  replacement as "uppercase the next character", so `s/x/"\\uE768"/` wrote `"E768"` (2026-10-01). A Python
+  script that builds the backslash with `chr(92)` is safe too.
+- **The real Win+R list is user data.** Tests and isolated e2e instances point the integration at a scratch key
+  through `BETTERCLIPBOARD_RUNMRU_KEY` (under `HKCU\Software\BetterClipboard-Tests` or `-E2E`, deleted
+  afterwards), or switch `RecordRunHistory` off; without either, an instance imports and watches the user's
+  `RunMRU` (the user's own `launch_dev.py` copy does so on purpose, §3). Never print a real command.
+- **Registry watch tests: one parent key per test.** While a key is missing, the watch observes its parent, and
+  test classes run in parallel: with a shared parent, another test's keys coming and going raised spurious
+  changes (6 of 6 runs), and one test's cleanup could delete the parent under another's watch.
 - **Third-party source in `refs/`** (git-ignored, e.g. ShareX, GPL-3.0): study it for interoperability,
   never copy code from it, and cite the commit with any fact taken from it. Never open ShareX's
   `UploadersConfig.json` (upload credentials), and never trigger real ShareX captures; use a fake personal
@@ -1420,6 +1550,11 @@ ShareX end-to-end (2026-09-25), with the dev build:
 
 | Feature | How | Result |
 |---|---|---|
+| Run tab, headless, on an isolated instance next to the user's app (2026-10-01; a scratch Win+R key with BC-TEST commands through `BETTERCLIPBOARD_RUNMRU_KEY`, capture not paused, the scratch store deleted afterwards). The first activation imported 3 of 3 (origin `run-history`, newest first). A live run was listed by `bclip list -f run` 295–703 ms after the write (polling included), origin `run`. A re-run moved to the top. 30 runs 400 ms apart: Windows' list held 26, the Run tab all 34, including the evicted "fill 01". JSON has `lastRun`, source `Win+R`. User's PID unchanged | `run_e2e/run.sh` (scratch) | ✅ (30 runs 50 ms apart were one batch: 26 of 30, the oldest 4 evicted before the first read — a scripted-burst limit, §6) |
+| Run tab UI on the same kind of instance. The tab shows after ShareX. Entering it lists "Win+R command: …" cards (command-prompt glyph, "Win+R · just now"); the footer reads "↵ paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin" and "34 commands kept". Ctrl+Enter, sent only while the test panel was the foreground window, on a `wscript` BC-TEST command ran it (marker file written), hid the panel, and moved the entry to the top with a new run time. Log: "Ran entry 3 as a Win+R command: Started." (no command text) | UIA select + one guarded key chord (`run_e2e/ui.sh`) | ✅ (twice). Lesson: take the test PID from `Start-Process -PassThru` — "the new `BetterClipboard.exe`" was once another agent's short-lived process, and UIA then found "no window" |
+| Tab bar with the ShareX and Run tabs (8 tabs) | UIA rects + guarded screenshots, builds of 15:50 and 16:06 | ❌ "Run" is clipped to "Rur": the window stays at 405 px and the tabs need ~11 px more. The widening is the Everything work's `MeasureTabsExtraDip`; reported to that session, open |
+| Win+R on the real list | the user's `launch_dev.py` copy (§3) | ✅ "Win+R: imported 26 new of 26" |
+| Run-tab unit tests: `RunMru` (parse, known answers, runs-since theory, snapshot, plan), store (run column, Run filter, merge rules, tombstones, older store), service (pause, ignore, Forget forever, CLI), Windows (reader, settle wait, watch, integration on scratch keys, launcher parsing + hidden launches) | tests | ✅ 51 new. The Windows run-history classes passed 8 of 8 repeated runs once each scratch key had its own parent; with a shared parent the watch test failed 6 of 6 (§4) |
 | Paths copied as text in the Files tab, live on an isolated instance next to the user's app (2026-10-01; nine seeded BC-TEST items, capture paused). `bclip list -f files` lists exactly the five path texts (kind `path`, JSON `paths` 1/1/2/1/1) and the file list. `-f text` still lists the path texts, but not the file list. In the panel, selecting Files (UIA) shows the same six cards ("Path: …", "Paths: …", "Files: …"). The prose, `and/or` and `./venv/bin/pip install -r …` cards are absent. Cards show the folder glyph, "path"/"2 paths" and a monospace body. User's PID unchanged | seeded through `MachineBoundHistory` (no clipboard), `bclip`, UIA select + read, one guarded screenshot (`files_e2e/run.sh`, scratch) | ✅ (the Files tab's tooltip is not exposed to UIA, so it was not checked) |
 | Path detector precision: 951,234 lines of real text, each line and each adjacent pair, gave 60 hits, all paths or `@`-file references; the corpus details are in §2.13 | scratch probe (`probe_corpus.cs`) | ✅ (after fixing what its first pass found) |
 | Groups toggle icon centered (2026-10-01): the ribbon's margins in its 34×32 button are left/right 12/12 (before: 14/10) and top/bottom 9.5/≈10 (before: 10.5/≈9), with the column closed (outline) and open (filled, on its highlight); user's PID unchanged | guarded screenshots of an isolated instance (`--show-flyout`, UIA invokes of the toggle, no injected input), ink edges measured with sub-pixel coverage, before = the 2026-09-25 groups e2e screenshots of the same markup | ✅ (vertical rest ≈ −0.2 px: the notch tips' faint antialiasing; geometrically −⅛ px) |
@@ -1432,7 +1567,7 @@ ShareX end-to-end (2026-09-25), with the dev build:
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 555 pass + 1 opt-in + 1 explicit (measurement) locally (2026-10-01, non-elevated). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 660 pass + 3 skipped (opt-in, explicit measurement) locally (2026-10-01, non-elevated, with the Run tab and the Everything work in progress): 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -1514,21 +1649,13 @@ ShareX end-to-end (2026-09-25), with the dev build:
        ShareX screenshots (searchable, pinnable; a catch-up marker on the date run); and room in the tab bar.
   - Not planned: classifying by the index (verdicts must stay deterministic), imports from the index journal,
     and bundling Everything or the SDK DLLs.
-- A "Run" tab with the Win+R history (asked for 2026-10-01; facts in §2.15):
-  - **Store, don't mirror:** watch `RunMRU` and turn each new or re-run command into a history entry (its
-    own origin, plain text, the time it was observed).
-    - Unlimited, searchable and encrypted: Windows' 26-entry eviction stops losing commands while
-      BetterClipboard runs.
-    - The first activation imports the current 26 in MRU order. Only the newest has a real time (the key's
-      last write).
-  - **Keys:** Enter pastes the command text, as everywhere in the flyout. Ctrl+Enter runs it, and
-    Ctrl+Shift+Enter runs it as administrator, as in Win+R. Running means the dialog's parsing: environment
-    variables, then `SHEvaluateSystemCommandTemplate` + `ShellExecuteEx`.
-  - **Modern Run dialog:** also read its own history file where present (the location must be verified on a
-    build that has it).
-  - **Rules:** pause, Forget forever and the ignore rules apply. Deleting through to `RunMRU` only as an
-    opt-in, and never writing BetterClipboard's history back into it.
-  - **Prerequisite:** the tab-bar redesign (see §2.15) once more than one source tab exists.
+- Run tab (Win+R history): **built 2026-10-01, §2.17.** Next steps:
+  - the modern Run dialog's own history once a build that has it can be checked (CmdPal keeps `state.json`
+    `RunHistory` and never writes `RunMRU`, §2.15);
+  - an opt-in delete-through to `RunMRU` (never writing BetterClipboard's history back into it);
+  - `bclip run <id>` for scripts and agents, with the same "only commands run before" rule;
+  - a maximum wait for the watch's debounce: scripted bursts (writes < 150 ms apart) are read as one batch, and
+    with more than 26 in one burst the oldest are lost (measured: 26 of 30 at 50 ms; 30 of 30 at 400 ms).
 - "Pwsh" and "Cmd" tabs (asked for 2026-10-01; facts in §2.16):
   - **PowerShell, store don't mirror:**
     - **Watch and read:** watch the PSReadLine folder (`*_history.txt`) and read the new bytes from a stored

@@ -68,4 +68,44 @@ public static class ReplayFormats
 
         return result;
     }
+
+    /// <summary>
+    /// Builds the formats for files that exist only on disk, not in the history — the Everything tab's picks:
+    /// what Explorer's "Copy" puts on the clipboard, or just the paths.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item>Files: <c>CF_HDROP</c> plus <c>Preferred DropEffect</c> = copy. Without the drop effect some targets
+    /// (Explorer among them) treat a paste as a move, which must never happen from a history tool.</item>
+    /// <item>Plain text: the paths, one per line (CRLF), like "paste paths as text" on a stored file list.</item>
+    /// </list>
+    /// The paths are not checked here: the caller got them from Everything's index a moment ago, and a target
+    /// that cannot open a vanished file reports it like for any stale file list.
+    /// </remarks>
+    /// <param name="paths">Absolute file or folder paths, in paste order.</param>
+    /// <param name="plainTextOnly">Paste the paths as text instead of the files.</param>
+    /// <returns>Formats to write, in replay order.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="paths"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="paths"/> is empty or contains a blank path.</exception>
+    public static IReadOnlyList<ClipFormatData> ForFiles(IReadOnlyList<string> paths, bool plainTextOnly)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count == 0 || paths.Any(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException("At least one non-blank path is required.", nameof(paths));
+        }
+
+        if (plainTextOnly)
+        {
+            return [new ClipFormatData(ClipFormatNames.UnicodeText, UnicodeTextCodec.Encode(string.Join("\r\n", paths)))];
+        }
+
+        var copy = new byte[4];
+        BinaryPrimitives.WriteUInt32LittleEndian(copy, DropEffectCopy);
+        return
+        [
+            new ClipFormatData(ClipFormatNames.HDrop, DropFilesCodec.Encode(paths)),
+            new ClipFormatData(ClipFormatNames.PreferredDropEffect, copy),
+        ];
+    }
 }

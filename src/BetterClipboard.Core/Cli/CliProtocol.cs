@@ -178,7 +178,11 @@ public sealed record CliItem
     /// <summary>Executable path of that app, when known.</summary>
     public string? SourcePath { get; init; }
 
-    /// <summary><c>copied</c> (seen live), <c>windows-history</c> or <c>windows-pinned</c> (imported from Win+V).</summary>
+    /// <summary>
+    /// <c>copied</c> (seen live), <c>windows-history</c> or <c>windows-pinned</c> (imported from Win+V), <c>sharex</c>
+    /// (a ShareX screenshot), <c>run</c> (a Win+R run seen live) or <c>run-history</c> (a command Windows' Win+R
+    /// history still held when it was first read). The origin is where the item was first created from.
+    /// </summary>
     public string Origin { get; init; } = string.Empty;
 
     /// <summary>When this content was first copied.</summary>
@@ -207,6 +211,13 @@ public sealed record CliItem
     /// under <c>-f files</c> although its kind stays <c>text</c>/<c>rich-text</c>); omitted for everything else.
     /// </summary>
     public int? Paths { get; init; }
+
+    /// <summary>
+    /// When the item's text was last run as a Win+R command (it is then listed under <c>-f run</c>, whatever its
+    /// origin); omitted for items never run. Approximate for commands Windows remembered from before
+    /// BetterClipboard watched.
+    /// </summary>
+    public DateTimeOffset? LastRun { get; init; }
 
     /// <summary><c>grep</c>: the matching lines.</summary>
     public IReadOnlyList<CliMatch>? Matches { get; init; }

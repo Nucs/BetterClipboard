@@ -1,7 +1,9 @@
 using BetterClipboard.Core.Diagnostics;
+using BetterClipboard.Core.Integrations;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Windows.Clipboard;
 using BetterClipboard.Windows.Input;
+using BetterClipboard.Windows.Integrations;
 using BetterClipboard.Windows.Shell;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -151,6 +153,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ImportShareXScreenshots { get; set; }
 
+    /// <summary>See <see cref="AppSettings.RecordRunHistory"/> (on by default).</summary>
+    [ObservableProperty]
+    public partial bool RecordRunHistory { get; set; }
+
+    /// <summary>See <see cref="AppSettings.ShowEverythingTab"/> (on by default).</summary>
+    [ObservableProperty]
+    public partial bool ShowEverythingTab { get; set; }
+
     // ───── Status ─────
 
     /// <summary>How the shortcut is wired right now.</summary>
@@ -208,6 +218,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string ShareXStatus { get; set; } = string.Empty;
 
+    /// <summary>Whether the Win+R list is watched, how many commands Windows still remembers, and how many runs came in.</summary>
+    [ObservableProperty]
+    public partial string RunHistoryStatus { get; set; } = string.Empty;
+
+    /// <summary>Whether Everything is installed and running, its version and signer, and what the tab shows.</summary>
+    [ObservableProperty]
+    public partial string EverythingStatus { get; set; } = string.Empty;
+
     /// <summary>
     /// The "Forget forever" list, most recently forgotten first (see <see cref="RefreshForgottenAsync"/>).
     /// Replaced wholesale on refresh; UI thread only.
@@ -251,14 +269,54 @@ public sealed partial class SettingsViewModel : ObservableObject
             LaunchAtStartup = StartupRegistration.IsEnabled(AppController.ExecutablePath);
             EnableCommandLine = settings.EnableCommandLine;
             ImportShareXScreenshots = settings.ImportShareXScreenshots;
+            ShowEverythingTab = settings.ShowEverythingTab;
+            RecordRunHistory = settings.RecordRunHistory;
             RefreshHotkeyStatus();
             RefreshCommandLineStatus();
             RefreshShareXStatus();
+            RefreshEverythingStatus();
+            RefreshRunHistoryStatus();
         }
         finally
         {
             loading = false;
         }
+    }
+
+    /// <summary>
+    /// Re-reads the Everything integration state: installed or not, running (version, loading, signer) or not, and
+    /// what the tab shows meanwhile. Never names files.
+    /// </summary>
+    public void RefreshEverythingStatus()
+    {
+        if (!ShowEverythingTab)
+        {
+            EverythingStatus = "Off — BetterClipboard does not talk to Everything. Copies made in Everything are still recorded like any copy.";
+            return;
+        }
+
+        if (controller.Everything is not { } everything)
+        {
+            EverythingStatus = "Starting…";
+            return;
+        }
+
+        var installation = everything.Installation;
+        var status = everything.Status;
+        var installed = installation.IsInstalled
+            ? $"Installed: {installation.ExecutablePath}{(installation.Version is { } version ? $" ({version})" : string.Empty)}."
+            : $"Not installed ({installation.DetectedBy}).";
+        var running = status.State switch
+        {
+            EverythingState.Ready => $"Running: Everything {status.Version}, {status.Trust?.Reason}{(status.IsBusy ? ", updating its index" : string.Empty)}. The tab lists the files you open in it, live.",
+            EverythingState.Loading => $"Running: Everything {status.Version}, still loading its index — until it is ready the tab shows the history it saved last.",
+            EverythingState.NotResponding => "Everything is running but not responding — the tab shows the history it saved last.",
+            EverythingState.Untrusted => $"A program answering as Everything was ignored: {status.Trust?.Reason}.",
+            _ => installation.IsInstalled
+                ? "Not running — the tab shows the history Everything saved last, and can start it."
+                : "Not running. Install or start Everything (voidtools) and the panel gets its tab (checked whenever the panel or Settings opens).",
+        };
+        EverythingStatus = $"{installed}\n{running}";
     }
 
     /// <summary>Re-reads bclip's location, PATH state and whether the pipe is live.</summary>
@@ -303,6 +361,33 @@ public sealed partial class SettingsViewModel : ObservableObject
         int imported = controller.ShareXImportedThisSession;
         var count = imported > 0 ? $"\n{imported:N0} screenshot{(imported == 1 ? string.Empty : "s")} added since BetterClipboard started." : string.Empty;
         ShareXStatus = $"{found}\n{folders}{count}";
+    }
+
+    /// <summary>
+    /// Re-reads the Win+R history state. Windows' own count is shown against its cap of 26, which is the point of
+    /// the feature: past 26, Windows forgets and BetterClipboard does not.
+    /// </summary>
+    public void RefreshRunHistoryStatus()
+    {
+        if (!RecordRunHistory)
+        {
+            RunHistoryStatus = "Off — new Win+R commands are not recorded. The ones kept so far stay in your history.";
+            return;
+        }
+
+        if (!controller.IsRunHistoryWatching)
+        {
+            RunHistoryStatus = "Starting… (if this stays, the log says why).";
+            return;
+        }
+
+        int windows = controller.RunHistoryWindowsCount;
+        var remembered = windows < 0
+            ? "Watching Windows' Win+R list."
+            : $"Watching Windows' Win+R list: Windows remembers {windows:N0} of its {RunMru.Capacity} commands.";
+        int recorded = controller.RunHistoryRecordedThisSession;
+        var count = recorded > 0 ? $"\n{recorded:N0} run{(recorded == 1 ? string.Empty : "s")} recorded since BetterClipboard started." : string.Empty;
+        RunHistoryStatus = remembered + count;
     }
 
     /// <summary>Adds bclip's folder to the user PATH and refreshes the status text.</summary>
@@ -680,6 +765,21 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Persists the ShareX import switch (the controller starts or stops the folder watch).</summary>
     /// <param name="value">New value.</param>
     partial void OnImportShareXScreenshotsChanged(bool value) => Update(s => s with { ImportShareXScreenshots = value });
+
+    /// <summary>
+    /// Persists the Win+R history switch (the controller starts the watch and imports, or stops it and clears the
+    /// snapshot); the status line follows the controller's status event.
+    /// </summary>
+    /// <param name="value">New value.</param>
+    partial void OnRecordRunHistoryChanged(bool value) => Update(s => s with { RecordRunHistory = value });
+
+    /// <summary>Persists the Everything tab switch (the controller starts or stops talking to Everything).</summary>
+    /// <param name="value">New value.</param>
+    partial void OnShowEverythingTabChanged(bool value)
+    {
+        Update(s => s with { ShowEverythingTab = value });
+        RefreshEverythingStatus();
+    }
 
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>

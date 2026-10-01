@@ -78,10 +78,12 @@ public sealed class SourceAppResolver
         return new SourceAppInfo(processName, path, display);
     }
 
-    /// <summary>Queries the full image path of a process.</summary>
+    /// <summary>
+    /// Queries the full image path of a process (also used to check who owns voidtools Everything's IPC window).
+    /// </summary>
     /// <param name="processId">Process id.</param>
     /// <returns>The path, or <see langword="null"/> when access is denied or the process is gone.</returns>
-    private static string? TryGetImagePath(uint processId)
+    internal static string? TryGetImagePath(uint processId)
     {
         nint process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
         if (process == 0)

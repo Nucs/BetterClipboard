@@ -110,6 +110,31 @@ public sealed record AppSettings
     /// </remarks>
     public bool ImportShareXScreenshots { get; init; } = true;
 
+    /// <summary>
+    /// Keep every command run with Win+R (the Run dialog) in the history, and show the panel's Run tab.
+    /// </summary>
+    /// <remarks>
+    /// On by default: Windows keeps only the last 26 commands (a full list evicts the oldest with every new one)
+    /// in plain text in the registry, so mirroring them into the encrypted history adds no exposure — it stops
+    /// the loss. The first activation imports what Windows still remembers; afterwards each new run is recorded
+    /// the moment Windows writes it, and entering the Run tab rescans. Off stops watching and forgets the
+    /// snapshot, so switching it on again starts over with what Windows remembers then (nothing is
+    /// duplicated). Pause capturing skips runs made while paused; commands recorded earlier stay either way.
+    /// </remarks>
+    public bool RecordRunHistory { get; init; } = true;
+
+    /// <summary>
+    /// Show the panel's Everything tab while voidtools Everything is installed or running: the files and folders
+    /// you opened from Everything (newest first, live from Everything's run history), next to everything copied from it.
+    /// </summary>
+    /// <remarks>
+    /// On by default: it only reads, and only when the tab is opened. The picks themselves are not stored — the
+    /// history only gets the ones you paste, copy or keep (pin, group) there. Off hides the tab and stops talking
+    /// to Everything; copies made in Everything are still recorded like any copy (pause, ignored apps — add
+    /// "Everything" — and the size limit apply to them).
+    /// </remarks>
+    public bool ShowEverythingTab { get; init; } = true;
+
     /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
     /// <remarks>
     /// Starts out holding <see cref="KnownPasswordManagers.All"/>: <see cref="Normalize"/> merges every

@@ -228,7 +228,9 @@
                     9 instead of WinUI's 12 px side padding: with the ShareX tab, seven labels at the default
                     padding need 393-408 px (measured, Segoe UI Variable 14 px) but the bar has 384 (400 DIP
                     flyout - 24 padding + 8 negative margin), so the last tab was clipped. At 9 they need
-                    351-366 px. The bar does not scroll, so anything wider is cut off.
+                    351-366 px. The bar does not scroll: when the visible tabs need more (the Everything tab),
+                    the window grows just enough (code-behind: MeasureTabsExtraDip, which measures the labels and
+                    adds TabSidePaddingDip per side: keep that constant equal to this padding).
                 -->
                 <Style TargetType="SelectorBarItem">
                     <Setter Property="Padding" Value="9,10,9,7" />
@@ -249,6 +251,23 @@
                 Tag="ShareX"
                 Text="ShareX"
                 ToolTipService.ToolTip="Screenshots saved by ShareX and everything copied from it"
+                Visibility="Collapsed" />
+            <!--
+                Only while Settings › Win+R history is on (code-behind: UpdateRunTab). Entering it rescans Windows'
+                Win+R list first (the live watch normally has everything already).
+            -->
+            <SelectorBarItem
+                x:Name="RunFilter"
+                Tag="Run"
+                Text="Run"
+                ToolTipService.ToolTip="Commands you ran with Win+R, kept after Windows forgets them (Ctrl+Enter runs one again)"
+                Visibility="Collapsed" />
+            <!--  Only while voidtools Everything is installed or running and the tab is on (code-behind: UpdateEverythingTab).  -->
+            <SelectorBarItem
+                x:Name="EverythingFilter"
+                Tag="Everything"
+                Text="Everything"
+                ToolTipService.ToolTip="Files you opened in Everything, newest first, and everything copied from it"
                 Visibility="Collapsed" />
         </SelectorBar>
 
@@ -385,6 +404,14 @@
                 Text="{x:Bind ViewModel.EmptyMessage, Mode=OneWay}"
                 TextAlignment="Center"
                 TextWrapping="Wrap" />
+            <!--  The empty Everything tab while Everything is not running (FlyoutViewModel.ShowStartEverything).  -->
+            <Button
+                x:Name="StartEverythingButton"
+                Margin="0,4,0,0"
+                HorizontalAlignment="Center"
+                Click="StartEverythingButton_Click"
+                Content="Start Everything"
+                Visibility="{x:Bind BoolVisibility(ViewModel.ShowStartEverything), Mode=OneWay}" />
         </StackPanel>
 
         <!--  Footer  -->
@@ -399,7 +426,7 @@
             <TextBlock
                 FontSize="11"
                 Foreground="{ThemeResource TextFillColorTertiaryBrush}"
-                Text="↵ paste · ⇧↵ plain text · Ctrl+P pin · Del delete"
+                Text="{x:Bind ViewModel.KeyHint, Mode=OneWay}"
                 TextTrimming="CharacterEllipsis" />
             <TextBlock
                 Grid.Column="1"

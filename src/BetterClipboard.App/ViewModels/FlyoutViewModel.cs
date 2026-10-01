@@ -1,8 +1,10 @@
 using System.Collections.ObjectModel;
 using BetterClipboard.Core.Diagnostics;
+using BetterClipboard.Core.Everything;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Storage;
+using BetterClipboard.Windows.Integrations;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BetterClipboard.App.ViewModels;
@@ -24,12 +26,18 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <summary>Search placeholder of the regular view (a group view names its group instead).</summary>
     public const string DefaultSearchPlaceholder = "Search everything you've copied…";
 
+    /// <summary>Search placeholder of the Everything tab, where the words also narrow Everything's run history.</summary>
+    public const string EverythingSearchPlaceholder = "Search files you opened in Everything…";
+
     private readonly AppController controller;
     private CancellationTokenSource? queryCancellation;
     private int loaded;
     private bool hasMore;
     private bool loadingMore;
     private bool suppressReload;
+
+    /// <summary>The picks behind the Everything tab's last load (their source and problem word its empty state and footer).</summary>
+    private EverythingPicksResult? lastPicks;
 
     /// <summary>
     /// Creates the view model.
@@ -70,6 +78,19 @@ public sealed partial class FlyoutViewModel : ObservableObject
     [ObservableProperty]
     public partial string StatusText { get; set; } = string.Empty;
 
+    /// <summary>
+    /// The footer's key hints for the current tab (<see cref="DefaultKeyHint"/>, or <see cref="RunKeyHint"/> in the
+    /// Run tab, where Ctrl+Enter runs the selected command).
+    /// </summary>
+    [ObservableProperty]
+    public partial string KeyHint { get; set; } = DefaultKeyHint;
+
+    /// <summary>The footer's key hints everywhere but the Run tab.</summary>
+    public const string DefaultKeyHint = "↵ paste · ⇧↵ plain text · Ctrl+P pin · Del delete";
+
+    /// <summary>The Run tab's key hints: Enter still pastes; Ctrl+Enter runs like Win+R, Ctrl+Shift+Enter as administrator.</summary>
+    public const string RunKeyHint = "↵ paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin";
+
     /// <summary>Whether capture is paused (header toggle).</summary>
     [ObservableProperty]
     public partial bool IsPaused { get; set; }
@@ -92,6 +113,19 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <summary>Search box placeholder ("Search in Work…" in a group view).</summary>
     [ObservableProperty]
     public partial string SearchPlaceholder { get; set; } = DefaultSearchPlaceholder;
+
+    /// <summary>
+    /// Whether the empty Everything tab offers "Start Everything": it is not running, nothing could be shown, and
+    /// an installed (or earlier seen) Everything can be started.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowStartEverything { get; set; }
+
+    /// <summary>
+    /// Whether the list is the Everything tab's merged view: the Everything filter in the regular view (in a group
+    /// view the filter only narrows the group's stored entries — live picks are in no group).
+    /// </summary>
+    public bool IsEverythingView => Filter == ClipFilter.Everything && SelectedGroupId is null;
 
     /// <summary>Raised (UI thread) after <see cref="Groups"/> was reloaded, so the view rebuilds its group icons.</summary>
     public event EventHandler? GroupsReloaded;
@@ -162,6 +196,30 @@ public sealed partial class FlyoutViewModel : ObservableObject
             if (debounce)
             {
                 await Task.Delay(120, cancellation.Token);
+            }
+
+            if (IsEverythingView)
+            {
+                // Two bounded lists merged (stored entries, Everything's picks): no paging.
+                var rows = await LoadEverythingRowsAsync(cancellation.Token);
+                if (cancellation.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                Items.Clear();
+                long syntheticId = -1;
+                foreach (var row in rows)
+                {
+                    Items.Add(row.Entry is { } stored ? CreateItem(stored) : ClipItemViewModel.ForPick(row.Pick!, syntheticId--));
+                }
+
+                loaded = Items.Count;
+                hasMore = false;
+                UpdateEmptyState();
+                Reloaded?.Invoke(this, EventArgs.Empty);
+                await UpdateStatusAsync();
+                return;
             }
 
             var entries = await controller.History.QueryAsync(CreateQuery(0), cancellation.Token);
@@ -286,6 +344,21 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Takes a card out of the list in place (a hidden or forgotten Everything pick, which no history event
+    /// announces), keeping the scroll position; the empty state and footer follow.
+    /// </summary>
+    /// <param name="item">The card.</param>
+    public void RemoveItem(ClipItemViewModel item)
+    {
+        if (Items.Remove(item))
+        {
+            loaded = Math.Max(0, loaded - 1);
+            UpdateEmptyState();
+            _ = UpdateStatusAsync();
+        }
+    }
+
     /// <summary>Refreshes relative times of the visible cards.</summary>
     public void RefreshCaptions()
     {
@@ -305,10 +378,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
     }
 
-    /// <summary>Reloads when the filter changes.</summary>
+    /// <summary>Reloads when the filter changes (and retitles the search box: the Everything tab searches Everything too).</summary>
     /// <param name="value">New filter.</param>
     partial void OnFilterChanged(ClipFilter value)
     {
+        UpdateGroupTexts();
+
+        // The Run tab is where Ctrl+Enter runs a command (it works on any card with a run time, but only the
+        // Run tab has room to say so).
+        KeyHint = value == ClipFilter.Run ? RunKeyHint : DefaultKeyHint;
         if (!suppressReload)
         {
             _ = ReloadAsync();
@@ -331,7 +409,37 @@ public sealed partial class FlyoutViewModel : ObservableObject
     {
         var group = SelectedGroup;
         GroupTitle = group is null ? string.Empty : "› " + group.Name;
-        SearchPlaceholder = group is null ? DefaultSearchPlaceholder : $"Search in {group.Name}…";
+        SearchPlaceholder = group is not null ? $"Search in {group.Name}…"
+            : IsEverythingView ? EverythingSearchPlaceholder
+            : DefaultSearchPlaceholder;
+    }
+
+    /// <summary>
+    /// Loads the Everything tab's rows: stored Everything entries and Everything's picks, both narrowed by the search
+    /// words, merged by <see cref="EverythingTab.Merge"/> without hidden or forgotten picks.
+    /// </summary>
+    /// <param name="cancellationToken">Cancels a superseded load.</param>
+    /// <returns>The rows in display order.</returns>
+    /// <exception cref="OperationCanceledException">Superseded by a newer load.</exception>
+    private async Task<IReadOnlyList<EverythingTabRow>> LoadEverythingRowsAsync(CancellationToken cancellationToken)
+    {
+        var history = controller.History;
+        var storedTask = history.QueryAsync(new ClipQuery
+        {
+            SearchText = SearchText,
+            Filter = ClipFilter.Everything,
+            Limit = EverythingTab.MaxStoredEntries,
+            PinnedFirst = false, // the merge orders both sources together
+        }, cancellationToken);
+
+        var picks = controller.Everything is { } everything
+            ? await everything.GetPicksAsync(SearchText, EverythingTab.MaxPicks, cancellationToken)
+            : new EverythingPicksResult([], EverythingPicksSource.None, null);
+        var stored = await storedTask;
+        var hidden = EverythingTab.ParseHidden(await history.GetStateValueAsync(EverythingTab.HiddenStateName));
+        var forgotten = await history.FindForgottenAsync(picks.Picks.Select(p => p.FilesHash).ToList());
+        lastPicks = picks;
+        return EverythingTab.Merge(stored, picks.Picks, hidden, forgotten, controller.Settings.Current.PinnedOnTop);
     }
 
     /// <summary>Builds the query for a page.</summary>
@@ -356,8 +464,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private void UpdateEmptyState()
     {
         IsEmpty = Items.Count == 0;
+        ShowStartEverything = false;
         if (!IsEmpty)
         {
+            return;
+        }
+
+        if (IsEverythingView)
+        {
+            UpdateEverythingEmptyState();
             return;
         }
 
@@ -391,6 +506,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
             EmptyTitle = "No files or paths yet";
             EmptyMessage = @"Copy files in Explorer, or copy a path such as C:\folder\file.txt, /var/log/syslog or src/app.cs.";
         }
+        else if (Filter == ClipFilter.Run)
+        {
+            EmptyTitle = "No Win+R commands yet";
+            EmptyMessage = controller.Settings.Current.RecordRunHistory
+                ? "Run something with Win+R — it shows up here at once, and stays after Windows forgets it (Windows keeps only 26)."
+                : "Turn on “Win+R history” in Settings to keep every command you run with Win+R here.";
+        }
         else if (Filter != ClipFilter.All)
         {
             EmptyTitle = "Nothing here yet";
@@ -401,6 +523,59 @@ public sealed partial class FlyoutViewModel : ObservableObject
             EmptyTitle = "Your clipboard history is empty";
             EmptyMessage = "Copy something — it will be kept here, even after a restart.";
         }
+    }
+
+    /// <summary>
+    /// The empty Everything tab's wording: no matches, Everything not running (with "Start Everything" when
+    /// possible), still loading, not answering, or simply nothing opened yet.
+    /// </summary>
+    private void UpdateEverythingEmptyState()
+    {
+        var state = controller.Everything?.Status.State ?? EverythingState.NotRunning;
+        var problem = lastPicks?.Problem;
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            EmptyTitle = "No matches";
+            EmptyMessage = $"Nothing you opened in Everything or copied from it contains “{SearchText.Trim()}”.";
+        }
+        else if (state == EverythingState.Loading)
+        {
+            EmptyTitle = "Everything is loading its index";
+            EmptyMessage = "The files you open in Everything show up here as soon as it is ready.";
+        }
+        else if (state is EverythingState.NotRunning or EverythingState.Untrusted)
+        {
+            EmptyTitle = "Everything is not running";
+            ShowStartEverything = controller.Everything?.CanStart == true;
+            EmptyMessage = ShowStartEverything
+                ? "Start it to see the files you open in it here, newest first."
+                : "Open Everything (voidtools) to see the files you open in it here, newest first.";
+        }
+        else if (problem is not null)
+        {
+            EmptyTitle = "Everything did not answer";
+            EmptyMessage = $"{char.ToUpperInvariant(problem[0])}{problem[1..]}. Try again in a moment.";
+        }
+        else
+        {
+            EmptyTitle = "Nothing opened in Everything yet";
+            EmptyMessage = "Files and folders you open from Everything's results show up here, newest first — and so does anything you copy in Everything.";
+        }
+    }
+
+    /// <summary>The Everything tab's footer: how many picks, where from, and how many kept items.</summary>
+    /// <returns>E.g. "37 opened in Everything · 2 kept" or "12 from Everything's saved history (not running)".</returns>
+    private string EverythingStatusText()
+    {
+        int picks = Items.Count(i => i.Pick is not null);
+        int stored = Items.Count - picks;
+        var kept = stored > 0 ? $" · {stored:N0} kept" : string.Empty;
+        return lastPicks?.Source switch
+        {
+            EverythingPicksSource.Live => $"{picks:N0} opened in Everything{kept}",
+            EverythingPicksSource.SavedFile => $"{picks:N0} from Everything's saved history{kept}",
+            _ => stored > 0 ? $"{stored:N0} from Everything" : string.Empty,
+        };
     }
 
     /// <summary>Updates the footer counts.</summary>
@@ -415,7 +590,20 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return;
             }
 
+            if (IsEverythingView)
+            {
+                StatusText = EverythingStatusText();
+                return;
+            }
+
             var stats = await controller.History.GetStatsAsync();
+            if (Filter == ClipFilter.Run)
+            {
+                // The number that matters here: how many commands are kept, against Windows' own 26.
+                StatusText = $"{stats.RunCount:N0} command{(stats.RunCount == 1 ? string.Empty : "s")} kept";
+                return;
+            }
+
             StatusText = stats.PinnedCount > 0
                 ? $"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned"
                 : $"{stats.Count:N0} items";

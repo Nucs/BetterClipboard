@@ -47,6 +47,8 @@ public sealed partial class SettingsWindow : Window
         controller.HistoryChanged += OnHistoryChanged;
         controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
+        controller.EverythingStatusChanged += OnEverythingStatusChanged;
+        controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ForgottenChanged += OnForgottenChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
@@ -62,6 +64,8 @@ public sealed partial class SettingsWindow : Window
         ViewModel.RefreshSystemStatus();
         ViewModel.RefreshHotkeyStatus();
         ViewModel.RefreshShareXStatus();
+        ViewModel.RefreshEverythingStatus();
+        ViewModel.RefreshRunHistoryStatus();
 
         // Also refreshes the stats line, which counts the forgotten items.
         _ = ViewModel.RefreshForgottenAsync();
@@ -93,6 +97,8 @@ public sealed partial class SettingsWindow : Window
         controller.HistoryChanged -= OnHistoryChanged;
         controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
+        controller.EverythingStatusChanged -= OnEverythingStatusChanged;
+        controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.ForgottenChanged -= OnForgottenChanged;
         controller.Settings.Changed -= OnSettingsChanged;
     }
@@ -131,6 +137,16 @@ public sealed partial class SettingsWindow : Window
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
     private void OnShareXStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshShareXStatus();
+
+    /// <summary>Everything started, stopped, finished loading or was found installed, or the tab was switched: refresh its card.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnEverythingStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshEverythingStatus();
+
+    /// <summary>The Win+R watch started or stopped, Windows' list was read, or a run was recorded: refresh its card.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshRunHistoryStatus();
 
     /// <summary>The bclip pipe started, stopped or failed: refresh its card.</summary>
     /// <param name="sender">Controller.</param>

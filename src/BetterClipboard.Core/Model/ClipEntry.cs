@@ -78,6 +78,17 @@ public sealed class ClipEntry
     /// <summary>Whether the entry's text is nothing but paths (<see cref="PathCount"/> above 0).</summary>
     public bool IsPathText => PathCount > 0;
 
+    /// <summary>
+    /// When the entry's text was last run as a Win+R command (seen in Windows' Run history, or run again from
+    /// the panel); <see langword="null"/> when it never was. Set, it lists the entry in the Run tab whatever its
+    /// origin — text copied first and run later is one entry. Times of commands Windows remembered from before
+    /// BetterClipboard watched are approximate (Windows keeps only the newest run time).
+    /// </summary>
+    public DateTimeOffset? LastRunUtc { get; init; }
+
+    /// <summary>Whether the entry was ever run as a Win+R command (<see cref="LastRunUtc"/> set): it can be run again.</summary>
+    public bool HasRunHistory => LastRunUtc is not null;
+
     /// <summary>Whether any rich text format (HTML/RTF) is stored, i.e. "paste as plain text" differs from paste.</summary>
     public bool HasRichFormats =>
         FormatNames.Contains(ClipFormatNames.Html) || FormatNames.Contains(ClipFormatNames.Rtf);

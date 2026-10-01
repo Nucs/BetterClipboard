@@ -412,6 +412,35 @@
                             TextWrapping="Wrap" />
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="While voidtools Everything is installed or running, the panel gets an Everything tab: the files and folders you open from Everything, newest first, next to everything copied from it. BetterClipboard only reads from Everything. A file is kept in your history only when you paste, copy or pin it there."
+                    Glyph="&#xE721;"
+                    Header="Everything">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.ShowEverythingTab, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.EverythingStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+                <!--  E756 = CommandPrompt (checked by rendering): Win+R has no glyph of its own.  -->
+                <controls:SettingsCard
+                    Description="Windows keeps only your last 26 Win+R commands, in plain text. BetterClipboard keeps every one, encrypted, in a Run tab: each command shows up the moment you run it, and Ctrl+Enter runs it again. The first time, it imports the 26 Windows still remembers. Pause capturing, Ignored apps (add Win+R to skip them) and Forget forever apply. Windows' own list is never changed."
+                    Glyph="&#xE756;"
+                    Header="Win+R history">
+                    <ToggleSwitch IsOn="{x:Bind ViewModel.RecordRunHistory, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.RunHistoryStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
 
                 <!--  App  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="App" />

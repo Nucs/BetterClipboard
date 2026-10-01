@@ -51,6 +51,9 @@ public sealed class MessageWindowThread : IDisposable
 
     /// <summary>Desktop the thread moves to before creating its window (0 = inherit the process's). Tests only.</summary>
     private readonly nint desktop;
+
+    /// <summary>Exact window class name asked for by the creator, or <see langword="null"/> for a unique generated one. Tests only.</summary>
+    private readonly string? requestedClassName;
     private readonly TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private WndProc? wndProc;
     private string? className;
@@ -76,18 +79,31 @@ public sealed class MessageWindowThread : IDisposable
     /// <paramref name="sta"/> is set — STA initialization creates COM's hidden window, after which
     /// <c>SetThreadDesktop</c> fails with <c>ERROR_BUSY</c>.
     /// </param>
-    /// <exception cref="Win32Exception">The window class or window could not be created, or the thread could not move to <paramref name="desktop"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="desktop"/> was combined with <paramref name="sta"/>.</exception>
-    public MessageWindowThread(string name, bool messageOnly = true, bool sta = false, ThreadPriority priority = ThreadPriority.Normal, nint desktop = 0)
+    /// <param name="className">
+    /// Test isolation only: the exact window class to register instead of a unique generated one, for a window that
+    /// code under test finds by class with <c>FindWindow</c> (a fake voidtools Everything IPC window). Footgun: a
+    /// class name can be registered once per process at a time, so it must not collide with another live window of
+    /// this process — <c>RegisterClassEx</c> then fails with <c>ERROR_CLASS_ALREADY_EXISTS</c>. <c>FindWindow</c>
+    /// never finds message-only windows, so such a window is created with <paramref name="messageOnly"/> off.
+    /// </param>
+    /// <exception cref="Win32Exception">The window class or window could not be created (also: <paramref name="className"/> already registered), or the thread could not move to <paramref name="desktop"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="desktop"/> was combined with <paramref name="sta"/>, or <paramref name="className"/> is blank.</exception>
+    public MessageWindowThread(string name, bool messageOnly = true, bool sta = false, ThreadPriority priority = ThreadPriority.Normal, nint desktop = 0, string? className = null)
     {
         if (sta && desktop != 0)
         {
             throw new ArgumentException("A desktop override requires an MTA thread (STA threads already own a COM window).", nameof(desktop));
         }
 
+        if (className is not null && string.IsNullOrWhiteSpace(className))
+        {
+            throw new ArgumentException("A window class name override must not be blank.", nameof(className));
+        }
+
         this.name = name;
         this.messageOnly = messageOnly;
         this.desktop = desktop;
+        requestedClassName = className;
         thread = new Thread(Run) { IsBackground = true, Name = $"BetterClipboard.{name}", Priority = priority };
         if (sta)
         {
@@ -220,7 +236,8 @@ public sealed class MessageWindowThread : IDisposable
 
             instance = GetModuleHandle(null);
             wndProc = WindowProcedure;
-            className = $"BetterClipboard.{name}.{Guid.NewGuid():N}";
+            // A unique name by default: two windows of the same purpose (tests run many) never collide.
+            className = requestedClassName ?? $"BetterClipboard.{name}.{Guid.NewGuid():N}";
             classNamePointer = Marshal.StringToHGlobalUni(className);
             var windowClass = new WNDCLASSEXW
             {

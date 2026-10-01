@@ -78,6 +78,31 @@ public sealed class CliCommandProcessorTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// The everything filter lists files kept from the panel's Everything tab and copies made in Everything,
+    /// labelled by origin; the files only opened in Everything are not history entries and never appear.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task List_EverythingFilter_AndOrigin()
+    {
+        var everything = new SourceAppInfo("Everything", @"C:\Program Files\Everything\Everything.exe", "Everything");
+        await AddText("unrelated");
+        var kept = (await history.AddAsync(new ClipCapture
+        {
+            Formats = ReplayFormats.ForFiles([@"C:\BC-TEST\kept.txt"], plainTextOnly: false),
+            CapturedAtUtc = TestData.Now.AddMinutes(1),
+            Origin = ClipOrigin.Everything,
+            Source = everything,
+        }))!;
+        var copy = (await history.AddAsync(TestData.Text(@"C:\BC-TEST\copied.txt", TestData.Now.AddMinutes(2), source: everything)))!;
+
+        var items = (await Run(new CliRequest { Command = CliCommands.List, Filter = "Everything" })).Items!;
+        Assert.Equal([copy.Id, kept.Id], items.Select(i => i.Id));
+        Assert.Equal(["copied", "everything"], items.Select(i => i.Origin));
+        Assert.Equal(["Everything", "Everything"], items.Select(i => i.Source));
+    }
+
+    /// <summary>
     /// The files filter lists file lists and text that is nothing but paths; such text keeps its kind and carries
     /// its path count (on the wire as <c>"paths"</c>, omitted for everything else).
     /// </summary>

@@ -4,12 +4,14 @@ using BetterClipboard.App.Interop;
 using BetterClipboard.App.ViewModels;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
+using BetterClipboard.Core.Everything;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Storage;
 using BetterClipboard.Windows.Input;
+using BetterClipboard.Windows.Shell;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Input;
 using Microsoft.UI.Windowing;
@@ -62,6 +64,14 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>Flyout size in DIPs (Win+V is ~360×450; a little larger shows two more cards).</summary>
     private const double WidthDip = 400;
 
+    /// <summary>
+    /// Left and right padding of every filter tab, in DIPs. Must equal the side padding of the implicit
+    /// <c>SelectorBarItem</c> style in <c>ClipboardFlyout.xaml</c> (<c>9,10,9,7</c>): <see cref="MeasureTabDip"/> adds it
+    /// to each label because a tab that was never laid out has no padding to read yet. Change both together, or the
+    /// window is sized for tabs of the wrong width.
+    /// </summary>
+    private const double TabSidePaddingDip = 9;
+
     /// <summary>Flyout height in DIPs.</summary>
     private const double HeightDip = 560;
 
@@ -89,6 +99,14 @@ public sealed partial class ClipboardFlyout : Window
     /// </summary>
     private const string ClipIdsFormat = "BetterClipboard.ClipIds";
 
+    /// <summary>Segoe Fluent Icons "Play" (E768): the card menu's Run — the Run dialog has no glyph of its own.</summary>
+    private const string RunGlyph = "\uE768";
+
+    /// <summary>
+    /// Segoe Fluent Icons E7EF, a window with the administrator shield (checked by rendering): "Run as administrator".
+    /// </summary>
+    private const string RunAsAdministratorGlyph = "\uE7EF";
+
     private readonly AppController controller;
     private readonly nint hwnd;
     private ScrollViewer? scrollViewer;
@@ -109,6 +127,12 @@ public sealed partial class ClipboardFlyout : Window
     private uint dragPointerId;
 
     /// <summary>
+    /// How much wider than <see cref="WidthDip"/> the window is so every visible filter tab fits (0 while they fit):
+    /// the bar does not scroll, and with ShareX's and Everything's tabs it needs ~50 DIP more (CLAUDE.md §2.14).
+    /// </summary>
+    private double tabsExtraDip;
+
+    /// <summary>
     /// Creates the (hidden) flyout window.
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -124,8 +148,13 @@ public sealed partial class ClipboardFlyout : Window
         AppWindow.Closing += OnClosing;
         controller.HistoryChanged += OnHistoryChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
+        controller.EverythingStatusChanged += OnEverythingStatusChanged;
+        controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.GroupsChanged += OnGroupsChanged;
         ViewModel.GroupsReloaded += (_, _) => RebuildGroupButtons();
+
+        // On the very first show the tabs are measured before they exist (0 wide); once they do, fit them again.
+        Filters.Loaded += (_, _) => ApplyTabsWidth();
         ViewModel.PropertyChanged += (_, e) =>
         {
             // Any route to another view (icon click, reset on show, deleted group) must move the highlight.
@@ -196,7 +225,12 @@ public sealed partial class ClipboardFlyout : Window
             controller.ApplyTheme(Root);
             ViewModel.ResetForShow();
             UpdateShareXTab();
+            UpdateEverythingTab();
+            UpdateRunTab(applyWidth: false);
             SelectFilter(ClipFilter.All);
+
+            // With the tabs' visibility settled, the window gets the width they need (placed below as a whole).
+            tabsExtraDip = MeasureTabsExtraDip();
             groupsPaneOpen = controller.Settings.Current.ShowGroupsPane;
             ApplyGroupsPaneLayout();
 
@@ -212,7 +246,7 @@ public sealed partial class ClipboardFlyout : Window
                 ? MonitorLookup.FromWindow(context.TargetWindow)
                 : MonitorLookup.FromPoint(anchorPoint);
             var bounds = FlyoutPositioner.Compute(placement, context, workArea,
-                (int)Math.Round(WidthDip * scale), (int)Math.Round(HeightDip * scale), (int)Math.Round(GapDip * scale));
+                (int)Math.Round((WidthDip + tabsExtraDip) * scale), (int)Math.Round(HeightDip * scale), (int)Math.Round(GapDip * scale));
             if (groupsPaneOpen)
             {
                 // Place the list where it always goes, then add the column on its left.
@@ -272,6 +306,8 @@ public sealed partial class ClipboardFlyout : Window
         closingForExit = true;
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
+        controller.EverythingStatusChanged -= OnEverythingStatusChanged;
+        controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.GroupsChanged -= OnGroupsChanged;
         Close();
     }
@@ -416,7 +452,16 @@ public sealed partial class ClipboardFlyout : Window
                 // Fall back to the first card if the selection was lost (e.g. mid-reload).
                 if ((Selected ?? ViewModel.Items.FirstOrDefault()) is { } toPaste)
                 {
-                    _ = controller.PasteAsync(toPaste.Entry, plainText: shift);
+                    // Ctrl+Enter on a Win+R command runs it like the Run dialog (Ctrl+Shift+Enter as administrator);
+                    // on any other card it pastes, as it always did.
+                    if (ctrl && toPaste.Pick is null && toPaste.Entry.HasRunHistory)
+                    {
+                        _ = RunItemAsync(toPaste, asAdministrator: shift);
+                    }
+                    else
+                    {
+                        _ = PasteItemAsync(toPaste, plainText: shift);
+                    }
                 }
 
                 break;
@@ -447,7 +492,7 @@ public sealed partial class ClipboardFlyout : Window
             case VirtualKey.P when ctrl:
                 if (Selected is { } toPin)
                 {
-                    _ = controller.History.SetPinnedAsync(toPin.Id, !toPin.IsPinned);
+                    _ = TogglePinAsync(toPin);
                 }
 
                 break;
@@ -461,7 +506,7 @@ public sealed partial class ClipboardFlyout : Window
                 int index = e.Key - VirtualKey.Number1;
                 if (index < ViewModel.Items.Count)
                 {
-                    _ = controller.PasteAsync(ViewModel.Items[index].Entry, plainText: shift);
+                    _ = PasteItemAsync(ViewModel.Items[index], plainText: shift);
                 }
 
                 break;
@@ -687,7 +732,7 @@ public sealed partial class ClipboardFlyout : Window
     {
         if (e.ClickedItem is ClipItemViewModel item)
         {
-            _ = controller.PasteAsync(item.Entry, plainText: IsKeyDown(VirtualKey.Shift));
+            _ = PasteItemAsync(item, plainText: IsKeyDown(VirtualKey.Shift));
         }
     }
 
@@ -723,6 +768,13 @@ public sealed partial class ClipboardFlyout : Window
         if (sender.SelectedItem?.Tag is string tag && Enum.TryParse<ClipFilter>(tag, out var filter))
         {
             ViewModel.Filter = filter;
+
+            // Entering the Run tab rescans Windows' Win+R list: the live watch normally has every run already, and
+            // this catches anything it could not see (a watch that failed to start, a list edited by hand).
+            if (filter == ClipFilter.Run)
+            {
+                _ = RescanRunTabAsync();
+            }
         }
     }
 
@@ -814,17 +866,22 @@ public sealed partial class ClipboardFlyout : Window
     /// <returns>The menu, already opening (for callers that must act when it closes).</returns>
     private MenuFlyout ShowItemMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position)
     {
+        if (item.Pick is { } pick)
+        {
+            return ShowPickMenu(item, pick, target, position);
+        }
+
         var menu = new MenuFlyout();
-        menu.Items.Add(MenuItem("Paste", "\uE77F", "Enter", () => _ = controller.PasteAsync(item.Entry, plainText: false)));
+        menu.Items.Add(MenuItem("Paste", "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
         if (item.Entry.HasRichFormats || item.Kind == ClipKind.Files)
         {
             menu.Items.Add(MenuItem(item.Kind == ClipKind.Files ? "Paste paths as text" : "Paste as plain text", "\uE8D2", "Shift+Enter",
-                () => _ = controller.PasteAsync(item.Entry, plainText: true)));
+                () => _ = PasteItemAsync(item, plainText: true)));
         }
 
-        menu.Items.Add(MenuItem("Copy only", "\uE8C8", null, () => _ = controller.PasteAsync(item.Entry, plainText: false, paste: false)));
+        menu.Items.Add(MenuItem("Copy only", "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
         menu.Items.Add(MenuItem(item.IsPinned ? "Unpin" : "Pin", item.IsPinned ? "\uE77A" : "\uE718", "Ctrl+P",
-            () => _ = controller.History.SetPinnedAsync(item.Id, !item.IsPinned)));
+            () => _ = TogglePinAsync(item)));
 
         if (item.Kind == ClipKind.Link && LinkDetector.TryGetLink(item.Preview, out var uri))
         {
@@ -833,6 +890,18 @@ public sealed partial class ClipboardFlyout : Window
         else if (item.Kind == ClipKind.Files)
         {
             menu.Items.Add(MenuItem("Show in Explorer", "\uE8B7", null, () => { Dismiss(false); _ = RevealFilesAsync(item); }));
+            if (controller.IsEverythingTabAvailable)
+            {
+                // Where is that file now? Everything finds it even when it moved since it was copied.
+                menu.Items.Add(MenuItem("Show in Everything", "\uE721", null, () => _ = ShowStoredInEverythingAsync(item)));
+            }
+        }
+
+        // Only commands run with Win+R before: running arbitrary copied text is one mistaken click from harm.
+        if (item.Pick is null && item.Entry.HasRunHistory)
+        {
+            menu.Items.Add(MenuItem("Run", RunGlyph, "Ctrl+Enter", () => _ = RunItemAsync(item, asAdministrator: false)));
+            menu.Items.Add(MenuItem("Run as administrator", RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -874,15 +943,60 @@ public sealed partial class ClipboardFlyout : Window
         return item;
     }
 
-    /// <summary>Deletes an item, keeping the selection on its neighbor.</summary>
+    /// <summary>
+    /// Deletes an item, keeping the selection on its neighbor. A file opened in Everything is hidden instead (until
+    /// it is opened there again): it is not in the history, and nothing in Everything is ever changed.
+    /// </summary>
     /// <param name="item">The card.</param>
     private void DeleteItem(ClipItemViewModel item)
     {
         int index = ViewModel.Items.IndexOf(item);
-        _ = controller.History.DeleteAsync(item.Id);
         if (index >= 0 && ViewModel.Items.Count > 1)
         {
             SelectIndex(Math.Min(index + 1, ViewModel.Items.Count - 1) == index ? index - 1 : index + 1);
+        }
+
+        if (item.Pick is { } pick)
+        {
+            // No history event announces a hide: take the card out here, then store the hide.
+            ViewModel.RemoveItem(item);
+            _ = controller.HidePickAsync(pick);
+            return;
+        }
+
+        if (ViewModel.IsEverythingView && item.Kind == ClipKind.Files)
+        {
+            _ = DeleteFromEverythingTabAsync(item.Id);
+            return;
+        }
+
+        _ = controller.History.DeleteAsync(item.Id);
+    }
+
+    /// <summary>
+    /// Deletes a stored file from the Everything tab, and hides that file's pick too when Everything lists it as
+    /// opened: Delete there means "not in this tab", and the pick would otherwise take the deleted card's place at the
+    /// next load. The hide lasts until the file is opened in Everything again, like a pick's own Delete.
+    /// </summary>
+    /// <param name="id">The stored entry (a file list).</param>
+    /// <returns>A task completing when deleted; failures are logged, never thrown (fire-and-forget safe).</returns>
+    private async Task DeleteFromEverythingTabAsync(long id)
+    {
+        try
+        {
+            // Read before deleting: the formats go with the entry. Only a single file can be one pick.
+            var drop = (await controller.History.GetFormatsAsync(id)).FirstOrDefault(f => f.Name == ClipFormatNames.HDrop);
+            if (drop is not null && DropFilesCodec.Decode(drop.Data) is [var path])
+            {
+                // No opening date is known for a stored copy: the hide counts from now.
+                await controller.HidePickAsync(new EverythingPick(path, false, null, null, 1, null));
+            }
+
+            await controller.History.DeleteAsync(id);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Deleting entry {id} from the Everything tab failed: {ex.Message}");
         }
     }
 
@@ -910,8 +1024,11 @@ public sealed partial class ClipboardFlyout : Window
         });
         panel.Children.Add(new TextBlock
         {
-            Text = "It is deleted now, and BetterClipboard never records it again, whichever app copies it. " +
-                   "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.",
+            Text = item.Pick is not null
+                ? "It leaves this tab, and BetterClipboard never records this file again, whichever app copies it. " +
+                  "Everything itself is not changed. To allow it again, use Settings › Forgotten forever."
+                : "It is deleted now, and BetterClipboard never records it again, whichever app copies it. " +
+                  "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.",
             Opacity = 0.8,
             TextWrapping = TextWrapping.Wrap,
         });
@@ -942,6 +1059,14 @@ public sealed partial class ClipboardFlyout : Window
             SelectIndex(Math.Min(index + 1, ViewModel.Items.Count - 1) == index ? index - 1 : index + 1);
         }
 
+        if (item.Pick is { } pick)
+        {
+            // A stored copy goes through the Removed events; the pick card itself has none.
+            ViewModel.RemoveItem(item);
+            await controller.ForgetPickAsync(pick);
+            return;
+        }
+
         try
         {
             await controller.History.ForgetAsync(item.Id);
@@ -962,8 +1087,260 @@ public sealed partial class ClipboardFlyout : Window
         var first = drop is null ? null : DropFilesCodec.Decode(drop.Data).FirstOrDefault();
         if (first is not null)
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{first}\"") { UseShellExecute = true })?.Dispose();
+            RevealPath(first);
         }
+    }
+
+    /// <summary>Opens Explorer with one path selected.</summary>
+    /// <param name="path">A file or folder path.</param>
+    private static void RevealPath(string path) =>
+        Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true })?.Dispose();
+
+    /// <summary>
+    /// Opens a file or folder with its default program (a pick's "Open", what double-clicking it in Everything did).
+    /// Failures (gone, no association) are logged without the path.
+    /// </summary>
+    /// <param name="path">The path.</param>
+    private static void OpenPath(string path)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(path) { UseShellExecute = true })?.Dispose();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or FileNotFoundException)
+        {
+            AppLog.Warn($"Opening a file from the Everything tab failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Shows the first file of a stored file list in Everything (it may have moved since it was copied).</summary>
+    /// <param name="item">A Files card.</param>
+    /// <returns>A task completing when Everything was asked.</returns>
+    private async Task ShowStoredInEverythingAsync(ClipItemViewModel item)
+    {
+        var formats = await controller.History.GetFormatsAsync(item.Id);
+        var drop = formats.FirstOrDefault(f => f.Name == ClipFormatNames.HDrop);
+        if ((drop is null ? null : DropFilesCodec.Decode(drop.Data).FirstOrDefault()) is { } first)
+        {
+            controller.ShowInEverything(first);
+        }
+    }
+
+    /// <summary>
+    /// Pastes (or only copies) a card: a stored entry is replayed; a file opened in Everything pastes the file (or its
+    /// path) and is recorded like a copy.
+    /// </summary>
+    /// <param name="item">The card.</param>
+    /// <param name="plainText">Plain text / the path as text.</param>
+    /// <param name="paste">Inject Ctrl+V (otherwise only copy).</param>
+    /// <returns>A task completing when done (failures are logged by the controller).</returns>
+    private Task PasteItemAsync(ClipItemViewModel item, bool plainText, bool paste = true) =>
+        item.Pick is { } pick ? controller.PastePickAsync(pick, plainText, paste) : controller.PasteAsync(item.Entry, plainText, paste);
+
+    /// <summary>
+    /// Ctrl+P / "Pin": toggles a stored entry's pin; a file opened in Everything is kept in the history as a pinned
+    /// entry, which then replaces the pick in the tab.
+    /// </summary>
+    /// <param name="item">The card.</param>
+    /// <returns>A task completing when stored.</returns>
+    private Task TogglePinAsync(ClipItemViewModel item) =>
+        item.Pick is { } pick ? controller.KeepPickAsync(pick, pin: true) : controller.History.SetPinnedAsync(item.Id, !item.IsPinned);
+
+    /// <summary>Keeps a file opened in Everything and adds it to a group (the Groups submenu and drops of a pick).</summary>
+    /// <param name="pick">The pick.</param>
+    /// <param name="group">The group.</param>
+    /// <returns>A task completing when stored (nothing happens when keeping was refused: paused, ignored, forgotten).</returns>
+    private async Task KeepAndAddToGroupAsync(EverythingPick pick, ClipGroup group)
+    {
+        if (await controller.KeepPickAsync(pick, pin: false) is { } entry)
+        {
+            await AddToGroupAsync([entry.Id], group);
+        }
+    }
+
+    /// <summary>
+    /// The menu of a file opened in Everything: paste it or its path, keep it, open it, show it in Explorer or in
+    /// Everything, add it to a group, hide it, or forget it forever.
+    /// </summary>
+    /// <param name="item">The card.</param>
+    /// <param name="pick">Its pick.</param>
+    /// <param name="target">Placement target.</param>
+    /// <param name="position">Position relative to <paramref name="target"/>.</param>
+    /// <returns>The menu, already opening.</returns>
+    private MenuFlyout ShowPickMenu(ClipItemViewModel item, EverythingPick pick, FrameworkElement target, global::Windows.Foundation.Point position)
+    {
+        var menu = new MenuFlyout();
+        menu.Items.Add(MenuItem(pick.IsFolder ? "Paste the folder" : "Paste the file", "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
+        menu.Items.Add(MenuItem("Paste the path as text", "\uE8D2", "Shift+Enter", () => _ = PasteItemAsync(item, plainText: true)));
+        menu.Items.Add(MenuItem("Copy only", "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
+        menu.Items.Add(MenuItem("Pin (keep in history)", "\uE718", "Ctrl+P", () => _ = TogglePinAsync(item)));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(MenuItem("Open", "\uE8E5", null, () => { Dismiss(false); OpenPath(pick.FullPath); }));
+        menu.Items.Add(MenuItem("Show in Explorer", "\uE8B7", null, () => { Dismiss(false); RevealPath(pick.FullPath); }));
+        menu.Items.Add(MenuItem("Show in Everything", "\uE721", null, () => controller.ShowInEverything(pick.FullPath)));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(BuildGroupsSubMenu(item));
+        menu.Items.Add(new MenuFlyoutSeparator());
+        menu.Items.Add(MenuItem("Hide until opened again", "\uED1A", "Del", () => DeleteItem(item)));
+        menu.Items.Add(MenuItem("Forget forever…", "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
+        menu.Opened += Popup_Opened;
+        menu.Closed += Popup_Closed;
+        menu.ShowAt(target, new FlyoutShowOptions { Position = position });
+        return menu;
+    }
+
+    /// <summary>"Start Everything" in the empty Everything tab: starts it in the background; the tab reloads when it is up.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void StartEverythingButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (controller.StartEverything())
+        {
+            ViewModel.ShowStartEverything = false;
+            ViewModel.EmptyTitle = "Starting Everything…";
+            ViewModel.EmptyMessage = "The files you open in it show up here as soon as it is ready.";
+        }
+
+        SearchBox.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// Everything started, stopped, finished loading, or the tab was switched (UI thread): show or hide the tab, fit
+    /// the window to the tabs, and reload the tab when it is showing.
+    /// </summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Unused.</param>
+    private void OnEverythingStatusChanged(object? sender, EventArgs e)
+    {
+        UpdateEverythingTab();
+        ApplyTabsWidth();
+        if (IsOpen && ViewModel.IsEverythingView)
+        {
+            _ = ViewModel.ReloadAsync();
+        }
+    }
+
+    /// <summary>
+    /// Shows the Everything tab only while the setting is on and Everything is installed or running. If it disappears
+    /// while selected, falls back to "All" so the list never stays filtered by an invisible tab.
+    /// </summary>
+    private void UpdateEverythingTab()
+    {
+        bool available = controller.IsEverythingTabAvailable;
+        EverythingFilter.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        if (!available && ViewModel.Filter == ClipFilter.Everything)
+        {
+            SelectFilter(ClipFilter.All);
+        }
+    }
+
+    /// <summary>
+    /// The extra window width the visible filter tabs need beyond the bar's room at <see cref="WidthDip"/>: each visible
+    /// tab's width (<see cref="MeasureTabDip(SelectorBarItem)"/>), summed, against 384 DIP (400 − 24 padding + 8
+    /// negative margin), plus a little slack for rounding. 0 when they fit.
+    /// </summary>
+    /// <remarks>
+    /// A tab that was collapsed until now (ShareX, Run, Everything) has not been laid out, so measuring only the items
+    /// did not count it: the window kept its 400 DIP and the last tabs were cut off (reported 2026-10-01 with the
+    /// ShareX and Run tabs showing). Measuring only the labels was not enough either: they came out ~1.7 DIP per tab
+    /// narrower than the laid-out tabs, so with all nine tabs the selected "Everything" read "Everythin" (isolated
+    /// e2e run, 2026-10-01). Each tab therefore counts with the larger of the two.
+    /// </remarks>
+    /// <returns>Extra DIPs (whole numbers).</returns>
+    private double MeasureTabsExtraDip()
+    {
+        const double SlackDip = 4;
+        const double BarDip = WidthDip - 24 + 8;
+        double needed = 0, labels = 0;
+        foreach (var tab in Filters.Items)
+        {
+            if (tab.Visibility == Visibility.Visible)
+            {
+                needed += MeasureTabDip(tab);
+                labels += MeasureTabDip(tab.Text);
+            }
+        }
+
+        AppLog.Info($"Tabs: labels {labels:0.0} DIP, tabs {needed:0.0} DIP, bar {BarDip} DIP.");
+        return Math.Max(0, Math.Ceiling(needed + SlackDip - BarDip));
+    }
+
+    /// <summary>
+    /// One tab's width in the bar, in DIPs: the tab itself once its template exists (exact: the real text rendering
+    /// and padding), or its label (<see cref="MeasureTabDip(string)"/>) for a tab never laid out yet — whichever is
+    /// larger, so neither a missing template nor the label's slight underestimate can cut the tab off.
+    /// </summary>
+    /// <remarks>
+    /// Measuring a tab here, outside a layout pass, only updates its desired size: the bar's next layout pass measures
+    /// it again with its own constraint. A horizontal bar gives its tabs unlimited width, so a tab that is clipped
+    /// right now still reports the width it wants.
+    /// </remarks>
+    /// <param name="tab">A visible tab.</param>
+    /// <returns>The tab's width in DIPs.</returns>
+    private static double MeasureTabDip(SelectorBarItem tab)
+    {
+        tab.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return Math.Max(MeasureTabDip(tab.Text), tab.DesiredSize.Width);
+    }
+
+    /// <summary>
+    /// One tab's estimated width in the bar, in DIPs: its label in a detached <see cref="TextBlock"/> with the tab
+    /// template's text properties (the theme's control font family and size, normal weight; WinUI's
+    /// <c>SelectorBarItem</c> template binds exactly those), plus <see cref="TabSidePaddingDip"/> on each side. Works
+    /// for a tab that was never laid out, but measured ~1.7 DIP narrower than the real tab (see
+    /// <see cref="MeasureTabsExtraDip"/>), so it is a lower bound.
+    /// </summary>
+    /// <param name="label">The tab's text; <see langword="null"/> or empty counts as the padding only.</param>
+    /// <returns>The tab's width in DIPs.</returns>
+    private static double MeasureTabDip(string? label)
+    {
+        var text = new TextBlock { Text = label ?? string.Empty };
+
+        // The theme resources the template uses; a TextBlock's own defaults (14 DIP, the system UI font) are the same
+        // values, so a lookup that finds nothing still measures right.
+        var resources = Application.Current.Resources;
+        if (resources.TryGetValue("ControlContentThemeFontSize", out var size) && size is double fontSize)
+        {
+            text.FontSize = fontSize;
+        }
+
+        if (resources.TryGetValue("ContentControlThemeFontFamily", out var family) && family is FontFamily fontFamily)
+        {
+            text.FontFamily = fontFamily;
+        }
+
+        text.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return text.DesiredSize.Width + (2 * TabSidePaddingDip);
+    }
+
+    /// <summary>
+    /// Re-fits the window to the tabs while it is showing (a tab appeared or vanished, or the first show measured them
+    /// before they existed): the window grows or shrinks on its right edge, kept inside the work area. Hidden, only
+    /// the number is updated — the next summon sizes the window as a whole.
+    /// </summary>
+    private void ApplyTabsWidth()
+    {
+        double extra = MeasureTabsExtraDip();
+        if (Math.Abs(extra - tabsExtraDip) < 0.5)
+        {
+            return;
+        }
+
+        double delta = extra - tabsExtraDip;
+        tabsExtraDip = extra;
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        var position = AppWindow.Position;
+        var size = AppWindow.Size;
+        int width = size.Width + (int)Math.Round(delta * Scale);
+        var work = MonitorLookup.FromWindow(hwnd).WorkArea;
+
+        // Grow to the right, but never past the work area: then the left edge moves instead.
+        int left = Math.Max(work.Left, Math.Min(position.X, work.Right - width));
+        AppWindow.MoveAndResize(new RectInt32(left, position.Y, width, size.Height));
     }
 
     /// <summary>The selected card, if any.</summary>
@@ -1014,8 +1391,10 @@ public sealed partial class ClipboardFlyout : Window
         {
             var toggle = new ToggleMenuFlyoutItem { Text = group.Name, IsChecked = item.IsInGroup(group.Id), Icon = new FontIcon { Glyph = group.Glyph } };
 
-            // IsChecked has already flipped when Click arrives: it is the requested state.
-            toggle.Click += (_, _) => _ = toggle.IsChecked ? AddToGroupAsync([item.Id], group) : RemoveFromGroupAsync(item, group);
+            // IsChecked has already flipped when Click arrives: it is the requested state. A file opened in
+            // Everything is in no group yet: checking one keeps it in the history first.
+            toggle.Click += (_, _) => _ = item.Pick is { } pick ? KeepAndAddToGroupAsync(pick, group)
+                : toggle.IsChecked ? AddToGroupAsync([item.Id], group) : RemoveFromGroupAsync(item, group);
             submenu.Items.Add(toggle);
         }
 
@@ -1285,7 +1664,26 @@ public sealed partial class ClipboardFlyout : Window
         {
             // Counts only: the log never names cards (their text is clipboard content).
             AppLog.Info($"Dropped {ids.Length} card(s) on group {group.Id}.");
-            await AddToGroupAsync(ids, group);
+
+            // Negative ids are files opened in Everything (not stored yet): keep each, then group the stored entries.
+            var stored = new List<long>(ids.Length);
+            foreach (var id in ids)
+            {
+                if (id >= 0)
+                {
+                    stored.Add(id);
+                }
+                else if (ViewModel.Items.FirstOrDefault(i => i.Id == id)?.Pick is { } pick
+                         && await controller.KeepPickAsync(pick, pin: false) is { } entry)
+                {
+                    stored.Add(entry.Id);
+                }
+            }
+
+            if (stored.Count > 0)
+            {
+                await AddToGroupAsync(stored, group);
+            }
         }
     }
 
@@ -1547,6 +1945,72 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
+    /// <summary>The Win+R history was switched on or off, read, or recorded a run (UI thread): show or hide the Run tab.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Unused.</param>
+    private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => UpdateRunTab(applyWidth: true);
+
+    /// <summary>
+    /// Shows the Run tab only while Settings › Win+R history is on. If it disappears while selected, falls back to
+    /// "All" so the list never stays filtered by an invisible tab.
+    /// </summary>
+    /// <param name="applyWidth">
+    /// Refit the open window to the visible tabs when the tab appeared or disappeared (<see langword="false"/> from
+    /// <see cref="ShowAt"/>, which measures the tabs itself right after).
+    /// </param>
+    private void UpdateRunTab(bool applyWidth)
+    {
+        bool available = controller.IsRunTabAvailable;
+        var visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        if (RunFilter.Visibility == visibility)
+        {
+            return;
+        }
+
+        RunFilter.Visibility = visibility;
+        if (!available && ViewModel.Filter == ClipFilter.Run)
+        {
+            SelectFilter(ClipFilter.All);
+        }
+
+        if (applyWidth && IsOpen)
+        {
+            // The bar does not scroll: the window grows or shrinks so every visible tab fits.
+            ApplyTabsWidth();
+        }
+    }
+
+    /// <summary>
+    /// Rescans Windows' Win+R list for the Run tab the user just entered, then reloads it when the rescan stored
+    /// anything (the history's change events alone would update bumped cards in place, without moving them up).
+    /// </summary>
+    /// <returns>A task completing when done (never throws: the rescan logs its own failures).</returns>
+    private async Task RescanRunTabAsync()
+    {
+        int stored = await controller.RescanRunHistoryAsync();
+        if (stored > 0 && IsOpen && ViewModel.Filter == ClipFilter.Run)
+        {
+            await ViewModel.ReloadAsync();
+        }
+    }
+
+    /// <summary>
+    /// Runs a card's Win+R command again (Ctrl+Enter, Ctrl+Shift+Enter, or the card menu). On success the controller
+    /// hides the panel and the new window keeps the focus; otherwise the reason shows in the footer, with the panel
+    /// still open for another try.
+    /// </summary>
+    /// <param name="item">A card with <see cref="ClipEntry.HasRunHistory"/>.</param>
+    /// <param name="asAdministrator">Run elevated (Windows asks for consent; the panel's window owns the prompt).</param>
+    /// <returns>A task completing when the command started or failed (never throws).</returns>
+    private async Task RunItemAsync(ClipItemViewModel item, bool asAdministrator)
+    {
+        var result = await controller.RunCommandAsync(item.Entry, asAdministrator, hwnd);
+        if (IsOpen && result is { Outcome: not RunCommandOutcome.Started } refused)
+        {
+            ViewModel.StatusText = $"Not run: {refused.Describe()}";
+        }
+    }
+
     /// <summary>Selects a filter pill without raising a reload (used on show).</summary>
     /// <param name="filter">The filter.</param>
     private void SelectFilter(ClipFilter filter)
@@ -1621,6 +2085,11 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="empty">Whether the list is empty.</param>
     /// <returns>Visibility.</returns>
     public Visibility EmptyVisibility(bool empty) => empty ? Visibility.Visible : Visibility.Collapsed;
+
+    /// <summary>x:Bind helper: visible while <paramref name="value"/> is true (the "Start Everything" button).</summary>
+    /// <param name="value">The flag.</param>
+    /// <returns>Visibility.</returns>
+    public Visibility BoolVisibility(bool value) => value ? Visibility.Visible : Visibility.Collapsed;
 
     /// <summary>x:Bind helper: visible only with text (the header's group name).</summary>
     /// <param name="text">The text.</param>

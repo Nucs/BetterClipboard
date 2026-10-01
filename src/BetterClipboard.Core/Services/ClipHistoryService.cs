@@ -252,10 +252,82 @@ public sealed class ClipHistoryService : IAsyncDisposable
     });
 
     /// <summary>
+    /// Forgets a file list forever by its paths, stored or not (the Everything tab's picks): it is kept out of the
+    /// history from now on, and a stored copy is deleted (see <see cref="ClipStore.ForgetFiles"/>). Through the
+    /// worker, so a copy queued right after this is processed after it and kept out.
+    /// </summary>
+    /// <param name="paths">The files.</param>
+    /// <param name="sourceAppName">Where they were seen (Settings' list shows it), or <see langword="null"/>.</param>
+    /// <returns>The list entry and the deleted entry ids.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="paths"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="paths"/> is empty.</exception>
+    /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
+    /// <exception cref="Microsoft.Data.Sqlite.SqliteException">The write failed.</exception>
+    public Task<ForgetResult> ForgetFilesAsync(IReadOnlyList<string> paths, string? sourceAppName)
+    {
+        ArgumentNullException.ThrowIfNull(paths);
+        if (paths.Count == 0)
+        {
+            throw new ArgumentException("At least one path is required.", nameof(paths));
+        }
+
+        return EnqueueAsync(() =>
+        {
+            var result = store.ForgetFiles(paths, sourceAppName, time.GetUtcNow());
+            anyForgotten = true;
+            foreach (var removedId in result.RemovedIds)
+            {
+                Raise(new ClipChangedEventArgs(ClipChangeKind.Removed, entryId: removedId));
+            }
+
+            RaiseForgottenChanged();
+
+            // Content-free: counts only, never the paths.
+            AppLog.Info($"Forgot {paths.Count} file{(paths.Count == 1 ? string.Empty : "s")} forever ({result.RemovedIds.Count} history entr{(result.RemovedIds.Count == 1 ? "y" : "ies")} deleted).");
+            return Task.FromResult(result);
+        });
+    }
+
+    /// <summary>
     /// Reads the "Forget forever" list on the thread pool (most recently forgotten first).
     /// </summary>
     /// <returns>The entries.</returns>
     public Task<IReadOnlyList<ForgottenItem>> GetForgottenAsync() => Task.Run(store.GetForgotten);
+
+    /// <summary>
+    /// Which of the given "Forget forever" fingerprints are on the list, read on the thread pool. Used for content
+    /// that is shown without being stored (the Everything tab's live picks), so something the user forgot never
+    /// comes back through a side door.
+    /// </summary>
+    /// <param name="fingerprints">
+    /// Fingerprints to look up (<see cref="ForgetFingerprint"/>; for a file list its content hash,
+    /// <see cref="ContentHasher.ForFiles"/>). Duplicates are fine.
+    /// </param>
+    /// <returns>The forgotten ones; empty right away (no per-item lookup) while the list itself is empty.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="fingerprints"/> is <see langword="null"/>.</exception>
+    /// <exception cref="Microsoft.Data.Sqlite.SqliteException">Reading the store failed.</exception>
+    public Task<IReadOnlySet<string>> FindForgottenAsync(IReadOnlyCollection<string> fingerprints)
+    {
+        ArgumentNullException.ThrowIfNull(fingerprints);
+        return Task.Run<IReadOnlySet<string>>(() =>
+        {
+            var forgotten = new HashSet<string>(StringComparer.Ordinal);
+            if (fingerprints.Count == 0 || store.CountForgotten() == 0)
+            {
+                return forgotten;
+            }
+
+            foreach (var fingerprint in fingerprints)
+            {
+                if (!forgotten.Contains(fingerprint) && store.IsForgotten(fingerprint))
+                {
+                    forgotten.Add(fingerprint);
+                }
+            }
+
+            return forgotten;
+        });
+    }
 
     /// <summary>
     /// "Allow again": takes one entry off the "Forget forever" list, so its content is recorded again from its
@@ -600,9 +672,11 @@ public sealed class ClipHistoryService : IAsyncDisposable
     {
         var rules = rulesProvider();
 
-        // A ShareX screenshot is a new event like a live copy, so "pause capturing" covers it too — the
-        // user pausing for privacy expects nothing new to be recorded, whatever the channel.
-        bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX;
+        // A ShareX screenshot or a Win+R run is a new event like a live copy, so "pause capturing" covers it too —
+        // the user pausing for privacy expects nothing new to be recorded, whatever the channel. The commands
+        // Windows already remembered (RunDialogHistory) are an import, like Windows' own clipboard history. A file
+        // pasted, copied or kept from the Everything tab is a new event too: pause means nothing new is recorded.
+        bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX or ClipOrigin.RunDialog or ClipOrigin.Everything;
         if (isNewEvent && rules.IsPaused)
         {
             return null;
@@ -671,8 +745,8 @@ public sealed class ClipHistoryService : IAsyncDisposable
             }
         }
 
-        // New events (live copies, ShareX screenshots) move an existing duplicate to the top — ShareX often
-        // copied the same screenshot to the clipboard a moment earlier, and the pixel hash merges the two.
+        // New events (live copies, ShareX screenshots, Win+R runs) move an existing duplicate to the top — ShareX
+        // often copied the same screenshot to the clipboard a moment earlier, and the pixel hash merges the two.
         var result = store.Upsert(capture, classified, image, bumpIfExists: isNewEvent);
         if (result is null || !raiseEvents)
         {

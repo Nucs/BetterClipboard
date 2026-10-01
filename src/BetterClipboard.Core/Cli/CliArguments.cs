@@ -168,8 +168,11 @@ public static class CliArguments
         CliCommands.List => """
             bclip list [-n N] [--offset N] [-f FILTER] [-s SINCE] [--full] [--json]
               Recent items, newest first: id (* = pinned), kind, age, source app, first line.
-              FILTER: all | pinned | text | images | links | files | sharex. --full adds each item's whole text.
+              FILTER: all | pinned | text | images | links | files | run | sharex | everything. --full adds each item's whole text.
               files = copied files plus text that is nothing but paths (kind "path"; JSON: "paths": N).
+              run = commands run with Win+R, kept beyond Windows' 26 (JSON: "lastRun").
+              everything = what was copied from voidtools Everything, or pasted/kept from the panel's
+              Everything tab (origin "everything"); the files only opened in Everything stay in Everything.
             """,
         CliCommands.Search => """
             bclip search <words...> [-n N] [-f FILTER] [-s SINCE] [--full] [--json]
@@ -239,7 +242,7 @@ public static class CliArguments
 
             Options:
               -n, --limit N         Maximum items (default 20)        --offset N  Skip N items
-              -f, --filter F        all | pinned | text | images | links | files | sharex
+              -f, --filter F        all | pinned | text | images | links | files | run | sharex | everything
               -s, --since T         Used within T (30s, 10m, 2h, 7d, 2w) or since a date/time
               -r, --recent N        Target the N-th most recent item (1 = latest) instead of an ID
               -i, --ignore-case     grep: ignore case
@@ -341,7 +344,7 @@ public static class CliArguments
                 case "--filter":
                     if (!CliCommandProcessor.TryParseFilter(value, out _))
                     {
-                        return Fail($"Unknown filter '{value}' (use all, pinned, text, images, links, files or sharex).");
+                        return Fail($"Unknown filter '{value}' (use all, pinned, text, images, links, files, run, sharex or everything).");
                     }
 
                     request = request with { Filter = value!.Trim().ToLowerInvariant() };

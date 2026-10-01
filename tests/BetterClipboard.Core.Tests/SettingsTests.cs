@@ -23,6 +23,24 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal("Win+V", store.Load().OpenHotkey);
     }
 
+    /// <summary>
+    /// The Everything tab is on by default (it only reads, and only when opened), also for a settings file written
+    /// before the setting existed; switching it off persists.
+    /// </summary>
+    [Fact]
+    public void ShowEverythingTab_DefaultsOn_AndPersistsOff()
+    {
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, "{ \"MaxItems\": 50 }");
+        var store = new SettingsStore(path);
+        Assert.True(store.Load().ShowEverythingTab);
+
+        store.Update(s => s with { ShowEverythingTab = false });
+
+        Assert.False(new SettingsStore(path).Load().ShowEverythingTab);
+        Assert.True(new AppSettings().ShowEverythingTab);
+    }
+
     /// <summary>A corrupt file is quarantined (recoverable) and defaults are used.</summary>
     [Fact]
     public void Load_CorruptFile_IsQuarantined()

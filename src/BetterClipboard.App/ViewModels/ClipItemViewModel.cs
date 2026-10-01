@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
+using BetterClipboard.Core.Everything;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -35,9 +36,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <param name="entry">The history entry.</param>
     /// <param name="thumbnailLoader">Loads PNG thumbnail bytes by entry id (called at most once, on demand).</param>
     /// <param name="groupLookup">Finds a group by id for the card's group badges; <see langword="null"/> = no badges.</param>
-    public ClipItemViewModel(ClipEntry entry, Func<long, Task<byte[]?>> thumbnailLoader, Func<long, ClipGroup?>? groupLookup = null)
+    /// <param name="pick">The Everything pick behind a stand-in entry (use <see cref="ForPick"/>); <see langword="null"/> for a history entry.</param>
+    public ClipItemViewModel(ClipEntry entry, Func<long, Task<byte[]?>> thumbnailLoader, Func<long, ClipGroup?>? groupLookup = null, EverythingPick? pick = null)
     {
         Entry = entry;
+        Pick = pick;
         this.thumbnailLoader = thumbnailLoader;
         this.groupLookup = groupLookup ?? (_ => null);
         IsPinned = entry.IsPinned;
@@ -50,8 +53,46 @@ public sealed partial class ClipItemViewModel : ObservableObject
         }
     }
 
-    /// <summary>The underlying entry snapshot.</summary>
+    /// <summary>
+    /// A card for a file opened in Everything (the Everything tab's live picks). It is not a history entry, so its
+    /// <see cref="Entry"/> is a stand-in: a negative <paramref name="syntheticId"/> that no stored entry can have
+    /// (selection, drag and in-place updates key on ids), kind Files, the pick's name and folder as preview, its
+    /// last opening as time. Actions must check <see cref="Pick"/> before treating the card as stored.
+    /// </summary>
+    /// <param name="pick">The pick.</param>
+    /// <param name="syntheticId">A negative id, unique within the list.</param>
+    /// <returns>The card model.</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="syntheticId"/> is not negative.</exception>
+    public static ClipItemViewModel ForPick(EverythingPick pick, long syntheticId)
+    {
+        ArgumentNullException.ThrowIfNull(pick);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(syntheticId, 0);
+        var opened = pick.LastOpened ?? DateTimeOffset.MinValue;
+        var entry = new ClipEntry
+        {
+            Id = syntheticId,
+            Kind = ClipKind.Files,
+            Preview = pick.Folder is { Length: > 0 } folder ? $"{pick.Name}\n{folder}" : pick.Name,
+            ContentHash = pick.FilesHash,
+            CreatedUtc = opened,
+            LastUsedUtc = opened,
+            UseCount = (int)Math.Min(pick.RunCount, int.MaxValue),
+            Origin = ClipOrigin.Everything,
+            SourceAppName = "Everything",
+            SizeBytes = pick.Size ?? 0,
+            FormatNames = [ClipFormatNames.HDrop],
+        };
+        return new ClipItemViewModel(entry, _ => Task.FromResult<byte[]?>(null), null, pick);
+    }
+
+    /// <summary>The underlying entry snapshot (a stand-in for a <see cref="Pick"/>, see <see cref="ForPick"/>).</summary>
     public ClipEntry Entry { get; private set; }
+
+    /// <summary>
+    /// The file opened in Everything this card shows, or <see langword="null"/> for a history entry. Pick cards
+    /// paste the file (or its path), keep it on Pin, and hide it on Delete — nothing of theirs is stored until then.
+    /// </summary>
+    public EverythingPick? Pick { get; }
 
     /// <summary>Entry id.</summary>
     public long Id => Entry.Id;
@@ -100,9 +141,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     /// <summary>
     /// Fluent glyph describing the kind. Text that is nothing but paths gets the folder of a file list, since it
-    /// is listed in the Files tab next to them.
+    /// is listed in the Files tab next to them. A file opened in Everything shows a document (E8A5), a folder the
+    /// folder (both checked by rendering). A command run with Win+R shows the command prompt (E756) wherever it is
+    /// listed, so it stands out as runnable (Ctrl+Enter) also outside the Run tab.
     /// </summary>
-    public string KindGlyph => Entry.IsPathText ? "\uE8B7" : Kind switch
+    public string KindGlyph => Pick is { } pick ? (pick.IsFolder ? "\uE8B7" : "\uE8A5") : Entry.HasRunHistory ? "\uE756" : Entry.IsPathText ? "\uE8B7" : Kind switch
     {
         ClipKind.RichText => "\uE8D3", // FontColor
         ClipKind.Link => "\uE71B",     // Link
@@ -114,9 +157,13 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     /// <summary>
     /// Human label of the kind (tooltips, accessibility): "Path"/"Paths" for text that is nothing but paths,
-    /// which a screen reader would otherwise announce as plain text inside the Files tab.
+    /// which a screen reader would otherwise announce as plain text inside the Files tab; for a pick, where it
+    /// comes from ("File opened in Everything"); and "Win+R command" for a command run with Win+R, so a screen
+    /// reader announces that Ctrl+Enter runs it.
     /// </summary>
-    public string KindLabel => Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
+    public string KindLabel => Pick is { } pick ? (pick.IsFolder ? "Folder opened in Everything" : "File opened in Everything")
+        : Entry.HasRunHistory ? "Win+R command"
+        : Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
     {
         ClipKind.RichText => "Formatted text",
         ClipKind.Link => "Link",
@@ -138,8 +185,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <summary>Swatch brush for color entries.</summary>
     public Brush? ColorBrush { get; }
 
-    /// <summary>Monospace for code-looking text and for text that is nothing but paths; the UI font otherwise.</summary>
-    public FontFamily BodyFontFamily => Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)) ? MonoFont : UiFont;
+    /// <summary>
+    /// Monospace for code-looking text and for text that is nothing but paths; the UI font otherwise — also for a
+    /// pick, whose preview is a file name over its folder, not code.
+    /// </summary>
+    public FontFamily BodyFontFamily => Pick is null && Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)) ? MonoFont : UiFont;
 
     /// <summary>Accessible name for screen readers.</summary>
     public string AutomationName => $"{KindLabel}: {Preview}";
@@ -218,10 +268,19 @@ public sealed partial class ClipItemViewModel : ObservableObject
         }
     }
 
-    /// <summary>Builds "Source · 5 min ago · extra".</summary>
+    /// <summary>Builds "Source · 5 min ago · extra" ("Everything · 5 min ago · opened 3 times" for a pick).</summary>
     /// <returns>The caption.</returns>
     private string BuildCaption()
     {
+        if (Pick is { } pick)
+        {
+            // When it was last opened, and how often: Everything keeps one row per file, not one per opening.
+            var times = pick.RunCount == 1 ? "opened once" : $"opened {pick.RunCount:N0} times";
+            return pick.LastOpened is { } opened
+                ? $"Everything · {RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow)} · {times}"
+                : $"Everything · {times}";
+        }
+
         var parts = new List<string>(3);
         if (!string.IsNullOrWhiteSpace(Entry.SourceAppName))
         {
