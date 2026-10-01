@@ -201,7 +201,8 @@ Reproduction probes that produced the verified facts live in
 [`winrt_classes.py`](tools/probes/winrt_classes.py) (WinRT class hosting),
 [`binary_strings.py`](tools/probes/binary_strings.py) (strings of a binary),
 [`probe_viewer_chain.cs`](tools/probes/probe_viewer_chain.cs) (viewer chain vs listener timing, §1.9),
-[`probe_sequence.cs`](tools/probes/probe_sequence.cs) (sequence-number bumps, delayed rendering, §1.9).
+[`probe_sequence.cs`](tools/probes/probe_sequence.cs) (sequence-number bumps, delayed rendering, §1.9),
+[`probe_everything.cs`](tools/probes/probe_everything.cs) (voidtools Everything IPC in a private instance, §2.14).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`.
 
 ### 1.9 Clipboard change notification — "can we never miss a copy?" (2026-09-25) **[verified]**
@@ -893,6 +894,96 @@ the Text tab treat these entries as text.
   (`~/.bashrc (user)`), all now regression cases.
 - **Live:** see §5.
 
+### 2.14 voidtools Everything — verified IPC facts for an integration (2026-10-01; nothing built yet)
+
+User request (2026-10-01): "consider Everything.exe integration". Everything is **not installed on this PC**
+(no process, service, install entry or portable copy on any local drive). Every fact below was measured against
+the official portable builds 1.4.1.1032 and 1.5.0.1423b (SHA-256 matched voidtools' published lists; signer
+"voidtools PTY LTD"), run by [`probe_everything.cs`](tools/probes/probe_everything.cs) as private named instances:
+- **Setup:** each instance indexed only a BC-TEST tree, with no NTFS volumes, no tray icon, no service and no
+  elevation.
+- **Checks:** 35 (1.4) and 40 (1.5) checks passed.
+- **Side effects:** none. 0 visible windows, the foreground unchanged, the work folder removed.
+
+**[verified]** unless marked.
+
+**Versions and discovery.**
+- **Versions:** stable 1.4.1.1032. 1.5 has been a beta since 2026-05-14 (1.5.0.1423b); it installs over 1.4
+  **[docs]**.
+- **Instances:** 1.4 and the 1.5 beta both run as the unnamed instance, the 1.5 alpha as `1.5a`.
+- **Window class:** `EVERYTHING_TASKBAR_NOTIFICATION`, or `…_(<instance>)` for a named instance
+  (voidtools/es source). The window exists even with the tray icon hidden, and appeared 0.2–0.45 s after
+  start.
+- **Waiting for it:** the `EVERYTHING_IPC_CREATED` broadcast never reached a hidden top-level window, and ES
+  itself polls `FindWindow` every 10 ms. So poll (it costs microseconds) when needed.
+- **Limits:** the **Lite** build has no IPC **[docs: FAQ]**. An Everything in another session is unreachable
+  **[forum]**.
+- **Elevation:** a standard-user client can query an Everything that runs as admin **[forum, the developer]**.
+  ES additionally calls `ChangeWindowMessageFilterEx(WM_COPYDATA)` on its reply window for the reverse case.
+  Untested here, because elevating would need UAC.
+
+**The 1.4 IPC: `WM_COPYDATA`, answered the same by 1.4 and 1.5.**
+- **State:** `EVERYTHING_WM_IPC` (`WM_USER`) answers 0–3 version, 5 machine, 401 `IS_DB_LOADED`,
+  402 `IS_DB_BUSY`, 403 admin, 410 fast sort and 411 indexed info; 4 exits the instance.
+- **Query:** `WM_COPYDATA`, dwData 18 (`QUERY2W`): seven packed DWORDs (reply HWND as 32 bits, reply id, search
+  flags, offset, max, request flags, sort), then NUL-terminated UTF-16.
+- **Reply:** a `WM_COPYDATA` back, with dwData = the reply id. Its `LIST2` header is {total, count, offset,
+  request flags, sort}, then count × {flags, data offset}.
+  - Each item's fields come in **request-bit order**. The header comment in `everything_ipc.h` lists another
+    order; ES's `_es_ipc2_get_column_data` is authoritative.
+  - Strings are a DWORD length + UTF-16 + NUL; numbers are 8 bytes, unaligned.
+  - A folder's size is −1 in 1.4 and real in 1.5.
+- **Reply window:** a message-only window works. The reply never arrives inside the `SendMessage` call (0/30),
+  so the thread must keep pumping afterwards.
+- **One query per reply window.** A second query on the same window silently cancels the first, which then
+  never gets a reply. Two windows get both answers.
+- **No answers while the database loads** (`db_loaded=0 db_busy=1`).
+  - Queries are queued and answered when loading ends: a query sent at start was answered after 3.6–16 s
+    with C:\Windows indexed.
+  - A first folder-index scan of `K:\source` was still loading after 6 minutes.
+  - So: check 401/402 first, put a deadline on every query, and drop late replies. A folder index scans
+    slowly; NTFS indexes read the MFT, which needs admin or the Everything service.
+- **Latency** (measured with a spinning pump):
+  - ~350 items: an exact path 0.09 ms (1.4) / 0.2–0.3 ms (1.5); a 20-path batch ~1 ms.
+  - 278,181 items (a folder index of C:\Windows): an exact path 1.5–2.9 ms, and **0.7–0.9 ms with the file
+    name as a leading term**. A 20-path OR batch 18–25 ms, and **2.2–2.8 ms with name terms**
+    (`<wfn:"a.cs" path:wfn:"C:\…\a.cs">|…`).
+  - Same index: name + path suffix 0.5–1.0 ms; path-contains only 1.4–6.1 ms; `ext:png` newest first (top 50
+    of 9,038) 0.6–0.7 ms. 300 results with path, size, date and attributes take 60 KB in one reply.
+
+**Query semantics (both versions).**
+- **Exact path:** `path:wfn:"<full path>"`. It is case-insensitive and matches folders too.
+  - Quoting is enough for every name character: spaces, parentheses, Hebrew and `! ; & % # ' ^ , $ { } [ ]
+    + = ~ @` all matched. Windows forbids `" < > | ? * :` in names.
+  - Plain `path:"…"` is *contains*: it also matched `notes.md.bak`.
+- **Normalize first:** forward slashes give 0 results (1.5 maps `/` only in free text), and so does a
+  trailing backslash.
+- **Relative path:** `wfn:"name" path:"\a\b\name"`, then a client-side EndsWith check. `path:endwith:` works
+  too (1.4.1+).
+- **Moved file:** `wfn:"name" size:N`.
+- **Index ≠ disk:** a file outside the index is simply not found. Say "not found by Everything", never
+  "deleted".
+
+**The 1.5 named pipe ("IPC3").**
+- **Framing:** `\\.\pipe\Everything IPC[ (<instance>)]`, frames {DWORD code, DWORD size} + payload in both
+  directions. Responses: 200 OK, 100 more data, 404 not found.
+- **`GET_FILE_ATTRIBUTES`** (19, a UTF-8 path) answers from the index in 0.03–0.13 ms. It returned 404 for a
+  missing file and also for a real file outside the index.
+- **Owner:** `GetNamedPipeServerProcessId` returned the IPC window's PID.
+- **Also available** **[docs]**: folder sizes, run counts, and an index journal of creates, renames, moves and
+  deletes (1.5.0.1397+).
+- **Sources:** SDK3 and ES are MIT (voidtools/everything_sdk3, voidtools/es). Re-implement the protocol; no
+  native DLL is needed.
+
+**Privacy and trust.**
+- Neither version wrote the probe's query texts to any file: no search history for IPC queries, and the ini
+  and the database stayed clean.
+- Any process, a low-integrity one included, can create a window with that class name and receive the copied
+  paths sent in queries. Verify the owner first: image `Everything*.exe`, signed by voidtools.
+
+**Proposal.** The ranked options are in §6. Everything only answers *where* a path is and *whether* it exists;
+`PathDetector` stays pure, so verdicts stay deterministic and storable.
+
 ---
 
 ## 3. Build · run · test
@@ -1179,6 +1270,19 @@ ShareX end-to-end (2026-09-25), with the dev build:
   - watching a moved `CustomHotkeysConfigPath` file (today the 5-minute refresh catches it);
   - verifying the Microsoft Store build's folders;
   - Snipping Tool / Greenshot folders with the same watcher.
+- voidtools Everything integration (proposal 2026-10-01, facts in §2.14), most value first:
+  1. **Client:** `Integrations/Everything`, with WM_COPYDATA on a `MessageWindowThread`. Owner check, state
+     check (401/402), a deadline per query and latest-wins per reply window. The query builder goes in Core:
+     pure, normalizing (slashes, trailing separators, `\\?\`, `file:`, `%VAR%`, `~`, `/c/`, `/mnt/c/`) and
+     name-led. Tests against a fake IPC window (our own window class) plus an opt-in real portable Everything.
+  2. **Path cards and file lists:** found / missing / moved states (one name-led batch per page, cached).
+     Actions: *Paste the file* (`CF_HDROP`), *Show in Explorer*, *Open*, *Show in Everything*. Relative paths
+     (`src/x.cs`) resolve to the real file, with a picker when several match. Absolute paths are checked
+     without touching the disk or a dead share.
+  3. **"Files on this PC" in the flyout's search:** paste a file you never copied.
+  4. **`bclip resolve <id>`** for agents.
+  - Not planned: classifying by the index (verdicts must stay deterministic), imports from the index journal,
+    and bundling Everything or the SDK DLLs.
 - An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms
