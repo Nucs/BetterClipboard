@@ -70,6 +70,11 @@
                 ThemeResource values, so they follow the flyout's own theme like the whole-style swaps below. It never
                 takes focus (AllowFocusOnInteraction=False, IsTabStop=False): a click must leave the caret in the
                 search box; the keyboard reaches the toggles with Alt+C / Alt+W / Alt+E (ClipboardFlyout's key model).
+                The outline is an overlay border colored by the style's BorderBrush and shown by the checked states
+                (Outline.Opacity), so SearchOptionToggleErrorStyle below changes only that one setter. Shown by opacity,
+                never by blanking the brush in the unchecked states: when the style was swapped back on an unchecked
+                toggle, the new BorderBrush flowed through the TemplateBinding over the "Normal" state's Transparent
+                setter, and the off toggle kept an accent outline (measured 2026-10-01 by sampling the outline's pixels).
             -->
             <Style x:Key="SearchOptionToggleStyle" TargetType="ToggleButton">
                 <Setter Property="Width" Value="24" />
@@ -82,18 +87,13 @@
                 <Setter Property="FontWeight" Value="SemiBold" />
                 <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
                 <Setter Property="Background" Value="Transparent" />
-                <Setter Property="BorderBrush" Value="Transparent" />
+                <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
                 <Setter Property="BorderThickness" Value="1" />
                 <Setter Property="CornerRadius" Value="4" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="ToggleButton">
-                            <Border
-                                x:Name="Chrome"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="{TemplateBinding CornerRadius}">
+                            <Grid>
                                 <VisualStateManager.VisualStateGroups>
                                     <VisualStateGroup x:Name="CommonStates">
                                         <VisualState x:Name="Normal" />
@@ -116,46 +116,72 @@
                                         <VisualState x:Name="Checked">
                                             <VisualState.Setters>
                                                 <Setter Target="Chrome.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
-                                                <Setter Target="Chrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                                <Setter Target="Outline.Opacity" Value="1" />
                                                 <Setter Target="Label.Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="CheckedPointerOver">
                                             <VisualState.Setters>
                                                 <Setter Target="Chrome.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}" />
-                                                <Setter Target="Chrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                                <Setter Target="Outline.Opacity" Value="1" />
                                                 <Setter Target="Label.Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="CheckedPressed">
                                             <VisualState.Setters>
                                                 <Setter Target="Chrome.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
-                                                <Setter Target="Chrome.BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                                                <Setter Target="Outline.Opacity" Value="1" />
                                                 <Setter Target="Label.Foreground" Value="{ThemeResource AccentTextFillColorTertiaryBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                         <VisualState x:Name="CheckedDisabled">
                                             <VisualState.Setters>
-                                                <Setter Target="Chrome.BorderBrush" Value="{ThemeResource AccentFillColorDisabledBrush}" />
+                                                <Setter Target="Outline.Opacity" Value="0.4" />
                                                 <Setter Target="Label.Foreground" Value="{ThemeResource TextFillColorDisabledBrush}" />
                                             </VisualState.Setters>
                                         </VisualState>
                                     </VisualStateGroup>
                                 </VisualStateManager.VisualStateGroups>
-                                <ContentPresenter
-                                    x:Name="Label"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center"
-                                    AutomationProperties.AccessibilityView="Raw"
-                                    Content="{TemplateBinding Content}"
-                                    FontFamily="{TemplateBinding FontFamily}"
-                                    FontSize="{TemplateBinding FontSize}"
-                                    FontWeight="{TemplateBinding FontWeight}"
-                                    Foreground="{TemplateBinding Foreground}" />
-                            </Border>
+                                <Border
+                                    x:Name="Chrome"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="{TemplateBinding CornerRadius}">
+                                    <ContentPresenter
+                                        x:Name="Label"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center"
+                                        AutomationProperties.AccessibilityView="Raw"
+                                        Content="{TemplateBinding Content}"
+                                        FontFamily="{TemplateBinding FontFamily}"
+                                        FontSize="{TemplateBinding FontSize}"
+                                        FontWeight="{TemplateBinding FontWeight}"
+                                        Foreground="{TemplateBinding Foreground}" />
+                                </Border>
+                                <!--  The checked outline (accent, or red in the error style); invisible until a checked state shows it.  -->
+                                <Border
+                                    x:Name="Outline"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="{TemplateBinding CornerRadius}"
+                                    IsHitTestVisible="False"
+                                    Opacity="0" />
+                            </Grid>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
+            </Style>
+
+            <!--
+                The ".*" toggle while its pattern is why the list is empty — it does not parse, or ran out of time
+                (FlyoutViewModel.HasPatternError): the same toggle inside a red outline, the theme's critical color (as
+                in an error InfoBar). Swapped in as a whole style (ClipboardFlyout.RegexToggleStyle), so the brush follows
+                the flyout's own theme. Only the outline changes, and it only shows checked — an error needs ".*" on.
+            -->
+            <Style
+                x:Key="SearchOptionToggleErrorStyle"
+                BasedOn="{StaticResource SearchOptionToggleStyle}"
+                TargetType="ToggleButton">
+                <Setter Property="BorderBrush" Value="{ThemeResource SystemFillColorCriticalBrush}" />
             </Style>
 
             <!--

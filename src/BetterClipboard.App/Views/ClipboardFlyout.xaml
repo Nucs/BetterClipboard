@@ -241,13 +241,14 @@
                         IsChecked="{x:Bind ViewModel.WholeWord, Mode=TwoWay}"
                         Style="{StaticResource SearchOptionToggleStyle}"
                         ToolTipService.ToolTip="Match whole word (Alt+W)" />
+                    <!--  Red outline while the pattern does not parse or ran out of time (FlyoutViewModel.HasPatternError).  -->
                     <ToggleButton
                         x:Name="RegexToggle"
                         AutomationProperties.AcceleratorKey="Alt+E"
                         AutomationProperties.Name="Use regular expression"
                         Content=".*"
                         IsChecked="{x:Bind ViewModel.UseRegex, Mode=TwoWay}"
-                        Style="{StaticResource SearchOptionToggleStyle}"
+                        Style="{x:Bind RegexToggleStyle(ViewModel.HasPatternError), Mode=OneWay}"
                         ToolTipService.ToolTip="Use regular expression (Alt+E)" />
                 </StackPanel>
             </AutoSuggestBox.Description>

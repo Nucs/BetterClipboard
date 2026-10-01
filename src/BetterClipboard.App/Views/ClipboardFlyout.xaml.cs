@@ -2121,6 +2121,16 @@ public sealed partial class ClipboardFlyout : Window
     /// <returns>Visibility.</returns>
     public Visibility TextVisibility(string? text) => string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
 
+    /// <summary>
+    /// x:Bind helper: the ".*" toggle's style — red-outlined while its pattern is why the list is empty
+    /// (<see cref="FlyoutViewModel.HasPatternError"/>). A whole style, not a brush looked up here: a brush taken from
+    /// <see cref="Application.Resources"/> in code would ignore the flyout's own theme, the style's ThemeResource does not.
+    /// </summary>
+    /// <param name="hasPatternError">Whether the pattern does not parse or ran out of time.</param>
+    /// <returns><c>SearchOptionToggleErrorStyle</c> or <c>SearchOptionToggleStyle</c> from App.xaml.</returns>
+    public Style RegexToggleStyle(bool hasPatternError) =>
+        (Style)Application.Current.Resources[hasPatternError ? "SearchOptionToggleErrorStyle" : "SearchOptionToggleStyle"];
+
     /// <summary>x:Bind helper: pause button glyph (Play when paused, Pause otherwise).</summary>
     /// <param name="paused">Paused state.</param>
     /// <returns>The glyph.</returns>

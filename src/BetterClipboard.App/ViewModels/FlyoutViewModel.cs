@@ -83,6 +83,19 @@ public sealed partial class FlyoutViewModel : ObservableObject
         | (WholeWord ? SearchOptions.WholeWord : SearchOptions.None)
         | (UseRegex ? SearchOptions.Regex : SearchOptions.None);
 
+    /// <summary>
+    /// Whether the regular expression in the search box is why the list is empty: it does not parse
+    /// (<see cref="SearchPatternException"/>) or ran out of time (<see cref="SearchTooSlowException"/>). The ".*" toggle
+    /// shows it with a red outline while it is set.
+    /// </summary>
+    /// <remarks>
+    /// Set by <see cref="ShowSearchProblem"/>; cleared by the next load that succeeds, whatever changed (the pattern,
+    /// a toggle, the tab), and by <see cref="ResetForShow"/>. Not cleared at the start of a load: while a still-invalid
+    /// pattern is being typed, the outline would flicker back to normal for every keystroke's debounce.
+    /// </remarks>
+    [ObservableProperty]
+    public partial bool HasPatternError { get; set; }
+
     /// <summary>Selected filter pill; changes reload.</summary>
     [ObservableProperty]
     public partial ClipFilter Filter { get; set; }
@@ -208,6 +221,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
         // Unlike the text, the toggles stay as they were left (re-read: settings.json may have been edited meanwhile).
         ApplySavedSearchOptions();
+
+        // The search box starts empty, and an empty search has no pattern to be wrong.
+        HasPatternError = false;
     }
 
     /// <summary>
@@ -244,6 +260,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
                 loaded = Items.Count;
                 hasMore = false;
+                HasPatternError = false;
                 UpdateEmptyState();
                 Reloaded?.Invoke(this, EventArgs.Empty);
                 await UpdateStatusAsync();
@@ -264,6 +281,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
             loaded = entries.Count;
             hasMore = entries.Count == PageSize;
+            HasPatternError = false;
             UpdateEmptyState();
             Reloaded?.Invoke(this, EventArgs.Empty);
             await UpdateStatusAsync();
@@ -597,7 +615,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <summary>
     /// Replaces the list with an explanation instead of results: the search cannot run (a pattern that does not parse)
     /// or was abandoned (too slow). Goes through <see cref="UpdateEmptyState"/> first, so everything an empty list
-    /// resets is reset, then words the panel for the problem.
+    /// resets is reset, then words the panel for the problem and marks the ".*" toggle (<see cref="HasPatternError"/>).
     /// </summary>
     /// <param name="title">The empty state's title.</param>
     /// <param name="message">What went wrong and what to do.</param>
@@ -609,6 +627,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
         UpdateEmptyState();
         EmptyTitle = title;
         EmptyMessage = message;
+
+        // Both callers are pattern problems (only a regular expression can fail to parse or time out).
+        HasPatternError = true;
         Reloaded?.Invoke(this, EventArgs.Empty);
         _ = UpdateStatusAsync();
     }
