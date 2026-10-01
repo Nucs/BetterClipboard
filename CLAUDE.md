@@ -147,6 +147,8 @@ deleting the value + restart gives Win+V back to Explorer. `explorer.exe` contai
 | `Win+Ctrl+V` | TAKEN | Windows (sound output flyout) |
 | `Win+C` | TAKEN | Windows (Copilot) |
 | `Win+Alt+V`, `Ctrl+Shift+V`, `Ctrl+Alt+V`, ``Ctrl+` `` | FREE | — |
+| `Alt+R` (probed 2026-10-01) | TAKEN | NVIDIA Overlay (its performance overlay's default key; AMD's Radeon overlay also defaults to Alt+R) |
+| `Alt+C`, `Alt+W`, `Alt+E`, `Alt+X`, `Alt+O`, `Alt+Z`, `Alt+Q` (2026-10-01) | FREE | — (the search box uses Alt+C / Alt+W / Alt+E, §2.6.2) |
 
 → To own `Win+V` we must either intercept it with `WH_KEYBOARD_LL` (swallow `V` while Win is down + inject a
 dummy key so releasing Win doesn't open Start — the PowerToys Keyboard-Manager trick) or free it via
@@ -261,7 +263,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (494 tests, one class at a time — §4: the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (522 tests, one class at a time — §4: the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything) (169 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
@@ -427,6 +429,83 @@ DEK (hex passphrase → MDS Password → PRAGMA key) ──SQLite3MC ChaCha20-Po
   is redacted so the identifiers never reach a log.
 - Real-app migration check: copy of a v0.1 plaintext data dir → log `adopted legacy: True, encrypted legacy
   in place: True`; reopened through real DPAPI: 0 of 16 original entries missing; no plaintext header left.
+
+### 2.6.2 Search toggles — `Storage/SearchOptions`, `SearchMatcher`, the search box's Aa / W / .*
+
+User request (2026-10-01): "The search box, i want to add more icons on the right, toggleables: "Aa" for
+case-sensitive (default off), ".*" for regex (default off), "W" for whole word".
+
+**Semantics** (`SearchMatcher`, pure, unit-tested). All three off is the classic search, unchanged (words
+ANDed, trigram index + `LIKE`, no matcher at all).
+- **Words** (no `.*`): the classic split (whitespace, ≤ 8 words). Duplicates are dropped case-sensitively
+  under Aa, so "Foo foo" needs both. Each word is found with `Ordinal` (Aa) or `OrdinalIgnoreCase`.
+- **Whole word**, VS Code's rule on each side: the text's edge, or a neighbor that is not a word character,
+  or a match whose own edge character is not one. So `.cs` stands alone in "file.cs" and `-v` in "run -v",
+  where `\b` fails.
+  - Word characters: letters, decimal digits, Mn/Mc marks, connector punctuation (`_`: "log" is not whole in
+    "my_log", but is in "my-log"). Read as runes, so a letter outside the BMP is one letter.
+  - A literal word retries one char later (overlaps count: "a-a" in "xa-a-a" at 3). A regex retries after
+    the match, like VS Code's global search: retrying one char later would make a long greedy run quadratic.
+- **Regex**: the whole text is one .NET pattern (spaces included, not trimmed): `CultureInvariant` +
+  `Multiline`, plus `IgnoreCase` unless Aa.
+  - CRLF and lone CR become LF first, so `^`/`$` work per line of a Windows text. The price: a pattern that
+    spells out `\r` finds nothing.
+  - `NonBacktracking` first, linear in the text, so `(a+)+b` cannot hang. Lookarounds, backreferences, atomic
+    groups, conditionals and `\G` throw `NotSupportedException` there (probed); they fall back to the
+    backtracking engine with a 250 ms timeout per match attempt, which surfaces as `SearchTooSlowException`.
+  - A pattern that does not parse throws `SearchPatternException`; its `Reason` drops .NET's
+    "Invalid pattern '…' at offset N." preamble ("Not enough )'s.").
+- Entries without text (images) never match, not even `.*`.
+
+**Store** (`ClipStore.Query(query, token)`).
+- The matcher is compiled before the connection opens, so a broken pattern fails before any database work.
+- The index narrows what it can (`SearchQueryBuilder.BuildPrefilter`, which must be a superset):
+  - the classic trigram terms (the index folds case, and a whole word is also a substring);
+  - a short word's `LIKE` only when it is ASCII or caseless (`LIKE` folds ASCII only, so "éa" would drop
+    "ÉA" and is left to the matcher alone; Hebrew keeps its `LIKE`);
+  - nothing for a pattern.
+- Then a SQL function, `bc_search_match(c.search_text)`, is the last predicate. SQLite still orders, pages and
+  stops at `LIMIT`, and its sorter holds only the small entry columns of matches.
+- **Verified with a probe:** Microsoft.Data.Sqlite drops a function when the connection goes back to the pool
+  (the next rent says "no such function"), so it is registered per query and no query can reach a stale
+  matcher. An exception thrown inside it comes back as SQLite error 1 with only its message, so the closure
+  keeps the original (`OperationCanceledException`, `SearchTooSlowException`) and the query rethrows it.
+- `ClipHistoryService.QueryAsync` passes its token into the function: a superseded scan stops at the next entry.
+- **Cost** (probe, 10,000 synthetic items, encrypted, 44 MB, Release): toggled searches 1–55 ms. A regex that
+  matches nothing scans everything in ~46 ms; the classic search for a common word takes ~58 ms. Expect
+  ~0.5 s per 100,000 items for a full scan.
+- Only the indexed `search_text` is searched (≤ 32 K chars), like the classic search.
+
+**UI** (`ClipboardFlyout`, `FlyoutViewModel`, `App.xaml`).
+- **Inside the box:** the toggles are the `AutoSuggestBox`'s `Description`. `SearchBoxTextBoxStyle` is WinUI
+  2.3.9's `AutoSuggestBoxTextBoxStyle` template, copied with one more column between the clear (X) button and
+  the magnifier: `[text][X][Aa][W][.*][🔍]`. The X appears only while there is text, to their left, so the
+  toggles never move. Order as in VS Code and Rider. Keep the copy in step when upgrading WinUI.
+- **`SearchOptionToggleStyle`:** a 24-DIP text toggle. On = accent outline, accent glyph and a subtle fill (VS
+  Code's look). `AllowFocusOnInteraction=False` and `IsTabStop=False`, so a click keeps the caret in the box.
+- **Keys:** Alt+C / Alt+W / Alt+E in `Root_PreviewKeyDown` (Visual Studio's keys), Alt without Ctrl: AltGr
+  arrives as Ctrl+Alt and types letters on many layouts.
+  - **Not VS Code's Alt+R:** GPU overlays register it globally. Here `RegisterHotKey(Alt+R)` fails with 1409
+    (NVIDIA Overlay runs; AMD's Radeon overlay defaults to Alt+R too). The panel's log showed Alt arriving and
+    R never (2026-10-01).
+- **Remembered** in settings (`SearchMatchCase`, `SearchWholeWord`, `SearchUseRegex`, all off by default), like
+  an IDE's find box; the text is still cleared on every summon. A change reloads at once (no debounce), and
+  only when there is search text, so an empty box keeps its scroll position and selection.
+- **Empty states name the toggles:** "Nothing in your history contains “foo” (whole words, match case)." and
+  "… matches “^\d+$” (regular expression)". An invalid pattern shows "Not a valid regular expression", the
+  reason and "Turn off .* (Alt+E) to search for these characters as they are."; a slow one has its own title.
+  Neither is logged as an error: an unfinished pattern is normal while typing.
+- **UI Automation:** three buttons with `TogglePattern` named "Match case", "Match whole word" and "Use regular
+  expression", with their `AcceleratorKey`. The search box's `HelpText` stays empty: the `Description` content
+  is not read as a description.
+
+**Not covered:**
+- `bclip search` keeps the classic search (`bclip grep` already takes a regex).
+- Any caller that builds its own `ClipQuery` gets the classic search unless it passes `SearchOptions`. That
+  includes the Everything tab (§2.14): `FlyoutViewModel.LoadEverythingRowsAsync` queries its stored half itself, and
+  Everything's picks are searched by Everything. Joining them up means passing `CurrentSearchOptions` there and
+  mapping the toggles to Everything's own match-case / whole-word / regex search flags.
+- Cards do not highlight the matches.
 
 ### 2.7 Importing Windows' history (`Import/`)
 
@@ -1408,7 +1487,7 @@ modern dialog); an opt-in delete-through to `RunMRU`.
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 663 tests (660 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 691 tests (688 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -1688,6 +1767,16 @@ Everything tab (2026-10-01):
   subtract it (`ClipboardFlyout.WindowFrameDip`). Lesson (2026-10-01): the tab-bar widening assumed the full width,
   and the last tab was clipped ("Rur" with eight tabs, "Everythin" with nine) although every UIA rectangle lay
   inside the window. Zoom into a screenshot of the last tab; rectangles alone did not show it.
+- **Global hotkeys beat the foreground window, also for injected keys.** Before giving the panel an Alt+letter
+  shortcut, or injecting a chord in a test, probe the chord with `RegisterHotKey` (`MOD_NOREPEAT`, released at
+  once; a 1409 means someone owns it). An owned chord goes to its owner, and the foreground guard does not help.
+  - Lesson (2026-10-01): VS Code's regex key Alt+R is registered on this PC — NVIDIA Overlay runs, and its
+    performance overlay uses Alt+R by default (AMD's Radeon overlay does too). The panel's log showed Alt arriving
+    and R never, and three test presses went to that owner instead of the test panel. The search box uses Alt+E.
+- **A WinUI control template copied into `App.xaml`** (`SearchBoxTextBoxStyle`, §2.6.2) is a snapshot of the
+  WinUI version it came from (2.3.9). After a WinUI upgrade, diff it against the new `generic.xaml`
+  (`~/.nuget/packages/microsoft.windowsappsdk.winui/<version>/lib/net6.0-windows10.0.17763.0/Microsoft.WinUI/Themes/generic.xaml`,
+  `AutoSuggestBoxTextBoxStyle`): a stale copy keeps old visuals, it does not break.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -1700,6 +1789,8 @@ Everything tab (2026-10-01):
 | Everything tab on an isolated instance next to the user's app (2026-10-01): a private, windowless Everything 1.5.0.1423b (`BCTEST-E2E`, only a BC-TEST tree, four picks through the run-count IPC), the store seeded with BC-TEST items, overrides for Everything, ShareX and Win+R. The app verified the instance ("signed by voidtools PTY LTD"). All nine tabs fit: window 518 px outer / 504 visible, "Everything" 83 px with 13 to spare. The tab lists the four picks newest first ("File/Folder opened in Everything", "opened 3 times"), then the path copied in Everything; footer "4 opened in Everything · 1 kept". Ctrl+P on a pick: a pinned history entry in its place (`bclip`: `files everything pinned Everything`). Delete on a pick: hidden, also after reopening the panel. User's PIDs unchanged, scratch removed | UIA (select-only) + Ctrl+P/Delete/Esc sent only while the test panel was in front + two guarded screenshots (`ev_e2e/run.sh`, scratch) | ✅ after two fixes it found: the tab bar ignored the window frame ("Everythin", fixed by `WindowFrameDip`), and the first run's helper invoked a card (it pasted a BC-TEST file reference into the user's clipboard and terminal; select-only since, §4) |
 | Everything against real builds: live picks (run counts, dates, newest first, search words), then the saved `Run History.csv` after the instance exited, all through the real owner check | `RealEverythingTests` with `BETTERCLIPBOARD_EVERYTHING_EXE`, one private instance per run | ✅ 1.4.1.935, 1005, 1026, 1032 and 1.5.0.1423b. 1.4 needs a save for the file (no search window ever opened; see §2.14 "Run history saving") |
 | Everything unit tests: wire format (query and command-line encoding, `LIST2` field order, every field skipped by size, lying sizes refused, unset dates), queries and quoting (`CommandLineToArgvW` round trip), `Run History.csv` (format, header order, odd rows, a write cut off mid-path, candidate paths), merge and hide rules, the store filter/origin/forget-by-path and pick formats, CLI and setting; the client against a fake IPC window (trust, state, matching, latest-wins, deadlines, garbage, a hung window), the integration (live, saved file, loading, garbled, impostor), owner check, locator | tests | ✅ 55 new (Core 29, Windows 26). The locator test found a real bug: a quoted display icon with an icon index (`"…\Everything.exe",0`) was unquoted before the index was cut and never matched |
+| Search toggles, live on an isolated instance next to the user's app (2026-10-01; seven seeded BC-TEST items, capture paused). The box reads `[text][X][Aa][W][.*][🔍]`; on = accent outline and glyph (dark and light theme). Through UIA: "log" lists 3 cards, with W 1 ("log file"; not "login form" or "my_log entry"); "Hello" with W lists 2, adding Aa leaves "Hello World"; the regex `\d{3}-\d{4}$` keeps "order 555-1234" and drops "call me at 555-1234 now"; "foo(" shows "Not a valid regular expression" with "Not enough )'s. Turn off .* (Alt+E) …". Alt+E / Alt+C / Alt+W flip the toggles, and the empty state then reads "… contains “foo(” (whole words)." `settings.json` keeps the toggles, the next summon restores them and clears the text, and a toggle with an empty box leaves the list alone. 0 WRN/ERR in the test log; the user's PID unchanged | UIA (Toggle/Value patterns) + guarded Alt chords and Esc, only while the test panel was in front (`search_e2e/run.py`, scratch) | ✅ 17 + 3 checks, on the first build and again after rebasing onto `f1fb074`. Alt+R never arrived (§4, global hotkeys), hence Alt+E. A WinEvent hook saw no `EVENT_SYSTEM_SOUND` for any chord, not even an unhandled Alt+Q control, so no "ding"; the hook itself was not proven against an audible beep |
+| Search toggles in Core: matcher semantics (case, VS Code's whole-word rule with punctuation edges, overlaps and runes; regex lines, engines and timeout; empty texts), the prefilter superset, the SQL function inside real queries (order, paging, filters, groups), failures keeping their type through SQLite, persisted toggles; cost on 10,000 encrypted synthetic items: 1–55 ms, a full regex scan ~46 ms | tests (`SearchOptionsTests.cs`, 28) + scratch probes (`probe_regex.cs`, `probe_search_perf.cs`) | ✅ |
 | Run tab, headless, on an isolated instance next to the user's app (2026-10-01; a scratch Win+R key with BC-TEST commands through `BETTERCLIPBOARD_RUNMRU_KEY`, capture not paused, the scratch store deleted afterwards). The first activation imported 3 of 3 (origin `run-history`, newest first). A live run was listed by `bclip list -f run` 295–703 ms after the write (polling included), origin `run`. A re-run moved to the top. 30 runs 400 ms apart: Windows' list held 26, the Run tab all 34, including the evicted "fill 01". JSON has `lastRun`, source `Win+R`. User's PID unchanged | `run_e2e/run.sh` (scratch) | ✅ (30 runs 50 ms apart were one batch: 26 of 30, the oldest 4 evicted before the first read — a scripted-burst limit, §6) |
 | Run tab UI on the same kind of instance. The tab shows after ShareX. Entering it lists "Win+R command: …" cards (command-prompt glyph, "Win+R · just now"); the footer reads "↵ paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin" and "34 commands kept". Ctrl+Enter, sent only while the test panel was the foreground window, on a `wscript` BC-TEST command ran it (marker file written), hid the panel, and moved the entry to the top with a new run time. Log: "Ran entry 3 as a Win+R command: Started." (no command text) | UIA select + one guarded key chord (`run_e2e/ui.sh`) | ✅ (twice). Lesson: take the test PID from `Start-Process -PassThru` — "the new `BetterClipboard.exe`" was once another agent's short-lived process, and UIA then found "no window" |
 | Tab bar with the ShareX and Run tabs (8 tabs) | UIA rects + guarded screenshots; the committed build measured from a separate `git worktree` (never stash/checkout in the shared tree) | ❌ in `4c91613`: "Run" is clipped to "Rur" (window 405 px, the tab arranged at 31 of its 43 px), on the first and the second summon. Cause: the widening ignored the window's 14-DIP invisible frame (`MoveAndResize` sizes the outer window). The Everything session's change that subtracts it (`WindowFrameDip`, uncommitted in the working tree after `4c91613`) measured fine: window 421 px, "Run" 43 px, ~4 px to spare. ✅ since that change was committed (the commit after `3c82d3b`); with all nine tabs see the Everything rows |
@@ -1717,7 +1808,7 @@ Everything tab (2026-10-01):
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 660 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 663 = Core 494 + Windows 169, with the Run tab and the finished Everything tab; 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 688 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 691 = Core 522 + Windows 169, with the Run tab, the finished Everything tab and the search toggles (`a0c6c81`, built and run in a separate worktree); before the search toggles, 663 (Core 494) with 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -1769,6 +1860,13 @@ Everything tab (2026-10-01):
     fingerprint matches), so a forgotten secret also leaves Win+V's RAM buffer and pins;
   - pattern rules ("never record anything that looks like an AWS key / a JWT"), next to the exact list;
   - sweeping look-alikes of texts over the 32 K `search_text` cap (would need a stored fingerprint column).
+- Search toggles, next steps (§2.6.2):
+  - the Everything tab: pass `CurrentSearchOptions` to its stored query and map the toggles to Everything's own
+    match-case / whole-word / regex search flags, so both halves of the tab search alike;
+  - `bclip search` options for the same toggles (the request needs a field for them; the store already takes
+    `ClipQuery.SearchOptions`);
+  - highlighting the matches in the cards;
+  - recent searches in the box's suggestion list (the `AutoSuggestBox` has one, unused today).
 - Paths copied as text, next steps:
   - *Show in Explorer* / *Open* for path texts that are absolute and local (never probe network paths on the
     UI thread: a dead share blocks for tens of seconds);
