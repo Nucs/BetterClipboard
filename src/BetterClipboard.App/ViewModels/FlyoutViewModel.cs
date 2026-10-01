@@ -40,10 +40,14 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private EverythingPicksResult? lastPicks;
 
     /// <summary>
-    /// Creates the view model.
+    /// Creates the view model, with the search toggles as the user last left them.
     /// </summary>
     /// <param name="controller">App controller (history access, settings).</param>
-    public FlyoutViewModel(AppController controller) => this.controller = controller;
+    public FlyoutViewModel(AppController controller)
+    {
+        this.controller = controller;
+        ApplySavedSearchOptions();
+    }
 
     /// <summary>
     /// Raised after <see cref="ReloadAsync"/> replaced the list (UI thread), so the view can restore a
@@ -57,6 +61,27 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <summary>Search box text; changes reload (debounced).</summary>
     [ObservableProperty]
     public partial string SearchText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The search box's "Aa" toggle (<see cref="SearchOptions.MatchCase"/>). Changes are remembered in settings and
+    /// reload a search in progress (see <see cref="OnSearchOptionChanged"/>).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool MatchCase { get; set; }
+
+    /// <summary>The search box's "W" toggle (<see cref="SearchOptions.WholeWord"/>); remembered like <see cref="MatchCase"/>.</summary>
+    [ObservableProperty]
+    public partial bool WholeWord { get; set; }
+
+    /// <summary>The search box's ".*" toggle (<see cref="SearchOptions.Regex"/>); remembered like <see cref="MatchCase"/>.</summary>
+    [ObservableProperty]
+    public partial bool UseRegex { get; set; }
+
+    /// <summary>The three toggles as the store's <see cref="SearchOptions"/> (what <see cref="CreateQuery"/> sends).</summary>
+    public SearchOptions CurrentSearchOptions =>
+        (MatchCase ? SearchOptions.MatchCase : SearchOptions.None)
+        | (WholeWord ? SearchOptions.WholeWord : SearchOptions.None)
+        | (UseRegex ? SearchOptions.Regex : SearchOptions.None);
 
     /// <summary>Selected filter pill; changes reload.</summary>
     [ObservableProperty]
@@ -180,6 +205,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
         SelectedGroupId = null;
         suppressReload = false;
         IsPaused = controller.Settings.Current.IsCapturePaused;
+
+        // Unlike the text, the toggles stay as they were left (re-read: settings.json may have been edited meanwhile).
+        ApplySavedSearchOptions();
     }
 
     /// <summary>
@@ -244,6 +272,25 @@ public sealed partial class FlyoutViewModel : ObservableObject
         {
             // Superseded by a newer query.
         }
+        catch (SearchPatternException ex)
+        {
+            // An unfinished pattern ("(foo") is an ordinary moment while typing, not a failure worth logging: say what
+            // is wrong, and how to search for the characters themselves. A superseded query's verdict is stale.
+            if (!cancellation.IsCancellationRequested)
+            {
+                ShowSearchProblem("Not a valid regular expression", $"{ex.Reason} Turn off .* (Alt+E) to search for these characters as they are.");
+            }
+        }
+        catch (SearchTooSlowException)
+        {
+            if (!cancellation.IsCancellationRequested)
+            {
+                AppLog.Info("A search's regular expression ran out of time on an item; the search was stopped.");
+                ShowSearchProblem(
+                    "This regular expression is too slow",
+                    $"It needed more than {SearchMatcher.MatchTimeout.TotalMilliseconds:0} ms on one item (it backtracks heavily). Simplify it, or turn off .* (Alt+E).");
+            }
+        }
         catch (Exception ex)
         {
             AppLog.Error("Loading the flyout list failed.", ex);
@@ -283,6 +330,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+        }
+        catch (SearchTooSlowException)
+        {
+            // The first page matched in time, a later entry did not: keep what is shown, stop paging.
+            hasMore = false;
+            AppLog.Info("A search's regular expression ran out of time while paging; no more items are loaded for it.");
         }
         catch (Exception ex)
         {
@@ -404,6 +457,62 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
     }
 
+    /// <summary>The "Aa" toggle changed (click, Alt+C).</summary>
+    /// <param name="value">New state.</param>
+    partial void OnMatchCaseChanged(bool value) => OnSearchOptionChanged();
+
+    /// <summary>The "W" toggle changed (click, Alt+W).</summary>
+    /// <param name="value">New state.</param>
+    partial void OnWholeWordChanged(bool value) => OnSearchOptionChanged();
+
+    /// <summary>The ".*" toggle changed (click, Alt+E).</summary>
+    /// <param name="value">New state.</param>
+    partial void OnUseRegexChanged(bool value) => OnSearchOptionChanged();
+
+    /// <summary>
+    /// A search toggle changed: remember all three, and re-run the search at once (no debounce: a click is one
+    /// deliberate change, not a burst of keystrokes).
+    /// </summary>
+    /// <remarks>
+    /// With an empty search box the toggles change nothing that is shown, so the list is left alone — a reload would
+    /// only throw away the scroll position and the selection. Skipped entirely while <see cref="ApplySavedSearchOptions"/>
+    /// restores them (nothing new to save, and the summon reloads anyway).
+    /// </remarks>
+    private void OnSearchOptionChanged()
+    {
+        if (suppressReload)
+        {
+            return;
+        }
+
+        try
+        {
+            controller.Settings.Update(s => s with { SearchMatchCase = MatchCase, SearchWholeWord = WholeWord, SearchUseRegex = UseRegex });
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The store keeps the change in memory; it only fails to reach the next start.
+            AppLog.Warn($"Saving the search toggles failed: {ex.Message}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            _ = ReloadAsync();
+        }
+    }
+
+    /// <summary>Sets the three toggles from settings without saving them back or reloading.</summary>
+    private void ApplySavedSearchOptions()
+    {
+        var settings = controller.Settings.Current;
+        bool wasSuppressed = suppressReload;
+        suppressReload = true;
+        MatchCase = settings.SearchMatchCase;
+        WholeWord = settings.SearchWholeWord;
+        UseRegex = settings.SearchUseRegex;
+        suppressReload = wasSuppressed;
+    }
+
     /// <summary>Header suffix and search placeholder for the current view.</summary>
     private void UpdateGroupTexts()
     {
@@ -448,12 +557,61 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private ClipQuery CreateQuery(int offset) => new()
     {
         SearchText = SearchText,
+        SearchOptions = CurrentSearchOptions,
         Filter = Filter,
         Offset = offset,
         Limit = PageSize,
         PinnedFirst = controller.Settings.Current.PinnedOnTop,
         GroupId = SelectedGroupId,
     };
+
+    /// <summary>
+    /// Describes the current search for the empty state: the verb, the text and the toggles that shape it, e.g.
+    /// <c>contains “foo bar” (whole words, match case)</c> or <c>matches “^\d+$” (regular expression)</c> — a toggle
+    /// left on is the likeliest reason a search finds nothing, so it is named.
+    /// </summary>
+    /// <returns>The phrase, to follow "Nothing in …".</returns>
+    private string DescribeSearch()
+    {
+        var qualifiers = new List<string>(3);
+        if (UseRegex)
+        {
+            qualifiers.Add("regular expression");
+        }
+
+        if (WholeWord)
+        {
+            qualifiers.Add(UseRegex ? "whole words only" : "whole words");
+        }
+
+        if (MatchCase)
+        {
+            qualifiers.Add("match case");
+        }
+
+        // A pattern is shown as typed (its spaces may matter); words are trimmed like the search trims them.
+        var phrase = UseRegex ? $"matches “{SearchText}”" : $"contains “{SearchText.Trim()}”";
+        return qualifiers.Count == 0 ? phrase : $"{phrase} ({string.Join(", ", qualifiers)})";
+    }
+
+    /// <summary>
+    /// Replaces the list with an explanation instead of results: the search cannot run (a pattern that does not parse)
+    /// or was abandoned (too slow). Goes through <see cref="UpdateEmptyState"/> first, so everything an empty list
+    /// resets is reset, then words the panel for the problem.
+    /// </summary>
+    /// <param name="title">The empty state's title.</param>
+    /// <param name="message">What went wrong and what to do.</param>
+    private void ShowSearchProblem(string title, string message)
+    {
+        Items.Clear();
+        loaded = 0;
+        hasMore = false;
+        UpdateEmptyState();
+        EmptyTitle = title;
+        EmptyMessage = message;
+        Reloaded?.Invoke(this, EventArgs.Empty);
+        _ = UpdateStatusAsync();
+    }
 
     /// <summary>Wraps an entry in a card model.</summary>
     /// <param name="entry">The entry.</param>
@@ -481,13 +639,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
             bool searching = !string.IsNullOrWhiteSpace(SearchText);
             EmptyTitle = searching ? "No matches" : $"Nothing in {group.Name} yet";
             EmptyMessage = searching
-                ? $"Nothing in {group.Name} contains “{SearchText.Trim()}”."
+                ? $"Nothing in {group.Name} {DescribeSearch()}."
                 : $"Open the full history (the clipboard icon above), then drag cards onto the {group.Name} icon.";
         }
         else if (!string.IsNullOrWhiteSpace(SearchText))
         {
             EmptyTitle = "No matches";
-            EmptyMessage = $"Nothing in your history contains “{SearchText.Trim()}”.";
+            EmptyMessage = $"Nothing in your history {DescribeSearch()}.";
         }
         else if (Filter == ClipFilter.Pinned)
         {

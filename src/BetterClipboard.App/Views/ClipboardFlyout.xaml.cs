@@ -417,7 +417,10 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Keyboard model: arrows move, Enter pastes, Esc closes, Ctrl+P pins, Del deletes, Ctrl+1..9 quick-paste.</summary>
+    /// <summary>
+    /// Keyboard model: arrows move, Enter pastes, Esc closes, Ctrl+P pins, Del deletes, Ctrl+1..9 quick-paste, Alt+C /
+    /// Alt+W / Alt+E toggle the search box's match case / whole word / regular expression.
+    /// </summary>
     /// <param name="sender">Root grid.</param>
     /// <param name="e">Key data.</param>
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
@@ -434,6 +437,9 @@ public sealed partial class ClipboardFlyout : Window
 
         bool ctrl = IsKeyDown(VirtualKey.Control);
         bool shift = IsKeyDown(VirtualKey.Shift);
+
+        // Alt alone: AltGr arrives as Ctrl+Alt, and on many layouts AltGr+C/E types a letter (Polish ć, ę, ...).
+        bool altOnly = IsKeyDown(VirtualKey.Menu) && !ctrl;
         switch (e.Key)
         {
             case VirtualKey.Down:
@@ -501,6 +507,18 @@ public sealed partial class ClipboardFlyout : Window
                 break;
             case VirtualKey.G when ctrl:
                 SetGroupsPane(!groupsPaneOpen);
+                break;
+
+            // The search box's toggles, with Visual Studio's keys. They never take focus, so this is their keyboard
+            // route. Not VS Code's Alt+R for the pattern: GPU overlays (NVIDIA, AMD) own Alt+R globally (see the XAML).
+            case VirtualKey.C when altOnly:
+                ViewModel.MatchCase = !ViewModel.MatchCase;
+                break;
+            case VirtualKey.W when altOnly:
+                ViewModel.WholeWord = !ViewModel.WholeWord;
+                break;
+            case VirtualKey.E when altOnly:
+                ViewModel.UseRegex = !ViewModel.UseRegex;
                 break;
             case >= VirtualKey.Number1 and <= VirtualKey.Number9 when ctrl:
                 int index = e.Key - VirtualKey.Number1;
@@ -1236,59 +1254,66 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// The extra window width the visible filter tabs need beyond the bar's room at <see cref="WidthDip"/>: each visible
-    /// tab's width (<see cref="MeasureTabDip(SelectorBarItem)"/>), summed, against 384 DIP (400 − 24 padding + 8
-    /// negative margin), plus a little slack for rounding. 0 when they fit.
+    /// tab's label measured the way its template draws it (<see cref="MeasureTabDip"/>), summed, against the bar's room
+    /// (the window's content width at <see cref="WidthDip"/> − 24 padding + 8 negative margin), plus a little slack for
+    /// rounding. 0 when they fit.
     /// </summary>
     /// <remarks>
-    /// A tab that was collapsed until now (ShareX, Run, Everything) has not been laid out, so measuring only the items
-    /// did not count it: the window kept its 400 DIP and the last tabs were cut off (reported 2026-10-01 with the
-    /// ShareX and Run tabs showing). Measuring only the labels was not enough either: they came out ~1.7 DIP per tab
-    /// narrower than the laid-out tabs, so with all nine tabs the selected "Everything" read "Everythin" (isolated
-    /// e2e run, 2026-10-01). Each tab therefore counts with the larger of the two.
+    /// <para>
+    /// Measures the labels, never the <see cref="SelectorBarItem"/>s: a tab that was collapsed until now (ShareX, Run,
+    /// Everything) has not been laid out, so measuring the item itself did not count it, the window kept its 400 DIP
+    /// and the last tabs were cut off (reported 2026-10-01 with the ShareX and Run tabs showing). A label measures the
+    /// same whether or not its tab was ever on screen, so the width is right on the very first summon too. (Measuring
+    /// the items before the first layout is wrong the other way: the bar's 9 DIP padding style is not applied yet, so
+    /// nine tabs measured 536 DIP instead of 482.) Once laid out, labels and tabs measured the same: 482 DIP.
+    /// </para>
+    /// <para>
+    /// The room is the content's, not the window's: <c>MoveAndResize</c> sizes the outer window, which includes its
+    /// frame (<see cref="WindowFrameDip"/>, 14 DIP: Windows' invisible resize borders), so at 400 + 102 DIP the bar had
+    /// 472 DIP and the selected "Everything" tab read "Everythin" (isolated e2e run with all nine tabs, 2026-10-01).
+    /// </para>
     /// </remarks>
     /// <returns>Extra DIPs (whole numbers).</returns>
     private double MeasureTabsExtraDip()
     {
         const double SlackDip = 4;
-        const double BarDip = WidthDip - 24 + 8;
-        double needed = 0, labels = 0;
+        double barDip = WidthDip - WindowFrameDip() - 24 + 8;
+        double needed = 0;
         foreach (var tab in Filters.Items)
         {
             if (tab.Visibility == Visibility.Visible)
             {
-                needed += MeasureTabDip(tab);
-                labels += MeasureTabDip(tab.Text);
+                needed += MeasureTabDip(tab.Text);
             }
         }
 
-        AppLog.Info($"Tabs: labels {labels:0.0} DIP, tabs {needed:0.0} DIP, bar {BarDip} DIP.");
-        return Math.Max(0, Math.Ceiling(needed + SlackDip - BarDip));
+        return Math.Max(0, Math.Ceiling(needed + SlackDip - barDip));
     }
 
     /// <summary>
-    /// One tab's width in the bar, in DIPs: the tab itself once its template exists (exact: the real text rendering
-    /// and padding), or its label (<see cref="MeasureTabDip(string)"/>) for a tab never laid out yet — whichever is
-    /// larger, so neither a missing template nor the label's slight underestimate can cut the tab off.
+    /// The width of the window's frame, both sides together, in DIPs: what <c>MoveAndResize</c>'s outer size has beyond
+    /// the content (<c>AppWindow.Size</c> − <c>AppWindow.ClientSize</c>). Fixed by the window style, so it is right also
+    /// while the window is hidden, and the same in DIPs on any monitor.
     /// </summary>
-    /// <remarks>
-    /// Measuring a tab here, outside a layout pass, only updates its desired size: the bar's next layout pass measures
-    /// it again with its own constraint. A horizontal bar gives its tabs unlimited width, so a tab that is clipped
-    /// right now still reports the width it wants.
-    /// </remarks>
-    /// <param name="tab">A visible tab.</param>
-    /// <returns>The tab's width in DIPs.</returns>
-    private static double MeasureTabDip(SelectorBarItem tab)
+    /// <returns>The frame in DIPs (14 at 100 % on Windows 11: two 7 px resize borders); 0 when it cannot be read.</returns>
+    private double WindowFrameDip()
     {
-        tab.Measure(new global::Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
-        return Math.Max(MeasureTabDip(tab.Text), tab.DesiredSize.Width);
+        int frame = AppWindow.Size.Width - AppWindow.ClientSize.Width;
+        if (frame <= 0)
+        {
+            return 0;
+        }
+
+        // The frame is sized by the window's own DPI: its XAML scale once loaded, else its monitor's (never shown yet).
+        double scale = Content?.XamlRoot?.RasterizationScale
+            ?? MonitorLookup.FromPoint(new ScreenPoint(AppWindow.Position.X, AppWindow.Position.Y)).Scale;
+        return scale > 0 ? frame / scale : frame;
     }
 
     /// <summary>
-    /// One tab's estimated width in the bar, in DIPs: its label in a detached <see cref="TextBlock"/> with the tab
-    /// template's text properties (the theme's control font family and size, normal weight; WinUI's
-    /// <c>SelectorBarItem</c> template binds exactly those), plus <see cref="TabSidePaddingDip"/> on each side. Works
-    /// for a tab that was never laid out, but measured ~1.7 DIP narrower than the real tab (see
-    /// <see cref="MeasureTabsExtraDip"/>), so it is a lower bound.
+    /// One tab's width in the bar, in DIPs: its label in a detached <see cref="TextBlock"/> with the tab template's
+    /// text properties (the theme's control font family and size, normal weight; WinUI's <c>SelectorBarItem</c>
+    /// template binds exactly those), plus <see cref="TabSidePaddingDip"/> on each side.
     /// </summary>
     /// <param name="label">The tab's text; <see langword="null"/> or empty counts as the padding only.</param>
     /// <returns>The tab's width in DIPs.</returns>

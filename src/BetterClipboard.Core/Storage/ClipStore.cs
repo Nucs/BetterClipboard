@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using System.Text;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
@@ -140,6 +141,12 @@ public sealed class ClipStore
     /// moment the entry left its last group when that is later (the "reset" retention clock).
     /// </summary>
     private const string RetentionKey = "max(last_used_utc, coalesce(retain_from_utc, 0))";
+
+    /// <summary>
+    /// Name of the per-query SQL function that runs <see cref="SearchMatcher.IsMatch"/> on an entry's search text
+    /// (see <see cref="Query(ClipQuery, CancellationToken)"/>). Prefixed so it can never shadow a SQLite built-in.
+    /// </summary>
+    private const string SearchMatchFunction = "bc_search_match";
 
     private readonly string connectionString;
 
@@ -715,16 +722,45 @@ public sealed class ClipStore
     /// <param name="query">Search text, filter, ordering and paging.</param>
     /// <returns>The matching entries (possibly empty), without payloads.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="query"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SearchPatternException">The query is a regular expression (<see cref="SearchOptions.Regex"/>) that does not parse.</exception>
+    /// <exception cref="SearchTooSlowException">The regular expression needs the backtracking engine and ran out of time on an entry.</exception>
     /// <exception cref="SqliteException">The read failed.</exception>
-    public IReadOnlyList<ClipEntry> Query(ClipQuery query)
+    public IReadOnlyList<ClipEntry> Query(ClipQuery query) => Query(query, CancellationToken.None);
+
+    /// <summary>
+    /// Returns one page of history; a search with <see cref="ClipQuery.SearchOptions"/> can be stopped mid-scan.
+    /// </summary>
+    /// <remarks>
+    /// With toggles, the index only narrows the candidates (<see cref="SearchQueryBuilder.BuildPrefilter"/>) and a SQL
+    /// function runs <see cref="SearchMatcher.IsMatch"/> on each one, as the last predicate: SQLite still orders, pages
+    /// and stops at <see cref="ClipQuery.Limit"/> itself, and only keeps the small entry columns of matches in memory.
+    /// The function is registered on this query's own connection — Microsoft.Data.Sqlite drops it when the connection
+    /// goes back to the pool (verified), so no other query can call a stale matcher. The token is honored inside that
+    /// function only; the classic search is a single index lookup with nothing worth stopping.
+    /// </remarks>
+    /// <param name="query">Search text and toggles, filter, ordering and paging.</param>
+    /// <param name="cancellationToken">Stops a toggled search at the next entry it would test (e.g. superseded while typing).</param>
+    /// <returns>The matching entries (possibly empty), without payloads.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="query"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SearchPatternException">The query is a regular expression (<see cref="SearchOptions.Regex"/>) that does not parse.</exception>
+    /// <exception cref="SearchTooSlowException">The regular expression needs the backtracking engine and ran out of time on an entry.</exception>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled during a toggled search.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public IReadOnlyList<ClipEntry> Query(ClipQuery query, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(query);
+
+        // Compiled before the connection opens: a pattern that does not parse fails here, never halfway into a scan.
+        var matcher = query.SearchOptions == SearchOptions.None ? null : SearchMatcher.Create(query.SearchText, query.SearchOptions);
         using var connection = Open();
         using var command = connection.CreateCommand();
         var sql = new StringBuilder($"SELECT {EntryColumns} FROM clips c");
         var predicates = new List<string>();
 
-        var (fts, likes) = SearchQueryBuilder.Build(query.SearchText);
+        // The index answers the classic search on its own; with toggles it only narrows what the matcher must test.
+        var (fts, likes) = matcher is null
+            ? SearchQueryBuilder.Build(query.SearchText)
+            : SearchQueryBuilder.BuildPrefilter(query.SearchText, query.SearchOptions);
         if (fts is not null)
         {
             predicates.Add("c.id IN (SELECT rowid FROM clips_fts WHERE clips_fts MATCH $fts)");
@@ -755,6 +791,27 @@ public sealed class ClipStore
             command.Parameters.AddWithValue("$group", groupId);
         }
 
+        // Last, so every cheaper predicate above has narrowed the rows before a text is tested.
+        Exception? matchFailure = null;
+        if (matcher is not null)
+        {
+            connection.CreateFunction<string?, bool>(SearchMatchFunction, text =>
+            {
+                try
+                {
+                    return matcher.IsMatch(text, cancellationToken);
+                }
+                catch (Exception ex) when (ex is OperationCanceledException or SearchTooSlowException)
+                {
+                    // SQLite carries only the message back (as a generic error 1): keep the exception itself, so the
+                    // caller sees a cancellation as a cancellation and a slow pattern as SearchTooSlowException.
+                    matchFailure = ex;
+                    throw;
+                }
+            });
+            predicates.Add($"{SearchMatchFunction}(c.search_text)");
+        }
+
         if (predicates.Count > 0)
         {
             sql.Append(" WHERE ").AppendJoin(" AND ", predicates);
@@ -767,10 +824,17 @@ public sealed class ClipStore
         command.CommandText = sql.ToString();
 
         var result = new List<ClipEntry>();
-        using var reader = command.ExecuteReader();
-        while (reader.Read())
+        try
         {
-            result.Add(ReadEntry(reader));
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                result.Add(ReadEntry(reader));
+            }
+        }
+        catch (SqliteException) when (matchFailure is not null)
+        {
+            ExceptionDispatchInfo.Throw(matchFailure);
         }
 
         return result;

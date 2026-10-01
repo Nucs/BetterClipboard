@@ -92,6 +92,29 @@ public sealed record AppSettings
     /// </summary>
     public bool ShowGroupsPane { get; init; }
 
+    /// <summary>
+    /// The panel search box's "Aa" toggle: words match only with the same upper and lower case
+    /// (<see cref="Storage.SearchOptions.MatchCase"/>). Off by default.
+    /// </summary>
+    /// <remarks>
+    /// The three search toggles are remembered, like an IDE's find box, while the search text itself is cleared on
+    /// every Win+V: they describe how the user likes to search, not one search. The flip side: a toggle left on keeps
+    /// changing what later searches find — the box shows it highlighted, and the empty state names it.
+    /// </remarks>
+    public bool SearchMatchCase { get; init; }
+
+    /// <summary>
+    /// The panel search box's "W" toggle: each word must stand alone (<see cref="Storage.SearchOptions.WholeWord"/>).
+    /// Off by default; remembered (see <see cref="SearchMatchCase"/>).
+    /// </summary>
+    public bool SearchWholeWord { get; init; }
+
+    /// <summary>
+    /// The panel search box's ".*" toggle: the search text is a regular expression (<see cref="Storage.SearchOptions.Regex"/>).
+    /// Off by default; remembered (see <see cref="SearchMatchCase"/>).
+    /// </summary>
+    public bool SearchUseRegex { get; init; }
+
     /// <summary>Import Windows' current Win+V history (including its pinned items) at every startup.</summary>
     public bool ImportWindowsHistoryOnStartup { get; init; } = true;
 

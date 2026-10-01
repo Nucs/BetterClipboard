@@ -257,12 +257,12 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), settings, logging, presentation helpers. **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), settings, logging, presentation helpers. **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (494 tests, one class at a time — §4: Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches (169 tests with the Everything work's). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (494 tests, one class at a time — §4: the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything) (169 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
@@ -297,6 +297,12 @@ History worker (single consumer Channel) ── classify → WIC analyze (thumbn
  (or its parent while missing) → Changed → 150 ms debounce → rescan on the pool under one gate: read once the key
  is quiet 150 ms → runs since the snapshot → ImportAsync / AddAsync (the worker) → snapshot (state.runmru.snapshot),
  §2.17. Entering the Run tab rescans too. Running a command: a short-lived STA thread per ShellExecuteEx.
+
+"Everything" message-only reply window (only while Settings › Everything tab is on) ── the Everything tab's load
+ runs on the pool: refresh the status (FindWindow, owner check cached per file version, state questions ≤ 500 ms
+ each) → QUERY2 sent from the pool (WM_COPYDATA, ≤ 2 s to accept) → the LIST2 reply arrives here as WM_COPYDATA,
+ is copied and matched by reply id → the awaiting load (3 s deadline; a newer load cancels it) → merge with the
+ stored half on the pool → UI. Not running, loading or garbled: Run History.csv read on the pool instead, §2.14
 ```
 
 Rules: nothing heavy on the hook thread (Windows silently drops slow LL hooks); the clipboard thread only
@@ -901,7 +907,111 @@ the Text tab treat these entries as text.
   (`~/.bashrc (user)`), all now regression cases.
 - **Live:** see §5.
 
-### 2.14 voidtools Everything — verified IPC facts for an integration (2026-10-01; nothing built yet)
+### 2.14 voidtools Everything — the Everything tab (built 2026-10-01) and the verified IPC facts under it
+
+User requests (2026-10-01): "consider Everything.exe integration", then "things you searched in everything and
+clicked/picked to be in a tab", then "Lets add Everything integration to completion". The code landed in `4c91613`
+(the Run-tab commit took the shared working tree with it); the commit after it describes it and adds the last
+fixes. The research it stands on follows below ("Research").
+
+**What the user gets.**
+- An **Everything** tab (last, after Run) while voidtools Everything is installed or running and Settings ›
+  Integrations › *Everything tab* is on (`AppSettings.ShowEverythingTab`, **on by default**: it only reads, and
+  only while the tab loads). Off: no IPC window, no lookups — BetterClipboard does not talk to Everything at all.
+- It lists the files and folders opened from Everything's results ("picks": Everything keeps one row per path,
+  with how often and when last), newest first, merged with the stored half: whatever was copied in Everything
+  (source app `Everything.exe`) and the picks pasted, copied or kept in the tab. Search words narrow both (in
+  Everything each word becomes a `path:"…"` term).
+- Pick card: document or folder glyph (E8A5/E8B7), label "File/Folder opened in Everything", caption
+  "Everything · 5 min ago · opened 3 times", the name over its folder (UI font, not monospace).
+- On a pick: Enter pastes the file (`CF_HDROP` + drop effect copy, like Explorer's Copy), Shift+Enter its path as
+  text, *Copy only*, Ctrl+P keeps it as a pinned history entry (which then takes the pick's place), *Open*, *Show
+  in Explorer*, *Show in Everything* (Everything's window searching that path), the Groups submenu or a drag onto
+  a group (kept first, then grouped), Delete hides it until it is opened in Everything again, *Forget forever…*.
+- Stored file cards anywhere get *Show in Everything* while the tab is available ("where is that file now?").
+- Footer "N opened in Everything · M kept" ("… from Everything's saved history" when not live). Empty states: not
+  running (with *Start Everything* when an installed or earlier seen Everything can be started), loading its
+  index, not answering, nothing opened yet, no matches.
+- Settings card (Search glyph E721) with a live status: installed (path, version) or why not; running (version,
+  signer, loading or updating its index) or what the tab shows meanwhile.
+- `bclip list -f everything`: the stored half, origin `everything`. Picks are not history entries.
+
+**Design** (`Core/Everything/`, `Windows/Integrations/Everything*`, owned by `AppController`).
+- **A live view; stored only on action.** Everything owns the run history: each load asks it again
+  (`EverythingIntegration.GetPicksAsync`: one `runcount:` query by date run, the 200 newest, 3 s deadline). Only
+  what the user acts on becomes history: `ClipOrigin.Everything` (6) behaves like a live copy — pause, ignored
+  apps ("Everything"), the size limit and Forget forever apply; a duplicate is bumped; it lifts a tombstone (it is
+  always an explicit action).
+- **Merge** (`EverythingTab.Merge`, pure): `ClipFilter.Everything` entries (origin Everything, or a source path
+  `…\Everything.exe`, or the source name `Everything`) plus picks. A pick whose single-file hash
+  (`ContentHasher.ForFiles`, case-insensitive) equals a stored entry's shows once, as the entry (pins, groups).
+  Forgotten picks never show (`ClipHistoryService.FindForgottenAsync`), hidden ones neither. Newest first by last
+  used / last opened, pinned on top when that setting asks. Pick cards carry synthetic negative ids.
+- **Hide, not delete.** Nothing in Everything is ever changed. Delete on a pick hides it until a later opening:
+  state `everything.hidden` in the encrypted store (UTC ticks + path, newest 500; exact ticks — a rounded time
+  would compare earlier than the opening it recorded and un-hide the pick at once). Delete on a stored file card
+  in this tab also hides that file's pick, or the pick would take the card's place at the next load.
+- **Forget forever on a pick** works without storing it, also while paused (`ClipStore.ForgetFiles`: a file
+  list's fingerprint is its hash; a stored copy is deleted).
+- **Not live** (not running, loading, hung, an unreadable reply): `Run History.csv` stands in
+  (`EverythingRunHistoryFile`: the newest of `%APPDATA%\Everything\` and the exe's folder, ≤ 16 MB, columns found
+  by header name, a record cut off inside its quoted path dropped). Paths on local fixed disks are checked (gone
+  ones dropped, size and folder flag filled in); other paths are shown unchecked (a dead share would block).
+- **Status** is refreshed when the panel or Settings opens and before each picks query, never on a timer. The
+  installation (`EverythingLocator`: uninstall entries in HKLM 64/32 and HKCU named "Everything…"; the exe from the
+  install folder, the display icon — quoted, with an icon index — or the uninstaller's folder; it must pass the
+  owner check) at most once a minute, and whenever Settings opens.
+
+**Safety.**
+- **Owner check before anything is sent** (`EverythingOwnerVerifier`). Any process can create a window with
+  Everything's class; it would receive the search words and could answer with made-up files to paste. The
+  window's process must be named `Everything*.exe` and carry a valid Authenticode signature (`WinVerifyTrust`:
+  no UI, no revocation lookup, cached URLs only, so it never stalls offline) by organization `voidtools` (2019–2024
+  builds) or `voidtools PTY LTD` (2025+). Verdicts are cached per file version. An untrusted window is never
+  queried, its claimed folder is never read, and the tab is not offered for it.
+- **Read-only:** state questions, queries, and (on request) a `-s "path"` command line. Never run counts,
+  settings or the index.
+- **One query per reply window** (Everything cancels the older one silently): a newer query cancels the pending
+  one, replies are matched by id, late ones dropped, every query has a deadline. `EverythingIpc.DecodeList2`
+  checks every count, offset and length against the buffer (`FormatException`, never a read past it, no huge
+  allocation from a lying header).
+- Reply window: message-only on its own `MessageWindowThread`, `ChangeWindowMessageFilterEx(WM_COPYDATA)` so an
+  elevated BetterClipboard still hears a normal Everything.
+- Logs: versions, states and the signer only — never a path or a search word.
+- **Dev/test:** `BETTERCLIPBOARD_EVERYTHING_INSTANCE=<name>` pins the client to one named instance and skips the
+  registry, so the user's Everything is never contacted (§3).
+
+**Tab width.** With ShareX and Run, nine tabs need 482 DIP and the bar does not scroll, so the window grows
+(`MeasureTabsExtraDip`): the labels (a detached `TextBlock` with the template's font + 2 × 9 padding; once laid out
+the tabs measured exactly the same) against the content's room — `WidthDip` minus the window frame
+(`WindowFrameDip` = `AppWindow.Size − ClientSize`, 14 DIP: `MoveAndResize` sizes the outer window) − 24 + 8.
+- Measured with all nine tabs: window 518 px outer / 504 visible, "Everything" 83 px with 13 to spare.
+- Without the frame the selected tab read "Everythin" (and "Run" read "Rur" with eight tabs, `4c91613`).
+  Measuring the tab items before the first layout read 536 DIP: the bar's 9-DIP padding style is not applied yet.
+
+**Run history saving** (refines "Written only on a save" below).
+- **[docs]** `Everything_SaveRunHistory`: "The run history is only saved to disk when you close an Everything
+  search window or exit Everything". 1.5 also saves it when auto-saving since 1.5.0.1276a **[forum]**.
+- **[verified]** 1.5.0.1423b wrote it at every exit (IPC exit and `-exit`). 1.4.1.1032 with no search window ever
+  open (picks made over IPC) wrote it only on `SAVE_RUN_HISTORY` (408): IPC exit, `-exit`, `WM_CLOSE` and 150 s
+  of waiting wrote nothing. Real picks happen in a search window, whose closing saves; while Everything runs,
+  the live query is the truth anyway.
+
+**Verified** (rows in §5): unit tests on both sides (the Windows client runs against a fake IPC window in the
+test process — a `MessageWindowThread` with Everything's class through its `className` override), an opt-in
+end-to-end test against real private instances (1.4.1.935, 1005, 1026, 1032 and 1.5.0.1423b), and the panel on an
+isolated instance.
+
+**Limits.**
+- Everything Lite has no IPC; an Everything in another session is unreachable; the Microsoft Store build and an
+  elevated Everything are not verified.
+- Picks are what Everything keeps: one row per path. A renamed file loses its history; a deleted one drops out of
+  the live query (and is dropped from the saved file when it is on a local disk).
+- 1.4: picks made in a search window that is still open are live, but not in the saved file yet.
+- No live update while the tab is open (reopening reloads); no paging (the 200 newest picks + 200 stored); pick
+  cards have no thumbnails.
+
+**Research** (2026-10-01, before the build).
 
 User request (2026-10-01): "consider Everything.exe integration". Everything is **not installed on this PC**
 (no process, service, install entry or portable copy on any local drive). Every fact below was measured against
@@ -1019,7 +1129,8 @@ same counter the result list increments.
   `-<instance>`.
   - Header `Filename,Run Count,Last Run Date`; each row is a quoted path, the count, and a FILETIME in decimal.
   - Written only on a save (IPC 408) or at exit, never on a pick. Watching the file misses every pick until
-    Everything exits, but it is complete while Everything is not running.
+    Everything exits, but it is complete while Everything is not running. (Refined after the build: 1.4 saves
+    when a search window closes, and only then — see "Run history saving" above.)
   - The history came back after a restart.
 - **The typed searches:** `Search History.csv` holds search, count and last search date as a FILETIME
   **[docs/forum]**.
@@ -1029,8 +1140,9 @@ same counter the result list increments.
   calibrated on the ShareX tab: 60 px estimated vs 61 measured), so the bar would be 50 px over; even "Runs"
   is 15 px over.
   - All 8 tabs fit only at 4–5 px item padding (from 9), or with a wider flyout or icon tabs.
+  - Built: the window grows to fit the visible tabs instead ("Tab width" above); the tab measured 83 px.
 
-**Proposal.** The ranked options are in §6. Everything only answers *where* a path is and *whether* it exists;
+**Proposal.** The ranked options are in §6 (the tab, option 5, is built). Everything only answers *where* a path is and *whether* it exists;
 `PathDetector` stays pure, so verdicts stay deterministic and storable.
 
 ### 2.15 Win+R run history — verified facts for a "Run" tab (2026-10-01; built in §2.17)
@@ -1378,6 +1490,24 @@ Run tab end-to-end (2026-10-01), with the dev build:
 - **Keys:** Ctrl+Enter goes in only after a check that the test panel is the foreground window.
 - **Test PID:** take it from `Start-Process … -PassThru`, never by diffing the process list.
 
+Everything tab (2026-10-01):
+- **Tests without Everything:** the Windows tests run a fake IPC window in their own process; nothing else is
+  needed. **With a real Everything (opt-in):** `BETTERCLIPBOARD_EVERYTHING_EXE=<a portable Everything.exe>` runs
+  `RealEverythingTests` — a private, windowless instance in a temp folder (`-instance BCTEST-<guid> -startup
+  -config <ini> -db <db>`, `app_data=0` in an `Everything.ini` next to its copy so nothing reaches
+  `%APPDATA%\Everything`, no tray icon, no volumes, only a BC-TEST tree indexed); picks via `INC_RUN_COUNTW` (24).
+  Passed on 1.4.1.935, 1005, 1026, 1032 and 1.5.0.1423b (voidtools' portable zips, SHA-256 checked against their
+  published lists). Everything is not installed on this PC.
+- **Panel end-to-end:** the same kind of private instance (named, e.g. `BCTEST-E2E`) with a few picks, then an
+  isolated app with `BETTERCLIPBOARD_EVERYTHING_INSTANCE=BCTEST-E2E` next to the data-dir, ShareX and Win+R
+  overrides (a nonexistent scratch `RunMRU` key shows the Run tab without reading the user's). Capture **not**
+  paused (Ctrl+P on a pick is a new event), `PasteOnSelect` off as a second guard, print only BC-TEST rows of
+  `bclip list -f everything --json`, delete the data dir and stop the instance (IPC exit) afterwards.
+- **UI Automation:** `SelectionItemPattern` only on cards, never `InvokePattern` (§4: invoking a card pastes it).
+  Keys (Ctrl+P, Delete, Esc) only after a check that the test panel is the foreground window. Wait for the
+  terminal to be in front for two checks before each summon; another session's own UI test can hold the
+  foreground (seen 2026-10-01): wait until only the user's `BetterClipboard.exe` processes remain.
+
 ### 3.1 Release & install
 
 - **Package:** [`tools/release/package.ps1`](tools/release/package.ps1) `-Version X.Y.Z` → for win-x64 and
@@ -1470,10 +1600,14 @@ Run tab end-to-end (2026-10-01), with the dev build:
   History E81C, Clock E917, Pause E769, Play E768, Keyboard E765, KeyboardShortcut EDA7, FileExplorer EC50,
   Personalize E771, Shield EA18, Import E8B5, Info E946, OpenInNewWindow E8A7, Code E943, Power E7E8,
   Camera E722 (ShareX card), Add E710 (new group), Tag E8EC (Groups submenu), Rename E8AC, Remove E738,
-  Blocked E733 (Forget forever; a circle with a slash, checked by rendering).
+  Blocked E733 (Forget forever; a circle with a slash, checked by rendering), and for the Everything tab
+  (checked by rendering): Document E8A5 (a file pick), Search E721 (Settings card, *Show in Everything*),
+  OpenFile E8E5 (*Open*), Hide ED1A (an eye with a slash: *Hide until opened again*).
   Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
-  on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did. Sweep new C# files with an
-  escape script before committing (never XAML files: there the escape is `&#xE8xx;`).
+  on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did, and on 2026-10-01 nine of
+  them in the pick menu (the editing tool turned `\uXXXX` written in an edit into the raw character). Sweep new
+  C# files with an escape script before committing (never XAML files: there the escape is `&#xE8xx;`). The
+  reverse trap: `\u2014` inside a `///` comment stays those six characters — comments take no escapes.
 - **A `PathIcon` needs its design box as `Width`/`Height`.**
   - Why: WinUI draws its path as a `Stretch=None` shape at the geometry's own coordinates and measures it as
     the geometry's **right/bottom edge**, not as a design box (`CShape::MeasureOverride` in
@@ -1541,6 +1675,19 @@ Run tab end-to-end (2026-10-01), with the dev build:
   Lesson (2026-09-25): the test flyout opens near the cursor and can end up *under* another always-on-top
   window. One unguarded run's presses (and an Esc) landed in whatever window covered it, and the flyout
   closed on deactivation. The failure looked like a product bug but wasn't.
+- **UI Automation on cards: `SelectionItemPattern`, never `InvokePattern`.**
+  - Why: a card's Invoke is a click, and a click pastes. The real clipboard gets the item and Ctrl+V goes to the
+    window the panel came from.
+  - Lesson (2026-10-01, Everything e2e): a helper that tried Invoke before Select "selected" a pick card. It put
+    a BC-TEST file reference on the user's clipboard and sent Ctrl+V to their terminal (Win+V's history was
+    unaffected: it keeps no file lists).
+  - Use a select-only action for cards and list items, and seed `PasteOnSelect: false` in e2e settings as a
+    second guard (a click then only copies). Tabs (`SelectorBarItem`) have no Invoke, but select them the same way.
+- **`AppWindow.MoveAndResize` sizes the outer window.** The content is narrower by the frame
+  (`AppWindow.Size − ClientSize`: 14 DIP on Windows 11, the invisible resize borders), so layout math in DIPs must
+  subtract it (`ClipboardFlyout.WindowFrameDip`). Lesson (2026-10-01): the tab-bar widening assumed the full width,
+  and the last tab was clipped ("Rur" with eight tabs, "Everythin" with nine) although every UIA rectangle lay
+  inside the window. Zoom into a screenshot of the last tab; rectangles alone did not show it.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -1550,9 +1697,12 @@ Run tab end-to-end (2026-10-01), with the dev build:
 
 | Feature | How | Result |
 |---|---|---|
+| Everything tab on an isolated instance next to the user's app (2026-10-01): a private, windowless Everything 1.5.0.1423b (`BCTEST-E2E`, only a BC-TEST tree, four picks through the run-count IPC), the store seeded with BC-TEST items, overrides for Everything, ShareX and Win+R. The app verified the instance ("signed by voidtools PTY LTD"). All nine tabs fit: window 518 px outer / 504 visible, "Everything" 83 px with 13 to spare. The tab lists the four picks newest first ("File/Folder opened in Everything", "opened 3 times"), then the path copied in Everything; footer "4 opened in Everything · 1 kept". Ctrl+P on a pick: a pinned history entry in its place (`bclip`: `files everything pinned Everything`). Delete on a pick: hidden, also after reopening the panel. User's PIDs unchanged, scratch removed | UIA (select-only) + Ctrl+P/Delete/Esc sent only while the test panel was in front + two guarded screenshots (`ev_e2e/run.sh`, scratch) | ✅ after two fixes it found: the tab bar ignored the window frame ("Everythin", fixed by `WindowFrameDip`), and the first run's helper invoked a card (it pasted a BC-TEST file reference into the user's clipboard and terminal; select-only since, §4) |
+| Everything against real builds: live picks (run counts, dates, newest first, search words), then the saved `Run History.csv` after the instance exited, all through the real owner check | `RealEverythingTests` with `BETTERCLIPBOARD_EVERYTHING_EXE`, one private instance per run | ✅ 1.4.1.935, 1005, 1026, 1032 and 1.5.0.1423b. 1.4 needs a save for the file (no search window ever opened; see §2.14 "Run history saving") |
+| Everything unit tests: wire format (query and command-line encoding, `LIST2` field order, every field skipped by size, lying sizes refused, unset dates), queries and quoting (`CommandLineToArgvW` round trip), `Run History.csv` (format, header order, odd rows, a write cut off mid-path, candidate paths), merge and hide rules, the store filter/origin/forget-by-path and pick formats, CLI and setting; the client against a fake IPC window (trust, state, matching, latest-wins, deadlines, garbage, a hung window), the integration (live, saved file, loading, garbled, impostor), owner check, locator | tests | ✅ 55 new (Core 29, Windows 26). The locator test found a real bug: a quoted display icon with an icon index (`"…\Everything.exe",0`) was unquoted before the index was cut and never matched |
 | Run tab, headless, on an isolated instance next to the user's app (2026-10-01; a scratch Win+R key with BC-TEST commands through `BETTERCLIPBOARD_RUNMRU_KEY`, capture not paused, the scratch store deleted afterwards). The first activation imported 3 of 3 (origin `run-history`, newest first). A live run was listed by `bclip list -f run` 295–703 ms after the write (polling included), origin `run`. A re-run moved to the top. 30 runs 400 ms apart: Windows' list held 26, the Run tab all 34, including the evicted "fill 01". JSON has `lastRun`, source `Win+R`. User's PID unchanged | `run_e2e/run.sh` (scratch) | ✅ (30 runs 50 ms apart were one batch: 26 of 30, the oldest 4 evicted before the first read — a scripted-burst limit, §6) |
 | Run tab UI on the same kind of instance. The tab shows after ShareX. Entering it lists "Win+R command: …" cards (command-prompt glyph, "Win+R · just now"); the footer reads "↵ paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin" and "34 commands kept". Ctrl+Enter, sent only while the test panel was the foreground window, on a `wscript` BC-TEST command ran it (marker file written), hid the panel, and moved the entry to the top with a new run time. Log: "Ran entry 3 as a Win+R command: Started." (no command text) | UIA select + one guarded key chord (`run_e2e/ui.sh`) | ✅ (twice). Lesson: take the test PID from `Start-Process -PassThru` — "the new `BetterClipboard.exe`" was once another agent's short-lived process, and UIA then found "no window" |
-| Tab bar with the ShareX and Run tabs (8 tabs) | UIA rects + guarded screenshots; the committed build measured from a separate `git worktree` (never stash/checkout in the shared tree) | ❌ in `4c91613`: "Run" is clipped to "Rur" (window 405 px, the tab arranged at 31 of its 43 px), on the first and the second summon. Cause: the widening ignored the window's 14-DIP invisible frame (`MoveAndResize` sizes the outer window). The Everything session's change that subtracts it (`WindowFrameDip`, uncommitted in the working tree after `4c91613`) measured fine: window 421 px, "Run" 43 px, ~4 px to spare. Open until that change is committed |
+| Tab bar with the ShareX and Run tabs (8 tabs) | UIA rects + guarded screenshots; the committed build measured from a separate `git worktree` (never stash/checkout in the shared tree) | ❌ in `4c91613`: "Run" is clipped to "Rur" (window 405 px, the tab arranged at 31 of its 43 px), on the first and the second summon. Cause: the widening ignored the window's 14-DIP invisible frame (`MoveAndResize` sizes the outer window). The Everything session's change that subtracts it (`WindowFrameDip`, uncommitted in the working tree after `4c91613`) measured fine: window 421 px, "Run" 43 px, ~4 px to spare. ✅ since that change was committed (the commit after `3c82d3b`); with all nine tabs see the Everything rows |
 | Win+R on the real list | the user's `launch_dev.py` copy (§3) | ✅ "Win+R: imported 26 new of 26" |
 | Run-tab unit tests: `RunMru` (parse, known answers, runs-since theory, snapshot, plan), store (run column, Run filter, merge rules, tombstones, older store), service (pause, ignore, Forget forever, CLI), Windows (reader, settle wait, watch, integration on scratch keys, launcher parsing + hidden launches) | tests | ✅ 51 new. The Windows run-history classes passed 8 of 8 repeated runs once each scratch key had its own parent; with a shared parent the watch test failed 6 of 6 (§4) |
 | Paths copied as text in the Files tab, live on an isolated instance next to the user's app (2026-10-01; nine seeded BC-TEST items, capture paused). `bclip list -f files` lists exactly the five path texts (kind `path`, JSON `paths` 1/1/2/1/1) and the file list. `-f text` still lists the path texts, but not the file list. In the panel, selecting Files (UIA) shows the same six cards ("Path: …", "Paths: …", "Files: …"). The prose, `and/or` and `./venv/bin/pip install -r …` cards are absent. Cards show the folder glyph, "path"/"2 paths" and a monospace body. User's PID unchanged | seeded through `MachineBoundHistory` (no clipboard), `bclip`, UIA select + read, one guarded screenshot (`files_e2e/run.sh`, scratch) | ✅ (the Files tab's tooltip is not exposed to UIA, so it was not checked) |
@@ -1567,7 +1717,7 @@ Run tab end-to-end (2026-10-01), with the dev build:
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 660 pass + 3 skipped (opt-in, explicit measurement) locally (2026-10-01, non-elevated, with the Run tab and the Everything work in progress): 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 660 pass + 3 skipped (the opt-in real-clipboard and real-Everything tests, the explicit measurement) locally (2026-10-01, non-elevated): 663 = Core 494 + Windows 169, with the Run tab and the finished Everything tab; 5 of 5 full runs green; one earlier full run right after a build failed `QuickSuccessiveCopies_AreAllCaptured` once (5.5 s under load; 5 of 5 green alone). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -1630,23 +1780,19 @@ Run tab end-to-end (2026-10-01), with the dev build:
   - watching a moved `CustomHotkeysConfigPath` file (today the 5-minute refresh catches it);
   - verifying the Microsoft Store build's folders;
   - Snipping Tool / Greenshot folders with the same watcher.
-- voidtools Everything integration (proposal 2026-10-01, facts in §2.14), most value first:
-  1. **Client:** `Integrations/Everything`, with WM_COPYDATA on a `MessageWindowThread`. Owner check, state
-     check (401/402), a deadline per query and latest-wins per reply window. The query builder goes in Core:
-     pure, normalizing (slashes, trailing separators, `\\?\`, `file:`, `%VAR%`, `~`, `/c/`, `/mnt/c/`) and
-     name-led. Tests against a fake IPC window (our own window class) plus an opt-in real portable Everything.
-  2. **Path cards and file lists:** found / missing / moved states (one name-led batch per page, cached).
-     Actions: *Paste the file* (`CF_HDROP`), *Show in Explorer*, *Open*, *Show in Everything*. Relative paths
-     (`src/x.cs`) resolve to the real file, with a picker when several match. Absolute paths are checked
-     without touching the disk or a dead share.
-  3. **"Files on this PC" in the flyout's search:** paste a file you never copied.
-  4. **`bclip resolve <id>`** for agents.
-  5. **An "Everything" tab with what you picked there** (asked for 2026-10-01; facts in §2.14, run history):
-     - Picks come from a live `runcount:` query by date run (~1 ms when the flyout opens), or from
-       `Run History.csv` while Everything is not running.
-     - Next to them, copies made in Everything, via a source-app filter like the ShareX tab's.
-     - Open choices: a live view (Everything owns the data; a rename drops a pick) or stored entries like
-       ShareX screenshots (searchable, pinnable; a catch-up marker on the date run); and room in the tab bar.
+- voidtools Everything (facts and the built tab in §2.14). **Built 2026-10-01:** the client (proposal option 1:
+  owner check, state check, a deadline per query, latest-wins, a fake IPC window in the tests plus an opt-in real
+  Everything) and the Everything tab (option 5: a live view, entries stored only when the user acts on a pick,
+  *Show in Everything* on stored file lists). Next, most value first:
+  1. **Path cards and file lists:** found / missing / moved states (one name-led batch per page, cached), with
+     the actions the picks already have. Relative paths (`src/x.cs`) resolve to the real file, with a picker when
+     several match. Absolute paths are checked without touching the disk or a dead share. Needs the normalizing
+     query builder in Core (slashes, trailing separators, `\\?\`, `file:`, `%VAR%`, `~`, `/c/`, `/mnt/c/`; name-led).
+  2. **"Files on this PC" in the flyout's search:** paste a file you never copied.
+  3. **`bclip`:** `resolve <id>` for agents, and the live picks next to `list -f everything`'s stored half.
+  4. **The tab:** a refresh while it is open (1.5's IPC3 pipe and index journal, or the run-count sort polled
+     while the tab shows), paging past 200, thumbnails for image picks, and 1.5's typed searches
+     (`Search History.csv`, on by default there) as "searched in Everything".
   - Not planned: classifying by the index (verdicts must stay deterministic), imports from the index journal,
     and bundling Everything or the SDK DLLs.
 - Run tab (Win+R history): **built 2026-10-01, §2.17.** Next steps:

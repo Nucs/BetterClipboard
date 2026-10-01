@@ -16,7 +16,7 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 | History size | 25 items | 10,000 items (configurable, plus a size budget) |
 | After a restart | **Gone** (only pinned items survive) | Everything is still there |
 | Item size | ≤ 4 MB | ≤ 64 MB (configurable) |
-| Search | None | Instant substring search, any language |
+| Search | None | Instant substring search, any language — plus match case, whole word and regular expressions |
 | Content | Text, HTML, bitmaps | Text, rich text/HTML, links, colors, images with previews, copied files and paths |
 | Screenshots | Only what you copy | Also every [ShareX](https://getsharex.com) screenshot the moment it is saved, in its own tab |
 | Organizing | Pins | Pins plus groups: drag cards onto your own icons; grouped items are kept like pins |
@@ -62,6 +62,7 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | Key | Action |
 |---|---|
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
+| `Alt+C` / `Alt+W` / `Alt+E` | Toggle the search box's **Aa** (match case), **W** (whole word) and **.\*** (regular expression) — or click them. They stay as you leave them. |
 | `↑` `↓` `PgUp` `PgDn` | Move the selection |
 | `Enter` / click | Paste into the app you came from |
 | `Shift+Enter` | Paste as plain text |

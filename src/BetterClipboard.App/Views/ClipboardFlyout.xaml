@@ -206,7 +206,14 @@
                 ToolTipService.ToolTip="New group: pick an icon, then drag cards onto it" />
         </Grid>
 
-        <!--  Search  -->
+        <!--
+            Search. The match-case / whole-word / regex toggles sit inside the box, left of the magnifier: they are the
+            box's Description, which SearchBoxTextBoxStyle (App.xaml) shows in a column of its own instead of below.
+            Order as in VS Code and Rider (case, word, pattern); Alt+C / Alt+W / Alt+E toggle them from the keyboard
+            (Root_PreviewKeyDown), since they never take focus. Alt+E, Visual Studio's key, not VS Code's Alt+R: GPU
+            overlays register Alt+R globally (NVIDIA's performance overlay, AMD's Radeon overlay), so on such PCs it
+            never reaches the panel (measured 2026-10-01: RegisterHotKey(Alt+R) fails with 1409 here).
+        -->
         <AutoSuggestBox
             x:Name="SearchBox"
             Grid.Row="1"
@@ -214,7 +221,37 @@
             AutomationProperties.Name="Search clipboard history"
             PlaceholderText="{x:Bind ViewModel.SearchPlaceholder, Mode=OneWay}"
             QueryIcon="Find"
-            Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+            TextBoxStyle="{StaticResource SearchBoxTextBoxStyle}">
+            <AutoSuggestBox.Description>
+                <StackPanel Orientation="Horizontal" Spacing="2">
+                    <ToggleButton
+                        x:Name="MatchCaseToggle"
+                        AutomationProperties.AcceleratorKey="Alt+C"
+                        AutomationProperties.Name="Match case"
+                        Content="Aa"
+                        IsChecked="{x:Bind ViewModel.MatchCase, Mode=TwoWay}"
+                        Style="{StaticResource SearchOptionToggleStyle}"
+                        ToolTipService.ToolTip="Match case (Alt+C)" />
+                    <ToggleButton
+                        x:Name="WholeWordToggle"
+                        AutomationProperties.AcceleratorKey="Alt+W"
+                        AutomationProperties.Name="Match whole word"
+                        Content="W"
+                        IsChecked="{x:Bind ViewModel.WholeWord, Mode=TwoWay}"
+                        Style="{StaticResource SearchOptionToggleStyle}"
+                        ToolTipService.ToolTip="Match whole word (Alt+W)" />
+                    <ToggleButton
+                        x:Name="RegexToggle"
+                        AutomationProperties.AcceleratorKey="Alt+E"
+                        AutomationProperties.Name="Use regular expression"
+                        Content=".*"
+                        IsChecked="{x:Bind ViewModel.UseRegex, Mode=TwoWay}"
+                        Style="{StaticResource SearchOptionToggleStyle}"
+                        ToolTipService.ToolTip="Use regular expression (Alt+E)" />
+                </StackPanel>
+            </AutoSuggestBox.Description>
+        </AutoSuggestBox>
 
         <!--  Filters  -->
         <SelectorBar

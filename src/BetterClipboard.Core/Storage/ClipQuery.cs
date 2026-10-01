@@ -68,6 +68,18 @@ public sealed record ClipQuery
     /// </summary>
     public string? SearchText { get; init; }
 
+    /// <summary>
+    /// How <see cref="SearchText"/> matches — the search box's "Aa" (match case), "W" (whole word) and ".*" (regular
+    /// expression) toggles. <see cref="SearchOptions.None"/>, the default, is the classic search described there.
+    /// </summary>
+    /// <remarks>
+    /// Anything else makes the store run each candidate's indexed text through <see cref="SearchMatcher"/>: exact,
+    /// but a regular expression scans the whole slice (filter, group and <see cref="UsedSince"/> still narrow it).
+    /// An invalid pattern makes the query throw <see cref="SearchPatternException"/>; a pattern that needs the
+    /// backtracking engine and runs too long on one entry, <see cref="SearchTooSlowException"/>.
+    /// </remarks>
+    public SearchOptions SearchOptions { get; init; }
+
     /// <summary>The slice to return.</summary>
     public ClipFilter Filter { get; init; } = ClipFilter.All;
 

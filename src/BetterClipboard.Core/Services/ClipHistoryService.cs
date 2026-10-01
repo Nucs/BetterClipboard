@@ -398,11 +398,16 @@ public sealed class ClipHistoryService : IAsyncDisposable
     /// Reads a page of history on the thread pool (does not wait behind queued writes).
     /// </summary>
     /// <param name="query">The page request.</param>
-    /// <param name="cancellationToken">Cancels a superseded query (e.g. while the user types).</param>
+    /// <param name="cancellationToken">
+    /// Cancels a superseded query (e.g. while the user types): before it runs, and — for a search with
+    /// <see cref="ClipQuery.SearchOptions"/>, which may scan every entry — at the next entry it tests.
+    /// </param>
     /// <returns>The entries.</returns>
-    /// <exception cref="OperationCanceledException">The token was cancelled before the query ran.</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled before or during the query.</exception>
+    /// <exception cref="SearchPatternException">The query is a regular expression that does not parse.</exception>
+    /// <exception cref="SearchTooSlowException">The regular expression ran out of time on an entry (backtracking engine only).</exception>
     public Task<IReadOnlyList<ClipEntry>> QueryAsync(ClipQuery query, CancellationToken cancellationToken = default) =>
-        Task.Run(() => store.Query(query), cancellationToken);
+        Task.Run(() => store.Query(query, cancellationToken), cancellationToken);
 
     /// <summary>
     /// Reads one entry on the thread pool (does not wait behind queued writes).
