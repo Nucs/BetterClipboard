@@ -202,7 +202,8 @@ Reproduction probes that produced the verified facts live in
 [`binary_strings.py`](tools/probes/binary_strings.py) (strings of a binary),
 [`probe_viewer_chain.cs`](tools/probes/probe_viewer_chain.cs) (viewer chain vs listener timing, §1.9),
 [`probe_sequence.cs`](tools/probes/probe_sequence.cs) (sequence-number bumps, delayed rendering, §1.9),
-[`probe_everything.cs`](tools/probes/probe_everything.cs) (voidtools Everything IPC in a private instance, §2.14).
+[`probe_everything.cs`](tools/probes/probe_everything.cs) (voidtools Everything IPC in a private instance, §2.14),
+[`probe_runmru.py`](tools/probes/probe_runmru.py) (Win+R history structure, change watch, §2.15).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`.
 
 ### 1.9 Clipboard change notification — "can we never miss a copy?" (2026-09-25) **[verified]**
@@ -1026,6 +1027,59 @@ same counter the result list increments.
 **Proposal.** The ranked options are in §6. Everything only answers *where* a path is and *whether* it exists;
 `PathDetector` stays pure, so verdicts stay deterministic and storable.
 
+### 2.15 Win+R run history — verified facts for a "Run" tab (2026-10-01; nothing built yet)
+
+User request (2026-10-01): "What about the Win+R's as a new tab 'Run' history?" Discovery only, measured with
+[`probe_runmru.py`](tools/probes/probe_runmru.py). The probe prints structure, never a typed command.
+
+**Where Windows keeps it.**
+- **Key:** `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU`.
+  - Values `a`–`z` are `REG_SZ`; `MRUList` holds their letters, most recent first.
+  - Each value is the command as typed plus `\1`: a backslash and the show-command digit (PowerToys
+    `RunHistory.cpp`: "old MRU format has a slash at the end with the show cmd").
+- **Cap: 26 entries** (comctl32's MRU list, `uMax` 26). Entries carry no timestamps; only the key's last-write
+  time exists **[DFIR handbook]**.
+- **What gets in:** only commands that **succeeded**, including Run as administrator and Run as another user,
+  with nothing marking them as such. Source: PowerToys CmdPal's port of the classic `RunDlg_OkPushed` adds to
+  history only `if (success)`.
+- **Re-runs and eviction:** a re-run moves the existing letter to the front, with no duplicate. When the list is
+  full, the least recent letter is overwritten **[docs/forensics]**. The probe's self-test reproduces both on a
+  scratch key, but never on Explorer itself.
+- **Shared by** other entry points of the same shell32 dialog (Task Manager's *Run new task*) **[forensics]**.
+
+**On this PC** **[verified]**:
+- **Full:** 26 of 26 entries, all with `\1`. Every new Win+R command now evicts the oldest; Win+V's 25-item
+  pain, again.
+- **Contents:** 23 absolute paths, 1 `shell:`/URI, 1 bare name, 1 command with arguments.
+- **Last written** 2026-09-25 21:18Z.
+- **Nothing blocks it:** `Start_TrackDocs`/`Start_TrackProgs` are absent (the defaults), and HKLM
+  `NoRecentDocsHistory` is 0.
+- **Neighbours:** File Explorer's address-bar history (`TypedPaths`) is full at 26 too. PowerToys Run's
+  `QueryHistory.json` and `UserSelectedRecord.json` are empty. Command Palette (0.8.10371, PowerToys 0.97.2)
+  has no run history of its own. So classic Win+R is the history in use.
+
+**The modern Run dialog** (May 2026, Insider Experimental channel only).
+- **Where:** Settings › System › Advanced › *Run Dialog*. It is WinUI 3 / C# with AOT, and the legacy dialog
+  remains **[docs: Learn, devblog]**.
+- **Origin:** "the run command provider in CmdPal is exactly the same code as the new Run Dialog" (devblog).
+- **How CmdPal (MIT) keeps history** **[verified from source]**:
+  - It reads `RunMRU` once (`CreateMRUListW`, max 26), as a seed when its own list is empty.
+  - After that it keeps its own list in `state.json` (`AppStateModel.RunHistory`).
+  - It **never writes `RunMRU`**: `AddRunHistoryItem` only updates that state.
+- **Risk:** if Windows' build stores history the same way, commands run through the modern dialog never reach
+  `RunMRU`, and a `RunMRU`-only tab would go quiet for those users. This is **[inferred]**: 26200 GA has no
+  modern dialog to check against.
+
+**Watching for changes.**
+- `RegNotifyChangeKeyValue(REG_NOTIFY_CHANGE_LAST_SET)` on the key is event-driven, with no polling.
+- One write sequence can notify twice (the value, then `MRUList`), so compare states instead of counting
+  notifications. Verified with the self-test on a scratch key: a new letter, a re-run reorder and an eviction
+  were all classified correctly.
+
+**Tab bar.** A "Run" tab needs ~42 px. With the ShareX tab the bar would hold 393 of 384 px (9 over); without
+ShareX it fits (333 px). Run + Everything would be 476 px (92 over), so more source tabs need a tab-bar
+redesign: a "Sources" overflow, icon tabs, or a wider flyout.
+
 ---
 
 ## 3. Build · run · test
@@ -1331,6 +1385,21 @@ ShareX end-to-end (2026-09-25), with the dev build:
        ShareX screenshots (searchable, pinnable; a catch-up marker on the date run); and room in the tab bar.
   - Not planned: classifying by the index (verdicts must stay deterministic), imports from the index journal,
     and bundling Everything or the SDK DLLs.
+- A "Run" tab with the Win+R history (asked for 2026-10-01; facts in §2.15):
+  - **Store, don't mirror:** watch `RunMRU` and turn each new or re-run command into a history entry (its
+    own origin, plain text, the time it was observed).
+    - Unlimited, searchable and encrypted: Windows' 26-entry eviction stops losing commands while
+      BetterClipboard runs.
+    - The first activation imports the current 26 in MRU order. Only the newest has a real time (the key's
+      last write).
+  - **Keys:** Enter pastes the command text, as everywhere in the flyout. Ctrl+Enter runs it, and
+    Ctrl+Shift+Enter runs it as administrator, as in Win+R. Running means the dialog's parsing: environment
+    variables, then `SHEvaluateSystemCommandTemplate` + `ShellExecuteEx`.
+  - **Modern Run dialog:** also read its own history file where present (the location must be verified on a
+    build that has it).
+  - **Rules:** pause, Forget forever and the ignore rules apply. Deleting through to `RunMRU` only as an
+    opt-in, and never writing BetterClipboard's history back into it.
+  - **Prerequisite:** the tab-bar redesign (see §2.15) once more than one source tab exists.
 - An MCP server (stdio) speaking the same pipe protocol, so agents get typed tools instead of shelling out
   to `bclip`; `bclip` itself could gain `--null`-separated output and `get --all-formats` export.
 - Day grouping, collections/favorites, snippets, OCR for images (`Windows.Media.Ocr`), paste transforms
