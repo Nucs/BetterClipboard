@@ -260,7 +260,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (438 tests, one class at a time — §4: paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement (119 tests). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
 
 Shared build config: [`Directory.Build.props`](Directory.Build.props) (docs on,
@@ -979,6 +979,25 @@ ShareX end-to-end (2026-09-25), with the dev build:
   as a test:** it `--exit`s every BetterClipboard in the session and rewrites the Run key, shortcut and
   Installed-apps entry. When invoking Windows PowerShell 5.1 from this bash, clear `PSModulePath`
   (`env -u PSModulePath …`), or 5.1 picks up PowerShell 7's modules and even `Get-FileHash` is "not recognized".
+- **Pre-release install on this PC** ("install it locally, don't release yet"):
+  [`tools/release/install-local.ps1`](tools/release/install-local.ps1) `-Version X.Y.Z` runs the real
+  `install.ps1` with the same shadowing, packaged as a script: the lookup and both downloads come from
+  `artifacts/release`. Everything else is the real installer (SHA-256 vs `SHA256SUMS.txt`, graceful
+  `--exit`, swap, shortcut, Run and Installed-apps entries, `installer.json`). It is a real install, so it
+  needs the user's request. Procedure used for 0.2.4 (2026-10-01):
+  1. `pwsh tools/release/package.ps1 -Version X.Y.Z` (both architectures; 84 s).
+  2. `env -u GH_TOKEN -u GITHUB_TOKEN -u GH_DEBUG -u BETTERCLIPBOARD_DATA_DIR -u BETTERCLIPBOARD_SHAREX_DIR
+     -u PSModulePath powershell -NoProfile -ExecutionPolicy Bypass -File tools/release/install-local.ps1
+     -Version X.Y.Z -NoLaunch` (Windows PowerShell 5.1, like `irm | iex` users).
+  3. Start the app through Explorer: a temporary `.lnk` with `--background`, opened by `explorer.exe`.
+     The app then gets the user's environment, not this shell's (`CLAUDECODE`, `MSYSTEM` must be absent).
+  4. Check the file version, `installer.json`, the Run entry, the Installed-apps `DisplayVersion`, and the
+     log after "starting": 0 WRN/ERR.
+  - Tested against a stub installer in PS 5.1 and 7: served lookup, a zip copy matching `SHA256SUMS.txt`,
+    `-NoLaunch` passed on, other lookups refused, a clear error for a missing package, and the real cmdlets
+    back afterwards.
+  - Bump commits keep `Directory.Build.props` alone, and their message carries the drafted tag notes
+    (`git log -1 --format=%B`) until the release.
 
 ---
 
@@ -1111,6 +1130,7 @@ ShareX end-to-end (2026-09-25), with the dev build:
 | Watchdog recovers a deaf listener; own writes ignored; delayed rendering | isolated window station | ✅ |
 | `DisabledHotkeys=V` ⇒ `RegisterHotKey` path; restore ⇒ Explorer owns Win+V again | real Explorer restarts | ✅ |
 | Release zips (x64 + ARM64 native DLLs), published app starts (WinUI window) and exits | `package.ps1` + launch | ✅ |
+| 0.2.4 installed on this PC before its release (2026-10-01): local zips (x64 70.5 MB, ARM64 68.0 MB, version 0.2.4 in both exes). `install.ps1` verified the SHA-256, closed the running 0.2.3 gracefully and swapped. The app was started from Explorer (`--background`, user environment). `installer.json`, the Run entry and the Installed-apps `DisplayVersion` all say 0.2.4. The log shows the store opened (the path backfill runs inside `Initialize`), Win+V registered, ShareX watched and the Windows import done, with 0 WRN/ERR | `package.ps1` + the shadowing install wrapper (since then `tools/release/install-local.ps1`) + `launch_background.ps1` (scratch) | ✅ (the backfill's result on the real history was not counted: the command line is off there, and the store is never opened from a second process) |
 | `install.ps1`: install / update-over-running / bad checksum / uninstall | offline harness, PS 5.1 + 7 | ✅ |
 | Live capture: text, link, color, files, image (+thumbnail) | real clipboard + DB inspection | ✅ |
 | Privacy markers (`Exclude…`, `CanInclude…=0`; `=1` still recorded) | WinForms DataObject from PowerShell 5.1 | ✅ |
