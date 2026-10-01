@@ -167,6 +167,7 @@ public sealed class CliCommandProcessor
             Formats = entry.FormatNames,
             ImageWidth = entry.ImageWidth,
             ImageHeight = entry.ImageHeight,
+            Paths = entry.IsPathText ? entry.PathCount : null,
         };
     }
 

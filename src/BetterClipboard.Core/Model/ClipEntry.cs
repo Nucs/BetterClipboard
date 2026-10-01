@@ -67,6 +67,17 @@ public sealed class ClipEntry
     /// <summary>Whether a PNG thumbnail exists (fetch it with <see cref="Storage.ClipStore.GetThumbnail"/>).</summary>
     public bool HasThumbnail { get; init; }
 
+    /// <summary>
+    /// How many file-system paths the entry's text consists of when it is nothing but paths
+    /// (<see cref="Content.PathDetector"/>), else 0. A count above 0 lists a text entry under the Files filter
+    /// next to real file lists; the kind stays text, so it pastes as text. Entries written by an older build
+    /// read 0 until the next start recomputes them.
+    /// </summary>
+    public int PathCount { get; init; }
+
+    /// <summary>Whether the entry's text is nothing but paths (<see cref="PathCount"/> above 0).</summary>
+    public bool IsPathText => PathCount > 0;
+
     /// <summary>Whether any rich text format (HTML/RTF) is stored, i.e. "paste as plain text" differs from paste.</summary>
     public bool HasRichFormats =>
         FormatNames.Contains(ClipFormatNames.Html) || FormatNames.Contains(ClipFormatNames.Rtf);

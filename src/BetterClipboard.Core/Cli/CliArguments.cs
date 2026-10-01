@@ -169,6 +169,7 @@ public static class CliArguments
             bclip list [-n N] [--offset N] [-f FILTER] [-s SINCE] [--full] [--json]
               Recent items, newest first: id (* = pinned), kind, age, source app, first line.
               FILTER: all | pinned | text | images | links | files | sharex. --full adds each item's whole text.
+              files = copied files plus text that is nothing but paths (kind "path"; JSON: "paths": N).
             """,
         CliCommands.Search => """
             bclip search <words...> [-n N] [-f FILTER] [-s SINCE] [--full] [--json]

@@ -202,6 +202,12 @@ public sealed record CliItem
     /// <summary>Pixel height of image items.</summary>
     public int? ImageHeight { get; init; }
 
+    /// <summary>
+    /// How many file-system paths the item's text consists of when it is nothing but paths (it is then listed
+    /// under <c>-f files</c> although its kind stays <c>text</c>/<c>rich-text</c>); omitted for everything else.
+    /// </summary>
+    public int? Paths { get; init; }
+
     /// <summary><c>grep</c>: the matching lines.</summary>
     public IReadOnlyList<CliMatch>? Matches { get; init; }
 }

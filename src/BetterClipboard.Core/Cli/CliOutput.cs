@@ -84,7 +84,10 @@ public static class CliOutput
         }
     }
 
-    /// <summary>Renders a listing as aligned columns: id (* = pinned), kind, age, source, first line.</summary>
+    /// <summary>
+    /// Renders a listing as aligned columns: id (* = pinned), kind (<c>path</c> for text that is nothing but
+    /// paths, so a <c>-f files</c> listing says why a text item is in it), age, source, first line.
+    /// </summary>
     /// <param name="items">Items.</param>
     /// <param name="now">Clock.</param>
     /// <returns>The table.</returns>
@@ -97,7 +100,8 @@ public static class CliOutput
             var id = item.Id.ToString(CultureInfo.InvariantCulture) + (item.Pinned ? "*" : string.Empty);
             var age = RelativeTimeFormatter.Format(item.LastUsed, now, culture: CultureInfo.InvariantCulture);
             var source = item.Source ?? string.Empty;
-            builder.Append(CultureInfo.InvariantCulture, $"{id,7}  {item.Kind,-9} {Cut(age, 14),-14} {Cut(source, 18),-18} {OneLine(item.Preview, PreviewWidth)}").Append('\n');
+            var kind = item.Paths is > 0 ? "path" : item.Kind;
+            builder.Append(CultureInfo.InvariantCulture, $"{id,7}  {kind,-9} {Cut(age, 14),-14} {Cut(source, 18),-18} {OneLine(item.Preview, PreviewWidth)}").Append('\n');
             if (item.Text is { } text)
             {
                 builder.Append(Indent(text)).Append('\n');

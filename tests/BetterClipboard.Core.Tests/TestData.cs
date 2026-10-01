@@ -2,6 +2,13 @@ using System.Text;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
 
+// One test class at a time. Deleting a test database needs SQLite's connection pools emptied, and
+// SqliteConnection.ClearAllPools (TempDirectory.Dispose, EncryptedStoreTests) empties every pool of the process:
+// a test class running in parallel could rent a pooled connection just as another class cleared it, and then
+// failed with "ObjectDisposedException: Cannot access a disposed object. Object name: 'SQLitePCL.sqlite3'"
+// inside ClipStore.Open (measured 2026-10-01: 4 of 25 full runs before this, in whichever store test hit it).
+[assembly: Xunit.v3.Parallelization(Mode = Xunit.Sdk.ParallelMode.None)]
+
 namespace BetterClipboard.Core.Tests;
 
 /// <summary>

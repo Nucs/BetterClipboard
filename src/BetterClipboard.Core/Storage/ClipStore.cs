@@ -64,6 +64,14 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// not in <c>settings.json</c>, because a bare SHA-256 of a short secret can be guessed offline.
 /// </para>
 /// <para>
+/// <b>Paths copied as text.</b> <c>clips.path_count</c> keeps <see cref="PathDetector"/>'s verdict per entry —
+/// how many paths its text consists of, 0 for anything else, <c>NULL</c> for "not decided yet" — and the Files
+/// filter lists entries above 0 next to real file lists. The column is added idempotently like the groups' one;
+/// rows an older build writes stay <c>NULL</c> and are decided at the next <see cref="Initialize"/>, as is every
+/// row once after <see cref="PathDetector.RulesVersion"/> changes (<see cref="BackfillPathCounts"/>). Verdicts
+/// come from <c>search_text</c>, which equals the text for everything short enough to be paths.
+/// </para>
+/// <para>
 /// <b>Threading.</b> Every public method opens its own pooled connection, so the store may be used from
 /// any thread. WAL journaling lets the UI read while the history worker writes. Writers are expected to
 /// be serialized by <see cref="Services.ClipHistoryService"/>; concurrent writers are still correct
@@ -103,7 +111,14 @@ public sealed class ClipStore
         "c.id, c.kind, c.preview, c.content_hash, c.created_utc, c.last_used_utc, c.use_count, c.is_pinned, " +
         "c.origin, c.source_app_name, c.source_app_path, c.size_bytes, c.format_names, c.image_width, " +
         "c.image_height, (c.thumbnail IS NOT NULL) AS has_thumbnail, " +
-        "(SELECT group_concat(cg.group_id) FROM clip_groups cg WHERE cg.clip_id = c.id) AS group_ids";
+        "(SELECT group_concat(cg.group_id) FROM clip_groups cg WHERE cg.clip_id = c.id) AS group_ids, " +
+        "coalesce(c.path_count, 0) AS path_count";
+
+    /// <summary>
+    /// <c>meta</c> flag of the path verdicts' rules (see <see cref="BackfillPathCounts"/>): a new
+    /// <see cref="PathDetector.RulesVersion"/> is a new key, whose first insert recomputes every verdict.
+    /// </summary>
+    private static readonly string PathRulesKey = $"fixup.path_text.v{PathDetector.RulesVersion}";
 
     /// <summary>
     /// SQL predicate over the bare <c>clips</c> table: "not protected" — neither pinned nor in any group.
@@ -317,8 +332,84 @@ public sealed class ClipStore
 
         EnsureGroupsSchema(connection);
         EnsureForgottenSchema(connection);
+        EnsurePathCountColumn(connection);
         transaction.Commit();
         ApplyDataFixups(connection);
+        BackfillPathCounts(connection);
+    }
+
+    /// <summary>
+    /// Adds the nullable <c>clips.path_count</c> column when missing (additive and unversioned like the groups,
+    /// see the class remarks). Existing rows start as <c>NULL</c> = undecided, which <see cref="BackfillPathCounts"/>
+    /// then decides.
+    /// </summary>
+    /// <remarks>Idempotent. Runs inside the caller's migration transaction; metadata-only, so instant on any history size.</remarks>
+    /// <param name="connection">Open connection inside the migration transaction.</param>
+    /// <exception cref="SqliteException">The schema could not be read or altered (lock timeout, disk full); the migration transaction rolls back.</exception>
+    private static void EnsurePathCountColumn(SqliteConnection connection)
+    {
+        using (var columns = Command(connection, "SELECT 1 FROM pragma_table_info('clips') WHERE name = 'path_count';"))
+        {
+            if (columns.ExecuteScalar() is not null)
+            {
+                return;
+            }
+        }
+
+        Execute(connection, "ALTER TABLE clips ADD COLUMN path_count INTEGER;");
+    }
+
+    /// <summary>
+    /// Decides <see cref="PathDetector"/>'s verdict for every row that has none yet: all rows of a store from
+    /// before the column, rows an older build inserted since, and — once per <see cref="PathDetector.RulesVersion"/>
+    /// — every row, because verdicts of older rules may be wrong now.
+    /// </summary>
+    /// <remarks>
+    /// The verdict is computed from <c>search_text</c>, not from the stored payload: for every text up to
+    /// <see cref="PathDetector.MaxTextLength"/> the two are identical, and a cut search text is longer than that,
+    /// which the detector rejects just as it rejects the full text — so no payload is loaded. Non-text kinds get 0.
+    /// One transaction: an interrupted start leaves the rows undecided and the next one finishes the job.
+    /// </remarks>
+    /// <param name="connection">Open connection (outside any transaction).</param>
+    /// <exception cref="SqliteException">A read or write failed (lock timeout, disk full); nothing is changed, and the next start retries.</exception>
+    private static void BackfillPathCounts(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using (var flag = Command(connection, "INSERT OR IGNORE INTO meta (key, value) VALUES ($key, '1');"))
+        {
+            flag.Parameters.AddWithValue("$key", PathRulesKey);
+
+            // One inserted row = these rules never ran on this store: verdicts of earlier rules are void.
+            if (flag.ExecuteNonQuery() > 0)
+            {
+                Execute(connection, "UPDATE clips SET path_count = NULL WHERE path_count IS NOT NULL;");
+            }
+        }
+
+        var decided = new List<(long Id, int Count)>();
+        using (var pending = Command(connection, "SELECT id, kind, search_text FROM clips WHERE path_count IS NULL;"))
+        using (var reader = pending.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                var kind = (ClipKind)reader.GetInt32(1);
+                decided.Add((reader.GetInt64(0), kind is ClipKind.Text or ClipKind.RichText ? PathDetector.CountPaths(reader.GetString(2)) : 0));
+            }
+        }
+
+        using (var update = Command(connection, "UPDATE clips SET path_count = $count WHERE id = $id;"))
+        {
+            var countParameter = update.Parameters.Add("$count", SqliteType.Integer);
+            var idParameter = update.Parameters.Add("$id", SqliteType.Integer);
+            foreach (var (id, count) in decided)
+            {
+                countParameter.Value = count;
+                idParameter.Value = id;
+                update.ExecuteNonQuery();
+            }
+        }
+
+        transaction.Commit();
     }
 
     /// <summary>
@@ -466,12 +557,13 @@ public sealed class ClipStore
                 """
                 INSERT INTO clips (kind, preview, search_text, content_hash, created_utc, last_used_utc, use_count,
                                    is_pinned, pinned_utc, origin, source_app_name, source_app_path, size_bytes,
-                                   format_names, image_width, image_height, thumbnail)
+                                   format_names, image_width, image_height, thumbnail, path_count)
                 VALUES ($kind, $preview, $search, $hash, $when, $when, 1, $pinned, $pinnedUtc, $origin, $srcName,
-                        $srcPath, $size, $formats, $width, $height, $thumb)
+                        $srcPath, $size, $formats, $width, $height, $thumb, $paths)
                 RETURNING id;
                 """);
             insert.Parameters.AddWithValue("$kind", (int)classified.Kind);
+            insert.Parameters.AddWithValue("$paths", classified.PathCount);
             insert.Parameters.AddWithValue("$preview", preview);
             insert.Parameters.AddWithValue("$search", classified.SearchText);
             insert.Parameters.AddWithValue("$hash", hash);
@@ -496,7 +588,7 @@ public sealed class ClipStore
             using var update = Command(connection,
                 """
                 UPDATE clips SET
-                    kind = $kind, preview = $preview, search_text = $search,
+                    kind = $kind, preview = $preview, search_text = $search, path_count = $paths,
                     last_used_utc = max(last_used_utc, $when), use_count = use_count + 1,
                     is_pinned = max(is_pinned, $pinned),
                     pinned_utc = CASE WHEN $pinned = 1 THEN coalesce(pinned_utc, $when) ELSE pinned_utc END,
@@ -508,6 +600,7 @@ public sealed class ClipStore
                 WHERE id = $id;
                 """);
             update.Parameters.AddWithValue("$kind", (int)classified.Kind);
+            update.Parameters.AddWithValue("$paths", classified.PathCount);
             update.Parameters.AddWithValue("$preview", preview);
             update.Parameters.AddWithValue("$search", classified.SearchText);
             update.Parameters.AddWithValue("$when", when);
@@ -1433,7 +1526,9 @@ public sealed class ClipStore
         ClipFilter.Text => $"c.kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText}, {(int)ClipKind.Color})",
         ClipFilter.Images => $"c.kind = {(int)ClipKind.Image}",
         ClipFilter.Links => $"c.kind = {(int)ClipKind.Link}",
-        ClipFilter.Files => $"c.kind = {(int)ClipKind.Files}",
+
+        // File lists, and text that is nothing but paths (path_count, decided at capture or by the backfill).
+        ClipFilter.Files => $"(c.kind = {(int)ClipKind.Files} OR c.path_count > 0)",
 
         // Both ways ShareX content arrives: picked up from its folders, or copied to the clipboard by
         // ShareX.exe (then only the source app tells). LIKE is ASCII case-insensitive and treats '\' literally.
@@ -1614,6 +1709,7 @@ public sealed class ClipStore
         ImageHeight = reader.IsDBNull(14) ? null : reader.GetInt32(14),
         HasThumbnail = reader.GetInt64(15) != 0,
         GroupIds = reader.IsDBNull(16) ? [] : ParseIds(reader.GetString(16)),
+        PathCount = reader.GetInt32(17),
     };
 
     /// <summary>Parses <c>group_concat</c>'s comma list (unspecified order) into ascending ids.</summary>

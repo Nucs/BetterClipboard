@@ -17,7 +17,7 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 | After a restart | **Gone** (only pinned items survive) | Everything is still there |
 | Item size | ≤ 4 MB | ≤ 64 MB (configurable) |
 | Search | None | Instant substring search, any language |
-| Content | Text, HTML, bitmaps | Text, rich text/HTML, links, colors, images with previews, copied files |
+| Content | Text, HTML, bitmaps | Text, rich text/HTML, links, colors, images with previews, copied files and paths |
 | Screenshots | Only what you copy | Also every [ShareX](https://getsharex.com) screenshot the moment it is saved, in its own tab |
 | Organizing | Pins | Pins plus groups: drag cards onto your own icons; grouped items are kept like pins |
 | Keeping things out | Copies apps mark as private | The same, plus known password managers ignored by default, and **Forget forever** for anything else |
@@ -77,6 +77,24 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 The tray icon opens the panel and Settings: shortcut, retention (items, days, size), what to record,
 ignored apps, pause, theme, start with Windows, the command line, ShareX screenshots, and **Import from Windows**, which pulls
 in everything Win+V still remembers — including its pinned items.
+
+**The Files tab** lists files you copied in Explorer, and text that is nothing but paths:
+
+- **Absolute paths:** `C:\Users\you\notes.txt`, `C:/a/path`, `\\server\share`, `/var/log/syslog`,
+  `%APPDATA%\Code`.
+- **Relative paths:** `~/.bashrc`, `./build.sh`, `src\app\main.cs`, `folder/file.cs`.
+- **Several:** one path per line, as many lines as you like.
+- **It stays text:** a copied path still pastes as text, and the Text tab still lists it.
+
+It is strict on purpose, so these stay in Text only:
+
+- slashes in prose (`and/or`, `24/7`);
+- a sentence that starts with a path (`C:\Windows is where …`);
+- URLs, and a command line (`./run.sh src/a.txt`);
+- a relative path without a file name at the end (`src/app`).
+
+A folder name with spaces counts when it looks like a name (`C:\Program Files (x86)`, `D:\Games\Call of
+Duty`). Lowercase ones (`C:\Users\you\my stuff`) count when quoted, as Explorer's *Copy as path* writes them.
 
 ### Groups
 
@@ -172,7 +190,7 @@ the network cannot connect, and each command is logged by name only, never with 
 
 | Command | What it does |
 |---|---|
-| `bclip list [-n 20] [-f pinned\|text\|images\|links\|files\|sharex] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line |
+| `bclip list [-n 20] [-f pinned\|text\|images\|links\|files\|sharex] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line. `files` includes copied paths (kind `path`) |
 | `bclip search <words…>` | Items containing all the words (substring, any language) |
 | `bclip grep [-i] <regex>` | Matching lines as `id:line: text`, like `grep -n` |
 | `bclip get [ID \| -r N] [--format text\|html\|rtf\|files\|png] [-o FILE]` | An item's content, byte for byte (default: the latest); images need `-o file.png` |

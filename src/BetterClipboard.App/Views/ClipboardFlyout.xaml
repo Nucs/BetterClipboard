@@ -239,7 +239,10 @@
             <SelectorBarItem Tag="Text" Text="Text" />
             <SelectorBarItem Tag="Images" Text="Images" />
             <SelectorBarItem Tag="Links" Text="Links" />
-            <SelectorBarItem Tag="Files" Text="Files" />
+            <SelectorBarItem
+                Tag="Files"
+                Text="Files"
+                ToolTipService.ToolTip="Files copied in Explorer, and copied text that is nothing but paths" />
             <!--  Only while ShareX is installed (code-behind: UpdateShareXTab).  -->
             <SelectorBarItem
                 x:Name="ShareXFilter"

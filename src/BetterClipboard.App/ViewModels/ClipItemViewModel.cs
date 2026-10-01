@@ -98,8 +98,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <returns><see langword="true"/> for a member.</returns>
     public bool IsInGroup(long groupId) => Entry.GroupIds.Contains(groupId);
 
-    /// <summary>Fluent glyph describing the kind.</summary>
-    public string KindGlyph => Kind switch
+    /// <summary>
+    /// Fluent glyph describing the kind. Text that is nothing but paths gets the folder of a file list, since it
+    /// is listed in the Files tab next to them.
+    /// </summary>
+    public string KindGlyph => Entry.IsPathText ? "\uE8B7" : Kind switch
     {
         ClipKind.RichText => "\uE8D3", // FontColor
         ClipKind.Link => "\uE71B",     // Link
@@ -109,8 +112,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
         _ => "\uE8D2",                 // Font
     };
 
-    /// <summary>Human label of the kind (tooltips, accessibility).</summary>
-    public string KindLabel => Kind switch
+    /// <summary>
+    /// Human label of the kind (tooltips, accessibility): "Path"/"Paths" for text that is nothing but paths,
+    /// which a screen reader would otherwise announce as plain text inside the Files tab.
+    /// </summary>
+    public string KindLabel => Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
     {
         ClipKind.RichText => "Formatted text",
         ClipKind.Link => "Link",
@@ -132,8 +138,8 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <summary>Swatch brush for color entries.</summary>
     public Brush? ColorBrush { get; }
 
-    /// <summary>Monospace for code-looking text and file paths; the UI font otherwise.</summary>
-    public FontFamily BodyFontFamily => Kind != ClipKind.Link && CodeHeuristics.LooksLikeCode(Preview) ? MonoFont : UiFont;
+    /// <summary>Monospace for code-looking text and for text that is nothing but paths; the UI font otherwise.</summary>
+    public FontFamily BodyFontFamily => Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)) ? MonoFont : UiFont;
 
     /// <summary>Accessible name for screen readers.</summary>
     public string AutomationName => $"{KindLabel}: {Preview}";
@@ -239,6 +245,12 @@ public sealed partial class ClipItemViewModel : ObservableObject
         {
             int count = Entry.Preview.Split('\n').Length;
             parts.Add(Entry.Preview.Contains(" more", StringComparison.Ordinal) ? "many files" : $"{count} file{(count == 1 ? "" : "s")}");
+        }
+        else if (Entry.IsPathText)
+        {
+            // Tells why a text card shows up in the Files tab (and wins over "formatted" for a path copied
+            // from a web page).
+            parts.Add(Entry.PathCount == 1 ? "path" : $"{Entry.PathCount} paths");
         }
         else if (Entry.HasRichFormats && Kind == ClipKind.RichText)
         {

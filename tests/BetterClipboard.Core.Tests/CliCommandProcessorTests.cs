@@ -77,6 +77,29 @@ public sealed class CliCommandProcessorTests : IAsyncLifetime
         Assert.Equal("ShareX", items[1].Source);
     }
 
+    /// <summary>
+    /// The files filter lists file lists and text that is nothing but paths; such text keeps its kind and carries
+    /// its path count (on the wire as <c>"paths"</c>, omitted for everything else).
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task List_FilesFilter_IncludesPathTexts()
+    {
+        var files = (await history.AddAsync(TestData.Files(@"C:\BC-TEST\a.txt")))!;
+        var paths = await AddText("C:\\BC-TEST\\b.txt\nC:\\BC-TEST\\c.txt", TestData.Now.AddMinutes(1));
+        await AddText("BC-TEST and/or", TestData.Now.AddMinutes(2));
+
+        var response = await Run(new CliRequest { Command = CliCommands.List, Filter = "files" });
+        var items = response.Items!;
+        Assert.Equal([paths.Id, files.Id], items.Select(i => i.Id));
+        Assert.Equal(("text", 2), (items[0].Kind, items[0].Paths));
+        Assert.Equal(("files", null), (items[1].Kind, items[1].Paths));
+
+        var json = CliJson.Serialize(response);
+        Assert.Contains("\"paths\":2", json, StringComparison.Ordinal);
+        Assert.Equal(1, json.Split("\"paths\"").Length - 1); // the file list omits it (nulls are not written)
+    }
+
     /// <summary>search uses the panel's substring search; no match is a not-found error.</summary>
     /// <returns>A task.</returns>
     [Fact]

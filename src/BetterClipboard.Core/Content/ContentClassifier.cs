@@ -12,13 +12,20 @@ namespace BetterClipboard.Core.Content;
 /// <param name="ContentHash">Deduplication key from <see cref="ContentHasher"/>.</param>
 /// <param name="PlainText">Full decoded text when the clip has text; <see langword="null"/> otherwise.</param>
 /// <param name="FilePaths">Decoded file list for <see cref="ClipKind.Files"/>; empty otherwise.</param>
+/// <param name="PathCount">
+/// How many paths the text consists of when it is nothing but file-system paths (<see cref="PathDetector"/>),
+/// which lists a <see cref="ClipKind.Text"/> or <see cref="ClipKind.RichText"/> clip under the Files filter
+/// too; 0 for every other text and for every other kind. It never changes the kind, so the clip still pastes
+/// and searches as text.
+/// </param>
 public sealed record ClassifiedClip(
     ClipKind Kind,
     string Preview,
     string SearchText,
     string ContentHash,
     string? PlainText,
-    IReadOnlyList<string> FilePaths);
+    IReadOnlyList<string> FilePaths,
+    int PathCount = 0);
 
 /// <summary>
 /// Turns a raw <see cref="ClipCapture"/> into a <see cref="ClassifiedClip"/>. Pure function — no I/O, no
@@ -29,7 +36,9 @@ public sealed record ClassifiedClip(
 /// <list type="number">
 /// <item><b>Files</b> — Explorer copies carry <c>CF_HDROP</c> (sometimes plus name text); the list is the meaning.</item>
 /// <item><b>Text</b> — refined to Link / Color / RichText. Office and browsers attach a bitmap rendering to
-/// text copies; that bitmap is kept for paste fidelity but the clip is still text.</item>
+/// text copies; that bitmap is kept for paste fidelity but the clip is still text. Text that is nothing but
+/// paths stays Text/RichText and only gets <see cref="ClassifiedClip.PathCount"/>, which adds it to the Files
+/// filter: it was copied as text, so it must keep pasting as text.</item>
 /// <item><b>Image</b> — bitmaps without text (screenshots, "Copy image").</item>
 /// <item><b>Rich-only</b> — HTML/RTF without plain text (rare; some web apps).</item>
 /// </list>
@@ -81,13 +90,18 @@ public static class ContentClassifier
                 : ColorLiteral.TryParse(text, out _) ? ClipKind.Color
                 : hasRich ? ClipKind.RichText
                 : ClipKind.Text;
+
+            // Links and colors are never paths (a web URL is a link even when it ends in a file name), so only
+            // plain and rich text is asked; the detector is linear and rejects long texts up front.
+            int pathCount = kind is ClipKind.Text or ClipKind.RichText ? PathDetector.CountPaths(text) : 0;
             return new ClassifiedClip(
                 kind,
                 BuildTextPreview(text),
                 Truncate(text, SearchMaxChars),
                 ContentHasher.ForText(text),
                 text,
-                []);
+                [],
+                pathCount);
         }
 
         var image = FindPrimaryImage(capture);

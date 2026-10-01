@@ -386,6 +386,11 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 ? "Take a screenshot with ShareX — it shows up here the moment ShareX saves it."
                 : "Turn on “Import ShareX screenshots” in Settings to collect them here. Copies from ShareX still show up.";
         }
+        else if (Filter == ClipFilter.Files)
+        {
+            EmptyTitle = "No files or paths yet";
+            EmptyMessage = @"Copy files in Explorer, or copy a path such as C:\folder\file.txt, /var/log/syslog or src/app.cs.";
+        }
         else if (Filter != ClipFilter.All)
         {
             EmptyTitle = "Nothing here yet";

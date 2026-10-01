@@ -254,11 +254,11 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing (`Content/`), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), settings, logging, presentation helpers. **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), settings, logging, presentation helpers. **CS1591 = error.** |
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (194 tests: content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (438 tests, one class at a time — §4: paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement (119 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + SHA256SUMS, shared with CI), [`make_icon.py`](tools/make_icon.py) (app icon). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package) · release on `v*` tags. |
@@ -317,7 +317,7 @@ copies bytes then closes the clipboard ASAP; all writes are serialized through t
    app-private formats only with `PreserveAllFormats`, all under a byte budget checked via `GlobalSize`
    **before** copying. GDI handle formats and synthesized duplicates are never stored.
 5. Worker: rules (pause, ignored apps — pre-seeded with the password-manager catalog, §2.8 — size) → `ContentClassifier` (Files > Text[Link/Color/Rich] > Image
-   > rich-only) → image analysis (dims, 720×400 PNG thumbnail, **pixel hash** — images dedupe by decoded
+   > rich-only; text that is nothing but paths also gets a path count, §2.13) → image analysis (dims, 720×400 PNG thumbnail, **pixel hash** — images dedupe by decoded
    pixels, so DIB-vs-PNG encodings of one picture merge) → `ClipStore.Upsert` → retention prune.
 
 ### 2.4 Win+V takeover (`Input/HotkeyService`)
@@ -370,7 +370,7 @@ window). It has no title bar, so any background press can drag it.
 ### 2.6 Storage (`Storage/ClipStore`, SQLite3 Multiple Ciphers via Microsoft.Data.Sqlite.Core, `stores\{id}\history.db`)
 
 `clips` (one row per content hash, preview, search text ≤ 32 K chars, recency, pin, origin, source app,
-thumbnail) · `clip_formats` (raw payloads by name, cascade) · `clips_fts` (FTS5 **trigram**, external
+thumbnail, path count — §2.13) · `clip_formats` (raw payloads by name, cascade) · `clips_fts` (FTS5 **trigram**, external
 content, triggers — substring search incl. Hebrew/CJK; < 3-char terms use escaped `LIKE`) ·
 `deleted_hashes` (tombstones: a deleted item is never resurrected by the next Windows import; a new live
 copy lifts the tombstone) · `meta.last_clear_utc` (imports older than the last clear are skipped).
@@ -489,7 +489,8 @@ while on, any process running as the user can read the whole history through it 
   more instead of buffering). Client deadline = `wait` timeout + 30 s, else 2 min. A pending 1-byte read
   detects the client hanging up (Ctrl+C on `bclip wait`) and cancels the handler.
 - **Commands** (`CliCommandProcessor`, pure over `ClipHistoryService` + `IClipboardWriter` + `IImageExporter`, unit-tested):
-  `list`/`search` (`QueryAsync`, not pinned-first, 1–1000, `--since` = `UsedSince`); `grep` (.NET regex,
+  `list`/`search` (`QueryAsync`, not pinned-first, 1–1000, `--since` = `UsedSince`; `-f files` also lists
+  text that is nothing but paths: JSON `paths: N`, table kind `path`, §2.13); `grep` (.NET regex,
   CultureInvariant, **250 ms match timeout** ⇒ bad_request, newest 10,000 items' search text, full text
   reloaded when the indexed copy hit the 32 K cap, ≤ 20 matches/item, lines cut at 400 chars); `get`
   (auto/text/html = CF_HTML fragment by byte offsets/rtf/files/png = stored PNG or DIB → WIC/formats);
@@ -811,13 +812,94 @@ content again while it runs).
 - Images too large for the analyzer to pixel-hash are matched by their bytes, so the same huge picture in
   another encoding is not recognized.
 
+### 2.13 Paths copied as text in the Files tab — `Content/PathDetector`, `clips.path_count`
+
+User request (2026-10-01): the Files tab showed only file lists (`CF_HDROP`); text such as `folder/file.cs`,
+`C:/a/path`, `/var/path/file` "and other variations like \ and confident whitespace detector (no mistakes)"
+should be listed too. Design rule: **precision first**. A wrong "yes" puts a sentence or a command into the
+Files tab; a wrong "no" only leaves a path in the Text tab, where it is listed anyway.
+
+**What counts** (`PathDetector.GetPaths`/`CountPaths`, pure; class remarks are the full spec).
+- **Shape:** every non-empty line is one path, or tab-separated cells that each are one (a table row).
+  Surrounding whitespace and the kind of line ending don't matter; one line that is not paths ⇒ not paths.
+  Quotes `"…"` (Explorer's "Copy as path"), `'…'`, `` `…` ``, `“…”`, `‘…’` around a path are removed. Texts
+  over 16,384 chars (`MaxTextLength`, half the search cap) are never paths.
+- **Never split at spaces:** paths in a row after spaces are a command line (`./lint.sh src/a.sh`,
+  `C:\x.exe C:\in.txt`). Found by the corpus scan below; the first version split them.
+- **Strong anchors suffice:** drive (`C:\`, `C:/`), UNC (`\\server\share`, server ≥ 2 chars: `\\n\\t` is an
+  escape), device (`\\?\`, `\\.\`), `file:` URI, `~/`, `./`/`../`, `%VAR%\`, `$env:VAR\`, `${VAR}/`. Doubled
+  separators are allowed there (escaped JSON/C#).
+- **`/a/b`:** at least 2 segments, not all digits, no spaces in the first segment (slash commands:
+  `/load-file docs/a.md`). A single-letter root needs a file name (`/r/programming`, `/c/Users` refused;
+  `/c/notes.txt` counts). Regex literals (`/abc/gi`) are refused. URL routes (`/api/v1/users`) count.
+- **`\a\b`:** a file name at the end or ≥ 3 segments; refused with any single-letter segment (`\d\w`), only
+  escapes (`\x41\x42`) or a LaTeX command (`\alpha\beta`).
+- **Bare relative:** at least 2 segments and a file name at the end. That is an extension in one case
+  (`.cs`, `.JPG`; `items.Count` and `obj.toString` are code), a dotfile with a lowercase letter
+  (`.gitignore`; `.NET` is not), or a well-known bare name (`Makefile`, `LICENSE`, …). Refused:
+  - a host in front (`example.com/x.html`, IPv4, `localhost`);
+  - `=` or `-` in front (`PY=/c/…`, `-Iinclude/x.h`);
+  - dotted abbreviations (`Ph.D/M.Sc`);
+  - technology pairs (`React/Next.js`, a case-sensitive list, so `src/Node.js` counts);
+  - two file names (`self.x/self.y`).
+- **Characters:** never `<>"|?*`, a backtick, curly double quotes, control or format characters (bidi
+  marks), a lone surrogate, or any space but U+0020. A segment never ends with `.`, `,`, `;` or `=`, and `:`
+  appears only in a drive.
+- **Spaces inside a segment:** only after a strong anchor, after the first segment of `/a/b`, or quoted.
+  Single spaces, never next to a separator.
+  - Always refused: an option word (`-r`), a file name before more words (`script.sh args`,
+    `file.txt is here`, `~/.bashrc (user)`), a verb after the first word (`ClauseWords`: is, contains, …).
+  - Unquoted, every word after the first must look like a name: capitalized, a digit, a symbol, a bracketed
+    name (`(x86)`, not `(copy)`), brand case (`iPhone`), a version (`v2`) or a title connector (`of`, `the`,
+    … — never last). Windows' `New folder (N)` is accepted as is.
+  - Quoted, the words may be anything else, except in the first segment of a bare relative path
+    (`` `python scripts/build.py` `` is a command).
+
+**Known misses, by design:**
+- lowercase names with spaces, unquoted (`C:\Users\me\my stuff`);
+- space-separated lists;
+- relative paths without a file name (`src/app`);
+- `/c/Users`, `\Windows\System32`;
+- `file:line` references (`src/x.cs:10`).
+
+**Accepted although not file paths:** URL routes, Claude Code `@`-file references
+(`@${CLAUDE_PLUGIN_ROOT}/x.json`), and lowercase member access (`a/b.length`).
+
+**Storage.** `clips.path_count` is a nullable INTEGER, added idempotently like the groups' column. `NULL`
+means undecided and 0 means not paths. The kind stays Text/RichText, so paste, Forget forever, `bclip get` and
+the Text tab treat these entries as text.
+- `Upsert` writes the count on insert and on bump.
+- `BackfillPathCounts` runs at every `Initialize`. It decides `NULL` rows (a store from before, rows an
+  older build wrote) from `search_text`. That equals the text for anything ≤ 16 K, and a cut search text is
+  longer, so it is rejected like the full text and no payload is loaded.
+- The meta flag `fixup.path_text.v{RulesVersion}` makes a new rules version reset every verdict once.
+  **Bump `PathDetector.RulesVersion` with any rule change that turns a verdict**, or old rows disagree with
+  new copies.
+- Files filter = `kind = Files OR path_count > 0` (`grep -f files` scans the same slice).
+
+**UI and CLI.**
+- Card: Folder glyph, label "Path"/"Paths" (screen readers), caption "path"/"N paths", monospace body.
+- Files tab: a tooltip, and an empty state with examples.
+- `bclip list -f files`: JSON `paths: N` (omitted otherwise), table kind `path`; `bclip help list` says so.
+
+**Verification (2026-10-01).**
+- **Tests:** `PathDetectorTests` (86 positives with counts, 148 negatives, whitespace, line endings,
+  length limit, classifier) and `PathTextStoreTests` (filters, older-store backfill, rules version,
+  refresh on re-copy), plus CLI tests.
+- **Precision on real text:** a scratch probe ran the detector on every line and every adjacent pair of
+  lines of 951,234 lines: this repo incl. `refs/ShareX`, four other repos on `K:\source` (AngouriMath's
+  LaTeX among them), and the `~/.claude` skills/plugins docs. It found 60 texts, all paths or `@`-file
+  references. Its first pass caught command lines, assignments (`PY=/c/…`, `&path=/src/…`) and a remark
+  (`~/.bashrc (user)`), all now regression cases.
+- **Live:** see §5.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 313 tests (311 run; 1 opt-in + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 557 tests (555 run; 1 opt-in + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -958,6 +1040,16 @@ ShareX end-to-end (2026-09-25), with the dev build:
   (private window station, see §1.9) and drive them with `ClipboardProducer`. Writing unmarked content to
   the real clipboard pushes items out of the user's RAM-only Win+V history — that loss is unrecoverable.
 - **Gaps in timing tests:** busy-wait on a `Stopwatch` — `Thread.Sleep(n)` rounds up to the 15.6 ms tick.
+- **Core tests run one class at a time** (`[assembly: Xunit.v3.Parallelization(Mode = ParallelMode.None)]` in
+  `TestData.cs`; the old `CollectionBehavior.DisableTestParallelization` is a CS0619 error in xunit v3 4.x).
+  - Why: `SqliteConnection.ClearAllPools` (`TempDirectory.Dispose`, `EncryptedStoreTests`) empties every pool
+    of the process. A store test in another class could rent a pooled connection at that moment and fail with
+    `ObjectDisposedException: … 'SQLitePCL.sqlite3'` inside `ClipStore.Open`.
+  - Measured 2026-10-01: 4 of 25 runs before, 0 of 30 after; the suite still takes ~3 s.
+  - The Windows suite (0 of 12 failures) keeps its parallel classes.
+- **File-based probes (`dotnet run x.cs` with `#:project`) don't rebuild when only the referenced project
+  changed:** pass `--no-cache` after editing it. On 2026-10-01 a probe ran stale Core code and reported a
+  bug that was already fixed.
 - **Never disturb the user's installed app** (it runs in the same session as every experiment): test
   instances get their own `BETTERCLIPBOARD_DATA_DIR` (⇒ scoped lock/events/pipe, no LL hook), `--exit` is
   only ever sent with that variable set, and scripts record the `BetterClipboard.exe` PIDs before and
@@ -993,6 +1085,8 @@ ShareX end-to-end (2026-09-25), with the dev build:
 
 | Feature | How | Result |
 |---|---|---|
+| Paths copied as text in the Files tab, live on an isolated instance next to the user's app (2026-10-01; nine seeded BC-TEST items, capture paused). `bclip list -f files` lists exactly the five path texts (kind `path`, JSON `paths` 1/1/2/1/1) and the file list. `-f text` still lists the path texts, but not the file list. In the panel, selecting Files (UIA) shows the same six cards ("Path: …", "Paths: …", "Files: …"). The prose, `and/or` and `./venv/bin/pip install -r …` cards are absent. Cards show the folder glyph, "path"/"2 paths" and a monospace body. User's PID unchanged | seeded through `MachineBoundHistory` (no clipboard), `bclip`, UIA select + read, one guarded screenshot (`files_e2e/run.sh`, scratch) | ✅ (the Files tab's tooltip is not exposed to UIA, so it was not checked) |
+| Path detector precision: 951,234 lines of real text, each line and each adjacent pair, gave 60 hits, all paths or `@`-file references; the corpus details are in §2.13 | scratch probe (`probe_corpus.cs`) | ✅ (after fixing what its first pass found) |
 | Groups toggle icon centered (2026-10-01): the ribbon's margins in its 34×32 button are left/right 12/12 (before: 14/10) and top/bottom 9.5/≈10 (before: 10.5/≈9), with the column closed (outline) and open (filled, on its highlight); user's PID unchanged | guarded screenshots of an isolated instance (`--show-flyout`, UIA invokes of the toggle, no injected input), ink edges measured with sub-pixel coverage, before = the 2026-09-25 groups e2e screenshots of the same markup | ✅ (vertical rest ≈ −0.2 px: the notch tips' faint antialiasing; geometrically −⅛ px) |
 | Forget forever, live on an isolated instance next to the user's app: the card menu ends with *Forget forever…*; its confirmation ("Forget this forever?") deletes the card **and** its CRLF look-alike (log "2 history entries deleted"); `bclip status` prints "Forgotten: 1 item never recorded"; Settings › Forgotten forever shows "Text · 20 characters / From Notepad · forgotten just now · not copied since"; *Allow again* empties the list ("Nothing is forgotten…", *Allow all again…* disabled); user's PID unchanged | UIA invokes + one guarded right-click + UIA `ScrollPattern` to the Settings card (`groups_e2e/run5.sh`, scratch) | ✅ first attempt |
 | Forget forever end to end in the private window station: after `bclip forget`, another program copying the same text with a trailing CRLF is read by the real listener and kept out (counted once), the next different copy is recorded | `CliEndToEndTests.Forget_KeepsRealCopiesOut` | ✅ 8/8 repeated runs |
@@ -1003,7 +1097,7 @@ ShareX end-to-end (2026-09-25), with the dev build:
 | ShareX, headless, dev build next to the user's app (fake ShareX folder, isolated instance, `bclip`): 2-hour-old archive file not imported on first activation; a new screenshot listed ~0.8 s after the write (bclip polling included) with origin `sharex`, source ShareX; thumbnail, `.txt` and a folder outside `%y-%mo` skipped; `bclip get -o` byte-identical to the saved PNG; a screenshot saved while the app was stopped imported on restart (catch-up logged); user's PID unchanged | `sharex_e2e.sh` (scratch) | ✅ |
 | ShareX tab: all 7 tabs fit (UIA: tab 61 px, 28 px to spare) and filter to the 2 screenshots; Settings › Integrations › ShareX screenshots card shows found-via + watched folder | UI Automation + guarded screenshots of the isolated instance | ✅ (after the 9 px padding fix; before it the tab read "Shar") |
 | ShareX pattern rules, locator precedence/configs/overrides, watcher (one import per save, writer still open, skip rules, recordings handled, catch-up cap, folder created later), marker life cycle | tests | ✅ |
-| Unit tests | `dotnet test --solution` | 289 pass + 1 opt-in + 1 explicit (measurement) locally (non-elevated); CI (elevated runner) green. One-off: `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
+| Unit tests | `dotnet test --solution` | 555 pass + 1 opt-in + 1 explicit (measurement) locally (2026-10-01, non-elevated). Core alone: 0 of 30 runs failed after making it run one class at a time; before, 4 of 25 failed with a pooled-connection `ObjectDisposedException` (§4). Earlier: CI (elevated runner) green; one-off `ClientHangUp_CancelsHandler` exceeded its 5 s wait once in a full run right after a build (0 of 30 isolated and 0 of 6 further full runs failed) |
 | Settings › Shortcut box shows the saved shortcut (custom and preset); preset menu saves; invalid text shows the error and saves nothing; typed text saved canonically; menu labels canonical | screenshots + guarded input on an isolated instance | ✅ (fixed after v0.2.0, where the box was blank) |
 | Drag the flyout background to move it: header drag moves exactly (120, 60); no sticking after release; search-box drag doesn't move; Esc mid-drag restores and keeps it open | `tools/e2e/drag.py`, isolated instance, mouse | ✅ 4/4 checks, 4 consecutive runs (touch/pen untested) |
 | Password-manager catalog: names normalized + unique, fresh/existing settings seeded, user entries kept (`keepass.EXE` covers `KeePass`), deletions stick, later catalog names arrive once, `settings.json` round trip | tests | ✅ |
@@ -1054,6 +1148,11 @@ ShareX end-to-end (2026-09-25), with the dev build:
     fingerprint matches), so a forgotten secret also leaves Win+V's RAM buffer and pins;
   - pattern rules ("never record anything that looks like an AWS key / a JWT"), next to the exact list;
   - sweeping look-alikes of texts over the 32 K `search_text` cap (would need a stored fingerprint column).
+- Paths copied as text, next steps:
+  - *Show in Explorer* / *Open* for path texts that are absolute and local (never probe network paths on the
+    UI thread: a dead share blocks for tens of seconds);
+  - `file:line` references (`src/x.cs:10`, `x.cs(10,5)`) as a path with a location;
+  - an opt-in to accept lowercase names with spaces unquoted (the precision trade-off in §2.13).
 - ShareX, next steps:
   - an opt-in one-time backfill of the existing screenshot archive;
   - upload URLs from `History.db` (task completion) as link items next to their screenshot;

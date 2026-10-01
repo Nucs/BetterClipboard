@@ -53,6 +53,20 @@ public sealed class CliOutputTests
         Assert.Contains("Forgotten: 2 items never recorded", withForgotten, StringComparison.Ordinal);
     }
 
+    /// <summary>A text item that is nothing but paths shows "path" in the kind column, so a files listing explains itself.</summary>
+    [Fact]
+    public void Table_ShowsPathForPathTexts()
+    {
+        var items = new[]
+        {
+            new CliItem { Id = 3, Kind = "text", Paths = 1, Preview = @"C:\BC-TEST\a.txt", LastUsed = Now },
+            new CliItem { Id = 2, Kind = "files", Preview = "a.txt", LastUsed = Now },
+        };
+        var lines = CliOutput.Render(CliCommands.List, new CliResponse { Ok = true, Items = items }, Now).Split('\n');
+        Assert.StartsWith("      3  path ", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("      2  files ", lines[1], StringComparison.Ordinal);
+    }
+
     /// <summary>Exit codes: 0 ok, 1 nothing found / timed out, 2 bad request, 4 other failures.</summary>
     [Fact]
     public void ExitCodes_FollowGrep()

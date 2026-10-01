@@ -20,7 +20,11 @@ public enum ClipFilter
     /// <summary>Link entries.</summary>
     Links = 4,
 
-    /// <summary>File-list entries.</summary>
+    /// <summary>
+    /// File lists (files copied in Explorer) and text entries that are nothing but file-system paths
+    /// (<see cref="Model.ClipEntry.PathCount"/> above 0, e.g. <c>C:\a\b.txt</c> or <c>src/app.cs</c> copied as
+    /// text) — the latter also stay under <see cref="Text"/>.
+    /// </summary>
     Files = 5,
 
     /// <summary>
