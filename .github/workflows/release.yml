@@ -4,7 +4,8 @@
 #   SHA256SUMS.txt                                                               (install.ps1 verifies it)
 #   install.ps1                                                                  (the installer itself)
 #   betterclipboard.<version>.nupkg                                              (Chocolatey, stable only)
-# Release notes are the annotated tag's message (git tag -a v1.2.3 -F notes.md).
+# Release notes are the annotated tag's message (git tag -a v1.2.3 -F notes.md), followed by a link to the README's
+# "Code signing policy": SignPath Foundation's terms ask for that term on every download/release page (docs/code-signing.md).
 #
 # Chocolatey (stable versions only: the Community Repository refuses SemVer 2 prereleases such as 1.0.0-rc.1):
 # the package embeds the two .7z archives and is installed, upgraded and uninstalled for real on this runner
@@ -28,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with:
-          # The annotated tag object (for --notes-from-tag) is not fetched by the default shallow checkout.
+          # Full history and tags. The pushed tag itself still arrives lightweight: see "Release notes from the tag".
           fetch-depth: 0
 
       - uses: actions/setup-dotnet@v5
@@ -42,6 +43,39 @@ jobs:
           $tag = '${{ github.ref_name }}'
           if ($tag -notmatch '^v(\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?)$') { throw "Tag '$tag' is not v<semver>." }
           "version=$($Matches[1])" >> $env:GITHUB_OUTPUT
+
+      # Before the long test and package steps, so a tag without notes fails in seconds.
+      # actions/checkout@v5 fetches a pushed tag by its commit (+<sha>:refs/tags/<tag>), which leaves a lightweight tag
+      # in this clone: the annotation is gone, and gh's --notes-from-tag then quietly used the commit's message. Every
+      # release up to v0.2.3 was published that way ("Version 0.2.3" instead of its notes). checkout fixed it in v6
+      # (actions/checkout#2356); fetching the tag object again works with any version, and a tag that is still not
+      # annotated is refused instead of published with the wrong text.
+      - name: Release notes from the tag
+        id: notes
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          git fetch --force --quiet origin "+refs/tags/${tag}:refs/tags/${tag}"
+          if ($LASTEXITCODE -ne 0) { throw "Fetching the tag object of '$tag' failed ($LASTEXITCODE)." }
+          if ((git cat-file -t "refs/tags/$tag") -ne 'tag') { throw "Tag '$tag' is not annotated: release notes are the annotated tag's message (git tag -a $tag -F notes.md)." }
+
+          # The notes --notes-from-tag takes (the tag's whole message, its signature stripped, as gh does it), plus a
+          # footer linking the README's code signing policy, which SignPath Foundation's terms ask every download and
+          # release page to name (docs/code-signing.md).
+          # git writes the message as UTF-8, but PowerShell decodes a native command's output with the console's code
+          # page (an OEM one on Windows runners), which would garble every em dash and arrow of the notes; gh read the
+          # bytes itself and never had that problem.
+          [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+          $message = (git tag --list $tag '--format=%(contents)') -join "`n"
+          $signature = (git tag --list $tag '--format=%(contents:signature)') -join "`n"
+          if ($signature -and $message.EndsWith($signature)) { $message = $message.Substring(0, $message.Length - $signature.Length) }
+          $message = $message.Trim()
+          if (-not $message) { throw "Tag '$tag' has an empty message: release notes are the annotated tag's message (git tag -a $tag -F notes.md)." }
+          $footer = '**Code signing policy:** see [the README](https://github.com/Nucs/BetterClipboard#code-signing-policy) for whether this release is signed, what is signed, and who approves it.'
+          # RUNNER_TEMP, not artifacts/: the package scripts own that folder.
+          $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          [IO.File]::WriteAllText($notesFile, "$message`n`n---`n`n$footer`n", [Text.UTF8Encoding]::new($false))
+          "file=$notesFile" >> $env:GITHUB_OUTPUT
 
       - name: Test
         run: dotnet test --solution BetterClipboard.sln -c Release
@@ -65,9 +99,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $version = '${{ steps.version.outputs.version }}'
+          $tag = '${{ github.ref_name }}'
           $assets = @(Get-ChildItem artifacts/release/*.zip, artifacts/release/*.7z, artifacts/release/*.nupkg | ForEach-Object FullName) + @('artifacts/release/SHA256SUMS.txt', 'install.ps1')
           $prerelease = if ($version -match '-') { '--prerelease' } else { $null }
-          gh release create '${{ github.ref_name }}' @assets --title "BetterClipboard $version" --notes-from-tag --verify-tag $prerelease
+          gh release create $tag @assets --title "BetterClipboard $version" --notes-file '${{ steps.notes.outputs.file }}' --verify-tag $prerelease
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)." }
 
       - name: Push to Chocolatey

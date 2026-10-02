@@ -54,6 +54,8 @@ Options (pass them through a script block):
 
 Prefer doing it by hand? Download the zip for your architecture and `SHA256SUMS.txt` from the release,
 check the hash (`Get-FileHash .\BetterClipboard-*.zip`), extract anywhere and run `BetterClipboard.exe`.
+Releases are not code-signed yet, so Windows may say *Windows protected your PC* for a copy downloaded this
+way: check the hash, then *More info › Run anyway*. See [Code signing policy](#code-signing-policy).
 
 ## Use
 
@@ -253,6 +255,39 @@ The research behind all this — how Win+V is built (service `cbdhsvc`, the `Tex
 Explorer's hotkey), why it forgets, its on-disk format for pins, and the measurements quoted above — is
 in [CLAUDE.md](CLAUDE.md).
 
+## Privacy
+
+**This program will not transfer any information to other networked systems unless specifically requested by
+the user or the person installing or operating it.** BetterClipboard has no telemetry, no update check and no
+account, and it never connects anywhere on its own. It uses the network only when you ask it to: the installer
+downloads the release from GitHub, *Open link* opens a link in your browser, and the links in *Settings › Third
+party* open their sites.
+
+What it keeps stays on your PC, in the encrypted history described in [How it works](#how-it-works). Besides the
+clipboard, it reads a few other places on your PC, each behind its own switch in Settings:
+
+| Source | What BetterClipboard does with it | Default | Setting |
+|---|---|---|---|
+| The clipboard | Keeps every copy, except copies apps mark as private and copies made by *Ignored apps* (password managers, out of the box) | On | *Pause capturing*, *Ignored apps* |
+| Windows' own clipboard history | Imports what Win+V still remembers, its pinned items included, at each start | On | *Import from Windows › Import automatically every time BetterClipboard starts* |
+| ShareX's screenshot folders | Keeps each screenshot ShareX saves | On, while ShareX is installed | *ShareX screenshots* |
+| Windows' Screenshots folder | Keeps each screenshot Snipping Tool or Win+PrtScn saves there | On | *Snipping Tool and Win+PrtScn* |
+| Windows' Win+R list | Keeps every command the list records | On | *Win+R history* |
+| PowerShell's history file | Lists its commands in the Pwsh tab; keeps a command only when you paste, copy, pin or group it | On | *Pwsh tab (PowerShell history)* |
+| Command Prompt windows you opened | Reads their command history every 30 seconds and keeps it, since Command Prompt forgets it when the window closes | On | *Cmd tab (Command Prompt history)* |
+| voidtools Everything | Asks Everything which files you opened from it whenever the Everything tab loads; remembers a file only when you act on it (paste, copy, pin, group or hide) | On, while Everything is installed or running | *Everything* |
+| Claude Code and Codex | Keeps the prompts you sent them, read from their own history files | On | *Claude Code prompts*, *Codex prompts* |
+
+- **Nothing private in the logs:** they record what happened (counts, versions, errors), never what you copied,
+  ran, typed or sent.
+- **The command line is off by default.** While *Command line (bclip)* is on, any program running as you can read
+  the history through it (see [Command line](#command-line-for-scripts-and-ai-agents)).
+- **Windows' own features:** an item you paste goes onto the clipboard like any copy, so Windows' clipboard history
+  and its sync between devices (*Clipboard history across your devices*) treat it the way you set them up in
+  Windows (Microsoft's [privacy statement](https://privacy.microsoft.com/privacystatement) covers those).
+- **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored. *Settings › Clear
+  history* and *Delete stored prompts…* delete parts of it.
+
 ## Uninstall
 
 *Settings › Apps › Installed apps › BetterClipboard › Uninstall*, or:
@@ -276,6 +311,34 @@ pwsh tools/release/package.ps1 -Version 0.1.0     # the exact release zips + SHA
 
 Set `BETTERCLIPBOARD_DATA_DIR` to a scratch folder when experimenting so your real history stays clean.
 Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) from a `v*` tag.
+
+## Code signing policy
+
+**Not signed yet.** The releases so far are unsigned, so Windows may say the publisher is unknown when you run a
+downloaded copy. The installer checks every download against the release's `SHA256SUMS.txt`, and you can do the
+same by hand (see [Install](#install)). Signing is planned through the [SignPath Foundation](https://signpath.org),
+which signs open-source projects for free. Once it is granted, this paragraph will read: *Free code signing
+provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).*
+
+The rules signed releases follow:
+
+- **Only this project's own files are signed:** `BetterClipboard.exe`, `BetterClipboard.dll`,
+  `BetterClipboard.Core.dll`, `BetterClipboard.Windows.dll`, `bclip.exe` and `bclip.dll`. Each one is built by
+  GitHub Actions ([`release.yml`](.github/workflows/release.yml)) from the tagged commit of this repository, never
+  on a developer's PC, and carries the product name `BetterClipboard` and the release's version.
+- **Other makers' files are never signed with this project's certificate.** Microsoft's .NET and Windows App SDK
+  runtime files and CommunityToolkit.Mvvm ship with their makers' own signatures. SQLite3 Multiple Ciphers,
+  SQLitePCLRaw and ZstdSharp ship unsigned, as their open-source projects publish them. All of them are listed in
+  [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+- **Every release is approved by hand** before it is signed.
+- **Team roles:**
+  - Committers and reviewers: [Eli Belash (@Nucs)](https://github.com/Nucs)
+  - Approvers: [Eli Belash (@Nucs)](https://github.com/Nucs)
+
+  Changes from anyone else arrive as pull requests, and a committer reviews them before they are merged.
+- **Privacy policy:** this program will not transfer any information to other networked systems unless
+  specifically requested by the user or the person installing or operating it. [Privacy](#privacy) lists what it
+  reads and keeps on your PC.
 
 ## License
 

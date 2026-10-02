@@ -2333,12 +2333,27 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   Chocolatey package embeds; needs 7-Zip: `7z` on PATH, Program Files or Chocolatey's copy) + `SHA256SUMS.txt`
   (sha256sum format, LF, all four files). The same script runs in CI and in the release job.
 - **Release:** push an **annotated** tag `vX.Y.Z` whose message is the release notes (`git tag -a vX.Y.Z -F
-  notes.md`) → [`.github/workflows/release.yml`](.github/workflows/release.yml) tests, packages, builds and
-  tests the Chocolatey package (stable tags only, §3.2), and `gh release create --notes-from-tag` with the
-  zips, the `.7z` archives, `SHA256SUMS.txt`, `install.ps1` and `betterclipboard.X.Y.Z.nupkg`, then
-  `choco push` (with the `CHOCOLATEY_API_KEY` secret; without it only a warning). Tags with a pre-release
-  suffix (`-rc.1`) become pre-releases and skip Chocolatey. CI ([`ci.yml`](.github/workflows/ci.yml)) builds,
-  tests and packages x64 on every push/PR, and installs, upgrades and uninstalls an x64 Chocolatey package.
+  notes.md`) → [`.github/workflows/release.yml`](.github/workflows/release.yml):
+  1. builds the notes first ("Release notes from the tag": the tag's message plus a "Code signing policy" footer, §3.3);
+  2. tests and packages;
+  3. builds and tests the Chocolatey package (stable tags only, §3.2);
+  4. `gh release create --notes-file` with the zips, the `.7z` archives, `SHA256SUMS.txt`, `install.ps1` and
+     `betterclipboard.X.Y.Z.nupkg`;
+  5. `choco push` (with the `CHOCOLATEY_API_KEY` secret; without it only a warning).
+
+  Tags with a pre-release suffix (`-rc.1`) become pre-releases and skip Chocolatey. CI
+  ([`ci.yml`](.github/workflows/ci.yml)) builds, tests and packages x64 on every push/PR, and installs, upgrades and
+  uninstalls an x64 Chocolatey package.
+  - **Lesson (2026-10-02): v0.1.0–v0.2.3 were all published with the wrong notes.** Each shows its tagged commit's
+    message ("Version 0.2.3"), although the tags on GitHub are annotated with the real notes.
+    - Cause: `actions/checkout@v5` fetches a pushed tag by its commit (`+<sha>:refs/tags/<tag>`), so the runner's tag is
+      lightweight, and `--notes-from-tag` falls back to the commit's message. Fixed in checkout v6
+      (actions/checkout#2356, `testRef` with `^{commit}`).
+    - The workflow now fetches the tag object again and refuses a tag that is still not annotated.
+    - Its notes are what gh's `gitTagInfo` reads (`%(contents)` minus `%(contents:signature)`), with
+      `[Console]::OutputEncoding` set to UTF-8: PowerShell decodes git's output with the console code page.
+    - Verified in a scratch clone with the tag forced lightweight, under code page 437 (`docs/code-signing.md` §6).
+    - The five published pages still need `gh release edit` (outward: the user's call).
 - **Installer** ([`install.ps1`](install.ps1), Windows PowerShell 5.1 and PowerShell 7, StrictMode 3):
   GitHub API → zip for the **OS** architecture (`RuntimeInformation.OSArchitecture`, correct under x64
   emulation on ARM64) → SHA-256 vs `SHA256SUMS.txt` **and** GitHub's asset `digest` → `--exit` the running
@@ -2531,6 +2546,64 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 3. Tag a stable release.
 4. Answer the first review, asking for the verifier exemption.
 5. After approval, add `choco install betterclipboard` to the README.
+
+### 3.3 Code signing: SignPath Foundation (prepared 2026-10-02; not applied yet)
+
+User request (2026-10-02): "I want you to go ahead and submit to get SignPath Foundation's signing for this project.
+Let me know if we need to do some changes in order to pass their minimum requirements". The full packet is
+[`docs/code-signing.md`](docs/code-signing.md): the conditions with their status, every form field with its answer,
+reputation, the README section's three states, the artifact configuration and the release changes after acceptance,
+the alternatives, what was verified, and the sources.
+
+**What it is.**
+- Free Authenticode signing for open-source projects. The certificate belongs to the SignPath Foundation, so Windows
+  shows it as the publisher.
+- Every release is approved by hand, and only binaries built by GitHub Actions from this repository can be signed.
+
+**The application.**
+- A HubSpot form at signpath.org/apply. Its 16 fields and their guidance are in SignPath's `OSSRequestForm-v4.xlsx`.
+- Answers: Type Program, MIT, GitHub Actions, the repository as homepage, releases as the download page.
+- **Not submitted (2026-10-02).** The two gaps below were taken to the user first.
+
+**The gaps.**
+- **Reputation decides, and the repository cannot fix it.** "we cannot sign binaries based on source code that nobody
+  knows … we require a certain verifiable reputation". The form wants evidence: media, Softpedia, downloads, GitHub
+  Insights.
+  - On 2026-10-02: 7 days old, 0 stars, 1–4 downloads per release file.
+  - Two applicants with this profile were deferred or declined.
+  - Building it: publish the Chocolatey package (public download counts), directory listings (Softpedia,
+    AlternativeTo), posts (r/Windows11, r/windowsapps, Show HN), winget.
+- **The name.** "Better Clipboard" is also betterclipboard.com's Mac app, a Minecraft mod and an Electron library. The
+  form asks to qualify such names: `BetterClipboard (Nucs)` for the application, keeping the binaries' product name,
+  is the cheap option.
+
+**Already compliant, measured.**
+- **Our six signed files agree on their metadata:** `BetterClipboard.exe`/`.dll`, `.Core.dll`, `.Windows.dll`,
+  `bclip.exe`/`.dll`. `ProductName` is BetterClipboard; `ProductVersion` is `X.Y.Z+<commit>` (SourceLink appends the
+  commit). Checked in the 0.2.4 release build and the 0.2.5 Debug build.
+- **Everything else is the maker's own:**
+  - of the 257 PE files in the 0.2.4 release, 247 carry their makers' signatures (.NET, Microsoft, the .NET
+    Foundation);
+  - only SQLite3MC, SQLitePCLRaw and, from 0.2.5, ZstdSharp are unsigned, which the terms allow for upstream OSS;
+  - the Windows App SDK and the Windows SDK projection (Microsoft's license terms) are argued as GPLv3 System
+    Libraries.
+- **No network code:** `src/` has no HTTP client, sockets or WebView. Links open only on a click. So SignPath's
+  standard sentence is true: "This program will not transfer any information to other networked systems unless
+  specifically requested by the user or the person installing or operating it".
+
+**Changed for it** (this commit):
+- README › *Privacy*: the sentence, plus a table of every local source with its default and switch. The Claude Code
+  and Codex prompts, the shell histories and the Win+R list were not in the README before.
+- README › *Code signing policy*: the status ("Not signed yet", signing planned), the six files, other makers' files
+  never signed, manual approval, team roles, privacy.
+- Every release page gets a "Code signing policy" footer (`release.yml`).
+- The Chocolatey description links Privacy and the policy.
+
+**Open.**
+- The user: apply now or after building reputation; the name; confirm GitHub 2FA.
+- Re-publish the five old release pages' notes (§3.1's lesson).
+- After acceptance: the signing step in `release.yml` (publish → upload artifact → SignPath → archive the signed files
+  → checksums), which needs `package.ps1` split into publish and archive halves.
 
 ---
 
@@ -2730,6 +2803,17 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
   in `Start()` but never signalled the worker, which then waited for the first 5-s poll tick: every first import
   started 5 s late. Found only because the new test class took 45 s instead of 5 (2026-10-01). Time new test classes
   that wait on background work: a round number of seconds per test points at a timer.
+- **Our binaries' version resources must keep agreeing** (§3.3: code signing's metadata restrictions reject a signing
+  request whose files disagree). Every shipped project inherits `Product`, `Company` and `Version` from
+  `Directory.Build.props`. Don't override them per project, and don't turn SourceLink's commit suffix off in only some
+  of them.
+  - The `ProductVersion` of all six files must be `X.Y.Z+<commit>`.
+  - A new shipped assembly (a new `.exe` or `.dll` of ours) must also join the list of signed files in
+    `docs/code-signing.md` §4 and the README's *Code signing policy*.
+- **The README's *Privacy* table lists every source BetterClipboard reads.** A new integration that reads another
+  app's data adds its row: what is read, what is kept, the default, the switch. That table is what makes "This program
+  will not transfer any information …" credible to a reader (§3.3). It is also the user's only overview of what is
+  read.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
@@ -2745,6 +2829,7 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 
 | Feature | How | Result |
 |---|---|---|
+| Code signing readiness (§3.3, 2026-10-02): SignPath Foundation's terms read in full, and the form's 16 fields from its `OSSRequestForm-v4.xlsx`. Version resources and Authenticode signers read from the 0.2.4 release folder (257 PE files: our six agree on `ProductName` BetterClipboard and `ProductVersion` `0.2.4+98addc6…`; 247 others signed by .NET / Microsoft / the .NET Foundation; unsigned: SQLite3MC and three SQLitePCLRaw files) and from the 0.2.5 Debug build (adds unsigned ZstdSharp). `src/` searched for network APIs: none. The release-notes step taken out of `release.yml` and run in a scratch clone whose `v0.2.3` was forced lightweight (as checkout@v5 leaves it) with origin on GitHub: the tag came back annotated, and the notes were the annotation plus the footer, with "—", "…", "›" intact under a 437 console. A tag missing on the remote failed the step (exit 1). The YAML parsed, and `Publish release` reads `steps.notes.outputs.file`. Reference sources: gh 2.85's `gitTagInfo`; checkout's `testRef` without `^{commit}` in v5 and with it in v6/v7 (`de0fac2`, #2356). The application itself not submitted | scratch `signpath/` (`peinfo.ps1`, `signers.ps1`, `notes-step/`), `gh api`, Brave search | ✅ prepared; the workflow change runs for real at the next tag |
 | Image overlays (§2.24, 2026-10-02): the hover peek and the eye-icon zoom/pan viewer, both monitor-wide windowed popups. `ImagePreviewLayout` unit-tested (12: fit-down, no-upscale, upscale, empty-input guards, fit zoom + fallback, clamp with reversed bounds and NaN, zoom-toward-point anchoring, zero-old-zoom guard); the solution builds with 0 doc warnings in Core/Windows/App; the full Core suite 729 pass. The glyphs E7B3 (eye) and E711 (close) were rendered from Segoe Fluent Icons and confirmed. The live visual behaviour — the peek's rest/dismiss timing, the monitor-covering popup placement, and the viewer's wheel-zoom and drag-pan — is **not yet checked on screen** | `dotnet build BetterClipboard.sln` + the Core test exe + a PIL render of the glyphs (`render_glyphs.py`, scratch) | ✅ build + unit; ⚠️ live visual pending a guarded on-screen e2e (seed an image via the Snipping watcher, then reach the eye and the viewer through UI Automation) |
 | `0.2.5` installed on this PC as the user's app before its release (2026-10-02, "bump version, preparing for new release, install locally here first (as release, not dev)", §3.1). Bump `ac65856`: 0.2.4 was never tagged, so 0.2.5 carries it, and that commit's message holds the drafted tag notes. In a worktree at `ac65856`: the full suite 928 = 925 passed + 3 skipped, 0 failed; `package.ps1 -Version 0.2.5` in 124 s (zips 70.9 / 68.5 MB, `.7z` 43.3 / 39.3 MB for x64 / ARM64); `package-chocolatey.ps1` packed `betterclipboard.0.2.5.nupkg`, 82.7 MB. `install-local.ps1` (6 s) verified the SHA-256, closed the running `0.2.4-dev.74594fb` gracefully ("Exiting." in its log) and swapped. Started through Explorer (`--background`): parent `explorer.exe`, 74 environment variables without `CLAUDECODE`/`MSYSTEM` (a process of this session: 142, both present). Run value and shortcut unchanged; Installed apps and `installer.json` say `0.2.5`; the exe 0.2.5.0 / `0.2.5+ac65856…`; `DisabledHotkeys` still `V`. Log after "starting": 0 WRN/ERR (store opened, every integration started, Windows import 0 new of 27, Win+V by `RegisterHotKey`). The dev build's ~15 h before it logged two warnings, both from the Cmd tab's helper (§6). The Release publish warns CS0108 (`SettingsWindow.Visible(bool)` hides `Window.Visible`), as it has since `2d822b9` (0.2.3) | worktree + `dotnet test --solution` + `package.ps1` + `package-chocolatey.ps1` (Chocolatey CLI 2.3.0, pack only) + `install-local.ps1` (Windows PowerShell 5.1, env stripped, Windows paths) + the dev install's scratch `launch_background.ps1`, `install_state.ps1` (before/after), `env_names.py` | ✅ |
 | Resizable panel and tab carousel, live (2026-10-01, §2.23). Isolated copy of the dev build next to the user's app: own data dir, capture paused, `PasteOnSelect` off, ShareX / Screenshots / PSReadLine / Claude / Codex folders, the Win+R key and the Everything instance all pointed at scratch or BC-TEST data, eleven tabs. Opens at 400 × 560 with only "›"; WM_NCHITTEST LEFT / RIGHT / BOTTOM in the invisible frame, BOTTOMRIGHT at the corner, TOP on the top pixel row inside. "›" takes exactly one press per hidden tab (5), the last tab whole at the end; "‹" walks back (4) and hides. Two wheel notches scroll 120.0 DIPs, a tilt 60.0, a left drag on a tab 150.0 and a middle drag 100.0 DIPs with the pointer, picking no tab and not moving the window; a plain click still picks a tab. The right border +160 px and the top edge −120 px resize and are saved (560 × 560, then 560 × 680 DIPs); dragging the right border −900 px stops at 360 DIPs (saved 360). At 760 DIPs every tab fits: no arrows, nothing to scroll, and the strip's empty space moves the window again. Esc, re-summon: 760 × 680. The groups column grows the window 44 px on the left and closing it gives the same window back, the remembered size unchanged. 0 WRN/ERR in the test log; the user's PIDs unchanged; scratch removed | UIA invokes on the arrows and the groups toggle; real mouse input only after `WindowFromPoint` → `GA_ROOT` was the test window, stopped by any cursor movement of the user's (the run that hit the screen's bottom edge stopped there: the drag now picks the edge with room); Esc only while the panel was in front; `PrintWindow` captures; summoned only after the terminal was in front twice with 3 s of no input (`carousel_e2e.py`, scratch) | ✅ 35/35 (run 3). Runs 1–2 found the virtualized tabs (9 of 11 realized, 15 presses to the end, a wheel turn to 87 %; fixed by `HorizontalCacheLength`), and run 3's captures showed the tabs a drag started on staying drawn pressed. Added after run 3, not yet re-checked live (runs 4–8 never got a quiet moment at the terminal: the user was in a browser; the harness only summons over an idle terminal): the capture hand-over through the tab (with its fallback), the clip cache, and two new checks — the dragged-from tabs look untouched afterwards (label pixels), and a summon after leaving the strip scrolled starts at "All". Re-run: `python carousel_e2e.py <minutes to wait>` from `e2e/` in session 96d4ffaa's scratchpad (with `e2e_base.py`) |
@@ -2820,7 +2905,11 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 - LL-hook watchdog (Windows removes hooks that time out) + re-install. (Hook-free mode when `DisabledHotkeys`
   is set: done — `RegisterHotKey` succeeds then.)
 - Export/backup with a user password (re-seal the DEK; the database itself need not be re-encrypted).
-- Code signing (SmartScreen reputation), winget manifest, in-app update check against GitHub releases.
+- Code signing through the SignPath Foundation (§3.3, [`docs/code-signing.md`](docs/code-signing.md)). The
+  repository is prepared; the application waits for reputation (Chocolatey download counts, directory listings,
+  posts). After acceptance: the signing step in `release.yml`.
+- winget manifest, in-app update check against GitHub releases. An update check would make the README's
+  no-network privacy sentence untrue: it must then name the check and offer a switch (§3.3).
 - Chocolatey package: built and wired into CI and the release (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)).
   Open:
   - the user's steps: the community.chocolatey.org account, the `CHOCOLATEY_API_KEY` secret, a stable tag, and

@@ -55,7 +55,8 @@ When uninstalling:
 - "Start with Windows" and the first launch are for the user who installs the package; other users turn it on in Settings. Nothing is set or started when the package is installed as SYSTEM.
 - Upgrades close BetterClipboard first and start it again afterwards when it was running.
 - Your history stays in `%LOCALAPPDATA%\BetterClipboard`; uninstalling keeps it.
-- The package embeds the release's 7-Zip archives; `legal\VERIFICATION.txt` says how to check them.]]></description>
+- The package embeds the release's 7-Zip archives; `legal\VERIFICATION.txt` says how to check them.
+- Nothing is sent anywhere: see [Privacy](https://github.com/Nucs/BetterClipboard#privacy) for what BetterClipboard reads and keeps on your PC, and the [Code signing policy](https://github.com/Nucs/BetterClipboard#code-signing-policy) for how releases are signed.]]></description>
     <releaseNotes>https://github.com/Nucs/BetterClipboard/releases/tag/{{RELEASE_TAG}}</releaseNotes>
   </metadata>
   <files>
