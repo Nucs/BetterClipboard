@@ -2563,7 +2563,9 @@ the alternatives, what was verified, and the sources.
 **The application.**
 - A HubSpot form at signpath.org/apply. Its 16 fields and their guidance are in SignPath's `OSSRequestForm-v4.xlsx`.
 - Answers: Type Program, MIT, GitHub Actions, the repository as homepage, releases as the download page.
-- **Not submitted (2026-10-02).** The two gaps below were taken to the user first.
+- **Not submitted.** The user decided on 2026-10-02, after the two gaps below:
+  - publish the preparation now, and apply once there is reputation evidence;
+  - the application's name: **Nucs BetterClipboard** (handle `nucs-betterclipboard`).
 
 **The gaps.**
 - **Reputation decides, and the repository cannot fix it.** "we cannot sign binaries based on source code that nobody
@@ -2574,8 +2576,8 @@ the alternatives, what was verified, and the sources.
   - Building it: publish the Chocolatey package (public download counts), directory listings (Softpedia,
     AlternativeTo), posts (r/Windows11, r/windowsapps, Show HN), winget.
 - **The name.** "Better Clipboard" is also betterclipboard.com's Mac app, a Minecraft mod and an Electron library. The
-  form asks to qualify such names: `BetterClipboard (Nucs)` for the application, keeping the binaries' product name,
-  is the cheap option.
+  form asks to qualify such names. Decided: "Nucs BetterClipboard" for the application only; the binaries keep their
+  product name.
 
 **Already compliant, measured.**
 - **Our six signed files agree on their metadata:** `BetterClipboard.exe`/`.dll`, `.Core.dll`, `.Windows.dll`,
@@ -2600,8 +2602,9 @@ the alternatives, what was verified, and the sources.
 - The Chocolatey description links Privacy and the policy.
 
 **Open.**
-- The user: apply now or after building reputation; the name; confirm GitHub 2FA.
-- Re-publish the five old release pages' notes (§3.1's lesson).
+- Reputation evidence, then the application (docs/code-signing.md §2 has every answer; §3's "applied for" wording
+  goes into the README the same day).
+- The user: confirm GitHub 2FA.
 - After acceptance: the signing step in `release.yml` (publish → upload artifact → SignPath → archive the signed files
   → checksums), which needs `package.ps1` split into publish and archive halves.
 

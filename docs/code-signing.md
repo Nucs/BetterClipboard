@@ -18,7 +18,7 @@ This page has five parts:
 | What Windows shows | Publisher **SignPath Foundation**. Neither Eli Belash nor BetterClipboard appears, because "the code signing certificate is issued to SignPath Foundation". The form adds: "A short URL including this Handle is part of your certificate (sig.fo/Handle)". |
 | What it costs | Money: nothing. In practice, every release is approved by hand in SignPath, and only binaries built by GitHub Actions from this repository can be signed. |
 | The repository | Prepared 2026-10-02: the README's [Privacy](../README.md#privacy) and [Code signing policy](../README.md#code-signing-policy), the policy link on every release page, and the policy link in the Chocolatey description. The product metadata was already consistent. |
-| The application | **Not submitted** (2026-10-02). |
+| The application | **Not submitted.** The user decided on 2026-10-02: publish the preparation now, and apply once there is reputation evidence (§2.1). The name will be **Nucs BetterClipboard** (handle `nucs-betterclipboard`). |
 | The deciding gap | **Reputation.** The terms say "we cannot sign binaries based on source code that nobody knows. For executable programs that may be downloaded and executed based on our signature, we require a certain verifiable reputation." On 2026-10-02 the repository was 7 days old, with 0 stars and 1–4 downloads per release file. |
 | The second gap | **The name.** "Better Clipboard" is also a commercial Mac app (betterclipboard.com), a Minecraft mod and an Electron library. The form wants a name a search finds first, and asks to qualify generic ones. |
 
@@ -90,8 +90,8 @@ The live form at [signpath.org/apply](https://signpath.org/apply) is a HubSpot f
 
 | Field | Answer | Guidance from the form |
 |---|---|---|
-| Name `*` | **Open: see below.** `BetterClipboard` qualified, e.g. `BetterClipboard (Nucs)` | "a Google search for that name should present your project … at the top"; generic names "must be qualified"; "You might use your own name (real name or pseudonym, e.g. GitHub username) as a prefix or suffix" |
-| Handle `*` | `betterclipboard`, or `betterclipboard-nucs` with a qualified name | valid in file names and URLs; "A short URL including this Handle is part of your certificate (sig.fo/Handle)" |
+| Name `*` | `Nucs BetterClipboard` (the user's choice, 2026-10-02; see below) | "a Google search for that name should present your project … at the top"; generic names "must be qualified"; "You might use your own name (real name or pseudonym, e.g. GitHub username) as a prefix or suffix" |
+| Handle `*` | `nucs-betterclipboard` | valid in file names and URLs; "A short URL including this Handle is part of your certificate (sig.fo/Handle)" |
 | Type `*` | `Program` | Library only for packages "meant to be used by developers" |
 | License `*` | `MIT License — https://opensource.org/license/mit` | "name incl. version number … permanent license URL"; OSI-approved only |
 | Repository URL `*` | `https://github.com/Nucs/BetterClipboard` | "must be the same URL as you're using in your CI system. It will be verified for every build" |
@@ -122,12 +122,15 @@ The live form at [signpath.org/apply](https://signpath.org/apply) is a HubSpot f
   `TrendingTechnology/BetterClipboard`.
 
 Options:
-1. Qualify only the application's name (`BetterClipboard (Nucs)`) and keep the product name. The binaries say
-   `BetterClipboard`.
+1. Qualify only the application's name and keep the product name. The binaries say `BetterClipboard`.
 2. Rename the product. That touches the binaries, the data folder, the installer, the Chocolatey ID and the docs.
 
-Option 1 is the cheap one. Whether SignPath accepts a qualified project name over binaries named `BetterClipboard`
-is the open question: the terms' "Set all product name attributes to your project's name" can be read either way.
+**Decided (the user, 2026-10-02): option 1, as `Nucs BetterClipboard`.** The GitHub handle is the prefix, as the
+form suggests, and the handle is `nucs-betterclipboard`. Still open: whether SignPath accepts a qualified project
+name over binaries whose product name is `BetterClipboard`. The terms' "Set all product name attributes to your
+project's name" can be read either way. If a reviewer asks, offer `product-name="BetterClipboard"` in the artifact
+configuration with the qualified name only on SignPath's side, or change `<Product>` in `Directory.Build.props`
+(every shipped binary inherits it).
 
 ### 2.1 Reputation
 
