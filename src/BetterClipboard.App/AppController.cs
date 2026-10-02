@@ -45,6 +45,11 @@ public sealed partial class AppController
     private readonly DispatcherQueue ui;
     private readonly StartupOptions options;
     private readonly AppPaths paths = AppPaths.ResolveDefault();
+
+    /// <summary>
+    /// DIB → PNG encoder for <see cref="GetImagePngAsync"/> (the image overlays). Stateless, so one instance is reused.
+    /// </summary>
+    private readonly WicImageExporter imageExporter = new();
     private SettingsStore? settings;
     private ClipHistoryService? history;
     private ClipboardMonitor? monitor;
@@ -602,6 +607,28 @@ public sealed partial class AppController
             AppTheme.Dark => ElementTheme.Dark,
             _ => ElementTheme.Default,
         };
+    }
+
+    /// <summary>
+    /// Loads an image entry as full-resolution PNG bytes for the image overlays (hover peek, eye-icon zoom viewer),
+    /// so a large picture is shown crisp rather than by upscaling the small card thumbnail.
+    /// </summary>
+    /// <param name="id">An image entry's id.</param>
+    /// <param name="cancellationToken">Cancels a load whose overlay was dismissed before it finished.</param>
+    /// <returns>
+    /// PNG bytes — the stored PNG when the producer put one on the clipboard, else a WIC encode of the stored DIB — or
+    /// <see langword="null"/> when the entry has no decodable image (the caller then falls back to the card thumbnail).
+    /// </returns>
+    /// <exception cref="OperationCanceledException">The load was cancelled.</exception>
+    public async Task<byte[]?> GetImagePngAsync(long id, CancellationToken cancellationToken = default)
+    {
+        var formats = await History.GetFormatsAsync(id).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+
+        // Prefer the stored PNG as-is (lossless, no re-encode); fall back to encoding whatever bitmap format is stored.
+        var png = formats.FirstOrDefault(f => f.Name is ClipFormatNames.Png or ClipFormatNames.PngMime)?.Data;
+        png ??= await imageExporter.ToPngAsync(formats, cancellationToken).ConfigureAwait(false);
+        return png;
     }
 
     /// <summary>Opens the data folder in Explorer.</summary>

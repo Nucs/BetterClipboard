@@ -221,6 +221,9 @@ public sealed partial class ClipboardFlyout : Window
             // a new summon, where the next pointer move would jump the window.
             EndDrag();
 
+            // An image peek or viewer left over from a previous summon must not linger (each also holds a popup count).
+            CloseImageOverlays();
+
             // A popup count that no open popup accounts for is stale (a Closed that never came). Left alone it
             // would mute the whole key model (IsPopupKey) and keep deactivation from hiding the panel.
             if (openPopups > 0 && Root.XamlRoot is { } xamlRoot && VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count == 0)
@@ -303,6 +306,9 @@ public sealed partial class ClipboardFlyout : Window
             return;
         }
 
+        // The image overlays belong to the open panel: tear them down before it goes away.
+        CloseImageOverlays();
+
         // Order matters: re-activate the target while we are still the foreground window (then
         // SetForegroundWindow is always allowed), and only then hide. Hiding first hands activation to
         // whatever window Windows picks next, after which we may no longer steal it back.
@@ -318,6 +324,7 @@ public sealed partial class ClipboardFlyout : Window
     public void CloseForExit()
     {
         closingForExit = true;
+        CloseImageOverlays();
         sizeHook?.Dispose();
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
@@ -445,6 +452,10 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="e">Key data.</param>
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // A stray hover peek must never swallow a keystroke: dismiss it first (it also frees its popup count, so the
+        // IsPopupKey check below is not fooled into treating this key as belonging to the peek).
+        HidePeek();
+
         // Keys typed into a popup tunnel through Root as well: a flyout's popup is parented to its placement
         // target, which lives in this tree. They belong to the popup (Esc closes only the menu, Enter invokes
         // the focused menu item or saves a group name, Delete and the arrows edit the name), never to the

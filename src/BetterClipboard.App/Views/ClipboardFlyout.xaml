@@ -466,16 +466,36 @@
                             TextWrapping="Wrap"
                             Visibility="{x:Bind TextVisibility}" />
 
+                        <!--
+                            Image thumbnail. Resting the mouse on it opens a full-screen peek after a short delay, gone the
+                            instant the mouse moves (ClipboardFlyout.ImagePreview.cs); the eye button opens the zoom/pan
+                            viewer. The pointer handlers are on the Border so they cover the letterboxing around the image too.
+                        -->
                         <Border
                             Grid.Row="1"
                             Height="128"
                             Background="{ThemeResource SubtleFillColorSecondaryBrush}"
                             CornerRadius="6"
+                            PointerEntered="ImageCard_PointerEntered"
+                            PointerExited="ImageCard_PointerExited"
+                            PointerMoved="ImageCard_PointerMoved"
                             Visibility="{x:Bind ImageVisibility}">
-                            <Image
-                                HorizontalAlignment="Center"
-                                Source="{x:Bind Thumbnail, Mode=OneWay}"
-                                Stretch="Uniform" />
+                            <Grid>
+                                <Image
+                                    HorizontalAlignment="Center"
+                                    Source="{x:Bind Thumbnail, Mode=OneWay}"
+                                    Stretch="Uniform" />
+                                <!--  Opens the zoom/pan viewer. A scrim background keeps the eye legible over any picture.  -->
+                                <Button
+                                    Margin="0,0,6,6"
+                                    HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    AutomationProperties.Name="View image full screen (zoom and pan)"
+                                    Click="ViewImage_Click"
+                                    Content="&#xE7B3;"
+                                    Style="{StaticResource ImageViewButtonStyle}"
+                                    ToolTipService.ToolTip="View — zoom and pan (Esc closes)" />
+                            </Grid>
                         </Border>
 
                         <StackPanel

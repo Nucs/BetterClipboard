@@ -130,6 +130,60 @@
             </Style>
 
             <!--
+                The eye button on an image card (bottom-right): opens the full-screen zoom/pan viewer. Its colors are fixed,
+                not theme brushes, because it sits over image content rather than the themed panel surface — a dark circular
+                scrim with a white glyph keeps it legible over a light or dark picture alike. States are template setters so
+                only the scrim deepens on hover/press. A custom template (not the stock Button) so the default control
+                background does not fight the scrim.
+            -->
+            <Style x:Key="ImageViewButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="28" />
+                <Setter Property="Height" Value="28" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="14" />
+                <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
+                <Setter Property="FontSize" Value="14" />
+                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Background" Value="#8C000000" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border
+                                x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Chrome.Background" Value="#B3000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Chrome.Background" Value="#D9000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter
+                                    x:Name="Glyph"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Content="{TemplateBinding Content}"
+                                    FontFamily="{TemplateBinding FontFamily}"
+                                    FontSize="{TemplateBinding FontSize}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!--
                 A search option inside the panel's search box ("Aa", "W", ".*"): a 24-DIP text toggle. Off: secondary
                 text on nothing. On: accent text on a subtle fill inside an accent outline (VS Code's look for its find
                 options), so a toggle left on stays noticeable next to the text. States are template setters with
