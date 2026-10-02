@@ -2394,9 +2394,11 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   `artifacts/release`. Everything else is the real installer (SHA-256 vs `SHA256SUMS.txt`, graceful
   `--exit`, swap, shortcut, Run and Installed-apps entries, `installer.json`). It is a real install, so it
   needs the user's request. Procedure used for 0.2.4 (2026-10-01) and 0.2.5 (2026-10-02):
-  1. `pwsh tools/release/package.ps1 -Version X.Y.Z` (both architectures; 84 s for 0.2.4, 124 s for 0.2.5).
+  1. `pwsh tools/release/package.ps1 -Version X.Y.Z` (both architectures; 84 s for 0.2.4, 124–163 s for 0.2.5).
      - Since 0.2.5: in a worktree at the bump commit, like the dev build below. The exe then carries that commit's
        revision (`0.2.5+ac65856…`), and no other session's uncommitted work can ship.
+     - "Move X.Y.Z to the latest changes" (before the tag): the same, at `main`'s newest commit, under the same version
+       (0.2.5 again at `5cf1eef`). The installer has no same-version check: it simply installs again.
      - Run `dotnet test --solution BetterClipboard.sln` there first. `package-chocolatey.ps1 -Version X.Y.Z` works
        here too: the Chocolatey CLI (2.3.0) is installed on this PC, and the script only packs.
   2. `env -u GH_TOKEN -u GITHUB_TOKEN -u GH_DEBUG -u BETTERCLIPBOARD_DATA_DIR -u BETTERCLIPBOARD_SHAREX_DIR
@@ -2412,7 +2414,11 @@ Snipping tab (2026-10-01), with a copy of the dev build:
     back afterwards.
   - Bump commits keep `Directory.Build.props` alone, and their message carries the drafted tag notes
     (`git log -1 --format=%B`) until the release. A bump past a version that was never released carries that
-    version's notes too: 0.2.4 was never tagged, so 0.2.5's notes (`ac65856`) cover everything since v0.2.3.
+    version's notes too: 0.2.4 was never tagged, so 0.2.5's notes cover everything since v0.2.3.
+  - Commits after the bump update the draft without an amend: the next commit's message carries the whole updated
+    draft under the same "RELEASE NOTES (draft for the annotated tag vX.Y.Z; …)" line, and the newest one wins
+    (`git log -1 --grep='RELEASE NOTES (draft for the annotated tag vX.Y.Z' --format=%B`). 0.2.5's first draft is
+    in `ac65856`; the one with the image overlays is in the commit that records the `5cf1eef` reinstall.
 - **Dev build on this PC** ("Build and install dev", 2026-10-01): the same install, of `main`'s latest commit.
   - Build from a separate worktree at that commit (`git worktree add --detach <scratch>/wt <sha>`), never from the
     shared tree: other sessions' uncommitted, half-done work would ship into the user's real app. Remove the worktree
@@ -2847,6 +2853,7 @@ the alternatives, what was verified, and the sources.
 
 | Feature | How | Result |
 |---|---|---|
+| `0.2.5` moved to `5cf1eef` and installed on this PC again (2026-10-02 evening, "Move the 0.2.5 to latest changes and reinstall here locally", §3.1). Five commits since the first 0.2.5 install: the image overlays (`516b4ee`, the only app change), then code-signing preparation, the release workflow's notes step, and docs. In a worktree at `5cf1eef`: the full suite 940 = 937 passed + 3 skipped, 0 failed; `package.ps1 -Version 0.2.5` in 163 s (zips 71.0 / 68.5 MB, `.7z` 43.3 / 39.3 MB); `package-chocolatey.ps1` packed 82.7 MB with the nuspec's new Privacy / Code signing policy line. `install-local.ps1` (10 s): SHA-256 OK, the running `0.2.5+ac65856` closed gracefully after ~9 h with no WRN/ERR in its whole run, swapped. Started through Explorer: parent `explorer.exe`, 74 variables without `CLAUDECODE`/`MSYSTEM`. Run value, shortcut, Installed apps (`0.2.5`) and `DisabledHotkeys` (`V`) unchanged; the exe 0.2.5.0 / `0.2.5+5cf1eef…`; `installer.json` re-stamped. Log after "starting": 0 WRN/ERR. The publish still warns only CS0108 (see the first 0.2.5 row). The updated draft notes (the image overlays added, a Privacy link) are in the commit that records this | as in the first 0.2.5 row below | ✅ (the overlays themselves are still unchecked on screen: their row) |
 | `main` pushed (2026-10-02, `8b65b19..543d2fd`, 34 commits, scanned for secret-like strings first: none): CI run 37007600619 passed. 940 tests, 937 passed + 3 skipped, 0 failed; the x64 package smoke test; and the Chocolatey smoke test's first GitHub run, 22 of 22 (§3.2). The five release pages v0.1.0–v0.2.3 were set to their tag annotations plus the "Code signing policy" footer (`gh release edit`) and read back through the API: 5 of 5 identical, footer present, no mojibake; titles and Latest unchanged; old bodies backed up | `git push`, `gh run view --log`, `gh release edit`, `gh api …/releases/tags/<tag>` | ✅ |
 | Code signing readiness (§3.3, 2026-10-02): SignPath Foundation's terms read in full, and the form's 16 fields from its `OSSRequestForm-v4.xlsx`. Version resources and Authenticode signers read from the 0.2.4 release folder (257 PE files: our six agree on `ProductName` BetterClipboard and `ProductVersion` `0.2.4+98addc6…`; 247 others signed by .NET / Microsoft / the .NET Foundation; unsigned: SQLite3MC and three SQLitePCLRaw files) and from the 0.2.5 Debug build (adds unsigned ZstdSharp). `src/` searched for network APIs: none. The release-notes step taken out of `release.yml` and run in a scratch clone whose `v0.2.3` was forced lightweight (as checkout@v5 leaves it) with origin on GitHub: the tag came back annotated, and the notes were the annotation plus the footer, with "—", "…", "›" intact under a 437 console. A tag missing on the remote failed the step (exit 1). The YAML parsed, and `Publish release` reads `steps.notes.outputs.file`. Reference sources: gh 2.85's `gitTagInfo`; checkout's `testRef` without `^{commit}` in v5 and with it in v6/v7 (`de0fac2`, #2356). The application itself not submitted | scratch `signpath/` (`peinfo.ps1`, `signers.ps1`, `notes-step/`), `gh api`, Brave search | ✅ prepared; the workflow change runs for real at the next tag |
 | Image overlays (§2.24, 2026-10-02): the hover peek and the eye-icon zoom/pan viewer, both monitor-wide windowed popups. `ImagePreviewLayout` unit-tested (12: fit-down, no-upscale, upscale, empty-input guards, fit zoom + fallback, clamp with reversed bounds and NaN, zoom-toward-point anchoring, zero-old-zoom guard); the solution builds with 0 doc warnings in Core/Windows/App; the full Core suite 729 pass. The glyphs E7B3 (eye) and E711 (close) were rendered from Segoe Fluent Icons and confirmed. The live visual behaviour — the peek's rest/dismiss timing, the monitor-covering popup placement, and the viewer's wheel-zoom and drag-pan — is **not yet checked on screen** | `dotnet build BetterClipboard.sln` + the Core test exe + a PIL render of the glyphs (`render_glyphs.py`, scratch) | ✅ build + unit; ⚠️ live visual pending a guarded on-screen e2e (seed an image via the Snipping watcher, then reach the eye and the viewer through UI Automation) |
@@ -3012,8 +3019,8 @@ the alternatives, what was verified, and the sources.
 - Pwsh and Cmd tabs, next steps (built 2026-10-01 as live views, §2.19; facts in §2.16):
   - the Cmd helper's 3-s deadline: the installed `0.2.4-dev.74594fb` hit it twice in ~15 h on this PC ("A Command
     Prompt history helper did not finish in time and was ended.", 2026-10-01 18:53Z and 2026-10-02 01:01Z, its only
-    warnings). Find out when it happens (sleep and resume? a console busy printing?) before raising the deadline or
-    logging it lower;
+    warnings). The next build, `0.2.5+ac65856`, ran ~9 h without it. Find out when it happens (sleep and resume? a
+    console busy printing?) before raising the deadline or logging it lower;
   - live updates while the Pwsh tab is open (a `FileSystemWatcher` on the PSReadLine folder; today reopening reloads);
   - a PowerShell history moved by a profile (`Set-PSReadLineOption -HistorySavePath`): a folder setting, since reading
     the profile would mean running it;
