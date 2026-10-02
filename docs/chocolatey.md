@@ -39,7 +39,7 @@ This page covers:
   - locally: the real package with the 0.2.4 payload, installed, upgraded with the app running, and uninstalled in a
     private Chocolatey root (28 of 28 checks);
   - in CI on every push, and in the release job before each push: a real install, upgrade and uninstall on GitHub's
-    disposable runner. This has not run on GitHub yet: it needs the next push.
+    disposable runner. First run 2026-10-02 (CI run 37007600619, commit `543d2fd`): 22 of 22 checks.
 - **To publish:**
   1. create the account;
   2. add the `CHOCOLATEY_API_KEY` secret;
@@ -403,7 +403,7 @@ CI (`.github/workflows/ci.yml`) runs steps 2 and 3 on every push, with an x64-on
 | **The real package, 0.2.4 payload** | a private Chocolatey root, not elevated. Installed with the user's own BetterClipboard installed by `install.ps1` and running; upgraded to `0.2.4.1` with a scoped test instance running from the package; uninstalled with `/KeepWinVReleased` (the user has Win+V released) | 28 of 28 checks: version, archives and `install.ps1` gone, exactly two shims and three markers, `bclip 0.2.4` through the shim, the user's shortcut and Run value not taken over (both point at the `install.ps1` copy), the test instance closed by before-modify, no `lib-bkp`, the state file consumed, the package folder gone after the uninstall. The user's shortcut, Run value, `DisabledHotkeys` and app PIDs were unchanged |
 | Building | `package-chocolatey.ps1` on the 0.2.4 archives; `package.ps1 -Architectures x64` for the 7-Zip step | 82.0 MiB package. Comments stripped, placeholders filled, scripts with BOM. Refused: a SemVer 2 version, a missing architecture, an archive not matching `SHA256SUMS.txt` |
 | `install.ps1` living with a Chocolatey copy | its functions loaded from the script, Explorer and app control stubbed, a scratch Run key | 9 of 9, in both PowerShell 7.5.8 and Windows PowerShell 5.1 |
-| Real install, upgrade with a running app, uninstall, Win+V restore, as administrator | `test-chocolatey.ps1` on GitHub's runner, in CI and in the release job | **Not run yet:** first run on the next push |
+| Real install, upgrade with a running app, uninstall, Win+V restore, as administrator | `test-chocolatey.ps1` on GitHub's runner, in CI and in the release job | 22 of 22 on the first run (2026-10-02, CI run 37007600619, `543d2fd`, x64). It covered: install exit 0, shims for `bclip` and BetterClipboard only, `bclip --version` through its shim, the all-users Start menu shortcut, the Run value; the upgrade with the app running (before-modify closed it, state file consumed, no `lib-bkp`); the uninstall (folder, shims, shortcut and Run value removed, Win+V given back, history kept) |
 
 The probe's scenarios (Chocolatey CLI 2.3.0, not elevated):
 

@@ -17,7 +17,7 @@ This page has five parts:
 | What it is | Free Authenticode signing for open-source projects. [SignPath.io](https://about.signpath.io) signs with a key that never leaves its hardware security module, and the [SignPath Foundation](https://signpath.org) holds the certificate. |
 | What Windows shows | Publisher **SignPath Foundation**. Neither Eli Belash nor BetterClipboard appears, because "the code signing certificate is issued to SignPath Foundation". The form adds: "A short URL including this Handle is part of your certificate (sig.fo/Handle)". |
 | What it costs | Money: nothing. In practice, every release is approved by hand in SignPath, and only binaries built by GitHub Actions from this repository can be signed. |
-| The repository | Prepared 2026-10-02: the README's [Privacy](../README.md#privacy) and [Code signing policy](../README.md#code-signing-policy), the policy link on every release page, and the policy link in the Chocolatey description. The product metadata was already consistent. |
+| The repository | Prepared and pushed 2026-10-02 (`543d2fd`): the README's [Privacy](../README.md#privacy) and [Code signing policy](../README.md#code-signing-policy), the policy link on every release page (the five published pages corrected the same day), and the policy link in the Chocolatey description. The product metadata was already consistent. |
 | The application | **Not submitted.** The user decided on 2026-10-02: publish the preparation now, and apply once there is reputation evidence (§2.1). The name will be **Nucs BetterClipboard** (handle `nucs-betterclipboard`). |
 | The deciding gap | **Reputation.** The terms say "we cannot sign binaries based on source code that nobody knows. For executable programs that may be downloaded and executed based on our signature, we require a certain verifiable reputation." On 2026-10-02 the repository was 7 days old, with 0 stars and 1–4 downloads per release file. |
 | The second gap | **The name.** "Better Clipboard" is also a commercial Mac app (betterclipboard.com), a Minecraft mod and an Electron library. The form wants a name a search finds first, and asks to qualify generic ones. |
@@ -34,7 +34,7 @@ draft.
 | **No proprietary code**, apart from System Libraries in the sense of [GPLv3 §1](https://www.gnu.org/licenses/gpl-3.0.html) | See the note below the table | ⚠️ argued, not confirmed |
 | **Maintained** | Commits every day since 2026-09-25 | ✅ |
 | **Released** in the form to be signed | v0.1.0–v0.2.3: self-contained zips built by [`release.yml`](../.github/workflows/release.yml) | ✅ |
-| **Documented**: the functionality is described on the download page | The README is both home page and download page. The release pages are the second note below the table | ✅ README; ⚠️ old release pages |
+| **Documented**: the functionality is described on the download page | The README is both home page and download page. The release pages show their release notes (corrected 2026-10-02; the second note below the table) | ✅ |
 | **Sign your own project, your own binaries only** | Six files (§4), all built from this repository. Nothing of another maker's is ever signed | ✅ |
 | **No hacking tools** | The keyboard hook only watches for the panel's shortcut and swallows that one key ([CLAUDE.md](../CLAUDE.md) §2.4). It records nothing | ✅ |
 | **Respect privacy**: a transfer of user data needs a privacy policy, shown at install, with an opt-out | Nothing is transferred. README › [Privacy](../README.md#privacy) lists every local source, its default and its switch | ✅ |
@@ -78,9 +78,9 @@ the notes in the tag annotation. `actions/checkout@v5` fetches a pushed tag by i
 lightweight. `gh release create --notes-from-tag` then falls back to the commit's message. checkout fixed this in v6
 ([actions/checkout#2356](https://github.com/actions/checkout/pull/2356)).
 
-`release.yml` now fetches the tag object itself and refuses a tag that is not annotated. The five existing pages
-need `gh release edit vX.Y.Z --notes-file …` with their annotation plus the footer: the same text the workflow would
-build today (§4, "Re-publishing the old notes").
+`release.yml` now fetches the tag object itself and refuses a tag that is not annotated. The five existing pages were
+corrected on 2026-10-02 (§4, "Re-publishing the old notes"): each now shows its annotation plus the footer, which is
+the same text the workflow builds today.
 
 ## 2. The application form
 
@@ -255,10 +255,14 @@ Restrictions left off on purpose:
 `install.ps1` could be signed too (`<powershell-file>`). Users run it as `irm … | iex` from the repository's raw file,
 where a signature does nothing, so it is not worth an approval.
 
-**Re-publishing the old notes** (once, outward-facing: the release pages are public). For each tag, build the notes
-the way the workflow's "Release notes from the tag" step does, then
-`gh release edit vX.Y.Z --notes-file notes.md`. Run gh without `GH_TOKEN`/`GITHUB_TOKEN` in this shell (those tokens
-are invalid here).
+**Re-publishing the old notes** (done 2026-10-02 for v0.1.0–v0.2.3, with the user's go-ahead). For each tag:
+1. Back up the current body.
+2. Build the notes the way the workflow's "Release notes from the tag" step does.
+3. Run `gh release edit vX.Y.Z --notes-file notes.md`.
+4. Read the body back through the API (`gh api repos/Nucs/BetterClipboard/releases/tags/vX.Y.Z --jq .body`).
+   `gh release view --json` has no `isLatest` field: asking for one prints nothing, which reads like a failed edit.
+
+Run gh without `GH_TOKEN`/`GITHUB_TOKEN` in this shell: those tokens are invalid here.
 
 ## 5. If the answer is no
 

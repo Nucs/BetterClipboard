@@ -2353,7 +2353,10 @@ Snipping tab (2026-10-01), with a copy of the dev build:
     - Its notes are what gh's `gitTagInfo` reads (`%(contents)` minus `%(contents:signature)`), with
       `[Console]::OutputEncoding` set to UTF-8: PowerShell decodes git's output with the console code page.
     - Verified in a scratch clone with the tag forced lightweight, under code page 437 (`docs/code-signing.md` §6).
-    - The five published pages still need `gh release edit` (outward: the user's call).
+    - The five published pages were corrected on 2026-10-02 with the user's go-ahead. Each was set with
+      `gh release edit --notes-file` to the notes the new step builds (annotation + footer), then read back through
+      the API: 5 of 5 identical, footer present, no mojibake. The old bodies are backed up in session 79bc5201's
+      scratchpad (`signpath/release-pages/backup`). Titles and the Latest flag were unchanged.
 - **Installer** ([`install.ps1`](install.ps1), Windows PowerShell 5.1 and PowerShell 7, StrictMode 3):
   GitHub API → zip for the **OS** architecture (`RuntimeInformation.OSArchitecture`, correct under x64
   emulation on ARM64) → SHA-256 vs `SHA256SUMS.txt` **and** GitHub's asset `digest` → `--exit` the running
@@ -2537,12 +2540,18 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
     "never take over another copy" rule.
 - **Build:** the refusals (SemVer 2, a missing architecture, a tampered archive), and `package.ps1`'s 7-Zip step
   (x64).
-- **Not run yet:** `test-chocolatey.ps1` (admin, Win+V restore, the graceful `--exit`, the relaunch). It runs on
-  GitHub on the next push.
+- **On GitHub:** `test-chocolatey.ps1` passed 22 of 22 checks on its first run (2026-10-02, CI run 37007600619,
+  `543d2fd`, x64, as administrator):
+  - the install for every user, with its shims, Start menu shortcut and Run value;
+  - an upgrade with the app running, which before-modify closed;
+  - the uninstall, with Win+V given back and the history kept.
+
+  Whether that close was the graceful `--exit` or the forced stop, and the relaunch after the upgrade, are not
+  asserted: they depend on whether the runner's session can run a WinUI app.
 
 **Open: the user's steps** (the doc's §5).
 1. Create the community.chocolatey.org account and the `CHOCOLATEY_API_KEY` secret.
-2. Push; check that CI's Chocolatey test passed.
+2. ~~Push; check that CI's Chocolatey test passed.~~ Done 2026-10-02: 22 of 22.
 3. Tag a stable release.
 4. Answer the first review, asking for the verifier exemption.
 5. After approval, add `choco install betterclipboard` to the README.
@@ -2598,8 +2607,11 @@ the alternatives, what was verified, and the sources.
   and Codex prompts, the shell histories and the Win+R list were not in the README before.
 - README › *Code signing policy*: the status ("Not signed yet", signing planned), the six files, other makers' files
   never signed, manual approval, team roles, privacy.
-- Every release page gets a "Code signing policy" footer (`release.yml`).
+- Every release page gets a "Code signing policy" footer (`release.yml`). The five published pages were corrected by
+  hand (§3.1's lesson).
 - The Chocolatey description links Privacy and the policy.
+- Pushed on 2026-10-02 (`543d2fd`, 34 commits incl. other sessions' work, scanned for secrets first), so the README
+  that reviewers will read is live.
 
 **Open.**
 - Reputation evidence, then the application (docs/code-signing.md §2 has every answer; §3's "applied for" wording
@@ -2832,6 +2844,7 @@ the alternatives, what was verified, and the sources.
 
 | Feature | How | Result |
 |---|---|---|
+| `main` pushed (2026-10-02, `8b65b19..543d2fd`, 34 commits, scanned for secret-like strings first: none): CI run 37007600619 passed. 940 tests, 937 passed + 3 skipped, 0 failed; the x64 package smoke test; and the Chocolatey smoke test's first GitHub run, 22 of 22 (§3.2). The five release pages v0.1.0–v0.2.3 were set to their tag annotations plus the "Code signing policy" footer (`gh release edit`) and read back through the API: 5 of 5 identical, footer present, no mojibake; titles and Latest unchanged; old bodies backed up | `git push`, `gh run view --log`, `gh release edit`, `gh api …/releases/tags/<tag>` | ✅ |
 | Code signing readiness (§3.3, 2026-10-02): SignPath Foundation's terms read in full, and the form's 16 fields from its `OSSRequestForm-v4.xlsx`. Version resources and Authenticode signers read from the 0.2.4 release folder (257 PE files: our six agree on `ProductName` BetterClipboard and `ProductVersion` `0.2.4+98addc6…`; 247 others signed by .NET / Microsoft / the .NET Foundation; unsigned: SQLite3MC and three SQLitePCLRaw files) and from the 0.2.5 Debug build (adds unsigned ZstdSharp). `src/` searched for network APIs: none. The release-notes step taken out of `release.yml` and run in a scratch clone whose `v0.2.3` was forced lightweight (as checkout@v5 leaves it) with origin on GitHub: the tag came back annotated, and the notes were the annotation plus the footer, with "—", "…", "›" intact under a 437 console. A tag missing on the remote failed the step (exit 1). The YAML parsed, and `Publish release` reads `steps.notes.outputs.file`. Reference sources: gh 2.85's `gitTagInfo`; checkout's `testRef` without `^{commit}` in v5 and with it in v6/v7 (`de0fac2`, #2356). The application itself not submitted | scratch `signpath/` (`peinfo.ps1`, `signers.ps1`, `notes-step/`), `gh api`, Brave search | ✅ prepared; the workflow change runs for real at the next tag |
 | Image overlays (§2.24, 2026-10-02): the hover peek and the eye-icon zoom/pan viewer, both monitor-wide windowed popups. `ImagePreviewLayout` unit-tested (12: fit-down, no-upscale, upscale, empty-input guards, fit zoom + fallback, clamp with reversed bounds and NaN, zoom-toward-point anchoring, zero-old-zoom guard); the solution builds with 0 doc warnings in Core/Windows/App; the full Core suite 729 pass. The glyphs E7B3 (eye) and E711 (close) were rendered from Segoe Fluent Icons and confirmed. The live visual behaviour — the peek's rest/dismiss timing, the monitor-covering popup placement, and the viewer's wheel-zoom and drag-pan — is **not yet checked on screen** | `dotnet build BetterClipboard.sln` + the Core test exe + a PIL render of the glyphs (`render_glyphs.py`, scratch) | ✅ build + unit; ⚠️ live visual pending a guarded on-screen e2e (seed an image via the Snipping watcher, then reach the eye and the viewer through UI Automation) |
 | `0.2.5` installed on this PC as the user's app before its release (2026-10-02, "bump version, preparing for new release, install locally here first (as release, not dev)", §3.1). Bump `ac65856`: 0.2.4 was never tagged, so 0.2.5 carries it, and that commit's message holds the drafted tag notes. In a worktree at `ac65856`: the full suite 928 = 925 passed + 3 skipped, 0 failed; `package.ps1 -Version 0.2.5` in 124 s (zips 70.9 / 68.5 MB, `.7z` 43.3 / 39.3 MB for x64 / ARM64); `package-chocolatey.ps1` packed `betterclipboard.0.2.5.nupkg`, 82.7 MB. `install-local.ps1` (6 s) verified the SHA-256, closed the running `0.2.4-dev.74594fb` gracefully ("Exiting." in its log) and swapped. Started through Explorer (`--background`): parent `explorer.exe`, 74 environment variables without `CLAUDECODE`/`MSYSTEM` (a process of this session: 142, both present). Run value and shortcut unchanged; Installed apps and `installer.json` say `0.2.5`; the exe 0.2.5.0 / `0.2.5+ac65856…`; `DisabledHotkeys` still `V`. Log after "starting": 0 WRN/ERR (store opened, every integration started, Windows import 0 new of 27, Win+V by `RegisterHotKey`). The dev build's ~15 h before it logged two warnings, both from the Cmd tab's helper (§6). The Release publish warns CS0108 (`SettingsWindow.Visible(bool)` hides `Window.Visible`), as it has since `2d822b9` (0.2.3) | worktree + `dotnet test --solution` + `package.ps1` + `package-chocolatey.ps1` (Chocolatey CLI 2.3.0, pack only) + `install-local.ps1` (Windows PowerShell 5.1, env stripped, Windows paths) + the dev install's scratch `launch_background.ps1`, `install_state.ps1` (before/after), `env_names.py` | ✅ |
@@ -2917,7 +2930,6 @@ the alternatives, what was verified, and the sources.
   Open:
   - the user's steps: the community.chocolatey.org account, the `CHOCOLATEY_API_KEY` secret, a stable tag, and
     the verifier-exemption answer in the first review;
-  - the first GitHub run of `test-chocolatey.ps1` (on the next push);
   - the README's `choco install betterclipboard` line once approved;
   - in the app: hide Settings › *Add bclip to PATH* when running from a Chocolatey `lib` folder (the shim already
     puts `bclip` on the PATH).
