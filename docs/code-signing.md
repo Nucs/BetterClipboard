@@ -40,7 +40,7 @@ draft.
 | **Respect privacy**: a transfer of user data needs a privacy policy, shown at install, with an opt-out | Nothing is transferred. README › [Privacy](../README.md#privacy) lists every local source, its default and its switch | ✅ |
 | **Announce system changes** | `install.ps1` documents its Start menu shortcut, startup entry and Installed-apps entry (`-NoStartup`, `-NoShortcut`). Releasing Win+V (`DisabledHotkeys` plus an Explorer restart) is opt-in, and Settings warns about it | ✅ |
 | **Provide uninstallation** | Installed apps, `install.ps1 -Uninstall`, `choco uninstall` | ✅ |
-| **MFA** "for both SignPath and source code repository access" | GitHub has required 2FA from code contributors since 2023, so it is very likely on already: check [github.com/settings/security](https://github.com/settings/security). Turn it on in SignPath when invited | ⚠️ the maintainer |
+| **MFA** "for both SignPath and source code repository access" | GitHub: on (confirmed by the user, 2026-10-02). SignPath: turn it on when invited | ✅ GitHub; SignPath at onboarding |
 | **Team roles**: authors, reviewers, approvers | README › Code signing policy (one maintainer holds all three) | ✅ |
 | **"Code signing policy"** on the home page and on the download/release pages: the SignPath sentence, the roles, a privacy policy | README section. Every new release page gets a footer from `release.yml`, and the Chocolatey description links it too | ✅ (the sentence in its "not yet" form, §3) |
 | **Metadata**: product name and version set on every signed binary, enforced by metadata restrictions | All six files: `ProductName` BetterClipboard, `ProductVersion` `X.Y.Z+<commit>`, `FileVersion` X.Y.Z.0 | ✅ |
@@ -161,16 +161,26 @@ position, found on 2026-10-02:
 The terms also ask applicants not to argue: "we can only provide this service if we can keep the manual work for
 each applicant to a minimum".
 
-**Building it** (none of this is done yet). These are ordered by how much verifiable evidence each gives:
-1. **Publish the Chocolatey package** ([chocolatey.md](chocolatey.md) §5). community.chocolatey.org shows a public
-   download count per version.
-2. **Software directories:** Softpedia (the form names it), AlternativeTo (as an alternative to Ditto, CopyQ and
-   Windows' Win+V), MajorGeeks.
-3. **Posts where Windows users look:** r/Windows11, r/windowsapps, r/software; a Show HN on Hacker News. Stars, issues
-   and referrers then show in GitHub Insights.
-4. **A winget manifest** ([CLAUDE.md](../CLAUDE.md) §6).
+**Building it, without Chocolatey first** (the user's call, 2026-10-02: "Can we do without choco first?"). Chocolatey
+was only ever one source of public download numbers: SignPath does not ask for any package manager. GitHub keeps the
+numbers itself:
+- stars, forks and issues;
+- release download counters, public through the API;
+- GitHub Insights traffic (views, unique visitors, referrers), which the form names. Only the owner sees it, so quote
+  it or attach a screenshot.
 
-Apply once these show real numbers, and put the links in the Reputation field.
+None of this is done yet. In order:
+1. **Posts where Windows users look:** r/Windows11, r/windowsapps, r/software, r/opensource; a Show HN on Hacker News.
+   They bring the users whose stars, downloads and referrers then show on GitHub. They have to come from the
+   maintainer's own accounts.
+2. **Software directories:** Softpedia (the form names it), AlternativeTo (as an alternative to Ditto, CopyQ and
+   Windows' Win+V), MajorGeeks. Each listing is a link for the Reputation field.
+3. **Optional: a winget manifest** ([CLAUDE.md](../CLAUDE.md) §6). It is a reviewed listing, but install counts are
+   not public, so it adds little evidence.
+4. **Later: Chocolatey** ([chocolatey.md](chocolatey.md) §5). It has its own human review, and the verifier exemption
+   to ask for.
+
+Apply once these show real numbers. Put the links and the numbers in the Reputation field.
 
 ## 3. The README section in its three states
 

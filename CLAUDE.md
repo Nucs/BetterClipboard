@@ -2582,8 +2582,11 @@ the alternatives, what was verified, and the sources.
   Insights.
   - On 2026-10-02: 7 days old, 0 stars, 1–4 downloads per release file.
   - Two applicants with this profile were deferred or declined.
-  - Building it: publish the Chocolatey package (public download counts), directory listings (Softpedia,
-    AlternativeTo), posts (r/Windows11, r/windowsapps, Show HN), winget.
+  - Building it, **without Chocolatey first** (the user, 2026-10-02: "Can we do without choco first?"). SignPath
+    never asks for a package manager; Chocolatey was only one source of public download counts. GitHub's own
+    numbers serve instead: stars, release download counters, Insights traffic and referrers.
+  - The order: posts (r/Windows11, r/windowsapps, r/software, Show HN; from the maintainer's own accounts), then
+    directory listings (Softpedia, which the form names; AlternativeTo), winget optionally, Chocolatey later.
 - **The name.** "Better Clipboard" is also betterclipboard.com's Mac app, a Minecraft mod and an Electron library. The
   form asks to qualify such names. Decided: "Nucs BetterClipboard" for the application only; the binaries keep their
   product name.
@@ -2616,7 +2619,7 @@ the alternatives, what was verified, and the sources.
 **Open.**
 - Reputation evidence, then the application (docs/code-signing.md §2 has every answer; §3's "applied for" wording
   goes into the README the same day).
-- The user: confirm GitHub 2FA.
+- MFA: GitHub 2FA is on (confirmed by the user, 2026-10-02). SignPath's own MFA is set up at onboarding.
 - After acceptance: the signing step in `release.yml` (publish → upload artifact → SignPath → archive the signed files
   → checksums), which needs `package.ps1` split into publish and archive halves.
 
@@ -2922,8 +2925,8 @@ the alternatives, what was verified, and the sources.
   is set: done — `RegisterHotKey` succeeds then.)
 - Export/backup with a user password (re-seal the DEK; the database itself need not be re-encrypted).
 - Code signing through the SignPath Foundation (§3.3, [`docs/code-signing.md`](docs/code-signing.md)). The
-  repository is prepared; the application waits for reputation (Chocolatey download counts, directory listings,
-  posts). After acceptance: the signing step in `release.yml`.
+  repository is prepared; the application waits for reputation: posts and directory listings first, judged by
+  GitHub's own numbers; Chocolatey later. After acceptance: the signing step in `release.yml`.
 - winget manifest, in-app update check against GitHub releases. An update check would make the README's
   no-network privacy sentence untrue: it must then name the check and offer a switch (§3.3).
 - Chocolatey package: built and wired into CI and the release (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)).
