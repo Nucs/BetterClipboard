@@ -49,10 +49,13 @@ public sealed partial class ClipboardFlyout
     private const double HoverPeekDelayMs = 450;
 
     /// <summary>
-    /// How long after the peek opens a mouse move is ignored, in milliseconds: just enough to swallow the synthetic move
-    /// that can arrive as the covering surface appears under the stationary cursor, so the peek is not dismissed at birth.
+    /// How far the cursor must travel from where the peek opened before a mouse move dismisses it, in physical pixels.
+    /// A few pixels absorb involuntary hand jitter while "resting", but the real reason it exists: the covering surface
+    /// receives a synthetic pointer-move at the cursor's unchanged spot the instant it appears, and that must never close
+    /// a peek the mouse has not actually moved off of (the symptom the user hit — "it disappears while the coordinates
+    /// did not move"). So dismissal is decided by the cursor's actual position, not by the arrival of a move event.
     /// </summary>
-    private const long PeekGraceMs = 100;
+    private const int PeekMoveThresholdPx = 3;
 
     /// <summary>Zoom multiplier per mouse-wheel notch in the viewer (one notch = ×1.2 in, ÷1.2 out).</summary>
     private const double WheelZoomPerNotch = 1.2;
@@ -72,8 +75,12 @@ public sealed partial class ClipboardFlyout
     /// <summary>The open hover-peek popup, or <see langword="null"/>.</summary>
     private Popup? peekPopup;
 
-    /// <summary><see cref="Environment.TickCount64"/> when the peek opened, for the <see cref="PeekGraceMs"/> window.</summary>
-    private long peekShownAt;
+    /// <summary>
+    /// Where the cursor was (physical screen pixels) when the peek opened, so a move is measured against the rest spot
+    /// rather than trusting that a <c>PointerMoved</c> event means the mouse actually moved. <see langword="null"/> when
+    /// no peek is open or the cursor position was unavailable.
+    /// </summary>
+    private ScreenPoint? peekAnchor;
 
     /// <summary>The open zoom/pan viewer popup, or <see langword="null"/>.</summary>
     private Popup? viewerPopup;
@@ -290,9 +297,9 @@ public sealed partial class ClipboardFlyout
             RequestedTheme = Root.RequestedTheme,
         };
         surface.Children.Add(frame);
-        surface.PointerMoved += Peek_PointerChanged;
-        surface.PointerPressed += Peek_PointerChanged;
-        surface.PointerWheelChanged += Peek_PointerChanged;
+        surface.PointerMoved += Peek_PointerMoved;      // dismiss only when the cursor really moved (see PeekMoveThresholdPx)
+        surface.PointerPressed += Peek_Dismiss;         // a click is deliberate
+        surface.PointerWheelChanged += Peek_Dismiss;    // so is a scroll
 
         peekPopup = new Popup
         {
@@ -307,22 +314,45 @@ public sealed partial class ClipboardFlyout
         // Count it before opening (not in a Popup.Opened handler): a windowed popup can deactivate the panel as it
         // appears, and the panel's deactivation handler hides the panel whenever the count is zero. Balanced in HidePeek.
         openPopups++;
-        peekShownAt = Environment.TickCount64;
+        peekAnchor = ScreenPointer.Cursor(); // the rest spot; the peek closes only once the cursor leaves it
         peekPopup.IsOpen = true;
     }
 
-    /// <summary>Any pointer activity over the peek (move after the grace, press, or wheel) dismisses it.</summary>
+    /// <summary>
+    /// A mouse move over the peek dismisses it only once the cursor has actually left its rest spot; a synthetic move at
+    /// the unchanged spot (which the covering surface receives the instant it appears) is ignored. Touch/pen moves are
+    /// always real, so they dismiss at once.
+    /// </summary>
     /// <param name="sender">The peek surface.</param>
     /// <param name="e">Pointer data.</param>
-    private void Peek_PointerChanged(object sender, PointerRoutedEventArgs e)
+    private void Peek_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        // Ignore the move that can arrive as the surface appears under the still cursor; a deliberate move comes later.
-        if (Environment.TickCount64 - peekShownAt < PeekGraceMs)
+        if (e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse || PeekCursorMoved())
         {
-            return;
+            HidePeek();
+        }
+    }
+
+    /// <summary>A deliberate pointer action over the peek (press or wheel) dismisses it immediately.</summary>
+    /// <param name="sender">The peek surface.</param>
+    /// <param name="e">Pointer data.</param>
+    private void Peek_Dismiss(object sender, PointerRoutedEventArgs e) => HidePeek();
+
+    /// <summary>Whether the mouse cursor has moved past <see cref="PeekMoveThresholdPx"/> from where the peek opened.</summary>
+    /// <returns>
+    /// <see langword="true"/> when it has, or when the position cannot be read (then err on dismissing — a stuck tooltip
+    /// is worse than one that closed a touch early).
+    /// </returns>
+    private bool PeekCursorMoved()
+    {
+        if (peekAnchor is not { } anchor || ScreenPointer.Cursor() is not { } now)
+        {
+            return true;
         }
 
-        HidePeek();
+        long dx = now.X - anchor.X;
+        long dy = now.Y - anchor.Y;
+        return ((dx * dx) + (dy * dy)) > (long)PeekMoveThresholdPx * PeekMoveThresholdPx;
     }
 
     /// <summary>Closes the hover peek, if any (safe to call when none is open).</summary>
@@ -333,8 +363,9 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        // Clear the field before closing: closing re-enters nothing here, but a later move must find no popup.
+        // Clear the fields before closing: closing re-enters nothing here, but a later move must find no popup.
         peekPopup = null;
+        peekAnchor = null;
         popup.IsOpen = false;
         openPopups = Math.Max(0, openPopups - 1);
     }
@@ -571,6 +602,12 @@ public sealed partial class ClipboardFlyout
         image.PointerCanceled += Viewer_PointerReleased;
         image.PointerCaptureLost += Viewer_PointerReleased;
 
+        // The wheel always zooms (and never scrolls): handle it on the image, the innermost element, so it is marked
+        // handled before the ScrollViewer's own wheel-scrolling would consume it. Attaching to the ScrollViewer instead
+        // let it zoom only while nothing could scroll — once zoomed in, the ScrollViewer scrolled (panned) and marked the
+        // event handled before our handler ran (verified on win-1, 2026-10-02). Panning is the drag's job, not the wheel's.
+        image.PointerWheelChanged += Viewer_PointerWheelChanged;
+
         viewerScroll = new ScrollViewer
         {
             Width = viewportWidth,
@@ -587,7 +624,6 @@ public sealed partial class ClipboardFlyout
             VerticalScrollBarVisibility = ScrollBarVisibility.Hidden,
             Content = image,
         };
-        viewerScroll.PointerWheelChanged += Viewer_PointerWheelChanged;
         viewerScroll.ViewChanged += (_, _) => UpdateZoomLabel();
 
         // The scroll host goes under the chrome (close button, zoom chip) so those stay clickable/readable.
@@ -620,8 +656,8 @@ public sealed partial class ClipboardFlyout
         UpdateZoomLabel();
     }
 
-    /// <summary>Mouse wheel over the viewer zooms towards the cursor instead of scrolling.</summary>
-    /// <param name="sender">The scroll host.</param>
+    /// <summary>Mouse wheel over the viewer zooms towards the cursor instead of scrolling (handled on the image, see its wiring).</summary>
+    /// <param name="sender">The image.</param>
     /// <param name="e">Wheel data.</param>
     private void Viewer_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
