@@ -283,7 +283,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with) (236 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
-| [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push). |
+| [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2). |
 
 Shared build config: [`Directory.Build.props`](Directory.Build.props) (docs on,
 nullable, version), [`Directory.Packages.props`](Directory.Packages.props)
@@ -2310,7 +2310,8 @@ User report and request (2026-10-03), after running the `irm | iex` installer:
 
 **Not built:**
 - an interactive picker in the installer (the shortcuts come from `-Hotkey` or Settings);
-- the Chocolatey package's uninstall still gives back only Win+V;
+- ~~the Chocolatey package's uninstall still gives back only Win+V~~ — done 2026-10-03 (§3.2): it gives back Win+V and
+  the settings' Win+letter shortcuts, like `install.ps1 -Uninstall`;
 - the installer releases a Win+letter key without checking that Explorer was its owner: for Win+C on 25H2 the `C` it
   writes changes nothing (the hook takes Win+C over), and uninstall removes it again.
 
@@ -2670,9 +2671,14 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 - **Uninstall:**
   - deletes the state file;
   - removes the shortcut and Run value where they point into the package;
-  - gives Win+V back (restarting Explorer, only for the desktop's user), unless `/KeepWinVReleased` is given or
-    `install.ps1`'s copy remains;
+  - gives back what `DisabledHotkeys` lists of Win+V and the Win+letter/digit shortcuts in the settings
+    (`OpenHotkey`, `ExtraOpenHotkeys`, read from `settings.json` with `ConvertFrom-Json`; unreadable = Win+V only),
+    keeping the user's other letters, and restarts Explorer only for the desktop's user, unless `/KeepWinVReleased`
+    is given or `install.ps1`'s copy remains (since 2026-10-03; before, Win+V only);
   - keeps the history.
+- **Not taking Win+V over at install** (unlike `install.ps1` since 2026-10-03): the hook answers Win+V anyway
+  (`UseKeyboardHookFallback` defaults to on), and an Explorer restart in every unattended `choco install` would close
+  the user's folder windows. Settings releases it on request. The owner's call if that should change (docs §4.2).
 - **`install.ps1` respects a Chocolatey copy the same way** (§3.1).
 - **Build and release:**
   - [`package.ps1`](tools/release/package.ps1) writes the `.7z` archives;
@@ -2681,8 +2687,15 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
     refuses SemVer 2 and over 150 MB, and packs;
   - [`test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) installs, upgrades (with the app running) and
     uninstalls the exact `.nupkg`, on CI's and the release job's disposable runner only: it refuses to run
-    elsewhere unless `-ConfirmMachineChanges`;
-  - `release.yml` pushes after `gh release create`, with the `CHOCOLATEY_API_KEY` secret.
+    elsewhere unless `-ConfirmMachineChanges`. Since 2026-10-03 it seeds BC-TEST neighbors in the Run key and in
+    `Explorer\Advanced` and checks they survive (the wipe bug, §2.25, passed it before: it checked no other values in
+    the key), and checks the give-back rule with Win+V, Win+Q (a settings shortcut) and Win+J (the user's own); it
+    puts back everything it seeds. 28 checks;
+  - `release.yml` pushes after `gh release create`, with the `CHOCOLATEY_API_KEY` secret;
+  - [`chocolatey.yml`](.github/workflows/chocolatey.yml), run by hand (*Actions › Chocolatey package*): a package-only
+    fix `<version>.<yyyyMMdd>` for a released version, from that release's `.7z` archives and the branch's scripts,
+    tested the same way, attached to the release, pushed when the secret exists. The run summary has the link the
+    verifier exemption request needs.
 
 **Verified (2026-10-01, Chocolatey CLI 2.3.0).**
 - **The real package, 0.2.4 payload, in a private root, not elevated, next to the user's own `install.ps1`
@@ -2702,6 +2715,18 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 
   Whether that close was the graceful `--exit` or the forced stop, and the relaunch after the upgrade, are not
   asserted: they depend on whether the runner's session can run a WinUI app.
+- **Re-review for submission (2026-10-03, "Rereview the repo for choco submittion readiness. fix any gaps"),** on a
+  disposable claude-desktops VM (Windows 11 Pro 25H2, Chocolatey 2.7.4 like GitHub's runners, Windows PowerShell 5.1,
+  elevated; deleted afterwards). The package-only fix `0.2.5.20261003`, built from `main`'s scripts and the v0.2.5
+  release's archives:
+  - `test-chocolatey.ps1` 28 of 28; the app started after the install and again after the upgrade; both closes were
+    the graceful `--exit`; the uninstall gave back "Win+V and Win+Q" and restarted Explorer;
+  - the original v0.2.5 package against the same test: "every other 'Start with Windows' entry kept" failed
+    (`gone: BC-TEST neighbor`), exit 1 — the wipe bug reproduced;
+  - SYSTEM (scheduled task) 13 of 13 and a second administrator in the desktop user's session 12 of 12: no Run value
+    anywhere, nothing started, no Explorer restart. Found there: the log promised "It starts at the next sign-in"
+    after a SYSTEM install, which writes no Run value — fixed;
+  - the last message names the configured shortcuts (4 of 4).
 
 **Open: the user's steps** (the doc's §5).
 1. Create the community.chocolatey.org account and the `CHOCOLATEY_API_KEY` secret.
@@ -2709,9 +2734,13 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 3. ~~Tag a stable release.~~ Done 2026-10-03: v0.2.5. Its release job built `betterclipboard.0.2.5.nupkg` (82.1 MB),
    passed `test-chocolatey.ps1` (22 of 22) and attached the package to the release. It was **not pushed**: there is no
    `CHOCOLATEY_API_KEY` secret yet (the step's warning), as the user chose ("Can we do without choco first?",
-   2026-10-02). Once step 1 is done, `choco push` that attached `.nupkg`; the next stable tag pushes on its own.
-4. Answer the first review, asking for the verifier exemption.
-5. After approval, add `choco install betterclipboard` to the README.
+   2026-10-02). **That package must never be pushed:** it carries the Run-key wipe (§2.25; the tag predates
+   `34b1270`). 0 downloads on 2026-10-03.
+4. Push the first package: *Actions › Chocolatey package* with version `0.2.5` (a package-only fix from `main`), or
+   the next stable tag. Delete the old asset from the v0.2.5 page (`gh release delete-asset v0.2.5
+   betterclipboard.0.2.5.nupkg`): its release notes still list it.
+5. Answer the first review, asking for the verifier exemption, with the link from the pushing run's summary.
+6. After approval, add `choco install betterclipboard` to the README.
 
 ### 3.3 Code signing: SignPath Foundation (prepared 2026-10-02; not applied yet)
 
@@ -3086,6 +3115,9 @@ shortcuts was in progress on 2026-10-03.
   waits nor captures (no exit code, no lines, in 5.1 and 7). Use `Start-Process -NoNewWindow -PassThru
   -RedirectStandardOutput <file>`, read `$process.Handle` right after the start (5.1 reports no `ExitCode` otherwise),
   then `WaitForExit`. Arguments are joined unquoted, so pass none with spaces (`install.ps1` strips them from shortcuts).
+  - To only wait (no output wanted), piping on is enough: `& $exe --exit | Out-Null` waits and sets `$LASTEXITCODE`.
+    Measured 2026-10-03 with a GUI program that sleeps 2 s: 2,095 ms (5.1) and 2,063 ms (7) piped, against 3-164 ms
+    and no exit code for `& $exe` and `$null = & $exe`. The Chocolatey before-modify script relies on it.
 - **`RegisterHotKey` needs the interactive window station:** in the private one the clipboard tests use it fails with
   1459. Hotkey tests register keys no keyboard has (Ctrl+Alt+Shift+F21–F23) on the session desktop for milliseconds,
   and skip where there is no interactive station.
@@ -3101,6 +3133,7 @@ shortcuts was in progress on 2026-10-03.
 
 | Feature | How | Result |
 |---|---|---|
+| Chocolatey re-review (2026-10-03, §3.2): the package-only fix `0.2.5.20261003` (`main`'s scripts + the v0.2.5 release's archives, SHA-256 checked against `SHA256SUMS.txt` and GitHub's digests; 82.1 MB; description 2,380 characters; no comments or placeholders; BOM scripts). A disposable claude-desktops VM, Windows 11 Pro 25H2, Chocolatey 2.7.4, Windows PowerShell 5.1, elevated: `test-chocolatey.ps1` 28 of 28 (new: other Run values and Explorer settings kept, `DisabledHotkeys` untouched by the install, Win+V and Win+Q given back, Win+J kept), graceful closes, Explorer restarted by the uninstall; SYSTEM 13 of 13; a second administrator in the desktop's session 12 of 12; the last message 4 of 4. The original v0.2.5 package against the same test: 26 of 28, the Run neighbor gone after its install (the wipe bug reproduced). The VM was deleted. Locally: the give-back helpers 33 of 33 in 5.1 and 7 (scratch key; the user's `DisabledHotkeys` still `V`), every changed script parses in 5.1 and 7, the workflows' YAML parses, the new workflow's version step 12 of 12, `& gui.exe \| Out-Null` waits (2,095 / 2,063 ms). The validator's CPMR0010 matches command tokens only (archived source). The ID is still free; the icon, license, release and source links answer 200 | VM + scratch scripts (`choco-fix/` in session 90da67ad's scratchpad) | ✅. The new workflow first runs after a push |
 | `main` pushed (2026-10-03, `e28666b..34b1270`: the README text and photos of another session, then the shortcuts/installer change). The range was scanned first: no secret-like strings, not the user's email, no desktop token, and the three PNGs were checked by eye (invented demo data). CI run 37113200714 passed: 971 = 968 passed + 3 skipped, 0 failed; the x64 package; the Chocolatey smoke test 22 of 22 with the fixed Run-key line. From now on `irm \| iex` from `main` takes over Win+V by default and no longer empties the Run key; `-Hotkey` / `-NoTakeOverWinV` wait for the 0.2.6 release (version gate) | `git push`, `gh run view --log` | ✅ |
 | Installer and several shortcuts on a real Windows 11 25H2 (2026-10-03, a fresh `claude-desktops` VM `win-hotkeys`, PowerShell 5.1, the real installer with its lookup and download served from a locally packaged `0.2.6` x64 zip, deleted afterwards). (1) `irm \| iex` form from `C:\nowrite` (deny-write ACE for Everyone): installed, DisabledHotkeys `V`, Explorer restarted, the app logged `Win+V registered with RegisterHotKey`, the prompt back in `C:\nowrite`; a seeded `BC-TEST OtherApp` Run value kept, `Explorer\Advanced` identical to its baseline except `DisabledHotkeys`. Win+V opened the panel. (2) Settings › Shortcut (UIA set-text + Add): `ctrl + alt + f9` → "Ctrl+Alt+F9 · Registered.", `Win+Ctrl+V` → "Owned by Windows or another app: taken over with a keyboard hook"; Ctrl+Win+V (the hook, instead of the sound flyout) and Ctrl+Alt+F9 opened the panel. (3) `-NoTakeOverWinV -Hotkey Win+C,Ctrl+Alt+F9`: V given back and `C` written in one restart; Win+V then opened **Windows' own** clipboard panel and Win+C BetterClipboard's (hooked: Win+C stayed taken with `C` listed). (4) Probe: `CER1` freed Win+E, Win+R, Win+1, not Win+C. (5) `-NoTakeOverWinV -Hotkey Win+E`: Win+E registered directly. (6) Settings › Release from Explorer › Give back (the confirmation named Win+E): before the fix BetterClipboard re-registered Win+E ahead of Explorer; after it, the log showed the hook, and Win+E stayed taken (by Explorer) once BetterClipboard exited. (7) Uninstall through the Installed-apps command: Win+C given back, Run left with `BC-TEST OtherApp`, folder gone, history kept, `Explorer\Advanced` as at the baseline | `desktop_call`: `run_command`, `find_elements`/`element_action`, `press_keys`, screenshots | ✅ after two fixes it found: the installer's `New-Item -Force` on `Explorer\Advanced` ("Attempted to perform an unauthorized operation", first run) and the give-back race |
 | The registry wipe (§2.25, §4): `New-Item -Path <existing key> -Force` emptied a scratch key (value and subkey gone) in PowerShell 7.5.8 and 5.1. The installer harness, with a neighbouring Run value and an `Explorer\Advanced` value and subkey seeded, showed the 0.2.5 installer losing the Run neighbour on a plain install and the Advanced ones with `-TakeOverWinV`, and the fixed installer keeping all three in 7 scenarios (PowerShell 7 and 5.1, install, `-NoTakeOverWinV -Hotkey`, uninstall). On this PC, `HKCU\…\Run` held only `BetterClipboard` while `StartupApproved\Run` listed 19 other names (6 enabled) | scratch keys, harness, a read-only listing of value names | ✅ fixed; the user's lost startup entries were reported, not restored |
@@ -3199,8 +3232,7 @@ shortcuts was in progress on 2026-10-03.
 - Several shortcuts and the installer's takeover (§2.25), next steps:
   - check after Explorer's restart whether a released key really became free, and take the letter out again when not
     (Win+C on 25H2 stays with another part of Windows);
-  - the Chocolatey package's uninstall gives back only Win+V; give back the settings' other Win+letter shortcuts like
-    `install.ps1 -Uninstall` does;
+  - ~~the Chocolatey package's uninstall gives back only Win+V~~ (done 2026-10-03, §3.2);
   - the README's Settings photo (`docs/images/settings.png`, bb40f51) shows 0.2.5's single shortcut box: re-shoot it
     with `tools/readme` once the list ships;
   - the Settings remove button could offer a released Win+letter key back (today only a stray Win+V is offered);
@@ -3213,9 +3245,12 @@ shortcuts was in progress on 2026-10-03.
   no-network privacy sentence untrue: it must then name the check and offer a switch (§3.3).
 - Chocolatey package: built and wired into CI and the release (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)).
   Open:
-  - the user's steps: the community.chocolatey.org account and the `CHOCOLATEY_API_KEY` secret (then `choco push`
-    the `.nupkg` attached to v0.2.5; the stable tag exists since 2026-10-03), and the verifier-exemption answer in
-    the first review. The user chose to build reputation without Chocolatey first (§3.3);
+  - the user's steps: the community.chocolatey.org account and the `CHOCOLATEY_API_KEY` secret; then the first push
+    through *Actions › Chocolatey package* with version `0.2.5` (a package-only fix) or the next stable tag — **never**
+    the `.nupkg` attached to v0.2.5, which empties the Run key (§3.2); deleting that asset; and the
+    verifier-exemption answer in the first review. The user chose to build reputation without Chocolatey first (§3.3);
+  - optionally: take Win+V over from Explorer at install like `install.ps1` (docs §4.2 has the trade-off: an Explorer
+    restart in every `choco install`);
   - the README's `choco install betterclipboard` line once approved;
   - in the app: hide Settings › *Add bclip to PATH* when running from a Chocolatey `lib` folder (the shim already
     puts `bclip` on the PATH).

@@ -9,7 +9,7 @@ turns it into `betterclipboard.<version>.nupkg` for every release.
 | `betterclipboard.nuspec` | yes, filled in | Metadata. The build fills `{{PACKAGE_VERSION}}` and `{{RELEASE_TAG}}` and strips the comments. |
 | `tools/chocolateyinstall.ps1` | yes | Extracts the archive for the PC's architecture into `tools\app`, marks the shims, adds the Start menu shortcut and "Start with Windows", starts the app. |
 | `tools/chocolateybeforemodify.ps1` | yes | Closes the app before an upgrade or uninstall, and records whether it was running. |
-| `tools/chocolateyuninstall.ps1` | yes | Removes the shortcut, the "Start with Windows" entry and the state file; gives Win+V back to Windows; keeps the history. |
+| `tools/chocolateyuninstall.ps1` | yes | Removes the shortcut, the "Start with Windows" entry and the state file; gives back to Windows the Win+V and other Win+letter shortcuts released for BetterClipboard; keeps the history. |
 | `tools/helpers.ps1` | yes | Names and functions the three scripts share. |
 | `legal/VERIFICATION.txt` | yes, filled in | How to check the embedded archives against the GitHub release. The build fills `{{ARCHIVES}}` and `{{RELEASE_TAG}}`. |
 | `legal/LICENSE.txt` | yes, generated | The build writes it from the repository's `LICENSE`. |
@@ -28,8 +28,15 @@ choco push artifacts/release/betterclipboard.1.2.3.nupkg --source https://push.c
 ```
 
 The release workflow runs all four for every stable tag (`v1.2.3`; the push needs the `CHOCOLATEY_API_KEY`
-secret). Why each script does what it does - the Community Repository's rules and the Chocolatey behaviors they
-were tested against - is in [`docs/chocolatey.md`](../../docs/chocolatey.md).
+secret). For a version that is already released, *Actions > Chocolatey package > Run workflow*
+([`chocolatey.yml`](../../.github/workflows/chocolatey.yml)) builds a package-only fix (`1.2.3.<yyyyMMdd>`) from the
+release's own archives and this folder, tests it the same way, attaches it to the release and pushes it.
+
+Never push `betterclipboard.0.2.5.nupkg`, the package attached to the v0.2.5 release: it empties the user's Run key.
+The first package to push is a fix of 0.2.5 from that workflow, or the next stable release.
+
+Why each script does what it does - the Community Repository's rules and the Chocolatey behaviors they were tested
+against - is in [`docs/chocolatey.md`](../../docs/chocolatey.md).
 
 Scripts must stay ASCII: the build saves them as UTF-8 with a byte order mark, which Windows PowerShell needs to
 read anything else correctly, and checks that no placeholder is left.

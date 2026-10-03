@@ -1,8 +1,15 @@
 # Shipping BetterClipboard through Chocolatey
 
-Researched and built on 2026-10-01. The package lives in [`packaging/chocolatey`](../packaging/chocolatey), and the
-release workflow builds, tests and pushes it for every stable version. Nothing is published yet: that needs the
-community.chocolatey.org account, its API key as a GitHub secret, and a stable release ([section 5](#5-publishing)).
+Researched and built on 2026-10-01; reviewed for submission on 2026-10-03. The package lives in
+[`packaging/chocolatey`](../packaging/chocolatey). The release workflow builds, tests and pushes it for every stable
+version, and the *Chocolatey package* workflow does the same on request for a version already released. Nothing is
+published yet: that needs the community.chocolatey.org account and its API key as a GitHub secret
+([section 5](#5-publishing)).
+
+> **Never push `betterclipboard.0.2.5.nupkg`, the package attached to the v0.2.5 release.** Its install script runs
+> `New-Item -Force` on `HKCU\…\Run`, which empties the key: every other app's "start with Windows" entry is lost
+> ([section 5.1](#51-the-package-attached-to-v025)). The first package to push is a package-only fix of 0.2.5 built from
+> `main`, or the next stable release.
 
 This page covers:
 - what the Chocolatey Community Repository (`choco install <id>` without `--source`) requires, and what Chocolatey
@@ -31,19 +38,24 @@ This page covers:
   - puts `bclip` and `BetterClipboard` on the PATH;
   - adds the Start menu shortcut and "Start with Windows" for the installing user;
   - starts the app unelevated, closes it before upgrades and uninstalls, and restarts it after an upgrade;
-  - gives Win+V back on uninstall and keeps the history.
+  - on uninstall, gives back Win+V and every other Win+letter shortcut BetterClipboard opens with that was released
+    from Explorer, and keeps the history.
 
   It never takes over or removes the shortcut, startup entry or Win+V release of an `install.ps1` copy, and
-  `install.ps1` now treats a Chocolatey copy the same way.
+  `install.ps1` now treats a Chocolatey copy the same way. Unlike `install.ps1`, it does not take Win+V over from
+  Explorer at install (section 4.2): the app's keyboard hook answers Win+V anyway.
 - **Tested:**
   - locally: the real package with the 0.2.4 payload, installed, upgraded with the app running, and uninstalled in a
     private Chocolatey root (28 of 28 checks);
   - in CI on every push, and in the release job before each push: a real install, upgrade and uninstall on GitHub's
-    disposable runner. First run 2026-10-02 (CI run 37007600619, commit `543d2fd`): 22 of 22 checks.
+    disposable runner. First run 2026-10-02 (CI run 37007600619, commit `543d2fd`): 22 of 22 checks;
+  - on a disposable Windows 11 25H2 VM with Chocolatey 2.7.4 (2026-10-03), the package-only fix `0.2.5.20261003`:
+    the same test, now 28 checks, all passed; installs as SYSTEM and by a second administrator on the signed-in user's
+    desktop; and the original v0.2.5 package, which fails the new "other startup entries kept" check (section 7).
 - **To publish:**
   1. create the account;
   2. add the `CHOCOLATEY_API_KEY` secret;
-  3. tag a stable release;
+  3. run the *Chocolatey package* workflow for version 0.2.5, or tag the next stable release;
   4. answer the first review, asking for a verifier exemption (the text is in section 5).
 
   Chocolatey's verifier runs Windows Server 2019 (build 17763), below our minimum of 19041; Windows Terminal and
@@ -77,8 +89,8 @@ Every version passes these automated checks, then a human moderator. A trusted p
     so `-rc.1` tags are left out. `choco pack` 2.3.0 accepts `9.9.4-rc.1` [verified]; the repository does not.
   - **Version normalization** in 2.x: `0.2.4` stays `0.2.4`. The docs advise scripts not to read
     `$env:ChocolateyPackageVersion` for their logic, and ours don't.
-- **ID:** `betterclipboard` has no versions on the feed. The same query returns 40 for `ditto` [verified]. Ditto
-  (vendor-maintained) and CopyQ are the clipboard managers already there.
+- **ID:** `betterclipboard` has no versions on the feed (checked 2026-10-01 and again 2026-10-03). The same query
+  returns 40 for `ditto` [verified]. Ditto (vendor-maintained) and CopyQ are the clipboard managers already there.
 
 ## 2. Validator rules that apply to us **[docs; thresholds from the archived validator source]**
 
@@ -88,14 +100,14 @@ archived in 2021. Thresholds marked "2021" come from it and may have changed sin
 | Rule | Level | Asks for | The package |
 |---|---|---|---|
 | CPMR0009 | Requirement | `projectUrl` | `https://github.com/Nucs/BetterClipboard` |
-| CPMR0002, 0032, 0026, 0030 | Requirement | A description of 30-4000 characters; Markdown headings need a space after `#` | 1,796 characters, `## ` headings. |
+| CPMR0002, 0032, 0026, 0030 | Requirement | A description of 30-4000 characters; Markdown headings need a space after `#` | 2,380 characters (2026-10-03), `## ` headings. |
 | CPMR0001, 0020 | Requirement | A copyright of 4+ characters; no e-mail address in `authors` or `copyright` | `Copyright (c) 2026 Eli Belash` (as in `LICENSE`). |
 | CPMR0007, 0039 | Requirement, guideline | `licenseUrl`; `requireLicenseAcceptance` false unless there is a license URL | MIT `LICENSE` at the release tag, acceptance false. |
 | CPMR0014, 0023, 0048 | Requirement, guideline | Tags present, space-separated, without "chocolatey" | `clipboard clipboard-manager clipboard-history win-v productivity foss` |
 | CPMR0019, 0022 | Requirement | No template placeholders in the nuspec; template comments removed (2021: the text `# main helper`) | The build fills every placeholder, refuses a leftover, and strips the template's comments. |
 | CPMR0005, 0006, 0060 | Requirement, note | With binaries inside the package: `LICENSE.txt` and `VERIFICATION.txt` (vendors too) | `legal/LICENSE.txt` (from `LICENSE`) and `legal/VERIFICATION.txt` (URLs + SHA-256 of both archives). |
 | CPMR0027, 0073, 0055 | Requirement, guideline | Checksums on every download; no custom downloaders | The package downloads nothing. |
-| CPMR0010, 0011, 0012, 0016, 0072 | Requirement | No `choco` commands, no import of Chocolatey's module, no internal or private variables (`chocolateyPackageFolder`, …), no `$env:chocolateyInstallArguments` | None used; `$MyInvocation` gives the script's folder, and the shared names are all `BetterClipboard*`. |
+| CPMR0010, 0011, 0012, 0016, 0072 | Requirement | No `choco` commands, no import of Chocolatey's module, no internal or private variables (`chocolateyPackageFolder`, …), no `$env:chocolateyInstallArguments` | None used; `$MyInvocation` gives the script's folder, and the shared names are all `BetterClipboard*`. CPMR0010 looks for `choco`, `cinst` or `chocolatey` as PowerShell *command tokens* (2021 source, `ScriptsDoNotContainChocoCommandsRequirement`), so the help comments' `choco install betterclipboard --params …` is not flagged. |
 | CPMR0003, 0015 | Requirement | Scripts named `chocolateyInstall.ps1` / `chocolateyUninstall.ps1` | Named as `choco new` names them (`chocolateyinstall.ps1`, `chocolateybeforemodify.ps1`, `chocolateyuninstall.ps1`). |
 | CPMR0076 + moderation | Requirement | `iconUrl` through a CDN, not `raw.githubusercontent.com`; hosted where the maintainer has control; PNG preferred, 128 px or more | jsDelivr, pinned to the release tag: `.../BetterClipboard@v<version>/src/BetterClipboard.App/Assets/AppIcon.png` (256 px). It answered 200 for `v0.2.3` [verified]. |
 | CPMR0040, 0047, 0049, 0042, 0057 | Guideline, suggestion | `packageSourceUrl`, `summary`, `title`, `releaseNotes`, `docsUrl` / `bugTrackerUrl` / `projectSourceUrl` | All set. |
@@ -108,9 +120,10 @@ archived in 2021. Thresholds marked "2021" come from it and may have changed sin
 | CPMR0008 | Requirement | No Program Files in IDs ending `.portable` (2021) | Not our ID, and the package stays in `lib`, as moderators expect of a portable package. |
 
 Moderators also list "anything that would not work with PowerShell v2" as a requirement. The scripts use plain
-syntax: `New-Object` instead of `::new()`, no ternary, no `??`. Two exceptions: `Get-CimInstance` and
-`Invoke-CimMethod` (PowerShell 3+) find the session's desktop user. Chocolatey runs the scripts in Windows
-PowerShell 5.1, and every Windows the app supports has it.
+syntax: `New-Object` instead of `::new()`, no ternary, no `??`. Three exceptions, all PowerShell 3+:
+`Get-CimInstance` and `Invoke-CimMethod` find the session's desktop user, and `ConvertFrom-Json` reads the app's
+shortcuts from its `settings.json`. Chocolatey runs the scripts in Windows PowerShell 5.1, and every Windows the app
+supports has it (the install script refuses anything older than Windows 10 2004).
 
 ## 3. How Chocolatey behaves: what the package designs around
 
@@ -190,6 +203,11 @@ PowerShell 5.1, and every Windows the app supports has it.
 1. **Graceful first:** `BetterClipboard.exe --exit` signals the session's `Local\` event, and the app saves the
    copies it has queued. It is sent only when the package's copy is the only BetterClipboard in the session,
    because the command reaches whichever instance owns the session.
+   - The script runs it as `& $exe --exit | Out-Null`: a GUI program's output piped on makes PowerShell wait for it
+     and set `$LASTEXITCODE` [verified 2026-10-03: 2,095 ms for a GUI program that sleeps 2 s, in Windows
+     PowerShell 5.1; 2,063 ms in 7]. A plain `& $exe` or `$null = & $exe` returned after 3-164 ms with no exit code.
+   - On the VM of 2026-10-03, the upgrade and the uninstall both closed the app this way ("Closing BetterClipboard"
+     in Chocolatey's log, no forced stop).
 2. Waits up to 15 s, then **force-stops** what is left (with another copy running in the session, at once).
 
 What `--exit` cannot reach, and only a forced stop as administrator can:
@@ -219,6 +237,11 @@ and never end on one.
   - the shortcut goes to every user's Start menu when elevated, else to the user's own;
   - the Run value is written unless the install runs as SYSTEM or as someone other than the desktop's user;
   - the app is started only when the installing account owns the desktop.
+
+  Verified on the VM of 2026-10-03 (section 7) for all three: the desktop user; SYSTEM through a scheduled task; and
+  a second administrator started with `Start-Process -Credential` in the desktop user's session. The last two wrote
+  no Run value in any account's HKCU, started nothing, restarted no Explorer, and say so in Chocolatey's log ("Start
+  it from the Start menu.").
 
 ### 3.5 The verifier's Windows is older than ours **[verified]**
 
@@ -274,6 +297,7 @@ We are the vendor and the license is MIT, so the package embeds. The only obstac
 | [`legal/VERIFICATION.txt`](../packaging/chocolatey/legal/VERIFICATION.txt) | Template; the build adds each archive's URL and SHA-256. `legal/LICENSE.txt` is generated from `LICENSE`. |
 | [`tools/release/package-chocolatey.ps1`](../tools/release/package-chocolatey.ps1) | The build (section 5). |
 | [`tools/release/test-chocolatey.ps1`](../tools/release/test-chocolatey.ps1) | The end-to-end test for disposable machines (section 7). |
+| [`.github/workflows/chocolatey.yml`](../.github/workflows/chocolatey.yml) | *Chocolatey package*, run by hand: a package-only fix for a version already released (section 5). |
 
 ### 4.2 What the scripts do
 
@@ -295,8 +319,12 @@ We are the vendor and the license is MIT, so the package embeds. The only obstac
    - `--background` after an upgrade, and only if before-modify closed it.
 
    Not when the installing account does not own the desktop, and not when another copy already runs in the
-   session (a start would only open that copy's window).
+   session (a start would only open that copy's window). The log then says whether the app starts at the next
+   sign-in: only when this account's "Start with Windows" value starts this copy. Before 2026-10-03 it always
+   promised the next sign-in, also after an install as SYSTEM, which writes no value.
 6. Warns when `install.ps1`'s copy is installed too.
+7. Ends with the shortcuts that open the app, read from its `settings.json` ("While it runs, Win+V opens it"; an
+   `install.ps1` copy may have set others, such as Alt+Win+V).
 
 An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackageVersion` as a second signal.
 
@@ -305,12 +333,20 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
 **Uninstall** (after before-modify):
 1. Deletes `upgrade-state.txt`, which would otherwise keep the package folder alive.
 2. Removes the shortcut, from both Start menus, and the Run value, only where they point into the package.
-3. **Win+V:** when `DisabledHotkeys` holds `V`, gives Win+V back and restarts Explorer, like
-   `install.ps1 -Uninstall`, because without the app a released Win+V does nothing. Two exceptions:
-   - `/KeepWinVReleased` (an uninstall parameter);
-   - `install.ps1`'s copy remains, which still uses it.
+3. **Shortcuts released from Explorer** (`DisabledHotkeys`): gives back Win+V and every Win+letter or Win+digit
+   shortcut in BetterClipboard's settings (`OpenHotkey`, and `ExtraOpenHotkeys` since 0.2.6) that the value lists,
+   then restarts Explorer, like `install.ps1 -Uninstall`: without the app those shortcuts do nothing. Since
+   2026-10-03; before, only Win+V.
+   - The user's other letters stay, in place.
+   - The settings are read from `settings.json` in the data folder of the account running the uninstall, the same
+     account whose `DisabledHotkeys` is changed. A file Windows PowerShell 5.1 cannot parse (the app accepts
+     comments) leaves only Win+V, and the log says so.
+   - The package never records what it released (it releases nothing; Settings and `install.ps1` do), so it has no
+     `installer.json` list to add, unlike `install.ps1`.
+   - Two exceptions: `/KeepWinVReleased` (an uninstall parameter), and `install.ps1`'s copy remains, which still
+     uses them.
 
-   It acts only for the desktop's user; otherwise Win+V comes back at the next sign-in.
+   It restarts Explorer only for the desktop's user; otherwise the shortcuts come back at the next sign-in.
 4. Keeps `%LOCALAPPDATA%\BetterClipboard`.
 
 **`install.ps1`, the other way round:**
@@ -322,8 +358,15 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
   - it keeps Win+V (and any other Win+ shortcut it would give back) released while the Chocolatey copy remains.
 
 **Not in the package:**
-- Taking over Win+V, which `install.ps1` does by default since 2026-10-03 (`-NoTakeOverWinV`, `-Hotkey`): an Explorer
-  restart during a package install. The app's *Settings › Release from Explorer* does it on request.
+- Taking over Win+V at install, which `install.ps1` does by default since 2026-10-03 (`-NoTakeOverWinV`, `-Hotkey`).
+  - Without it, Win+V still opens BetterClipboard: `UseKeyboardHookFallback` is on by default, so the app intercepts
+    Win+V with its keyboard hook while it runs. What the takeover adds: Win+V over windows that run as
+    administrator, and no hook.
+  - With it, every `choco install` (often unattended, often many packages in one run) would restart Explorer and
+    close the user's folder windows.
+  - The app's *Settings › Shortcut* releases it on request, and the uninstall gives it back either way.
+  - To make it the default, the install script would release V for the desktop user before it starts the app, and
+    restart Explorer once (the owner's call; not built).
 - `-AddToPath`: the shims cover it.
 - the Installed-apps entry: `choco uninstall` is the uninstaller.
 - `installer.json`: the app never reads it.
@@ -338,7 +381,8 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
    - refuses a leftover placeholder or a SemVer 2 version;
    - runs `choco pack`, and refuses a package over 150 MB.
 3. `test-chocolatey.ps1` installs, upgrades (with the app running) and uninstalls that exact `.nupkg` on the
-   runner. A failure stops the release before anything is published.
+   runner. A failure stops the release before anything is published. The step's summary names the run, the link
+   the first review asks for.
 4. `gh release create` publishes the zips, the archives, `SHA256SUMS.txt`, `install.ps1` and the `.nupkg`.
 5. `choco push` sends the package to `https://push.chocolatey.org/`, after the release exists, because
    `VERIFICATION.txt` points at its assets. Without the `CHOCOLATEY_API_KEY` secret the step only warns, and the
@@ -347,20 +391,41 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
 CI (`.github/workflows/ci.yml`) runs steps 2 and 3 on every push, with an x64-only package built from its
 `0.0.0-ci` smoke test.
 
+**Package-only fixes** (`.github/workflows/chocolatey.yml`, *Actions › Chocolatey package › Run workflow*): a new
+package for a version that is already released, without a new app release.
+- Inputs: the app version (`0.2.5`); the package version, empty for `<version>.<today as yyyyMMdd, UTC>`,
+  Chocolatey's package-fix notation; and whether to push (on by default).
+- Steps: checks the inputs (a stable `x.y.z`, a package version in Chocolatey's normalized form, passed to the
+  scripts through environment variables); downloads the release's `.7z` archives and `SHA256SUMS.txt` with `gh`
+  (refusing a draft or a prerelease); `package-chocolatey.ps1` with the scripts of the branch it runs on;
+  `test-chocolatey.ps1`; attaches the `.nupkg` to the release; pushes it when the secret exists. Other packages on the
+  release page are left alone.
+- The run's summary names the run, as in step 3 above.
+- Locally, the same build is `package-chocolatey.ps1 -Version 1.2.3 -PackageVersion 1.2.3.20261001
+  -ArtifactsDirectory <folder with the release's archives and SHA256SUMS.txt>`. Its test needs a disposable machine.
+
 **Once, before the first push:**
 1. Create an account on community.chocolatey.org and confirm its e-mail: reviews arrive by mail.
 2. On the account page, copy the API key into the repository secret `CHOCOLATEY_API_KEY` (Settings › Secrets and
    variables › Actions).
-3. Push this commit. CI then runs the real install test on GitHub for the first time; check it passed.
-4. Tag a stable release (`git tag -a v0.2.5 -F notes.md` and push the tag).
-5. When the review opens (usually *Waiting* after the verifier fails), answer on the package page:
+3. Push the first package. Two ways, both tested on GitHub's runner before they push:
+   - *Actions › Chocolatey package › Run workflow* with version `0.2.5`: builds `0.2.5.<date>` from `main`'s scripts
+     and the v0.2.5 archives;
+   - or tag the next stable release; its release job pushes it.
+
+   **Never** the `betterclipboard.0.2.5.nupkg` attached to the v0.2.5 release (section 5.1).
+4. Delete that file from the v0.2.5 release page, which still lists it:
+   `gh release delete-asset v0.2.5 betterclipboard.0.2.5.nupkg` (it had 0 downloads on 2026-10-03). Its line in the
+   release notes can say "replaced by betterclipboard.0.2.5.<date>.nupkg".
+5. When the review opens (usually *Waiting* after the verifier fails), answer on the package page. The link is the run
+   that pushed the package (its summary names it):
 
    > Hello, I am BetterClipboard's author and maintain this package. The verifier fails by design: it runs
    > Windows Server 2019 (build 17763), and BetterClipboard requires Windows 10 version 2004 (build 19041) or later,
    > so the install script refuses older Windows as the package guidelines ask. Could the package be exempted from
-   > verification? Before every push, the release workflow installs, upgrades (with the app running) and
-   > uninstalls the exact .nupkg on GitHub's windows-latest runner: <link to that run>. The embedded archives are
-   > assets of the GitHub release, with URLs and SHA-256 checksums in legal/VERIFICATION.txt.
+   > verification? Before every push, our workflow installs, upgrades (with the app running) and uninstalls the
+   > exact .nupkg on GitHub's windows-latest runner: <link to that run>. The embedded archives are assets of the
+   > GitHub release, with URLs and SHA-256 checksums in legal/VERIFICATION.txt.
 6. Answer every later comment within 35 days, and fix a problem by resubmitting the **same** version.
 
 **After approval:**
@@ -374,11 +439,23 @@ CI (`.github/workflows/ci.yml`) runs steps 2 and 3 on every push, with an x64-on
   `choco upgrade betterclipboard`".
 - After a few versions approved without changes, a moderator may mark the package trusted.
 
-**Package-only fixes:** to fix the package without a new app release, use the fourth version segment:
-`package-chocolatey.ps1 -Version 1.2.3 -PackageVersion 1.2.3.20261001` (same archives), then test and push it.
-
 **Before the first approval:** a release's attached `.nupkg` installs with
-`choco install betterclipboard --source <folder containing it>`.
+`choco install betterclipboard --source <folder containing it>` - except v0.2.5's original package (section 5.1).
+
+### 5.1 The package attached to v0.2.5
+
+- **The bug.** `betterclipboard.0.2.5.nupkg`, built by the v0.2.5 release job, runs
+  `New-Item -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Run -Force` before it adds its own value. On a key
+  that exists, that deletes the key with every value in it and creates it empty, so a fresh install erases every
+  other app's "start with Windows" entry. `install.ps1` had the same line from v0.1.0 to 0.2.5. Commit `34b1270`
+  (2026-10-03) fixed both, after v0.2.5 was tagged.
+- **Who it reached.** No one: it was never pushed (there is no API key yet), and the release page counted 0 downloads
+  of it on 2026-10-03. The v0.2.5 release notes list it, though.
+- **Reproduced** on the VM of 2026-10-03: `test-chocolatey.ps1` against it fails "every other 'Start with Windows'
+  entry kept" (`gone: BC-TEST neighbor`) and exits 1 (section 7). Before 2026-10-03 the test checked no other
+  values in the key, so the bug passed the release job unseen.
+- **Replacement.** A package-only fix built from `main` (`0.2.5.<date>`, the *Chocolatey package* workflow), or the
+  next stable release. Both carry the guarded line: the key is created only when it is missing.
 
 ## 6. Decisions (2026-10-01)
 
@@ -387,7 +464,8 @@ CI (`.github/workflows/ci.yml`) runs steps 2 and 3 on every push, with an x64-on
 2. **Start with Windows by default** for the installing user; `/NoStartup` opts out.
 3. **Start the app after install** (and restart it after an upgrade when it was running); `/NoLaunch` opts out.
 4. **Give Win+V back on uninstall**, restarting Explorer, unless `/KeepWinVReleased` is given or `install.ps1`'s
-   copy remains.
+   copy remains. Since 2026-10-03 also the other Win+letter shortcuts in BetterClipboard's settings, as
+   `install.ps1 -Uninstall` does since shortcuts became a list.
 5. **Stable versions only** on Chocolatey.
 6. **Owners and authors:** Eli Belash.
 
@@ -404,7 +482,13 @@ CI (`.github/workflows/ci.yml`) runs steps 2 and 3 on every push, with an x64-on
 | **The real package, 0.2.4 payload** | a private Chocolatey root, not elevated. Installed with the user's own BetterClipboard installed by `install.ps1` and running; upgraded to `0.2.4.1` with a scoped test instance running from the package; uninstalled with `/KeepWinVReleased` (the user has Win+V released) | 28 of 28 checks: version, archives and `install.ps1` gone, exactly two shims and three markers, `bclip 0.2.4` through the shim, the user's shortcut and Run value not taken over (both point at the `install.ps1` copy), the test instance closed by before-modify, no `lib-bkp`, the state file consumed, the package folder gone after the uninstall. The user's shortcut, Run value, `DisabledHotkeys` and app PIDs were unchanged |
 | Building | `package-chocolatey.ps1` on the 0.2.4 archives; `package.ps1 -Architectures x64` for the 7-Zip step | 82.0 MiB package. Comments stripped, placeholders filled, scripts with BOM. Refused: a SemVer 2 version, a missing architecture, an archive not matching `SHA256SUMS.txt` |
 | `install.ps1` living with a Chocolatey copy | its functions loaded from the script, Explorer and app control stubbed, a scratch Run key | 9 of 9, in both PowerShell 7.5.8 and Windows PowerShell 5.1 |
-| Real install, upgrade with a running app, uninstall, Win+V restore, as administrator | `test-chocolatey.ps1` on GitHub's runner, in CI and in the release job | 22 of 22 on the first run (2026-10-02, CI run 37007600619, `543d2fd`, x64). It covered: install exit 0, shims for `bclip` and BetterClipboard only, `bclip --version` through its shim, the all-users Start menu shortcut, the Run value; the upgrade with the app running (before-modify closed it, state file consumed, no `lib-bkp`); the uninstall (folder, shims, shortcut and Run value removed, Win+V given back, history kept) |
+| Real install, upgrade with a running app, uninstall, Win+V restore, as administrator | `test-chocolatey.ps1` on GitHub's runner, in CI and in the release job | 22 of 22 on the first run (2026-10-02, CI run 37007600619, `543d2fd`, x64). It covered: install exit 0, shims for `bclip` and BetterClipboard only, `bclip --version` through its shim, the all-users Start menu shortcut, the Run value; the upgrade with the app running (before-modify closed it, state file consumed, no `lib-bkp`); the uninstall (folder, shims, shortcut and Run value removed, Win+V given back, history kept). It had no neighbor values, so it could not see the Run-key bug (section 5.1) |
+| **The package-only fix `0.2.5.20261003`, as the desktop user** (2026-10-03) | `test-chocolatey.ps1 -ConfirmMachineChanges` with the 6 new checks, in Windows PowerShell 5.1, elevated, on a disposable claude-desktops VM: Windows 11 Pro 25H2 (26200), Chocolatey 2.7.4 (as on GitHub's runners). The package built from `main`'s scripts and the v0.2.5 release's archives (checked against `SHA256SUMS.txt` and GitHub's asset digests) | 28 of 28. New: every other "Start with Windows" entry kept after the install and after the uninstall; `DisabledHotkeys` untouched by the install; every other Explorer setting (34 values, 1 subkey) kept; Win+V and Win+Q (a second shortcut in the settings) given back, Win+J (the user's own) kept. The app started after the install and again after the upgrade; both closes graceful; the uninstall logged "Giving Win+V and Win+Q back to Windows: restarting Explorer" and Explorer restarted. The test put back everything it seeded |
+| **The original `betterclipboard.0.2.5.nupkg`** (2026-10-03) | the same test, same VM | 26 of 28: "every other 'Start with Windows' entry kept" failed after the install and after the uninstall (`gone: BC-TEST neighbor`), exit code 1. The Run-key bug, reproduced; the test now stops such a package |
+| Installs as SYSTEM and by another administrator (2026-10-03) | same VM, final build: `choco install` / `uninstall` from a scheduled task as SYSTEM, and as a second local administrator started with `Start-Process -Credential` in the desktop user's session (a random password, the account removed afterwards) | 13 of 13 (SYSTEM) and 12 of 12 (other administrator): exit codes 0; no Run value in any account's HKCU; nothing started; the all-users shortcut created, then removed; `DisabledHotkeys` untouched; Explorer not restarted; the log says "Start it from the Start menu." (the first build said "It starts at the next sign-in", which was untrue: fixed) |
+| The last message names the configured shortcuts (2026-10-03) | same VM, final build: settings with `Alt+Win+V` and `Ctrl+Alt+F9`, install and uninstall as the desktop user | 4 of 4: "While it runs, Alt+Win+V or Ctrl+Alt+F9 opens it"; nothing given back (no Win+letter shortcut released) |
+| The give-back helpers (2026-10-03) | their functions loaded from `helpers.ps1`; scratch `settings.json` files and a scratch HKCU key with neighbors | 33 of 33 in Windows PowerShell 5.1 and in PowerShell 7.5.8: shortcut spellings, 0.2.5- and 0.2.6-style settings, a comment (unknown in 5.1, read in 7), garbage, the data-folder override, case, duplicates, digits, removal in place, the neighbors kept. The user's own `DisabledHotkeys` on this PC unchanged |
+| The *Chocolatey package* workflow's version step (2026-10-03) | its PowerShell taken from the YAML and run with 12 inputs | 12 of 12: `0.2.5` gives `0.2.5.20261003`; `v0.2.5` and spaces accepted; prereleases, a foreign package version, `.0` and leading zeros refused, and so is an injection attempt. The workflow itself first runs after a push |
 
 The probe's scenarios (Chocolatey CLI 2.3.0, not elevated):
 
@@ -445,7 +529,9 @@ The probe's scenarios (Chocolatey CLI 2.3.0, not elevated):
 - Other repositories and threads:
   - [chocolatey/chocolatey-test-environment](https://github.com/chocolatey/chocolatey-test-environment), the
     verifier's Vagrant setup
-  - [chocolatey/package-validator](https://github.com/chocolatey/package-validator), archived 2021
+  - [chocolatey/package-validator](https://github.com/chocolatey/package-validator), archived 2021; the rules read
+    in `src/chocolatey.package.validator/infrastructure.app/rules/` (e.g.
+    `ScriptsDoNotContainChocoCommandsRequirement.cs`, which matches command tokens)
   - [chocolatey/home#82](https://github.com/chocolatey/home/issues/82) and
     [org discussion #163](https://github.com/orgs/chocolatey/discussions/163), the 200 MB server limit
   - [actions/runner-images](https://github.com/actions/runner-images): Chocolatey 2.7.4 and 7-Zip 26.03 on the

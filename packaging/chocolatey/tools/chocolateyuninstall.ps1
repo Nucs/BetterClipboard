@@ -10,9 +10,11 @@
       - the Start menu shortcut, from every user's and from this user's Start menu, if it points into this package
         (install.ps1's shortcut points elsewhere and stays);
       - this user's "Start with Windows" entry, if it points into this package;
-      - Win+V's release: when BetterClipboard's setting released Win+V from Explorer (DisabledHotkeys contains V),
-        Win+V would otherwise do nothing at all, so it goes back to Windows and Explorer restarts - unless
-        /KeepWinVReleased is given or install.ps1's copy of BetterClipboard remains to use it.
+      - the shortcuts released from Explorer for BetterClipboard: Win+V and every Win+letter or Win+digit shortcut in
+        its settings that Explorer's DisabledHotkeys lists (its Settings and install.ps1 release them there). Without
+        the app they would do nothing at all, so they go back to Windows and Explorer restarts - unless
+        /KeepWinVReleased is given or install.ps1's copy of BetterClipboard remains to use them. The user's other
+        letters in DisabledHotkeys stay, as with install.ps1 -Uninstall.
     The history, settings and logs in %LOCALAPPDATA%\BetterClipboard are kept, as with install.ps1 -Uninstall.
 
     Package parameter (choco uninstall betterclipboard --params "'/KeepWinVReleased'"):
@@ -49,33 +51,41 @@ if ((Get-BetterClipboardRunTarget).StartsWith($appDir, [StringComparison]::Ordin
     Remove-ItemProperty -Path $BetterClipboardRunKey -Name $BetterClipboardRunValue
 }
 
-$advanced = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
-$settings = Get-ItemProperty -Path $advanced -ErrorAction SilentlyContinue
-$disabled = if ($settings -and $settings.PSObject.Properties['DisabledHotkeys']) { [string] $settings.DisabledHotkeys } else { '' }
-if ($disabled.ToUpperInvariant().Contains('V')) {
+# Assigned, not wrapped in @(): both functions return their array as one object, and @() would nest it.
+$configured = Get-BetterClipboardConfiguredHotkeys
+$keys = Get-BetterClipboardKeysToGiveBack -DisabledHotkeys (Get-BetterClipboardDisabledHotkeys) -Configured $configured
+if ($keys.Count -gt 0) {
+    $names = Format-BetterClipboardKeyNames $keys
+    $verb = if ($keys.Count -eq 1) { 'stays' } else { 'stay' }
     $otherCopy = Get-BetterClipboardOtherInstall
     if ($pp.KeepWinVReleased) {
-        Write-Host 'Win+V stays released from Explorer (/KeepWinVReleased).'
+        Write-Host "$names $verb released from Explorer (/KeepWinVReleased)."
     }
     elseif ($otherCopy) {
-        Write-Host "Win+V stays released from Explorer: the copy of BetterClipboard at '$otherCopy' still uses it."
+        Write-Host "$names $verb released from Explorer: the copy of BetterClipboard at '$otherCopy' still uses $(if ($keys.Count -eq 1) { 'it' } else { 'them' })."
     }
     else {
-        # Each character disables one Win+<char> combination; keep the user's other letters.
-        $rest = -join ($disabled.ToCharArray() | Where-Object { [char]::ToUpperInvariant($_) -ne 'V' })
-        if ($rest) {
-            Set-ItemProperty -Path $advanced -Name DisabledHotkeys -Value $rest -Type String
-        }
-        else {
-            Remove-ItemProperty -Path $advanced -Name DisabledHotkeys
+        if ($null -eq $configured) {
+            Write-Host "BetterClipboard's settings could not be read, so only Win+V is given back; other Win+ shortcuts released for it stay released."
         }
 
-        if (Test-BetterClipboardDesktopUser) {
-            Write-Host 'Giving Win+V back to Windows: restarting Explorer (the taskbar blinks once).'
-            Restart-BetterClipboardDesktopShell
+        # A failed write is reported, never fatal: the app is already gone, and the user can edit the value by hand.
+        $changed = $false
+        try {
+            $changed = Remove-BetterClipboardDisabledHotkeys -Keys $keys
         }
-        else {
-            Write-Host 'Win+V goes back to Windows at the next sign-in.'
+        catch {
+            Write-Warning "Could not give $names back to Windows: $($_.Exception.Message)"
+        }
+
+        if ($changed) {
+            if (Test-BetterClipboardDesktopUser) {
+                Write-Host "Giving $names back to Windows: restarting Explorer (the taskbar blinks once)."
+                Restart-BetterClipboardDesktopShell
+            }
+            else {
+                Write-Host "$names $(if ($keys.Count -eq 1) { 'goes' } else { 'go' }) back to Windows at the next sign-in."
+            }
         }
     }
 }

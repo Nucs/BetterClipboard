@@ -127,7 +127,11 @@ if ($otherCopy) {
 
 if (-not $pp.NoLaunch -and (-not $isUpgrade -or $state -eq 'running')) {
     if (-not $isDesktopUser) {
-        Write-Host 'BetterClipboard was not started: this install does not run as the signed-in user. It starts at the next sign-in, or from the Start menu.'
+        # "At the next sign-in" only when this account's "Start with Windows" entry starts this copy: as SYSTEM or for
+        # another user's desktop the entry was not written above, and nothing would start it.
+        $atSignIn = [string]::Equals((Get-BetterClipboardRunTarget), $exe, [StringComparison]::OrdinalIgnoreCase)
+        $next = if ($atSignIn) { 'It starts at the next sign-in, or from the Start menu.' } else { 'Start it from the Start menu.' }
+        Write-Host "BetterClipboard was not started: this install does not run as the signed-in user. $next"
     }
     elseif (@(Get-BetterClipboardProcess | Where-Object { $_.SessionId -eq (Get-Process -Id $PID).SessionId }).Count -gt 0) {
         # Another copy (install.ps1's) holds the session's single-instance lock: a start would only open its window.
@@ -141,4 +145,8 @@ if (-not $pp.NoLaunch -and (-not $isUpgrade -or $state -eq 'running')) {
     }
 }
 
-Write-Host "BetterClipboard is installed in $appDir. Press Win+V to open it; your history is kept in %LOCALAPPDATA%\BetterClipboard."
+# The shortcuts in the settings the app reads (shared with an install.ps1 copy, which can set others than Win+V), and
+# "while it runs": an install as SYSTEM or for another user's desktop starts nothing.
+$configured = Get-BetterClipboardConfiguredHotkeys
+$press = if ($null -ne $configured) { @($configured) -join ' or ' } else { 'your BetterClipboard shortcut' }
+Write-Host "BetterClipboard is installed in $appDir. While it runs, $press opens it; your history is kept in %LOCALAPPDATA%\BetterClipboard."

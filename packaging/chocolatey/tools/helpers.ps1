@@ -30,6 +30,11 @@ $BetterClipboardShortcutName = 'BetterClipboard.lnk'
 # folder alive - so the uninstall script deletes it (docs/chocolatey.md section 3.3).
 $BetterClipboardStateFileName = 'upgrade-state.txt'
 
+# Explorer's per-user hotkey settings: each character of the DisabledHotkeys value frees one Win+<character> shortcut
+# for other programs (BetterClipboard's Settings and install.ps1 release Win+V and other Win+letter shortcuts there).
+# The key also holds every other Explorer setting, so the scripts only ever set or remove that one value in it.
+$BetterClipboardExplorerAdvancedKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced'
+
 function Get-BetterClipboardDesktopSid {
     <#
     .SYNOPSIS
@@ -171,6 +176,211 @@ function Test-BetterClipboardOtherCopy {
     #>
     param([string] $Path, [string] $AppDir)
     return [bool] ($Path -and -not $Path.StartsWith($AppDir, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $Path))
+}
+
+function Get-BetterClipboardDataDir {
+    <#
+    .SYNOPSIS
+        Folder holding BetterClipboard's settings and history for the account this script runs as, or $null.
+    .DESCRIPTION
+        The app's own rule (AppPaths.ResolveDefault): BETTERCLIPBOARD_DATA_DIR when set (tests and isolated runs),
+        otherwise %LOCALAPPDATA%\BetterClipboard. It is the folder of the same account whose HKCU the scripts change,
+        so what they read and what they change always belong together - under over-the-shoulder elevation that is the
+        administrator's folder, not the desktop user's.
+    .OUTPUTS
+        System.String, or $null when the account has no local application data folder.
+    .NOTES
+        Never throws; the folder may not exist (the app never ran for this account).
+    #>
+    if ($env:BETTERCLIPBOARD_DATA_DIR) {
+        return $env:BETTERCLIPBOARD_DATA_DIR
+    }
+
+    if ($env:LOCALAPPDATA) {
+        return (Join-Path $env:LOCALAPPDATA 'BetterClipboard')
+    }
+
+    return $null
+}
+
+function Get-BetterClipboardConfiguredHotkeys {
+    <#
+    .SYNOPSIS
+        The shortcuts that open BetterClipboard according to its settings file (the main one first), or $null when
+        the file cannot be read.
+    .DESCRIPTION
+        Reads OpenHotkey and ExtraOpenHotkeys (BetterClipboard 0.2.6 and later; older versions only have OpenHotkey)
+        straight from settings.json, never through the app, which is closed by then. No file - the app never ran for
+        this account - means the app's default, Win+V. A file this PowerShell cannot parse gives $null ("unknown"),
+        so callers act only on what they know: the app accepts comments and trailing commas, which ConvertFrom-Json
+        in Windows PowerShell 5.1 refuses. install.ps1's Get-ConfiguredHotkeys reads the file the same way.
+    .PARAMETER Path
+        The settings file; default: settings.json in Get-BetterClipboardDataDir.
+    .OUTPUTS
+        System.String[] returned as one object - assign it, never wrap the call in @(), which would nest the array -
+        or $null.
+    .NOTES
+        Never throws. ConvertFrom-Json needs PowerShell 3; the package runs only on Windows 10 2004 or later, which
+        ships Windows PowerShell 5.1.
+    #>
+    param([string] $Path)
+    if (-not $Path) {
+        $dataDir = Get-BetterClipboardDataDir
+        if (-not $dataDir) {
+            return , @('Win+V')
+        }
+
+        $Path = Join-Path $dataDir 'settings.json'
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return , @('Win+V')
+    }
+
+    try {
+        # The app saves to a temporary file and then replaces this one, so a read never sees half a file; a read
+        # that loses the race to the replace fails and is "unknown" like any other unreadable file.
+        $json = [IO.File]::ReadAllText($Path) | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+
+    $main = 'Win+V'
+    if ($json -and $json.PSObject.Properties['OpenHotkey'] -and -not [string]::IsNullOrWhiteSpace([string] $json.OpenHotkey)) {
+        $main = ([string] $json.OpenHotkey).Trim()
+    }
+
+    $list = @($main)
+    if ($json -and $json.PSObject.Properties['ExtraOpenHotkeys'] -and $json.ExtraOpenHotkeys) {
+        $list += @($json.ExtraOpenHotkeys | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+    }
+
+    return , $list
+}
+
+function Get-BetterClipboardReleasableKey {
+    <#
+    .SYNOPSIS
+        The letter or digit Explorer's DisabledHotkeys lists to free a shortcut, or $null when Explorer cannot free it.
+    .DESCRIPTION
+        Only a shortcut that is exactly the Windows key plus one letter or digit can be released from Explorer: a
+        character in DisabledHotkeys frees exactly Win+<character> (with V listed, Win+Ctrl+V stays Windows'). The
+        same rule as the app (ExplorerHotkeys.ReleasableKey) and install.ps1 (Get-ReleasableKey), with the spellings
+        of the Windows key they accept, any letter case, and spaces around the plus sign.
+    .PARAMETER Shortcut
+        A shortcut as BetterClipboard's settings store it, e.g. 'Win+V' or 'Alt+Win+V'.
+    .OUTPUTS
+        System.Char (upper case), or $null.
+    .NOTES
+        Never throws.
+    #>
+    param([string] $Shortcut)
+    if ($Shortcut -match '^\s*(win|windows|meta|super|cmd)\s*\+\s*([a-z0-9])\s*$') {
+        return [char]::ToUpperInvariant($Matches[2][0])
+    }
+
+    return $null
+}
+
+function Get-BetterClipboardDisabledHotkeys {
+    <#
+    .SYNOPSIS
+        Explorer's DisabledHotkeys value for this account, or '' when it is not set.
+    .OUTPUTS
+        System.String.
+    .NOTES
+        Never throws: a key or value that cannot be read counts as not set.
+    #>
+    $item = Get-ItemProperty -Path $BetterClipboardExplorerAdvancedKey -ErrorAction SilentlyContinue
+    if ($item -and $item.PSObject.Properties['DisabledHotkeys']) {
+        return [string] $item.DisabledHotkeys
+    }
+
+    return ''
+}
+
+function Get-BetterClipboardKeysToGiveBack {
+    <#
+    .SYNOPSIS
+        The Win+<key> shortcuts an uninstall gives back to Explorer: Win+V and every Win+letter or Win+digit shortcut
+        in BetterClipboard's settings, each only while DisabledHotkeys lists it.
+    .DESCRIPTION
+        Without BetterClipboard a shortcut released from Explorer does nothing at all, so the uninstall gives back
+        what BetterClipboard released: Win+V (what its Settings and every installer release) and the Win+letter
+        shortcuts it opens with (what Settings' "Release from Explorer" releases since 0.2.6). Letters the user
+        listed for other reasons - keys that are no BetterClipboard shortcut - stay. install.ps1 -Uninstall applies
+        the same rule, plus the keys its own runs recorded in installer.json, which the package never writes.
+    .PARAMETER DisabledHotkeys
+        Explorer's current value ('' when not set).
+    .PARAMETER Configured
+        Get-BetterClipboardConfiguredHotkeys' answer; $null (unknown) leaves Win+V as the only candidate.
+    .OUTPUTS
+        System.Char[] returned as one object (assign it, never wrap the call in @()): upper-case keys, each once, in
+        the order Win+V, then the settings' order; empty when there is nothing to give back.
+    .NOTES
+        Never throws; reads nothing itself (the caller passes both values), so it can be tested without a registry.
+    #>
+    param([string] $DisabledHotkeys, $Configured)
+    $listed = ([string] $DisabledHotkeys).ToUpperInvariant()
+    $fromSettings = @(@($Configured) | Where-Object { $_ } | ForEach-Object { Get-BetterClipboardReleasableKey ([string] $_) } |
+            Where-Object { $null -ne $_ })
+    $candidates = @([char] 'V') + $fromSettings
+    return , @($candidates | Select-Object -Unique | Where-Object { $listed.Contains([string] $_) })
+}
+
+function Remove-BetterClipboardDisabledHotkeys {
+    <#
+    .SYNOPSIS
+        Takes Win+<key> shortcuts out of Explorer's DisabledHotkeys, so Explorer registers them again when it restarts.
+    .DESCRIPTION
+        Every spelling of each key goes (Explorer reads the value case-insensitively), and every other character stays
+        in place: the user's own letters must survive. The value is deleted when nothing is left. Only this value of
+        Explorer\Advanced is ever written: the key holds all of Explorer's settings (never "New-Item -Force" on it,
+        which would empty it).
+    .PARAMETER Keys
+        Letters or digits to give back, any case.
+    .OUTPUTS
+        System.Boolean - whether the value changed (Explorer must restart to notice).
+    .NOTES
+        Throws when the registry refuses the write, which the caller reports.
+    #>
+    param([char[]] $Keys)
+    $current = Get-BetterClipboardDisabledHotkeys
+    $upper = @($Keys | ForEach-Object { [char]::ToUpperInvariant($_) })
+    $rest = -join @($current.ToCharArray() | Where-Object { $upper -notcontains [char]::ToUpperInvariant($_) })
+    if ($rest -ceq $current) {
+        return $false
+    }
+
+    if ($rest) {
+        Set-ItemProperty -Path $BetterClipboardExplorerAdvancedKey -Name DisabledHotkeys -Value $rest -Type String
+    }
+    else {
+        Remove-ItemProperty -Path $BetterClipboardExplorerAdvancedKey -Name DisabledHotkeys
+    }
+
+    return $true
+}
+
+function Format-BetterClipboardKeyNames {
+    <#
+    .SYNOPSIS
+        "Win+V", "Win+V and Win+Q", "Win+V, Win+Q and Win+1": shortcut names for the scripts' messages.
+    .PARAMETER Keys
+        Letters or digits.
+    .OUTPUTS
+        System.String.
+    .NOTES
+        Never throws.
+    #>
+    param([char[]] $Keys)
+    $names = @($Keys | ForEach-Object { 'Win+' + [char]::ToUpperInvariant($_) })
+    if ($names.Count -le 1) {
+        return (-join $names)
+    }
+
+    return '{0} and {1}' -f ($names[0..($names.Count - 2)] -join ', '), $names[-1]
 }
 
 function Get-BetterClipboardProcess {

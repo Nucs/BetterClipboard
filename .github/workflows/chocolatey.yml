@@ -1,0 +1,146 @@
+# Run by hand (Actions > Chocolatey package > Run workflow): builds, tests and publishes a Chocolatey package for an app
+# version that is already released on GitHub, without a new app release. The package embeds that release's own .7z
+# archives (checked against its SHA256SUMS.txt) and takes its scripts from the branch the workflow runs on, so a fix to
+# the package reaches users as a package-only version in Chocolatey's notation, <version>.<yyyyMMdd>.
+#
+# Why it exists: the release workflow (release.yml) packages every new stable tag, but a package built with a bug has to
+# be replaced without waiting for the next app release. v0.2.5's attached betterclipboard.0.2.5.nupkg is such a package:
+# its install script ran "New-Item -Force" on HKCU\...\Run, which empties the key, so it must never be pushed
+# (docs/chocolatey.md section 5).
+#
+# Steps: download the release's archives -> package-chocolatey.ps1 -> test-chocolatey.ps1 (a real install, an upgrade
+# with the app running and an uninstall on this disposable runner; Chocolatey's own verifier cannot run the package) ->
+# attach the .nupkg to the release -> push it when "push" is on and the CHOCOLATEY_API_KEY secret exists. The run's
+# summary names the run, which the first review's verifier exemption request links to.
+name: Chocolatey package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Released app version whose archives the package embeds, e.g. 0.2.5 (stable versions only)
+        required: true
+        type: string
+      package-version:
+        description: Package version. Empty means <version>.<today as yyyyMMdd, UTC>, Chocolatey's package-fix notation
+        required: false
+        type: string
+      push:
+        description: Push to community.chocolatey.org after the test passes (needs the CHOCOLATEY_API_KEY secret)
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+
+      # Inputs reach the scripts through environment variables, never pasted into them: a version field must not be
+      # able to inject PowerShell into this job, which holds a write token.
+      - name: Versions
+        id: versions
+        shell: pwsh
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_PACKAGE_VERSION: ${{ inputs.package-version }}
+        run: |
+          $version = $env:INPUT_VERSION.Trim().TrimStart('v', 'V')
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "'$version' is not a stable release version (x.y.z): the Community Repository takes no SemVer 2 prerelease, and release.yml packages only stable tags."
+          }
+
+          $package = $env:INPUT_PACKAGE_VERSION.Trim()
+          if (-not $package) { $package = '{0}.{1}' -f $version, (Get-Date).ToUniversalTime().ToString('yyyyMMdd') }
+          # The package's numbers must start with the app's, and be written as choco pack writes them (no leading zeros,
+          # no fourth number 0): test-chocolatey.ps1 looks for betterclipboard.<package version>.nupkg by that name.
+          if ($package -ne $version -and -not $package.StartsWith("$version.")) {
+            throw "Package version '$package' does not belong to app version $version (use $version or $version.<number>)."
+          }
+
+          # Parenthesized on purpose: PowerShell gives -and and -or the same precedence.
+          $parts = $package.Split('.')
+          $leadingZero = @($parts | Where-Object { $_.Length -gt 1 -and $_.StartsWith('0') }).Count -gt 0
+          $zeroFourth = ($parts.Count -eq 4) -and ($parts[3] -eq '0')
+          if (($package -notmatch '^\d+\.\d+\.\d+(\.\d+)?$') -or $leadingZero -or $zeroFourth) {
+            throw "Package version '$package' is not in Chocolatey's normalized form: 3 or 4 numbers, no leading zeros, no fourth number 0."
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "package=$package" >> $env:GITHUB_OUTPUT
+          Write-Host "App version $version, package version $package"
+
+      - name: Release archives
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.versions.outputs.version }}
+        run: |
+          $tag = "v$env:VERSION"
+          $release = gh release view $tag --json isDraft,isPrerelease | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "There is no GitHub release $tag ($LASTEXITCODE)." }
+          if ($release.isDraft -or $release.isPrerelease) { throw "Release $tag is a draft or a prerelease; Chocolatey gets stable releases only." }
+
+          New-Item -ItemType Directory -Path artifacts/release -Force | Out-Null
+          gh release download $tag --pattern '*.7z' --pattern 'SHA256SUMS.txt' --dir artifacts/release --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Downloading the archives of $tag failed ($LASTEXITCODE)." }
+          Get-ChildItem artifacts/release | Format-Table Name, Length -AutoSize | Out-String | Write-Host
+
+      # package-chocolatey.ps1 refuses archives that do not match the release's SHA256SUMS.txt.
+      - name: Build
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.versions.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.versions.outputs.package }}
+        run: tools/release/package-chocolatey.ps1 -Version $env:VERSION -PackageVersion $env:PACKAGE_VERSION -ArtifactsDirectory artifacts/release
+
+      - name: Test
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.versions.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.versions.outputs.package }}
+        run: |
+          tools/release/test-chocolatey.ps1 -Version $env:VERSION -PackageVersion $env:PACKAGE_VERSION -PackageDirectory artifacts/release
+          if ($LASTEXITCODE -ne 0) { throw "The package test failed (exit code $LASTEXITCODE); the failed checks are marked FAIL above." }
+
+      # Attached before the push, like release.yml: VERIFICATION.txt points moderators at this release's archives, and
+      # the release page then offers the package that was tested. Other packages on the page are left alone.
+      - name: Attach to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.versions.outputs.version }}
+          PACKAGE_VERSION: ${{ steps.versions.outputs.package }}
+        run: |
+          gh release upload "v$env:VERSION" "artifacts/release/betterclipboard.$env:PACKAGE_VERSION.nupkg" --clobber
+          if ($LASTEXITCODE -ne 0) { throw "gh release upload failed ($LASTEXITCODE)." }
+
+      - name: Push to Chocolatey
+        if: ${{ inputs.push }}
+        shell: pwsh
+        env:
+          CHOCOLATEY_API_KEY: ${{ secrets.CHOCOLATEY_API_KEY }}
+          PACKAGE_VERSION: ${{ steps.versions.outputs.package }}
+        run: |
+          $package = "artifacts/release/betterclipboard.$env:PACKAGE_VERSION.nupkg"
+          if (-not $env:CHOCOLATEY_API_KEY) {
+            Write-Warning "No CHOCOLATEY_API_KEY secret: $package was attached to the release but not pushed. Push it with: choco push <file> --source https://push.chocolatey.org/ --api-key <key>"
+            exit 0
+          }
+
+          choco push $package --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
+          if ($LASTEXITCODE -ne 0) { throw "choco push failed ($LASTEXITCODE)." }
+
+      # The link the verifier exemption request needs (docs/chocolatey.md section 5), ready to paste.
+      - name: Summary
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ steps.versions.outputs.package }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          "betterclipboard $env:PACKAGE_VERSION was installed, upgraded with the app running and uninstalled on windows-latest in this run: $env:RUN_URL" >> $env:GITHUB_STEP_SUMMARY

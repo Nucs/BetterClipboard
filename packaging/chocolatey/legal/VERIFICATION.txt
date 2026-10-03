@@ -2,9 +2,11 @@ VERIFICATION
 Verification is intended to assist the Chocolatey moderators and community
 in verifying that this package's contents are trustworthy.
 
-This package is published by BetterClipboard's author, Eli Belash, from the same
-release workflow that builds the GitHub release. Each archive in the package's
-tools folder is an asset of that release, byte for byte:
+This package is published by BetterClipboard's author, Eli Belash. GitHub
+Actions in the project's repository build it from the GitHub release
+{{RELEASE_TAG}}, and install, upgrade and uninstall it on a disposable Windows
+runner before it is pushed. Each archive in the package's tools folder is an
+asset of that release, byte for byte:
 
 {{ARCHIVES}}
 The release's SHA256SUMS.txt lists the same checksums:

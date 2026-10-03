@@ -11,8 +11,8 @@
 # the package embeds the two .7z archives and is installed, upgraded and uninstalled for real on this runner
 # before anything is published; it is pushed after the GitHub release exists, because its VERIFICATION.txt
 # points moderators at that release's assets. The push needs the CHOCOLATEY_API_KEY secret (the API key of the
-# community.chocolatey.org account); without it the package is only attached to the release. See
-# docs/chocolatey.md.
+# community.chocolatey.org account); without it the package is only attached to the release. A package-only fix for an
+# already released version is chocolatey.yml's job (run by hand). See docs/chocolatey.md.
 name: Release
 
 on:
@@ -92,6 +92,9 @@ jobs:
         run: |
           tools/release/package-chocolatey.ps1 -Version ${{ steps.version.outputs.version }} -ArtifactsDirectory artifacts/release
           tools/release/test-chocolatey.ps1 -Version ${{ steps.version.outputs.version }} -PackageDirectory artifacts/release
+          if ($LASTEXITCODE -ne 0) { throw "The package test failed (exit code $LASTEXITCODE); the failed checks are marked FAIL above." }
+          # The link the first review's verifier exemption request needs (docs/chocolatey.md section 5).
+          "betterclipboard ${{ steps.version.outputs.version }} was installed, upgraded with the app running and uninstalled on windows-latest in this run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Publish release
         shell: pwsh

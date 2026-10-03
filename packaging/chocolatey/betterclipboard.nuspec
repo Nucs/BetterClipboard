@@ -46,11 +46,12 @@ Example: `choco install betterclipboard --params "'/NoStartup'"`
 
 When uninstalling:
 
-- `/KeepWinVReleased` - if you released Win+V from Explorer in BetterClipboard's settings, keep it that way. By default the uninstall gives Win+V back to Windows, which restarts Explorer.
+- `/KeepWinVReleased` - if you released Win+V (or another Win+ shortcut BetterClipboard opens with) from Explorer in BetterClipboard's settings, keep it that way. By default the uninstall gives these shortcuts back to Windows, which restarts Explorer.
 
 ## Notes
 
 - Requires Windows 10 version 2004 (build 19041) or later, x64 or ARM64.
+- While BetterClipboard runs, Win+V opens it: the package does not restart Explorer, so the app intercepts Win+V with a keyboard hook. To take Win+V over from Windows fully (it then also works over windows running as administrator), release it from Explorer in Settings > Shortcut.
 - Installed to `%ChocolateyInstall%\lib\betterclipboard\tools\app`; `bclip` and `BetterClipboard` are on the PATH.
 - "Start with Windows" and the first launch are for the user who installs the package; other users turn it on in Settings. Nothing is set or started when the package is installed as SYSTEM.
 - Upgrades close BetterClipboard first and start it again afterwards when it was running.
