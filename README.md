@@ -10,7 +10,7 @@ you send to Claude Code and Codex.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="docs/images/flyout.png" width="384" alt="The BetterClipboard panel opened with Win+V: a search box, filters (All, Pinned, Text, Images, Links, Files) and recent copies as cards, one of them pinned">
+  <img src="docs/images/panel.png" width="461" alt="The BetterClipboard panel, opened with Win+V. Left: the groups column with three group icons. Top: the search box with its Aa, W and .* toggles, and the tabs All, Pinned, Text, Images, Links, Files and Snipping, with an arrow that scrolls to more. Cards: a pinned reply from Notepad, a Snipping Tool screenshot with its eye button, a GitHub link from Microsoft Edge, the color #7C3AED with its swatch, and two files from Windows Explorer.">
 </p>
 
 | | Windows' Win+V | BetterClipboard |
@@ -97,6 +97,10 @@ The tray icon opens the panel and Settings:
 - **App:** start with Windows, theme, the command line, the data folder.
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
+
+<p align="center">
+  <img src="docs/images/settings.png" width="694" alt="BetterClipboard Settings: the app's name and three chips (Capturing; Win+V; 8 items, 3.4 MB, 1 pinned, 6 in groups), then the Shortcut section and the History section.">
+</p>
 
 ### Tabs
 
@@ -229,6 +233,10 @@ history, the prompts you send to AI coding agents, and the files you open in Eve
 tab and its own switch in *Settings › Integrations*. All of them are on by default, and the tab of an app you don't
 have stays hidden. BetterClipboard only reads these sources; it never changes their files or lists.
 [Privacy](#privacy) sums up what each one reads.
+
+<p align="center">
+  <img src="docs/images/prompts.png" width="417" alt="The Claude tab of the panel: prompts sent to Claude Code in the Acme project, newest first, each with when it was sent; one was sent 2 times. Above them, the tabs are scrolled to Files, Snipping, Run, Pwsh, Cmd, Claude and Codex.">
+</p>
 
 ### ShareX screenshots
 

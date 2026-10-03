@@ -274,7 +274,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (717 tests, one class at a time — §4: the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum) (211 tests). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push). |
 
@@ -2667,6 +2667,65 @@ the alternatives, what was verified, and the sources.
 - After acceptance: the signing step in `release.yml` (publish → upload artifact → SignPath → archive the signed files
   → checksums), which needs `package.ps1` split into publish and archive halves.
 
+### 3.4 README photos (made 2026-10-03)
+
+User request (2026-10-03): "Install current on dev and orchestrate two photos plus one settings photo for the
+README.md". The README shows three photos, made on a claude-desktops Windows desktop with invented demo data, never on
+this PC (§4):
+- `docs/images/panel.png`, the hero: the All tab with the groups column (692×947).
+- `docs/images/prompts.png`, under *Tabs for other apps*: the Claude tab, the strip scrolled to the other apps' tabs
+  (626×947).
+- `docs/images/settings.png`, after the Settings list under *Use*: the top of Settings (1388×1307).
+
+They replace `flyout.png` (2026-09-25: six tabs, the removed "Windows clipboard history" label, real clipboard
+content). "Current" was v0.2.5: `main` had no app change after it (docs only).
+
+**How they were made.** Repeat it when the panel or Settings change visibly. The tools are in
+[`tools/readme/`](tools/readme).
+1. **Docker Desktop** must run on this PC (it does not start at sign-in, and here it opens its dashboard at start:
+   `OpenUIOnStartupDisabled` false). Started with ShellExecute, then every new Docker window was minimized with
+   `SW_SHOWMINNOACTIVE`, so the user's terminal kept the focus. The Windows host answered again after ~24 s.
+2. **The desktop:** `create_desktop(os="windows", width=2560, height=1440)`. Settings › Display › Scale 150 % (UIA:
+   expand the Scale combo box, select "150%"), then `launch C:\Windows\Resources\Themes\dark.theme` (dark mode and the
+   Dark Bloom wallpaper). At 150 % the photos stay sharp on high-DPI screens. The Settings window (940×880 DIP) needs
+   1,320 px of height, hence 1440p.
+3. **Install** with the README's own command (`irm …/install.ps1 | iex`): v0.2.5 from GitHub, SHA-256 checked, 12 s.
+4. **Demo data:** copy `tools/readme/*` to the desktop's persist folder (`Q:\claude-desktops\windows\desktops\<name>\persist`
+   = `Z:`), run `demo-data.ps1` in the desktop, then restart the app (`--exit`, `--background`) so that the prompt
+   readers import the new histories.
+5. **Copies from real apps,** so every card names its app: Notepad lines (Home, Shift+End, Ctrl+C), a selection in
+   Windows Terminal (drag, Ctrl+C), Explorer files (Ctrl+A, Ctrl+C), a Snipping Tool snip of the wallpaper, Edge's
+   address (Ctrl+L, Ctrl+C). Spread over ~20 minutes, so the captions read "just now" to "19 min ago". Then pin the
+   reply (Ctrl+P), make three groups with **+**, and drag cards onto them.
+6. **Size:** `FlyoutWidth` 432 and `FlyoutHeight` 640 in `settings.json`, written while the app is stopped. At 432 DIP
+   both strips end on whole tabs ("… Files Snipping ›" at the start, "‹ Files … Codex" at the end); at 400 they read
+   "Snippi›" and "‹ s Snipping".
+7. **The snip's shape** must match the card's thumbnail box (about 2.85:1 at 432 DIP, so 1426×500 px), or gray bars
+   frame the picture.
+8. **Capture** with `capture-window.ps1`, the pointer away from the window (no hover, no image peek):
+   - hero: Win+D, pointer at (800, 250), Win+V (the panel opens at the pointer, over the wallpaper), Ctrl+G, Ctrl+F;
+   - Claude tab: close the column, click › until it is gone, select the Claude tab through UIA, Ctrl+F;
+   - Settings: a plain launch, then one click in its hero area.
+9. `finish-shot.py` on each capture, then `delete_desktop(delete_persist=True)`.
+
+**Lessons** (each one cost a retake):
+- **No GPU in the VM:** acrylic and Mica draw their solid fallback colors, and DWM draws square corners with a
+  half-transparent 2-px border band. `finish-shot.py` trims the band and rounds the corners (8 DIP, the hardware look).
+- **Selecting a tab through UIA does not scroll the strip to it** (only `SelectFilter` from code reveals the tab), and
+  it leaves a keyboard focus rectangle on the tab. Scroll with the arrows first; Ctrl+F gives the focus back to the
+  search box.
+- **Settings opened after keyboard input** shows a focus rectangle around its whole scroll area
+  (`Scroller.Focus(FocusState.Programmatic)` keeps the keyboard look). One click in the window clears it.
+- **Win+Shift+S:** wait ~2 s for the overlay before the drag, or the drag does nothing. One snip failed: Snipping Tool
+  exited and left a 0-byte file and clipboard formats without data. The app logged "Gave up on a screenshot file that
+  stayed incomplete or locked for 10 s", which is correct.
+- **Units:** the desktop's UIA bounds are DIPs (×1.5 for pixels); its screenshots, clicks and drags are pixels. Its
+  `scroll` takes dy from −50 to 50, positive = down.
+- **Found on the way:** the first Win+V after a start does not focus the search box (§6).
+
+**Retake `settings.png` when the Shortcut section changes.** It shows 0.2.5's single shortcut; work on several
+shortcuts was in progress on 2026-10-03.
+
 ---
 
 ## 4. Conventions (must follow)
@@ -2886,9 +2945,9 @@ the alternatives, what was verified, and the sources.
   - a new Settings section: the Settings list under *Use*.
 
   Keep the anchors other files link to: `#privacy` and `#code-signing-policy` (release.yml's footer, the nuspec,
-  `docs/code-signing.md`) and `#readme`. The hero screenshot (`docs/images/flyout.png`) is from 2026-09-25 and shows
-  the old six-tab panel with real clipboard content. Replace it with demo content, made on a claude-desktops Windows
-  desktop, never the user's screen.
+  `docs/code-signing.md`) and `#readme`. The README's three photos (`docs/images/panel.png`, `prompts.png`,
+  `settings.png`) show v0.2.5 with invented demo data from a claude-desktops Windows desktop, never the user's screen.
+  When a change makes one of them wrong, retake that photo the same way (§3.4).
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
@@ -2904,6 +2963,7 @@ the alternatives, what was verified, and the sources.
 
 | Feature | How | Result |
 |---|---|---|
+| README photos (2026-10-03, §3.4): v0.2.5 installed with the README's `irm \| iex` command in a claude-desktops Windows 11 desktop (2560×1440 at 150 %, dark theme): SHA-256 OK, Settings opened. Demo data: `tools/readme/demo-data.ps1` (its guard refused on this PC and wrote nothing; a guard-free test copy with the histories in a scratch folder wrote 7 Claude Code lines, 2 Codex lines, PSReadLine's CRLF file and the notes), then copies from Notepad, Windows Terminal, Explorer, Snipping Tool and Edge, a pin, three groups by drag and drop. Shown as expected: the sources Notepad, Windows Terminal, Windows Explorer, Snipping Tool and Microsoft Edge; a color swatch; "2 files"; a path card; group badges; the Claude tab "6 prompts (7 sent)" with "sent 2 times"; the Codex and Pwsh tabs; the strip's arrows; the Settings chips "8 items · 3.4 MB · 1 pinned · 6 in groups". Captured per window in physical pixels, finished with `finish-shot.py` (the repository's script rebuilds all three photos byte for byte from the raw captures). The panel's first Win+V after a `--background` start left the search box unfocused and dropped the typed "git", 2 of 2 times; the second Win+V took it (§6). Docker Desktop was started for it and is still running; the desktop was deleted with its persist folder | claude-desktops MCP tools (UIA, keys, mouse), in-desktop PowerShell, Pillow | ✅ photos; ❌ the first-summon focus |
 | **v0.2.5 released** (2026-10-03, "bump last time to latest commit and do actual release and push of the new version", §3.1's release procedure). No commit had landed since `c5286e6` (the record of the `64cbff6` install, docs only), so the release is `c5286e6`, and its app code equals the `0.2.5+64cbff6` build installed and running on this PC, so no reinstall. The push range (5 commits) was scanned first: no binaries, no secret-like added lines, not the user's email. `main` pushed (`4e0b1ce..c5286e6`); CI run 37100304903 passed (940 = 937 + 3 skipped, x64 package smoke test, Chocolatey smoke test 22/22). Tag `v0.2.5`: annotated (object `ef329b0` → `c5286e6`), `--cleanup=whitespace`, message = the anchored lookup's draft (`13b4f56`), identical to the notes file (6,903 characters, valid UTF-8). Release run 37100517389 passed in ~5.5 min: the notes step, tests in Release (940 = 937 + 3), both packages, `test-chocolatey.ps1` 22/22, publish; Push to Chocolatey only warned (no secret, §3.2). The page (published 05:44:30Z, Latest, not a prerelease) holds the 2 zips (70.8 / 68.5 MB), 2 `.7z` (43.0 / 39.1 MB), `betterclipboard.0.2.5.nupkg` (82.1 MB), `install.ps1` and `SHA256SUMS.txt`. All four sums match GitHub's asset digests. The body is the notes, then `---` and the Code signing policy footer, with no mojibake. The `install.ps1` asset differs from the blob only by CRLF | `gh api …/releases/tags/v0.2.5`, `gh release download`, `gh run view --log`, a Python comparison of sums, digests, body and installer (scratch) | ✅ released; Chocolatey not pushed by choice |
 | `0.2.5` moved to `64cbff6` and installed on this PC a third time (2026-10-02 night, the same request again, §3.1). New since `5cf1eef`: the two image-overlay fixes (`e75b095`: the peek no longer vanishes while the mouse is still, which the user had reported; the viewer's wheel always zooms) and their docs. In a worktree at `64cbff6`: 940 = 937 passed + 3 skipped, 0 failed; `package.ps1` 146 s (zips 71.0 / 68.5 MB); `package-chocolatey.ps1` 82.7 MB. `install-local.ps1` (13 s): SHA-256 OK, the running `0.2.5+5cf1eef` closed gracefully, swapped. Started through Explorer: parent `explorer.exe`, 74 variables without `CLAUDECODE`/`MSYSTEM`. Run value, shortcut, Installed apps (`0.2.5`) and `DisabledHotkeys` (`V`) unchanged; the exe `0.2.5+64cbff6…`. Log after "starting": 0 WRN/ERR. The replaced build logged the Cmd helper's timeout twice, 28 s apart (§6). The v0.2.5 notes draft of `13b4f56` still holds (its overlay text matches the fixed behaviour), so no new draft | as in the first 0.2.5 row below | ✅ |
 | `0.2.5` moved to `5cf1eef` and installed on this PC again (2026-10-02 evening, "Move the 0.2.5 to latest changes and reinstall here locally", §3.1). Five commits since the first 0.2.5 install: the image overlays (`516b4ee`, the only app change), then code-signing preparation, the release workflow's notes step, and docs. In a worktree at `5cf1eef`: the full suite 940 = 937 passed + 3 skipped, 0 failed; `package.ps1 -Version 0.2.5` in 163 s (zips 71.0 / 68.5 MB, `.7z` 43.3 / 39.3 MB); `package-chocolatey.ps1` packed 82.7 MB with the nuspec's new Privacy / Code signing policy line. `install-local.ps1` (10 s): SHA-256 OK, the running `0.2.5+ac65856` closed gracefully after ~9 h with no WRN/ERR in its whole run, swapped. Started through Explorer: parent `explorer.exe`, 74 variables without `CLAUDECODE`/`MSYSTEM`. Run value, shortcut, Installed apps (`0.2.5`) and `DisabledHotkeys` (`V`) unchanged; the exe 0.2.5.0 / `0.2.5+5cf1eef…`; `installer.json` re-stamped. Log after "starting": 0 WRN/ERR. The publish still warns only CS0108 (see the first 0.2.5 row). The updated draft notes (the image overlays added, a Privacy link) are in the commit that records this | as in the first 0.2.5 row below | ✅ (the overlays themselves are still unchecked on screen: their row) |
@@ -2980,6 +3040,14 @@ the alternatives, what was verified, and the sources.
 
 ## 6. Roadmap / known gaps
 
+- **Bug (found 2026-10-03, §3.4): the first Win+V after a start leaves the search box without keyboard focus.** The
+  README promises "the search box focused — just type", but typed text went nowhere: UIA showed the focus on the root
+  pane, and "git" never reached the box. Seen 2 of 2 times in a claude-desktops VM with v0.2.5 started with
+  `--background` (as at sign-in); the second Win+V focused the box and took the text. `ShowAt` calls
+  `SearchBox.Focus` before the XAML tree has loaded (its comment says so), and the re-focus in `OnActivated` did not
+  cover it either. Not checked on real hardware (a VM without a GPU is slower). A likely fix: focus the box again once
+  the tree has loaded (its `Loaded` event, or after the first `ReloadAsync`), then check the first summon in a fresh
+  desktop.
 - Caret position for apps without a Win32 caret (WinUI, some Electron): UI Automation `TextPattern2.GetCaretRange`.
 - LL-hook watchdog (Windows removes hooks that time out) + re-install. (Hook-free mode when `DisabledHotkeys`
   is set: done — `RegisterHotKey` succeeds then.)
