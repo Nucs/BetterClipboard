@@ -2876,6 +2876,19 @@ the alternatives, what was verified, and the sources.
   app's data adds its row: what is read, what is kept, the default, the switch. That table is what makes "This program
   will not transfer any information …" credible to a reader (§3.3). It is also the user's only overview of what is
   read.
+- **A user-visible feature is not done until the README presents it.** The user, 2026-10-03: "We have had many many
+  changes and our README.md is not presenting that". By then the README lagged 0.2.5: six tabs, one group at a time,
+  and no image previews, resizing or prompt commands. Where things go:
+  - a new tab: the *Use › Tabs* table, plus a subsection under *Tabs for other apps*;
+  - a new key or gesture: the keys table under *Use*;
+  - a new menu entry: the keys table's menu row;
+  - a new `bclip` command or filter: the *Command line* table;
+  - a new Settings section: the Settings list under *Use*.
+
+  Keep the anchors other files link to: `#privacy` and `#code-signing-policy` (release.yml's footer, the nuspec,
+  `docs/code-signing.md`) and `#readme`. The hero screenshot (`docs/images/flyout.png`) is from 2026-09-25 and shows
+  the old six-tab panel with real clipboard content. Replace it with demo content, made on a claude-desktops Windows
+  desktop, never the user's screen.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
