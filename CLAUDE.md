@@ -2373,6 +2373,21 @@ Snipping tab (2026-10-01), with a copy of the dev build:
       `gh release edit --notes-file` to the notes the new step builds (annotation + footer), then read back through
       the API: 5 of 5 identical, footer present, no mojibake. The old bodies are backed up in session 79bc5201's
       scratchpad (`signpath/release-pages/backup`). Titles and the Latest flag were unchanged.
+    - The first real tag through the new step, v0.2.5 (2026-10-03, run 37100517389), was published with its own
+      notes plus the footer, read back through the API with no mojibake (§5).
+  - **Release procedure used for 0.2.5** (2026-10-03, "bump last time to latest commit and do actual release and push
+    of the new version"):
+    1. Scan the commits to push: no binaries, no secret-like added lines, not the user's email.
+    2. `git push origin main`, with `GH_TOKEN`, `GITHUB_TOKEN`, `GH_DEBUG` and also `DEBUG` unset. `DEBUG` is set in
+       this shell and makes `gh` print its request trace into the output, which breaks `--json` parsing.
+    3. Wait for CI on that exact commit (`gh run view <id> --json status,conclusion`).
+    4. Extract the newest notes draft with the anchored lookup above, everything after the marker line, into a file.
+    5. `git tag -a vX.Y.Z --cleanup=whitespace -F notes.md <the CI-tested sha>`. Check that it is annotated
+       (`git cat-file -t`) and that `%(contents)` equals the file, then `git push origin refs/tags/vX.Y.Z`.
+    6. Poll the Release run (~5.5 min for 0.2.5). Read the page back through `gh api …/releases/tags/vX.Y.Z`: the body
+       is the notes plus the footer, and every `SHA256SUMS.txt` line matches its asset's GitHub `digest`.
+    - The `install.ps1` asset has CRLF line endings: the Windows runner checks it out with `core.autocrlf`. The blob
+      and `irm | iex` (raw.githubusercontent.com) have LF. The content is identical, and both run.
 - **Installer** ([`install.ps1`](install.ps1), Windows PowerShell 5.1 and PowerShell 7, StrictMode 3):
   GitHub API → zip for the **OS** architecture (`RuntimeInformation.OSArchitecture`, correct under x64
   emulation on ARM64) → SHA-256 vs `SHA256SUMS.txt` **and** GitHub's asset `digest` → `--exit` the running
@@ -2577,7 +2592,10 @@ verification, sources) is [`docs/chocolatey.md`](docs/chocolatey.md). The packag
 **Open: the user's steps** (the doc's §5).
 1. Create the community.chocolatey.org account and the `CHOCOLATEY_API_KEY` secret.
 2. ~~Push; check that CI's Chocolatey test passed.~~ Done 2026-10-02: 22 of 22.
-3. Tag a stable release.
+3. ~~Tag a stable release.~~ Done 2026-10-03: v0.2.5. Its release job built `betterclipboard.0.2.5.nupkg` (82.1 MB),
+   passed `test-chocolatey.ps1` (22 of 22) and attached the package to the release. It was **not pushed**: there is no
+   `CHOCOLATEY_API_KEY` secret yet (the step's warning), as the user chose ("Can we do without choco first?",
+   2026-10-02). Once step 1 is done, `choco push` that attached `.nupkg`; the next stable tag pushes on its own.
 4. Answer the first review, asking for the verifier exemption.
 5. After approval, add `choco install betterclipboard` to the README.
 
@@ -2872,6 +2890,7 @@ the alternatives, what was verified, and the sources.
 
 | Feature | How | Result |
 |---|---|---|
+| **v0.2.5 released** (2026-10-03, "bump last time to latest commit and do actual release and push of the new version", §3.1's release procedure). No commit had landed since `c5286e6` (the record of the `64cbff6` install, docs only), so the release is `c5286e6`, and its app code equals the `0.2.5+64cbff6` build installed and running on this PC, so no reinstall. The push range (5 commits) was scanned first: no binaries, no secret-like added lines, not the user's email. `main` pushed (`4e0b1ce..c5286e6`); CI run 37100304903 passed (940 = 937 + 3 skipped, x64 package smoke test, Chocolatey smoke test 22/22). Tag `v0.2.5`: annotated (object `ef329b0` → `c5286e6`), `--cleanup=whitespace`, message = the anchored lookup's draft (`13b4f56`), identical to the notes file (6,903 characters, valid UTF-8). Release run 37100517389 passed in ~5.5 min: the notes step, tests in Release (940 = 937 + 3), both packages, `test-chocolatey.ps1` 22/22, publish; Push to Chocolatey only warned (no secret, §3.2). The page (published 05:44:30Z, Latest, not a prerelease) holds the 2 zips (70.8 / 68.5 MB), 2 `.7z` (43.0 / 39.1 MB), `betterclipboard.0.2.5.nupkg` (82.1 MB), `install.ps1` and `SHA256SUMS.txt`. All four sums match GitHub's asset digests. The body is the notes, then `---` and the Code signing policy footer, with no mojibake. The `install.ps1` asset differs from the blob only by CRLF | `gh api …/releases/tags/v0.2.5`, `gh release download`, `gh run view --log`, a Python comparison of sums, digests, body and installer (scratch) | ✅ released; Chocolatey not pushed by choice |
 | `0.2.5` moved to `64cbff6` and installed on this PC a third time (2026-10-02 night, the same request again, §3.1). New since `5cf1eef`: the two image-overlay fixes (`e75b095`: the peek no longer vanishes while the mouse is still, which the user had reported; the viewer's wheel always zooms) and their docs. In a worktree at `64cbff6`: 940 = 937 passed + 3 skipped, 0 failed; `package.ps1` 146 s (zips 71.0 / 68.5 MB); `package-chocolatey.ps1` 82.7 MB. `install-local.ps1` (13 s): SHA-256 OK, the running `0.2.5+5cf1eef` closed gracefully, swapped. Started through Explorer: parent `explorer.exe`, 74 variables without `CLAUDECODE`/`MSYSTEM`. Run value, shortcut, Installed apps (`0.2.5`) and `DisabledHotkeys` (`V`) unchanged; the exe `0.2.5+64cbff6…`. Log after "starting": 0 WRN/ERR. The replaced build logged the Cmd helper's timeout twice, 28 s apart (§6). The v0.2.5 notes draft of `13b4f56` still holds (its overlay text matches the fixed behaviour), so no new draft | as in the first 0.2.5 row below | ✅ |
 | `0.2.5` moved to `5cf1eef` and installed on this PC again (2026-10-02 evening, "Move the 0.2.5 to latest changes and reinstall here locally", §3.1). Five commits since the first 0.2.5 install: the image overlays (`516b4ee`, the only app change), then code-signing preparation, the release workflow's notes step, and docs. In a worktree at `5cf1eef`: the full suite 940 = 937 passed + 3 skipped, 0 failed; `package.ps1 -Version 0.2.5` in 163 s (zips 71.0 / 68.5 MB, `.7z` 43.3 / 39.3 MB); `package-chocolatey.ps1` packed 82.7 MB with the nuspec's new Privacy / Code signing policy line. `install-local.ps1` (10 s): SHA-256 OK, the running `0.2.5+ac65856` closed gracefully after ~9 h with no WRN/ERR in its whole run, swapped. Started through Explorer: parent `explorer.exe`, 74 variables without `CLAUDECODE`/`MSYSTEM`. Run value, shortcut, Installed apps (`0.2.5`) and `DisabledHotkeys` (`V`) unchanged; the exe 0.2.5.0 / `0.2.5+5cf1eef…`; `installer.json` re-stamped. Log after "starting": 0 WRN/ERR. The publish still warns only CS0108 (see the first 0.2.5 row). The updated draft notes (the image overlays added, a Privacy link) are in the commit that records this | as in the first 0.2.5 row below | ✅ (the overlays themselves are still unchecked on screen: their row) |
 | `main` pushed (2026-10-02, `8b65b19..543d2fd`, 34 commits, scanned for secret-like strings first: none): CI run 37007600619 passed. 940 tests, 937 passed + 3 skipped, 0 failed; the x64 package smoke test; and the Chocolatey smoke test's first GitHub run, 22 of 22 (§3.2). The five release pages v0.1.0–v0.2.3 were set to their tag annotations plus the "Code signing policy" footer (`gh release edit`) and read back through the API: 5 of 5 identical, footer present, no mojibake; titles and Latest unchanged; old bodies backed up | `git push`, `gh run view --log`, `gh release edit`, `gh api …/releases/tags/<tag>` | ✅ |
@@ -2958,8 +2977,9 @@ the alternatives, what was verified, and the sources.
   no-network privacy sentence untrue: it must then name the check and offer a switch (§3.3).
 - Chocolatey package: built and wired into CI and the release (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)).
   Open:
-  - the user's steps: the community.chocolatey.org account, the `CHOCOLATEY_API_KEY` secret, a stable tag, and
-    the verifier-exemption answer in the first review;
+  - the user's steps: the community.chocolatey.org account and the `CHOCOLATEY_API_KEY` secret (then `choco push`
+    the `.nupkg` attached to v0.2.5; the stable tag exists since 2026-10-03), and the verifier-exemption answer in
+    the first review. The user chose to build reputation without Chocolatey first (§3.3);
   - the README's `choco install betterclipboard` line once approved;
   - in the app: hide Settings › *Add bclip to PATH* when running from a Chocolatey `lib` folder (the shim already
     puts `bclip` on the PATH).
