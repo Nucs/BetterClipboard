@@ -9,7 +9,9 @@
         install, and this one would keep the package folder alive (docs/chocolatey.md section 3.3);
       - the Start menu shortcut, from every user's and from this user's Start menu, if it points into this package
         (install.ps1's shortcut points elsewhere and stays);
-      - this user's "Start with Windows" entry, if it points into this package;
+      - this user's "Start with Windows" entry, if it points into this package: removed, or, while install.ps1's copy
+        stays installed, handed to that copy (both share one history and one settings file, so the user's choice to
+        start with Windows carries over);
       - the shortcuts released from Explorer for BetterClipboard: Win+V and every Win+letter or Win+digit shortcut in
         its settings that Explorer's DisabledHotkeys lists (its Settings and install.ps1 release them there). Without
         the app they would do nothing at all, so they go back to Windows and Explorer restarts - unless
@@ -47,8 +49,18 @@ foreach ($programs in @([Environment]::GetFolderPath('CommonPrograms'), [Environ
     }
 }
 
+# install.ps1's copy, when it stays installed: it shares the history, the settings and the one "Start with Windows" value.
+$otherCopy = Get-BetterClipboardOtherInstall
 if ((Get-BetterClipboardRunTarget).StartsWith($appDir, [StringComparison]::OrdinalIgnoreCase)) {
-    Remove-ItemProperty -Path $BetterClipboardRunKey -Name $BetterClipboardRunValue
+    if ($otherCopy) {
+        # The user wanted BetterClipboard to start with Windows: the copy that stays takes the value over, in the app's
+        # own format, instead of nothing starting at the next sign-in.
+        Set-ItemProperty -Path $BetterClipboardRunKey -Name $BetterClipboardRunValue -Value "`"$otherCopy`" --background" -Type String
+        Write-Host "'Start with Windows' now starts the copy of BetterClipboard at '$otherCopy'."
+    }
+    else {
+        Remove-ItemProperty -Path $BetterClipboardRunKey -Name $BetterClipboardRunValue
+    }
 }
 
 # Assigned, not wrapped in @(): both functions return their array as one object, and @() would nest it.
@@ -57,7 +69,6 @@ $keys = Get-BetterClipboardKeysToGiveBack -DisabledHotkeys (Get-BetterClipboardD
 if ($keys.Count -gt 0) {
     $names = Format-BetterClipboardKeyNames $keys
     $verb = if ($keys.Count -eq 1) { 'stays' } else { 'stay' }
-    $otherCopy = Get-BetterClipboardOtherInstall
     if ($pp.KeepWinVReleased) {
         Write-Host "$names $verb released from Explorer (/KeepWinVReleased)."
     }

@@ -9,7 +9,7 @@ turns it into `betterclipboard.<version>.nupkg` for every release.
 | `betterclipboard.nuspec` | yes, filled in | Metadata. The build fills `{{PACKAGE_VERSION}}` and `{{RELEASE_TAG}}` and strips the comments. |
 | `tools/chocolateyinstall.ps1` | yes | Extracts the archive for the PC's architecture into `tools\app`, marks the shims, adds the Start menu shortcut and "Start with Windows", starts the app. |
 | `tools/chocolateybeforemodify.ps1` | yes | Closes the app before an upgrade or uninstall, and records whether it was running. |
-| `tools/chocolateyuninstall.ps1` | yes | Removes the shortcut, the "Start with Windows" entry and the state file; gives back to Windows the Win+V and other Win+letter shortcuts released for BetterClipboard; keeps the history. |
+| `tools/chocolateyuninstall.ps1` | yes | Removes the shortcut, the "Start with Windows" entry (or hands it to `install.ps1`'s copy when that stays installed) and the state file; gives back to Windows the Win+V and other Win+letter shortcuts released for BetterClipboard; keeps the history. |
 | `tools/helpers.ps1` | yes | Names and functions the three scripts share. |
 | `legal/VERIFICATION.txt` | yes, filled in | How to check the embedded archives against the GitHub release. The build fills `{{ARCHIVES}}` and `{{RELEASE_TAG}}`. |
 | `legal/LICENSE.txt` | yes, generated | The build writes it from the repository's `LICENSE`. |

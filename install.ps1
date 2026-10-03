@@ -66,7 +66,8 @@
     Do not start BetterClipboard after installing.
 
 .PARAMETER Uninstall
-    Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). Win+V - and every other
+    Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). While BetterClipboard's Chocolatey
+    package stays installed, the startup entry starts that copy instead of being removed. Win+V - and every other
     Win+ shortcut BetterClipboard released from Explorer - is given back to Windows (use -KeepWinVReleased
     to keep them released).
 
@@ -1024,14 +1025,22 @@ function Uninstall-BetterClipboard {
     Stop-RunningApp $exe
 
     Write-Step 'Removing the startup entry, shortcut and Installed-apps entry'
-    # The startup entry goes unless it starts another copy that still exists (the Chocolatey one): a stale entry
-    # pointing at a missing file is cleaned up as before.
+    # The startup entry stays when it starts another copy that still exists (the Chocolatey one). This copy's entry,
+    # or a stale one pointing at a missing file, goes - or, while the Chocolatey copy stays installed, is handed to it:
+    # both copies share one history, one settings file and this one value, so the user's choice to start
+    # BetterClipboard with Windows carries over (the package's own uninstall hands it to this copy the same way).
     $startupTarget = Get-RunTarget
-    if (-not $startupTarget -or $startupTarget.StartsWith($InstallDir, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $startupTarget)) {
-        Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
+    $chocolateyCopy = Get-ChocolateyCopy
+    if ($startupTarget -and -not $startupTarget.StartsWith($InstallDir, [StringComparison]::OrdinalIgnoreCase) -and (Test-Path -LiteralPath $startupTarget)) {
+        Write-Note "Kept the startup entry: it starts the copy at $startupTarget."
+    }
+    elseif ($startupTarget -and $chocolateyCopy) {
+        # The app's own format, so its Settings toggle shows the entry as on.
+        Set-ItemProperty -Path $RunKeyPath -Name $AppName -Value "`"$chocolateyCopy`" --background" -Type String
+        Write-Note "Start with Windows now starts the Chocolatey copy ($chocolateyCopy)."
     }
     else {
-        Write-Note "Kept the startup entry: it starts the copy at $startupTarget."
+        Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
     }
 
     Remove-Item -Path $ShortcutPath -Force -ErrorAction SilentlyContinue
@@ -1046,8 +1055,7 @@ function Uninstall-BetterClipboard {
     # Without BetterClipboard, a released Win+<key> would do nothing at all - give back every one BetterClipboard used:
     # Win+V (what every version's installer and Settings release), the keys installer runs recorded, and the Win+letter
     # shortcuts in its settings (Settings > Release from Explorer releases those). Unless the Chocolatey copy remains:
-    # it still uses them.
-    $chocolateyCopy = Get-ChocolateyCopy
+    # it still uses them ($chocolateyCopy, read above with the startup entry).
     $configured = Get-ConfiguredHotkeys
     $recorded = Get-RecordedReleasedKeys (Read-InstallerState)
     $candidates = @([char] 'V') + @($recorded) + @(@($configured) | ForEach-Object { Get-ReleasableKey $_ } | Where-Object { $null -ne $_ })

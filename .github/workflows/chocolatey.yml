@@ -50,12 +50,13 @@ jobs:
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_PACKAGE_VERSION: ${{ inputs.package-version }}
         run: |
-          $version = $env:INPUT_VERSION.Trim().TrimStart('v', 'V')
+          # [string] first: an empty input can reach the job as an absent variable, which PowerShell reads as $null.
+          $version = ([string] $env:INPUT_VERSION).Trim().TrimStart('v', 'V')
           if ($version -notmatch '^\d+\.\d+\.\d+$') {
             throw "'$version' is not a stable release version (x.y.z): the Community Repository takes no SemVer 2 prerelease, and release.yml packages only stable tags."
           }
 
-          $package = $env:INPUT_PACKAGE_VERSION.Trim()
+          $package = ([string] $env:INPUT_PACKAGE_VERSION).Trim()
           if (-not $package) { $package = '{0}.{1}' -f $version, (Get-Date).ToUniversalTime().ToString('yyyyMMdd') }
           # The package's numbers must start with the app's, and be written as choco pack writes them (no leading zeros,
           # no fourth number 0): test-chocolatey.ps1 looks for betterclipboard.<package version>.nupkg by that name.
@@ -76,20 +77,31 @@ jobs:
           Write-Host "App version $version, package version $package"
 
       - name: Release archives
+        id: release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.versions.outputs.version }}
         run: |
           $tag = "v$env:VERSION"
-          $release = gh release view $tag --json isDraft,isPrerelease | ConvertFrom-Json
+          # The REST API, not "gh release view --json": its field names depend on the runner's gh version, and an
+          # unknown one fails the call. "immutable" is null on servers or releases without the setting.
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$tag" | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw "There is no GitHub release $tag ($LASTEXITCODE)." }
-          if ($release.isDraft -or $release.isPrerelease) { throw "Release $tag is a draft or a prerelease; Chocolatey gets stable releases only." }
+          if ($release.draft -or $release.prerelease) { throw "Release $tag is a draft or a prerelease; Chocolatey gets stable releases only." }
+          $immutable = [bool] ($release.PSObject.Properties['immutable'] -and $release.immutable)
+          "immutable=$($immutable.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
           New-Item -ItemType Directory -Path artifacts/release -Force | Out-Null
-          gh release download $tag --pattern '*.7z' --pattern 'SHA256SUMS.txt' --dir artifacts/release --clobber
+          # --repo explicitly: without it gh reads the repository from the current folder's git remote.
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern '*.7z' --pattern 'SHA256SUMS.txt' --dir artifacts/release --clobber
           if ($LASTEXITCODE -ne 0) { throw "Downloading the archives of $tag failed ($LASTEXITCODE)." }
           Get-ChildItem artifacts/release | Format-Table Name, Length -AutoSize | Out-String | Write-Host
+          # gh fails only when no pattern matches at all, so a release with SHA256SUMS.txt but no archives gets here.
+          $archives = @(Get-ChildItem artifacts/release -Filter "BetterClipboard-$env:VERSION-win-*.7z")
+          if ($archives.Count -lt 2) {
+            throw "Release $tag has $($archives.Count) .7z archive(s), not one per architecture. Releases before v0.2.5 have none: package.ps1 writes them since 0.2.5."
+          }
 
       # package-chocolatey.ps1 refuses archives that do not match the release's SHA256SUMS.txt.
       - name: Build
@@ -109,16 +121,35 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "The package test failed (exit code $LASTEXITCODE); the failed checks are marked FAIL above." }
 
       # Attached before the push, like release.yml: VERIFICATION.txt points moderators at this release's archives, and
-      # the release page then offers the package that was tested. Other packages on the page are left alone.
+      # the release page then offers the package that was tested. Other packages on the page are left alone. An
+      # immutable release takes no new assets; the push does not need the attachment, so it goes on without it.
       - name: Attach to the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.versions.outputs.version }}
           PACKAGE_VERSION: ${{ steps.versions.outputs.package }}
+          IMMUTABLE: ${{ steps.release.outputs.immutable }}
         run: |
-          gh release upload "v$env:VERSION" "artifacts/release/betterclipboard.$env:PACKAGE_VERSION.nupkg" --clobber
+          $package = "artifacts/release/betterclipboard.$env:PACKAGE_VERSION.nupkg"
+          if ($env:IMMUTABLE -eq 'true') {
+            Write-Warning "Release v$env:VERSION is immutable: $package was not attached to it. The run keeps it as an artifact."
+            exit 0
+          }
+
+          gh release upload "v$env:VERSION" $package --repo $env:GITHUB_REPOSITORY --clobber
           if ($LASTEXITCODE -ne 0) { throw "gh release upload failed ($LASTEXITCODE)." }
+
+      # Kept with the run as well (for the repository's artifact retention, 90 days on 2026-10-03), so the tested
+      # package can be fetched even when it could not be attached.
+      - name: Keep the package with the run
+        uses: actions/upload-artifact@v7
+        with:
+          name: betterclipboard-${{ steps.versions.outputs.package }}
+          path: artifacts/release/betterclipboard.${{ steps.versions.outputs.package }}.nupkg
+          if-no-files-found: error
+          # A .nupkg is a zip of 7-Zip archives: compressing it again only costs time.
+          compression-level: 0
 
       - name: Push to Chocolatey
         if: ${{ inputs.push }}
@@ -129,7 +160,7 @@ jobs:
         run: |
           $package = "artifacts/release/betterclipboard.$env:PACKAGE_VERSION.nupkg"
           if (-not $env:CHOCOLATEY_API_KEY) {
-            Write-Warning "No CHOCOLATEY_API_KEY secret: $package was attached to the release but not pushed. Push it with: choco push <file> --source https://push.chocolatey.org/ --api-key <key>"
+            Write-Warning "No CHOCOLATEY_API_KEY secret: $package was not pushed (it is on the release page unless the release is immutable, and with the run). Push it with: choco push <file> --source https://push.chocolatey.org/ --api-key <key>"
             exit 0
           }
 

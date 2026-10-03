@@ -97,10 +97,21 @@ Every version passes these automated checks, then a human moderator. A trusted p
 The validator's source ([chocolatey/package-validator](https://github.com/chocolatey/package-validator)) was
 archived in 2021. Thresholds marked "2021" come from it and may have changed since.
 
+**Checked against the built package (2026-10-03).** The matching logic of all 78 archived rules was read, and every
+rule that inspects the scripts, the files or the nuspec was applied to `betterclipboard.0.2.5.20261003.nupkg`. No
+Requirement fires. What fires: the Notes for binaries and for owners equal to authors (both expected), and the
+Guidelines for scripts over 100 lines and, if `helpers.ps1` counts, a fourth automation script. Two facts from the
+source:
+- Which scripts count: only `chocolateyinstall.ps1`, `chocolateybeforemodify.ps1` and `chocolateyuninstall.ps1`
+  (`Utility.get_chocolatey_automation_scripts`). It means to add the scripts they reference, such as `helpers.ps1`,
+  but adds them under the referencing script's key, which throws and skips them. Today's closed validator may count
+  `helpers.ps1`; it has none of the flagged texts either.
+- Text rules lower-case the script and search it, comments included; CPMR0010 alone works on PowerShell tokens.
+
 | Rule | Level | Asks for | The package |
 |---|---|---|---|
 | CPMR0009 | Requirement | `projectUrl` | `https://github.com/Nucs/BetterClipboard` |
-| CPMR0002, 0032, 0026, 0030 | Requirement | A description of 30-4000 characters; Markdown headings need a space after `#` | 2,380 characters (2026-10-03), `## ` headings. |
+| CPMR0002, 0032, 0026, 0030 | Requirement | A description of 30-4000 characters; Markdown headings need a space after `#` | 2,374 characters as an XML reader sees them (2026-10-03), `## ` headings. |
 | CPMR0001, 0020 | Requirement | A copyright of 4+ characters; no e-mail address in `authors` or `copyright` | `Copyright (c) 2026 Eli Belash` (as in `LICENSE`). |
 | CPMR0007, 0039 | Requirement, guideline | `licenseUrl`; `requireLicenseAcceptance` false unless there is a license URL | MIT `LICENSE` at the release tag, acceptance false. |
 | CPMR0014, 0023, 0048 | Requirement, guideline | Tags present, space-separated, without "chocolatey" | `clipboard clipboard-manager clipboard-history win-v productivity foss` |
@@ -113,9 +124,10 @@ archived in 2021. Thresholds marked "2021" come from it and may have changed sin
 | CPMR0040, 0047, 0049, 0042, 0057 | Guideline, suggestion | `packageSourceUrl`, `summary`, `title`, `releaseNotes`, `docsUrl` / `bugTrackerUrl` / `projectSourceUrl` | All set. |
 | CPMR0041, 0050 | Guideline | `projectSourceUrl` not equal to `projectUrl`; title not equal to the ID (2021: exact, case-sensitive comparisons) | `.../tree/main/src`; title `BetterClipboard`. |
 | CPMR0037 | Guideline | A script that calls a helper with no automatic undo (`Install-ChocolateyShortcut`) also ships an uninstall script | It does. |
-| CPMR0046 | Guideline | Any literal `Start-Process`, even in a comment (2021) | None: the app is started through `explorer.exe` and a temporary shortcut. |
+| CPMR0046 | Guideline | Any literal `Start-Process`, even in a comment (2021) | None: the app is started through `explorer.exe` and a temporary shortcut. (The 2021 code lower-cases the script and then searches for `Start-Process` with capitals, so it never fired; today's may.) |
+| CPMR0018 | Requirement | The install script must not name `chocolateyUninstall.ps1` | It does not. Only `helpers.ps1` names it, in its help text, and the rule reads only the install script. (The 2021 code compares the file *extension* with `chocolateyinstall.ps1`, so it never fired.) |
 | CPMR0063, 0064 | Note | `WScript` / `.CreateShortcut` | None: `Install-ChocolateyShortcut` writes shortcuts, `Shell.Application` reads them. |
-| CPMR0043, 0051 | Guideline | Scripts under 100 lines; at most 3 automation scripts (2021) | Flagged, and fine to argue: the install script is longer because every step is documented, and `helpers.ps1` is a fourth file shared by the three. |
+| CPMR0043, 0051 | Guideline | Scripts under 100 lines; at most 3 automation scripts (2021) | Flagged, and fine to argue: the install script (153 lines) and the uninstall script (105) are longer because every step is documented, and `helpers.ps1` (477) is a fourth file shared by the three. |
 | CPMR0068 | Note | Flags `owners` = `authors` | Expected for a vendor package. |
 | CPMR0008 | Requirement | No Program Files in IDs ending `.portable` (2021) | Not our ID, and the package stays in `lib`, as moderators expect of a portable package. |
 
@@ -332,7 +344,10 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
 
 **Uninstall** (after before-modify):
 1. Deletes `upgrade-state.txt`, which would otherwise keep the package folder alive.
-2. Removes the shortcut, from both Start menus, and the Run value, only where they point into the package.
+2. Removes the shortcut, from both Start menus, and the Run value, only where they point into the package. While
+   `install.ps1`'s copy stays installed, the Run value is handed to that copy instead (since 2026-10-03): both copies
+   share one history, one settings file and this one value, so the user's choice to start with Windows carries over.
+   Before, the copy that stayed no longer started at sign-in.
 3. **Shortcuts released from Explorer** (`DisabledHotkeys`): gives back Win+V and every Win+letter or Win+digit
    shortcut in BetterClipboard's settings (`OpenHotkey`, and `ExtraOpenHotkeys` since 0.2.6) that the value lists,
    then restarts Explorer, like `install.ps1 -Uninstall`: without the app those shortcuts do nothing. Since
@@ -353,9 +368,13 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
 - It warns when a Chocolatey copy exists.
 - It leaves a "Start with Windows" value that starts the Chocolatey copy.
 - On `-Uninstall`:
-  - it removes the value only when it points into its own folder or at a missing file (a stale value is still
-    cleaned up);
+  - it keeps a value that starts the Chocolatey copy. One that points into its own folder or at a missing file goes,
+    or, while the Chocolatey copy stays installed, is handed to that copy (since 2026-10-03). This is the migration
+    the package's install warning recommends ("to keep only this copy, uninstall that one"); before the hand-over it
+    left the Chocolatey copy without a startup entry;
   - it keeps Win+V (and any other Win+ shortcut it would give back) released while the Chocolatey copy remains.
+- Its own uninstall runs the `install.ps1` that came with the installed release zip (the Installed-apps entry), so
+  the hand-over reaches a user with the first release after 2026-10-03; `irm … | iex` runs `main`'s copy at once.
 
 **Not in the package:**
 - Taking over Win+V at install, which `install.ps1` does by default since 2026-10-03 (`-NoTakeOverWinV`, `-Hotkey`).
@@ -395,11 +414,19 @@ CI (`.github/workflows/ci.yml`) runs steps 2 and 3 on every push, with an x64-on
 package for a version that is already released, without a new app release.
 - Inputs: the app version (`0.2.5`); the package version, empty for `<version>.<today as yyyyMMdd, UTC>`,
   Chocolatey's package-fix notation; and whether to push (on by default).
-- Steps: checks the inputs (a stable `x.y.z`, a package version in Chocolatey's normalized form, passed to the
-  scripts through environment variables); downloads the release's `.7z` archives and `SHA256SUMS.txt` with `gh`
-  (refusing a draft or a prerelease); `package-chocolatey.ps1` with the scripts of the branch it runs on;
-  `test-chocolatey.ps1`; attaches the `.nupkg` to the release; pushes it when the secret exists. Other packages on the
-  release page are left alone.
+- Steps:
+  1. checks the inputs: a stable `x.y.z`, and a package version in Chocolatey's normalized form. They reach the
+     scripts through environment variables, read as `[string]` (an empty input may arrive as an absent variable);
+  2. reads the release through the REST API, refusing a draft or a prerelease, and notes whether it is immutable;
+  3. downloads its `.7z` archives and `SHA256SUMS.txt` (`gh release download --repo`: without `--repo`, gh reads the
+     repository from the current folder's git remote), and refuses a release without one archive per architecture
+     (releases before v0.2.5 have none);
+  4. runs `package-chocolatey.ps1` with the scripts of the branch it runs on, then `test-chocolatey.ps1`;
+  5. attaches the `.nupkg` to the release, unless the release is immutable (a warning then), and keeps it as a run
+     artifact either way (the repository keeps artifacts 90 days);
+  6. pushes it when the secret exists.
+
+  Other packages on the release page are left alone.
 - The run's summary names the run, as in step 3 above.
 - Locally, the same build is `package-chocolatey.ps1 -Version 1.2.3 -PackageVersion 1.2.3.20261001
   -ArtifactsDirectory <folder with the release's archives and SHA256SUMS.txt>`. Its test needs a disposable machine.
@@ -427,6 +454,13 @@ package for a version that is already released, without a new app release.
    > exact .nupkg on GitHub's windows-latest runner: <link to that run>. The embedded archives are assets of the
    > GitHub release, with URLs and SHA-256 checksums in legal/VERIFICATION.txt.
 6. Answer every later comment within 35 days, and fix a problem by resubmitting the **same** version.
+
+**A review comment to expect, and its fix.** The moderation checklist asks that a package "install completely silently
+by default". Ours asks nothing, but its first start after a fresh install opens BetterClipboard's Settings window (the
+welcome, as with `install.ps1`). No rule or guideline forbids that (the docs of 2026-09-28 were searched), and
+`/NoLaunch` turns it off. If a moderator still asks for a quieter default, start the app into the tray instead: in
+`chocolateyinstall.ps1`, `$arguments = if ($isUpgrade) { '--background' } else { '' }` becomes `'--background'` in
+both cases (the user then finds it by Win+V or the tray icon). That keeps decision 3 (start after install) intact.
 
 **After approval:**
 - Add the install line to the README:
@@ -456,6 +490,19 @@ package for a version that is already released, without a new app release.
   values in the key, so the bug passed the release job unseen.
 - **Replacement.** A package-only fix built from `main` (`0.2.5.<date>`, the *Chocolatey package* workflow), or the
   next stable release. Both carry the guarded line: the key is created only when it is missing.
+- **The same page's `install.ps1` has the bug too.** The asset was uploaded from the v0.2.5 tag, before `34b1270`: it
+  runs `New-Item -Force` on the Run key (line 485) and, when it takes Win+V over, on `Explorer\Advanced` (line 256).
+  The release notes list it as "The installer / updater / uninstaller"; it had 1 download on 2026-10-03. The README's
+  `irm … | iex` runs `main`'s fixed copy, so only someone who downloads the asset is exposed. Moderators open this
+  page through `VERIFICATION.txt`, so replace it, after pushing `main`: `gh release upload v0.2.5 install.ps1
+  --clobber`, from the repository folder (`main`'s copy installs 0.2.5 like the `irm` command does).
+- **And the installed copies' uninstaller.** Every release zip from v0.1.0 to v0.2.5 carries its `install.ps1`, and
+  the Installed-apps entry runs that copy for `-Uninstall`. Its `Set-WinVReleased` serves the install and the
+  uninstall: giving Win+V back while `DisabledHotkeys` holds other letters too runs `New-Item -Force` on
+  `Explorer\Advanced`, which empties all of Explorer's settings (checked in every tag's `install.ps1`, 2026-10-03).
+  With only `V` in the value it removes the value instead, which is safe. The Chocolatey package's uninstall never
+  had this. Only an update to a release built after `34b1270` replaces the installed copy, so the next release fixes
+  it for whoever updates first.
 
 ## 6. Decisions (2026-10-01)
 
@@ -489,6 +536,11 @@ package for a version that is already released, without a new app release.
 | The last message names the configured shortcuts (2026-10-03) | same VM, final build: settings with `Alt+Win+V` and `Ctrl+Alt+F9`, install and uninstall as the desktop user | 4 of 4: "While it runs, Alt+Win+V or Ctrl+Alt+F9 opens it"; nothing given back (no Win+letter shortcut released) |
 | The give-back helpers (2026-10-03) | their functions loaded from `helpers.ps1`; scratch `settings.json` files and a scratch HKCU key with neighbors | 33 of 33 in Windows PowerShell 5.1 and in PowerShell 7.5.8: shortcut spellings, 0.2.5- and 0.2.6-style settings, a comment (unknown in 5.1, read in 7), garbage, the data-folder override, case, duplicates, digits, removal in place, the neighbors kept. The user's own `DisabledHotkeys` on this PC unchanged |
 | The *Chocolatey package* workflow's version step (2026-10-03) | its PowerShell taken from the YAML and run with 12 inputs | 12 of 12: `0.2.5` gives `0.2.5.20261003`; `v0.2.5` and spaces accepted; prereleases, a foreign package version, `.0` and leading zeros refused, and so is an injection attempt. The workflow itself first runs after a push |
+| **Second audit: the validator's rules** (2026-10-03) | the archived validator's 78 rules read; every script, file and nuspec rule applied to the built package by a scratch script | No Requirement. Notes: binaries included, owners equal authors. Guidelines: scripts over 100 lines (install 153, uninstall 105, `helpers.ps1` 477) and a fourth script if `helpers.ps1` counts |
+| **Second audit: the workflow's steps, for real** (2026-10-03) | "Versions" and "Release archives" taken from the YAML and run with PowerShell 7 against the real GitHub API, from a scratch folder | Versions 10 of 10, absent input variables included (the first version threw on `$null.Trim()` then). Release archives: v0.2.5 downloaded both `.7z` and `SHA256SUMS.txt` (checksums OK); v0.2.3 refused ("0 .7z archive(s) … before v0.2.5"); a missing tag refused. Found on the way: without `--repo`, `gh release download` failed outside a git folder |
+| **Second audit: `test-chocolatey.ps1` under PowerShell 7** (2026-10-03) | a second disposable VM (Windows 11 25H2, Chocolatey 2.7.4, PowerShell 7.6.6 from Microsoft's MSI: the community `powershell-core` package hung there), the package with the hand-over | 28 of 28, as in Windows PowerShell 5.1: CI's shell runs the new checks |
+| **Second audit: both install channels together** (2026-10-03) | same VM, Windows PowerShell 5.1, the repository's `install.ps1` (downloading v0.2.5 from GitHub) and the package, in both orders, with real Explorer restarts | 26 of 26. Order A: `install.ps1`, package, `install.ps1 -Uninstall`: "Start with Windows" became `"C:\ProgramData\chocolatey\lib\betterclipboard\tools\app\BetterClipboard.exe" --background`, Win+V stayed released; the package's uninstall then gave everything back. Order B: package, `install.ps1`, package uninstall: the entry became `install.ps1`'s copy and Win+V stayed; `install.ps1 -Uninstall` then gave everything back. The VM was deleted |
+| **Second audit: `install.ps1`'s uninstall in the harness** (2026-10-03) | session 7579fd35's installer harness, copied with a `-SeedRun` option (scratch registry and folders, process calls stubbed) | 10 runs in PowerShell 5.1 and 7: the hand-over (own entry, stale entry), an entry of the Chocolatey copy kept, no entry left alone, no Chocolatey copy = removed; the peer's s16-s18; a full install of the local 0.2.4 zip. The user's real Run value, Installed-apps entry, `DisabledHotkeys`, shortcut, PATH and PIDs unchanged in every run |
 
 The probe's scenarios (Chocolatey CLI 2.3.0, not elevated):
 
