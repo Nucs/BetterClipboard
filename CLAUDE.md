@@ -2379,7 +2379,8 @@ Snipping tab (2026-10-01), with a copy of the dev build:
     of the new version"):
     1. Scan the commits to push: no binaries, no secret-like added lines, not the user's email.
     2. `git push origin main`, with `GH_TOKEN`, `GITHUB_TOKEN`, `GH_DEBUG` and also `DEBUG` unset. `DEBUG` is set in
-       this shell and makes `gh` print its request trace into the output, which breaks `--json` parsing.
+       this shell and makes `gh` print its request trace on stderr (stdout stays clean). Captured with `2>&1`, that
+       trace broke `--json` parsing.
     3. Wait for CI on that exact commit (`gh run view <id> --json status,conclusion`).
     4. Extract the newest notes draft with the anchored lookup above, everything after the marker line, into a file.
     5. `git tag -a vX.Y.Z --cleanup=whitespace -F notes.md <the CI-tested sha>`. Check that it is annotated
