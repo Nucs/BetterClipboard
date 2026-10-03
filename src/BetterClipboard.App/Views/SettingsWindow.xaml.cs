@@ -227,23 +227,34 @@ public sealed partial class SettingsWindow : Window
     private void OnHotkeyStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshHotkeyStatus();
 
     /// <summary>
-    /// Fills the presets menu next to the shortcut box (<see cref="MenuFlyout"/> has no ItemsSource). Picking
-    /// one goes through <see cref="SettingsViewModel.OpenHotkey"/> — validated and saved exactly like typed
-    /// text — and the two-way binding shows it in the box.
+    /// Fills the presets menu next to the shortcut box (<see cref="MenuFlyout"/> has no ItemsSource) with toggles: picking
+    /// one adds it through <see cref="SettingsViewModel.TogglePreset"/> — validated and saved exactly like typed text — or
+    /// removes it when it is in the list already. Their checks are set each time the menu opens.
     /// </summary>
     private void BuildHotkeyPresetsMenu()
     {
         foreach (var preset in ViewModel.HotkeyPresets)
         {
-            var item = new MenuFlyoutItem { Text = preset };
-            item.Click += (_, _) => ViewModel.OpenHotkey = preset;
+            var item = new ToggleMenuFlyoutItem { Text = preset, Tag = preset };
+            item.Click += (_, _) => ViewModel.TogglePreset(preset);
             HotkeyPresetsMenu.Items.Add(item);
         }
     }
 
+    /// <summary>Checks the presets that are among the shortcuts right before the menu shows.</summary>
+    /// <param name="sender">The presets menu.</param>
+    /// <param name="e">Event data.</param>
+    private void HotkeyPresetsMenu_Opening(object sender, object e)
+    {
+        foreach (var item in HotkeyPresetsMenu.Items.OfType<ToggleMenuFlyoutItem>())
+        {
+            item.IsChecked = item.Tag is string preset && ViewModel.HasHotkey(preset);
+        }
+    }
+
     /// <summary>
-    /// Enter commits the typed shortcut right away (the binding alone commits only when focus leaves the box,
-    /// so without this nothing would happen on Enter).
+    /// Enter adds the typed shortcut to the list (the box itself saves nothing, so a half-typed shortcut never becomes a
+    /// global hotkey).
     /// </summary>
     /// <param name="sender">The shortcut box.</param>
     /// <param name="e">Key data.</param>
@@ -251,8 +262,24 @@ public sealed partial class SettingsWindow : Window
     {
         if (e.Key == global::Windows.System.VirtualKey.Enter)
         {
-            ViewModel.OpenHotkey = HotkeyBox.Text;
+            ViewModel.AddHotkey(HotkeyBox.Text);
             e.Handled = true;
+        }
+    }
+
+    /// <summary>The Add button next to the shortcut box: adds what is typed there.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private void AddHotkey_Click(object sender, RoutedEventArgs e) => ViewModel.AddHotkey(HotkeyBox.Text);
+
+    /// <summary>Remove on a shortcut's row; its <c>Tag</c> holds the row's shortcut text.</summary>
+    /// <param name="sender">The row's button.</param>
+    /// <param name="e">Click data.</param>
+    private void RemoveHotkey_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement { Tag: string text })
+        {
+            ViewModel.RemoveHotkey(text);
         }
     }
 
@@ -270,21 +297,42 @@ public sealed partial class SettingsWindow : Window
         controller.ApplyTheme(Root);
     });
 
-    /// <summary>Release or restore Win+V in Explorer, after confirmation (restarts Explorer).</summary>
+    /// <summary>
+    /// Release the Win+letter shortcuts from Explorer, or give them back, after confirmation (restarts Explorer). The plan is
+    /// read once, before the dialog, so the keys confirmed are exactly the keys changed.
+    /// </summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
-    private async void ReleaseWinV_Click(object sender, RoutedEventArgs e)
+    private async void ReleaseFromExplorer_Click(object sender, RoutedEventArgs e)
     {
-        bool release = !ViewModel.IsWinVReleased;
-        var confirmed = await ConfirmAsync(
-            release ? "Release Win+V from Explorer?" : "Give Win+V back to Explorer?",
-            release
-                ? "Explorer will stop registering Win+V, so BetterClipboard can own it without a keyboard hook. Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close."
-                : "Explorer will register Win+V again (Windows' clipboard history panel). Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.",
-            release ? "Release and restart Explorer" : "Restore and restart Explorer");
-        if (confirmed)
+        try
         {
-            await ViewModel.SetWinVReleasedAsync(release);
+            ViewModel.RefreshExplorerRelease();
+            var plan = ViewModel.ExplorerPlan;
+            if (plan.Action == BetterClipboard.Windows.Shell.ExplorerReleaseAction.None)
+            {
+                return;
+            }
+
+            bool release = plan.Action == BetterClipboard.Windows.Shell.ExplorerReleaseAction.Release;
+            bool one = plan.Keys.Count == 1;
+            var names = plan.KeyNames;
+            const string Restart = "Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.";
+            var confirmed = await ConfirmAsync(
+                release ? $"Release {names} from Explorer?" : $"Give {names} back to Explorer?",
+                release
+                    ? $"Explorer will stop registering {names}, so BetterClipboard can own {(one ? "it" : "them")} without a keyboard hook. While BetterClipboard is not running, {(one ? "it does" : "they do")} nothing. {Restart}"
+                    : $"Explorer will register {names} again (Windows' own {(one ? "shortcut" : "shortcuts")}). {Restart}",
+                release ? "Release and restart Explorer" : "Restore and restart Explorer");
+            if (confirmed)
+            {
+                await ViewModel.ApplyExplorerReleaseAsync(plan);
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void's caller has nothing to catch it: a failure here must not crash the app.
+            Core.Diagnostics.AppLog.Warn($"Changing Explorer's shortcut registrations failed: {ex.Message}");
         }
     }
 
@@ -383,11 +431,6 @@ public sealed partial class SettingsWindow : Window
     /// <param name="text">Text.</param>
     /// <returns>Visibility.</returns>
     public Visibility HasText(string? text) => string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
-
-    /// <summary>x:Bind helper: Explorer release button text.</summary>
-    /// <param name="released">Whether Win+V is released.</param>
-    /// <returns>The text.</returns>
-    public string ReleaseWinVText(bool released) => released ? "Give back to Explorer…" : "Release…";
 
     /// <summary>x:Bind helper: boolean negation.</summary>
     /// <param name="value">Value.</param>

@@ -39,17 +39,22 @@ irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | ie
 The installer downloads the latest [release](https://github.com/Nucs/BetterClipboard/releases/latest) for
 your architecture, **verifies its SHA-256**, installs per user into `%LOCALAPPDATA%\Programs\BetterClipboard`
 (no admin rights), adds a Start menu shortcut, starts BetterClipboard with Windows and registers it under
-*Settings › Apps › Installed apps*. Running it again updates in place; your history is never touched.
+*Settings › Apps › Installed apps*. It also **takes over Win+V**: Explorer stops registering it and restarts once (the
+taskbar blinks, and open folder windows close). See [Taking over Win+V](#taking-over-winv). Running it again updates in
+place; your history is never touched. It runs from any folder, also one you cannot write to, and leaves your PowerShell
+in that folder when it is done.
 
 Options (pass them through a script block):
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -TakeOverWinV
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -NoTakeOverWinV -Hotkey Win+Alt+V
 ```
 
 | Option | Effect |
 |---|---|
-| `-TakeOverWinV` | Tell Explorer to release Win+V (see [Taking over Win+V](#taking-over-winv)) and restart Explorer once. |
+| `-NoTakeOverWinV` | Leave Win+V to Windows. BetterClipboard then opens with the `-Hotkey` shortcuts, or with Win+Alt+V. If Win+V was released before, Explorer gets it back. |
+| `-Hotkey A, B, …` | The shortcuts that open BetterClipboard, e.g. `-Hotkey Win+Alt+V, Ctrl+Alt+F9`. Win+V comes first unless `-NoTakeOverWinV` is given. Each one is taken over the same way as Win+V (see [Taking over Win+V](#taking-over-winv)). |
+| `-TakeOverWinV` | The default. Kept for older command lines; if your shortcuts no longer include Win+V, it adds Win+V back. |
 | `-AddToPath` | Put the install folder on your user PATH so terminals can run `bclip` (see [Command line](#command-line-for-scripts-and-ai-agents)). |
 | `-Version 0.1.0` | Install a specific release instead of the latest. |
 | `-InstallDir <path>` | Install somewhere else. |
@@ -87,7 +92,8 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 
 The tray icon opens the panel and Settings:
 
-- **Shortcut:** the key that opens the panel, and taking Win+V over from Explorer.
+- **Shortcut:** the keys that open the panel (add as many as you like), and releasing Win+letter shortcuts from
+  Explorer.
 - **History:** how many items, for how many days, how large, and what to record.
 - **Pasting:** paste after choosing, move pasted items to the top, pinned items first, where the panel opens.
 - **Privacy:** pause, ignored apps, *Forgotten forever*, capture reliability, clear history.
@@ -217,14 +223,28 @@ deleted; updates only ever add names that are new to the catalog.
 
 Explorer owns Win+V. BetterClipboard supports two ways to take it:
 
-- **Default — no system change.** While BetterClipboard runs, a low-level keyboard hook intercepts Win+V
-  before Explorer sees it. Exit BetterClipboard and Windows' own panel is back instantly.
-- **Clean mode** (`-TakeOverWinV`, or *Settings › Release Win+V from Explorer*). Explorer is told not to
-  register Win+V (`DisabledHotkeys` = `V`) and BetterClipboard registers it normally, so it also works
-  while an elevated (admin) window is focused. Trade-off: while BetterClipboard isn't running, Win+V does
-  nothing. Uninstalling gives Win+V back to Windows.
+- **Release it from Explorer** (what the installer does, or *Settings › Release from Explorer*). Explorer is told not
+  to register Win+V (`DisabledHotkeys` = `V`) and BetterClipboard registers it normally, so it also works while an
+  elevated (admin) window is focused. Trade-off: while BetterClipboard isn't running, Win+V does nothing.
+  Uninstalling gives Win+V back to Windows.
+- **Keyboard hook — no system change** (a copy you run without the installer, or after `-NoTakeOverWinV` if you add
+  Win+V back). While BetterClipboard runs, a low-level keyboard hook intercepts Win+V before Explorer sees it. Exit
+  BetterClipboard and Windows' own panel is back instantly.
 
-Any other shortcut works too (Settings › Shortcut).
+**Rather keep Win+V for Windows?** Install with `-NoTakeOverWinV` and pick your own shortcuts with `-Hotkey`, or add and
+remove them in *Settings › Shortcut*. Any number of shortcuts can open the panel, and each one is taken over the same
+way:
+
+- **Win plus a letter or digit that Explorer owns** (Win+E, Win+R, Win+1): Explorer can release it, like Win+V. The
+  installer does that for every such shortcut you give it; in the app, *Settings › Release from Explorer* does it. Some
+  belong to another part of Windows (Win+C, Copilot, on Windows 11 25H2): the keyboard hook takes those over.
+- **Any other shortcut that an app already uses** (Win+Shift+V is PowerToys' Advanced Paste): the keyboard hook
+  intercepts exactly that combination while BetterClipboard runs. *Settings › Take over shortcuts owned by Windows*
+  switches this off.
+- **A free shortcut** (Win+Alt+V, Ctrl+Alt+F9): BetterClipboard registers it.
+
+Explorer can release only an exact Win+letter or Win+digit shortcut: the `V` releases Win+V, but Win+Ctrl+V stays with
+Windows.
 
 ## Tabs for other apps
 
@@ -469,7 +489,9 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\BetterClipboard\install.ps1" -Uninstall
 ```
 
-Your history stays in `%LOCALAPPDATA%\BetterClipboard` unless you add `-RemoveData`.
+Your history stays in `%LOCALAPPDATA%\BetterClipboard` unless you add `-RemoveData`. Win+V, and every other
+Win+ shortcut that BetterClipboard released from Explorer, goes back to Windows (add `-KeepWinVReleased` to keep them
+released).
 
 ## Build from source
 

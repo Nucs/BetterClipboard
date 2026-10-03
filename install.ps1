@@ -13,10 +13,15 @@
          files in via a staging folder so a failed update leaves the previous version in place.
       4. Registers: Start menu shortcut, "Start with Windows" (the same Run entry the app's own
          setting uses) and an entry in Settings > Apps > Installed apps (uninstall button).
-      5. Optionally (-TakeOverWinV) tells Explorer to release Win+V so BetterClipboard can register it
-         directly, and restarts Explorer (the taskbar blinks once).
+      5. Takes over Win+V: Explorer is told to stop registering it (HKCU ...\Explorer\Advanced\DisabledHotkeys
+         gets 'V') and restarts once - the taskbar blinks and open folder windows close - so BetterClipboard
+         registers Win+V directly, also over admin windows. -NoTakeOverWinV leaves Win+V to Windows, and
+         -Hotkey picks your own shortcuts, taken over the same way.
       6. Optionally (-AddToPath) puts the install folder on your user PATH, so terminals can run bclip,
          BetterClipboard's command line for scripts and AI agents.
+
+    The installer works from your temp folder, so it runs from any folder - also one you cannot write to - and
+    puts your PowerShell back in the folder it came from when it is done.
 
     Your clipboard history lives in %LOCALAPPDATA%\BetterClipboard (encrypted, bound to this PC and
     your Windows account) and is never touched by install or update; -Uninstall keeps it unless
@@ -26,12 +31,24 @@
     Release to install: 'latest' (default) or a version such as 0.1.0 / v0.1.0.
 
 .PARAMETER InstallDir
-    Target folder. Default: %LOCALAPPDATA%\Programs\BetterClipboard.
+    Target folder. Default: %LOCALAPPDATA%\Programs\BetterClipboard. A relative path is relative to the folder
+    you run the installer from.
 
 .PARAMETER TakeOverWinV
-    Release Win+V from Explorer (HKCU ...\Explorer\Advanced\DisabledHotkeys gets 'V') and restart
-    Explorer. Without it BetterClipboard still owns Win+V through a keyboard hook while it runs; with
-    it, Win+V also works over elevated windows, but does nothing while BetterClipboard is not running.
+    Kept for older command lines: taking over Win+V is what the installer does by default now. Given on an
+    update whose shortcuts no longer include Win+V (removed in Settings > Shortcut), it adds Win+V back.
+
+.PARAMETER NoTakeOverWinV
+    Leave Win+V to Windows (its own clipboard history panel). BetterClipboard then opens with the -Hotkey
+    shortcuts, or with Win+Alt+V when none are given. If Win+V was released from Explorer, it is given back
+    (Explorer restarts once). Needs BetterClipboard 0.2.6 or newer.
+
+.PARAMETER Hotkey
+    One or more shortcuts that open BetterClipboard, e.g. -Hotkey Ctrl+Alt+F9 or -Hotkey Win+Alt+V, 'Ctrl+`'.
+    Each is taken over like Win+V: a Win+letter or Win+digit shortcut is released from Explorer (Explorer
+    restarts once), and one another app owns is intercepted by BetterClipboard's keyboard hook while it runs.
+    Win+V stays the first shortcut unless -NoTakeOverWinV is given. They replace the shortcuts set before;
+    Settings > Shortcut changes them later. Needs BetterClipboard 0.2.6 or newer.
 
 .PARAMETER AddToPath
     Add the install folder to your user PATH so new terminals (and this PowerShell window) can run
@@ -49,8 +66,9 @@
     Do not start BetterClipboard after installing.
 
 .PARAMETER Uninstall
-    Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). Win+V is given back
-    to Windows if it had been released from Explorer (use -KeepWinVReleased to keep it released).
+    Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). Win+V - and every other
+    Win+ shortcut BetterClipboard released from Explorer - is given back to Windows (use -KeepWinVReleased
+    to keep them released).
 
 .PARAMETER RemoveData
     With -Uninstall: also delete the history, settings and logs folder. Irreversible.
@@ -64,12 +82,12 @@
 .EXAMPLE
     irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
 
-    Installs or updates to the latest release.
+    Installs or updates to the latest release and takes over Win+V.
 
 .EXAMPLE
-    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -TakeOverWinV
+    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -NoTakeOverWinV -Hotkey Win+Alt+V, Ctrl+Alt+F9
 
-    Same, and releases Win+V from Explorer.
+    Same, but Win+V stays with Windows: BetterClipboard opens with Win+Alt+V or Ctrl+Alt+F9 instead.
 
 .EXAMPLE
     & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AddToPath
@@ -90,6 +108,13 @@ param(
 
     [Parameter(ParameterSetName = 'Install')]
     [switch] $TakeOverWinV,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [switch] $NoTakeOverWinV,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [Alias('Hotkeys')]
+    [string[]] $Hotkey,
 
     [Parameter(ParameterSetName = 'Install')]
     [switch] $AddToPath,
@@ -130,6 +155,15 @@ $ExplorerAdvancedPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explore
 $UserEnvironmentKey = 'Environment'
 $ShortcutPath = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName.lnk"
 
+# The first release whose BetterClipboard.exe knows --set-hotkeys, which -Hotkey and -NoTakeOverWinV need. Older
+# versions ignore unknown arguments and start normally (a plain start opens Settings), so they are never asked.
+$HotkeyOptionsMinimumVersion = [version] '0.2.6'
+# What BetterClipboard opens with when Win+V stays with Windows and no -Hotkey is given: free on a stock Windows 11,
+# and no app expects it (Ctrl+Alt+V is Office's Paste Special). The app's canonical spelling of Win+Alt+V.
+$AlternativeHotkey = 'Alt+Win+V'
+# Named location stack, so leaving the temp folder pops exactly what entering it pushed.
+$LocationStack = 'BetterClipboardInstaller'
+
 # Same resolution as the app (AppPaths.ResolveDefault): the override variable exists so tests and dev
 # runs never touch the real history - the installer honors it for the same reason.
 $DataDir = if ($env:BETTERCLIPBOARD_DATA_DIR) { $env:BETTERCLIPBOARD_DATA_DIR } else { Join-Path $env:LOCALAPPDATA $AppName }
@@ -137,6 +171,84 @@ $StatePath = Join-Path $DataDir 'installer.json'
 
 function Write-Step([string] $Message) { Write-Host "==> $Message" -ForegroundColor Cyan }
 function Write-Note([string] $Message) { Write-Host "    $Message" }
+
+function Confirm-RegistryKey([string] $Path) {
+    <#
+    .SYNOPSIS
+        Creates the registry key $Path (and missing parents) when it does not exist; an existing key is left untouched.
+    .DESCRIPTION
+        Never "New-Item -Path <key> -Force" on a key that may exist: in the registry provider that deletes the existing
+        key with every value and subkey in it and creates it empty (PowerShell 5.1 and 7 alike, verified 2026-10-03).
+        Installers up to 0.2.5 did exactly that to HKCU\...\Run before adding their own value, which erased every other
+        app's "start with Windows" entry, and the Win+V takeover did it to Explorer\Advanced (Explorer's settings).
+    .PARAMETER Path
+        A registry provider path such as HKCU:\Software\Microsoft\Windows\CurrentVersion\Run.
+    #>
+    if (-not (Test-Path -LiteralPath $Path)) {
+        New-Item -Path $Path -Force | Out-Null
+    }
+}
+
+function Resolve-FileSystemPath([string] $Path) {
+    <#
+    .SYNOPSIS
+        Full file-system path of $Path, a relative one taken relative to the folder the installer was started from.
+    .DESCRIPTION
+        Called before the installer moves to the temp folder, so "-InstallDir .\Apps\BetterClipboard" still means the
+        caller's folder. "Here" is PowerShell's current file-system location, not the process's current directory,
+        which PowerShell does not keep in step - and when the caller sits in another provider (HKCU:\, Cert:\), the
+        last file-system location PowerShell knows.
+    .PARAMETER Path
+        An absolute or relative path.
+    .OUTPUTS
+        System.String.
+    #>
+    if ([IO.Path]::IsPathRooted($Path)) {
+        return [IO.Path]::GetFullPath($Path)
+    }
+
+    $here = (Get-Location -PSProvider FileSystem).ProviderPath
+    return [IO.Path]::GetFullPath((Join-Path $here $Path))
+}
+
+function Enter-WorkingFolder {
+    <#
+    .SYNOPSIS
+        Moves this PowerShell and the process's current directory to the temp folder for the rest of the run.
+    .DESCRIPTION
+        The installer never needs the caller's folder, and nothing it starts may depend on it: "irm | iex" runs in
+        whatever folder the terminal is in, which can be one the user cannot write to (C:\Program Files, a folder of
+        another account), a share that goes away, or the very install folder the uninstall deletes. Downloads and
+        staging already use the temp folder; this makes the working folder of every process the installer starts
+        (the app's --exit signal, its --set-hotkeys check, Explorer) one that exists and is writable too.
+    #>
+    $temp = [IO.Path]::GetTempPath()
+    $script:CallerProcessDirectory = [Environment]::CurrentDirectory
+    Push-Location -LiteralPath $temp -StackName $LocationStack
+    [Environment]::CurrentDirectory = $temp
+}
+
+function Exit-WorkingFolder {
+    <#
+    .SYNOPSIS
+        Puts this PowerShell back in the folder it was in before Enter-WorkingFolder.
+    .DESCRIPTION
+        "irm | iex" runs the installer inside the caller's own session, so a location left in the temp folder would
+        stay there after the install. A folder that no longer exists (the uninstall deleted the install folder the
+        caller was in) is skipped: the session then stays in the temp folder rather than in a deleted one.
+    #>
+    try {
+        Pop-Location -StackName $LocationStack -ErrorAction Stop
+    }
+    catch {
+        Write-Note 'Staying in the temp folder: the folder this installer was started from no longer exists.'
+    }
+
+    $previous = $script:CallerProcessDirectory
+    if ($previous -and (Test-Path -LiteralPath $previous -PathType Container)) {
+        [Environment]::CurrentDirectory = $previous
+    }
+}
 
 function Get-OsArchitecture {
     # OSArchitecture reports the real OS even from an emulated x64 PowerShell on ARM64, where
@@ -185,6 +297,21 @@ function Get-AssetSha256($Asset, [string] $SumsText) {
     throw "SHA256SUMS.txt has no entry for $($Asset.name); refusing to install an unverified download."
 }
 
+function ConvertTo-ComparableVersion([string] $SemanticVersion) {
+    <#
+    .SYNOPSIS
+        The x.y.z part of a release version as [version] (0.2.6-dev.abc and 0.2.6+sha compare as 0.2.6), or $null.
+    .PARAMETER SemanticVersion
+        A release version without the 'v' (the tag name, trimmed).
+    .OUTPUTS
+        System.Version, or $null when the text is not a version.
+    #>
+    $core = ($SemanticVersion -split '[-+]', 2)[0]
+    $parsed = $null
+    if ([version]::TryParse($core, [ref] $parsed)) { return $parsed }
+    return $null
+}
+
 function Stop-RunningApp([string] $PreferredExe) {
     $session = (Get-Process -Id $PID).SessionId
     $running = @(Get-Process -Name $AppName -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })
@@ -213,9 +340,17 @@ function Stop-RunningApp([string] $PreferredExe) {
 }
 
 function Restart-Explorer {
-    Write-Step 'Restarting Explorer so the Win+V change takes effect (the taskbar blinks once)'
     $session = (Get-Process -Id $PID).SessionId
-    Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session } | Stop-Process -Force
+    $running = @(Get-Process -Name explorer -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })
+    if ($running.Count -eq 0) {
+        # No shell in this session (a remote or service session, a replaced shell): nothing to restart, and starting
+        # one here would open a stray File Explorer window. Explorer reads the change whenever it next starts.
+        Write-Note 'Explorer is not running in this session; the change applies when it next starts.'
+        return
+    }
+
+    Write-Step 'Restarting Explorer so the change takes effect (the taskbar blinks once; open folder windows close)'
+    $running | Stop-Process -Force
 
     # Winlogon restarts the shell by itself (AutoRestartShell); starting one too would open a stray
     # File Explorer window, so only start it if it did not come back.
@@ -239,13 +374,46 @@ function Get-DisabledHotkeys {
     return ''
 }
 
-function Set-WinVReleased([bool] $Release) {
-    # Each character of DisabledHotkeys disables one Win+<char> combination in Explorer; keep the
-    # user's other letters intact.
+function Test-KeyReleased([char] $Key) {
+    <#
+    .SYNOPSIS
+        Whether Explorer's DisabledHotkeys releases Win+$Key (case-insensitive, like Explorer).
+    .PARAMETER Key
+        A letter or digit.
+    .OUTPUTS
+        System.Boolean.
+    #>
+    return (Get-DisabledHotkeys).ToUpperInvariant().Contains([string] [char]::ToUpperInvariant($Key))
+}
+
+function Set-ExplorerHotkeysReleased([char[]] $Keys, [bool] $Release) {
+    <#
+    .SYNOPSIS
+        Adds ($Release) or removes Win+<key> shortcuts in Explorer's DisabledHotkeys, keeping every other character.
+    .DESCRIPTION
+        Each character of the value disables one Win+<char> combination in Explorer; the user's other letters stay
+        intact and in place, and a key already listed in either case is not added again - the same rules as the app's
+        ExplorerHotkeys.WithKeys, so the two never fight over the value. Explorer reads it when it (re)starts.
+    .PARAMETER Keys
+        Letters or digits.
+    .PARAMETER Release
+        $true to release them from Explorer, $false to give them back.
+    .OUTPUTS
+        System.Boolean: whether the value changed (Explorer must restart to notice).
+    #>
     $current = Get-DisabledHotkeys
-    $without = -join ($current.ToCharArray() | Where-Object { [char]::ToUpperInvariant($_) -ne 'V' })
-    $next = if ($Release) { $without + 'V' } else { $without }
-    if ($next -eq $current) {
+    $upper = @($Keys | ForEach-Object { [char]::ToUpperInvariant($_) } | Select-Object -Unique)
+    if ($Release) {
+        $next = $current
+        foreach ($key in $upper) {
+            if (-not $next.ToUpperInvariant().Contains([string] $key)) { $next += $key }
+        }
+    }
+    else {
+        $next = -join ($current.ToCharArray() | Where-Object { $upper -notcontains [char]::ToUpperInvariant($_) })
+    }
+
+    if ($next -ceq $current) {
         return $false
     }
 
@@ -253,15 +421,217 @@ function Set-WinVReleased([bool] $Release) {
         Remove-ItemProperty -Path $ExplorerAdvancedPath -Name DisabledHotkeys -ErrorAction SilentlyContinue
     }
     else {
-        New-Item -Path $ExplorerAdvancedPath -Force | Out-Null
+        # Explorer\Advanced holds every Explorer setting: only ever add the value (Confirm-RegistryKey says why).
+        Confirm-RegistryKey $ExplorerAdvancedPath
         Set-ItemProperty -Path $ExplorerAdvancedPath -Name DisabledHotkeys -Value $next -Type String
     }
 
     return $true
 }
 
-function Test-WinVReleased {
-    return (Get-DisabledHotkeys).ToUpperInvariant().Contains('V')
+function Get-ReleasableKey([string] $Shortcut) {
+    <#
+    .SYNOPSIS
+        The key Explorer's DisabledHotkeys would need to free $Shortcut: its letter or digit when the shortcut is exactly
+        Win plus one letter or digit; otherwise $null.
+    .DESCRIPTION
+        Only such shortcuts can be released from Explorer: the value names a character, not a set of modifiers (V freed
+        Win+V alone - Win+Ctrl+V stayed with Windows). Every other shortcut someone owns is taken over by the app's
+        keyboard hook. Accepts the spellings the app does for the Windows key, any case, spaces around '+'.
+    .PARAMETER Shortcut
+        A shortcut as written in settings or on the command line.
+    .OUTPUTS
+        System.Char, or $null.
+    #>
+    if ($Shortcut -match '^\s*(win|windows|meta|super|cmd)\s*\+\s*([a-z0-9])\s*$') {
+        return [char]::ToUpperInvariant($Matches[2][0])
+    }
+
+    return $null
+}
+
+function Test-IsWinV([string] $Shortcut) {
+    return (Get-ReleasableKey $Shortcut) -eq [char] 'V'
+}
+
+function Format-KeyNames([char[]] $Keys) {
+    <#
+    .SYNOPSIS
+        "Win+V", "Win+V and Win+C", "Win+V, Win+C and Win+1" - for the installer's messages.
+    .PARAMETER Keys
+        Letters or digits.
+    .OUTPUTS
+        System.String.
+    #>
+    $names = @($Keys | ForEach-Object { "Win+$([char]::ToUpperInvariant($_))" })
+    if ($names.Count -le 1) { return -join $names }
+    return "$($names[0..($names.Count - 2)] -join ', ') and $($names[-1])"
+}
+
+function Get-ConfiguredHotkeys {
+    <#
+    .SYNOPSIS
+        The shortcuts BetterClipboard's settings name (main one first), read without changing anything.
+    .DESCRIPTION
+        No settings file yet (a first install) means the app's default, Win+V. A file this PowerShell cannot read
+        (the app's own reader also skips comments) gives $null - "unknown" - so nothing is taken over or given back
+        on a guess.
+    .OUTPUTS
+        System.String[] (one array, never unrolled), or $null.
+    #>
+    $path = Join-Path $DataDir 'settings.json'
+    if (-not (Test-Path -LiteralPath $path)) {
+        return , @('Win+V')
+    }
+
+    try {
+        $json = [IO.File]::ReadAllText($path) | ConvertFrom-Json
+    }
+    catch {
+        return $null
+    }
+
+    $main = 'Win+V'
+    if ($json.PSObject.Properties['OpenHotkey'] -and -not [string]::IsNullOrWhiteSpace([string] $json.OpenHotkey)) {
+        $main = ([string] $json.OpenHotkey).Trim()
+    }
+
+    $list = @($main)
+    if ($json.PSObject.Properties['ExtraOpenHotkeys'] -and $json.ExtraOpenHotkeys) {
+        $list += @($json.ExtraOpenHotkeys | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
+    }
+
+    return , $list
+}
+
+function Get-RequestedHotkeys($Configured) {
+    <#
+    .SYNOPSIS
+        The shortcuts this run must give BetterClipboard, or $null to keep the configured ones.
+    .DESCRIPTION
+        -Hotkey replaces the list (Win+V first unless -NoTakeOverWinV); -NoTakeOverWinV alone keeps the configured
+        shortcuts except Win+V (Win+Alt+V when none is left); -TakeOverWinV adds Win+V back when the configured ones
+        lack it. Whitespace is dropped from every shortcut: it never matters inside one, and an argument without spaces
+        reaches BetterClipboard.exe unchanged on PowerShell 5.1 and 7 alike, which join -ArgumentList unquoted.
+    .PARAMETER Configured
+        Get-ConfiguredHotkeys' answer.
+    .OUTPUTS
+        System.String[] (one array, never unrolled), or $null.
+    #>
+    if ($Hotkey) {
+        $list = @($Hotkey | ForEach-Object { ([string] $_) -replace '\s+', '' } | Where-Object { $_ })
+        if ($list.Count -eq 0) {
+            throw '-Hotkey names no shortcut. Example: -Hotkey Win+Alt+V, Ctrl+Alt+F9'
+        }
+
+        if (-not $NoTakeOverWinV) { $list = @('Win+V') + $list }
+        return , $list
+    }
+
+    if ($NoTakeOverWinV) {
+        $kept = @(@($Configured) | Where-Object { $_ -and -not (Test-IsWinV $_) } | ForEach-Object { $_ -replace '\s+', '' })
+        if ($kept.Count -eq 0) { $kept = @($AlternativeHotkey) }
+        return , $kept
+    }
+
+    if ($TakeOverWinV -and $null -ne $Configured -and @(@($Configured) | Where-Object { Test-IsWinV $_ }).Count -eq 0) {
+        return , (@('Win+V') + @(@($Configured) | ForEach-Object { $_ -replace '\s+', '' }))
+    }
+
+    return $null
+}
+
+function Invoke-HotkeyCommand([string] $Exe, [string[]] $Shortcuts, [switch] $Validate) {
+    <#
+    .SYNOPSIS
+        Runs "BetterClipboard.exe --set-hotkeys [--validate] <shortcuts>" and returns the canonical shortcuts it printed.
+    .DESCRIPTION
+        The app's own parser decides what a shortcut is and spells it canonically (win + alt + v -> Alt+Win+V); without
+        -Validate the app's own settings store saves them (it refuses while that BetterClipboard runs). It is a GUI
+        program, so the call operator would neither wait for it nor see its output: Start-Process redirects its
+        standard output to a temp file instead.
+    .PARAMETER Exe
+        The BetterClipboard.exe to ask (the staging copy for -Validate, the installed one to save).
+    .PARAMETER Shortcuts
+        The shortcuts, main one first, without whitespace.
+    .PARAMETER Validate
+        Check only; save nothing.
+    .OUTPUTS
+        System.String[] (one array, never unrolled).
+    #>
+    $arguments = @('--set-hotkeys')
+    if ($Validate) { $arguments += '--validate' }
+    $arguments += $Shortcuts
+    $outFile = [IO.Path]::GetTempFileName()
+    try {
+        $process = Start-Process -FilePath $Exe -ArgumentList $arguments -WorkingDirectory (Split-Path -Parent $Exe) -NoNewWindow -PassThru -RedirectStandardOutput $outFile
+        # Windows PowerShell reports no exit code for a process whose handle was never taken while it ran.
+        $null = $process.Handle
+        if (-not $process.WaitForExit(60000)) {
+            $process.Kill()
+            throw "$ExeName did not answer within 60 s while checking the shortcuts."
+        }
+
+        $lines = @([IO.File]::ReadAllLines($outFile) | Where-Object { $_ })
+        $code = $process.ExitCode
+    }
+    finally {
+        Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+    }
+
+    if ($code -ne 0) {
+        $reasons = @($lines | ForEach-Object { $_ -replace '^error:\s*', '' })
+        if ($reasons.Count -eq 0) { $reasons = @("exit code $code") }
+        throw ($reasons -join ' ')
+    }
+
+    return , $lines
+}
+
+function Read-InstallerState {
+    <#
+    .SYNOPSIS
+        installer.json from an earlier run as an object, or $null when there is none or it cannot be read.
+    .OUTPUTS
+        PSCustomObject, or $null.
+    #>
+    if (-not (Test-Path $StatePath)) {
+        return $null
+    }
+
+    try {
+        return Get-Content $StatePath -Raw | ConvertFrom-Json
+    }
+    catch {
+        Write-Note 'Ignoring an unreadable installer.json from a previous install.'
+        return $null
+    }
+}
+
+function Get-RecordedReleasedKeys($State) {
+    <#
+    .SYNOPSIS
+        The Win+<key> shortcuts earlier installer runs released from Explorer, as upper-case letters and digits.
+    .DESCRIPTION
+        installer.json's releasedKeys, plus V when only the older releasedWinV flag says so (installers before
+        -Hotkey recorded nothing else).
+    .PARAMETER State
+        Read-InstallerState's answer.
+    .OUTPUTS
+        System.Char[] (one array, never unrolled).
+    #>
+    $keys = @()
+    if ($State) {
+        if ($State.PSObject.Properties['releasedKeys'] -and $State.releasedKeys) {
+            $keys += @(([string] $State.releasedKeys).ToUpperInvariant().ToCharArray())
+        }
+
+        if ($State.PSObject.Properties['releasedWinV'] -and $State.releasedWinV) {
+            $keys += [char] 'V'
+        }
+    }
+
+    return , @($keys | Where-Object { $_ -match '^[A-Z0-9]$' } | Select-Object -Unique)
 }
 
 # User PATH helpers - the same rules as the app's "Add bclip to PATH" button (Shell\UserPath.cs), so the
@@ -381,13 +751,23 @@ function Start-AppUnelevated([string] $Exe) {
         Start-Process -FilePath explorer.exe -ArgumentList "`"$Exe`""
     }
     else {
-        Start-Process -FilePath $Exe
+        # Its own folder as the working folder, like the Start menu shortcut: the installer's is the temp folder.
+        Start-Process -FilePath $Exe -WorkingDirectory (Split-Path -Parent $Exe)
     }
 }
 
 function Install-BetterClipboard {
     if (Test-Elevated) {
         Write-Warning 'Running elevated. BetterClipboard installs per user; a normal (non-admin) PowerShell is recommended.'
+    }
+
+    # Contradictions fail here, before anything is downloaded or changed.
+    if ($TakeOverWinV -and $NoTakeOverWinV) {
+        throw '-TakeOverWinV and -NoTakeOverWinV contradict each other; give one of them (taking over Win+V is the default).'
+    }
+
+    if ($NoTakeOverWinV -and @(@($Hotkey) | Where-Object { Test-IsWinV $_ }).Count -gt 0) {
+        throw '-NoTakeOverWinV leaves Win+V to Windows, so Win+V cannot be one of the -Hotkey shortcuts too.'
     }
 
     $chocolateyCopy = Get-ChocolateyCopy
@@ -406,8 +786,19 @@ function Install-BetterClipboard {
     if (-not $asset) { throw "Release $tag has no $zipName." }
     if (-not $sumsAsset) { throw "Release $tag has no SHA256SUMS.txt; refusing to install an unverified download." }
 
+    # The shortcuts this run sets, if any. Settings are read now, while the running app still owns them unchanged.
+    $configured = Get-ConfiguredHotkeys
+    $requested = Get-RequestedHotkeys $configured
+    if ($null -ne $requested) {
+        $comparable = ConvertTo-ComparableVersion $semver
+        if ($null -eq $comparable -or $comparable -lt $HotkeyOptionsMinimumVersion) {
+            throw "-Hotkey and -NoTakeOverWinV need BetterClipboard $HotkeyOptionsMinimumVersion or newer, and this release is $tag. Install it without them and pick shortcuts in Settings > Shortcut."
+        }
+    }
+
     $temp = Join-Path ([IO.Path]::GetTempPath()) "$AppName-install-$([Guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Path $temp | Out-Null
+    $canonical = $null
     try {
         Write-Step "Downloading $zipName ($([Math]::Round($asset.size / 1MB, 1)) MB)"
         $zip = Join-Path $temp $zipName
@@ -429,10 +820,6 @@ function Install-BetterClipboard {
 
         Write-Note "OK $actual"
 
-        $exe = Join-Path $InstallDir $ExeName
-        Stop-RunningApp $exe
-
-        Write-Step "Installing $tag to $InstallDir"
         $staging = "$InstallDir.new"
         $previous = "$InstallDir.old"
         foreach ($leftover in @($staging, $previous)) {
@@ -445,6 +832,34 @@ function Install-BetterClipboard {
             throw "The archive does not contain $ExeName at its root."
         }
 
+        if ($null -ne $requested) {
+            # Checked by the new version's own parser before the running app is closed: a typo fails with nothing changed.
+            Write-Step "Checking the shortcuts: $($requested -join ', ')"
+            try {
+                $canonical = Invoke-HotkeyCommand -Exe (Join-Path $staging $ExeName) -Shortcuts $requested -Validate
+            }
+            catch {
+                Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+                throw "Shortcuts not accepted: $($_.Exception.Message) Nothing was installed."
+            }
+
+            # An exit code of 0 with nothing printed means the program never ran the command (a build without it
+            # starts normally instead): never save an empty list on that.
+            if (@($canonical).Count -eq 0) {
+                Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+                throw "$ExeName of $tag did not answer --set-hotkeys, so the shortcuts cannot be set. Nothing was installed."
+            }
+
+            if ($NoTakeOverWinV -and @($canonical | Where-Object { Test-IsWinV $_ }).Count -gt 0) {
+                Remove-Item $staging -Recurse -Force -ErrorAction SilentlyContinue
+                throw '-NoTakeOverWinV leaves Win+V to Windows, so Win+V cannot be one of the -Hotkey shortcuts too. Nothing was installed.'
+            }
+        }
+
+        $exe = Join-Path $InstallDir $ExeName
+        Stop-RunningApp $exe
+
+        Write-Step "Installing $tag to $InstallDir"
         # Swap via renames: if the new files cannot be moved in, the previous version is put back.
         New-Item -ItemType Directory -Path (Split-Path $InstallDir -Parent) -Force | Out-Null
         if (Test-Path $InstallDir) { Rename-Item -Path $InstallDir -NewName (Split-Path $previous -Leaf) }
@@ -460,6 +875,19 @@ function Install-BetterClipboard {
     }
     finally {
         Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    # What BetterClipboard answers to from now on: the shortcuts just set, else the ones it already had.
+    $effective = $configured
+    if ($null -ne $canonical) {
+        Write-Step "Setting the shortcuts that open BetterClipboard: $($canonical -join ', ')"
+        try {
+            $effective = Invoke-HotkeyCommand -Exe $exe -Shortcuts $canonical
+        }
+        catch {
+            # The new version is in place; only the shortcuts stay as they were. Explorer is then left alone too.
+            Write-Warning "The shortcuts were not changed ($($_.Exception.Message)). Set them in Settings > Shortcut."
+        }
     }
 
     if (-not $NoShortcut) {
@@ -482,14 +910,15 @@ function Install-BetterClipboard {
         else {
             Write-Step 'Starting with Windows (Settings > Start with Windows toggles this)'
             # Exactly the format StartupRegistration writes, so the app's own toggle shows it as on.
-            New-Item -Path $RunKeyPath -Force | Out-Null
+            # The Run key holds every other app's startup entry: only ever add ours (Confirm-RegistryKey says why).
+            Confirm-RegistryKey $RunKeyPath
             Set-ItemProperty -Path $RunKeyPath -Name $AppName -Value "`"$exe`" --background" -Type String
         }
     }
 
     Write-Step 'Registering in Settings > Apps > Installed apps'
     $sizeKb = [int] ((Get-ChildItem -Path $InstallDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB)
-    New-Item -Path $UninstallKeyPath -Force | Out-Null
+    Confirm-RegistryKey $UninstallKeyPath
     $uninstallCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'install.ps1')`" -Uninstall -InstallDir `"$InstallDir`""
     $values = @{
         DisplayName          = $AppName
@@ -518,34 +947,52 @@ function Install-BetterClipboard {
         }
     }
 
-    $releasedByUs = $false
-    if ($TakeOverWinV) {
-        $releasedByUs = Set-WinVReleased $true
-        if ($releasedByUs) { Restart-Explorer } else { Write-Note 'Win+V was already released from Explorer.' }
+    # Take over the Win+letter shortcuts BetterClipboard answers to (Win+V by default): Explorer stops registering
+    # them, so BetterClipboard registers them directly. And with -NoTakeOverWinV, a released Win+V goes back to
+    # Windows: no BetterClipboard shortcut uses it, so it would do nothing at all.
+    $state = Read-InstallerState
+    # Not wrapped in @(): the function returns its array as one object, and @() would nest it.
+    $recorded = Get-RecordedReleasedKeys $state
+    $released = @()
+    $givenBack = @()
+    if ($null -eq $effective) {
+        Write-Note "BetterClipboard's settings could not be read here, so Explorer's shortcuts were left as they are."
+    }
+    else {
+        $wanted = @(@($effective) | ForEach-Object { Get-ReleasableKey $_ } | Where-Object { $null -ne $_ } | Select-Object -Unique)
+        $released = @($wanted | Where-Object { -not (Test-KeyReleased $_) })
+        if ($released.Count -gt 0) {
+            Write-Step "Taking over $(Format-KeyNames $released): Explorer stops registering $(if ($released.Count -eq 1) { 'it' } else { 'them' }) (DisabledHotkeys)"
+            Set-ExplorerHotkeysReleased $released $true | Out-Null
+        }
+        elseif ($wanted.Count -gt 0) {
+            Write-Note "$(Format-KeyNames $wanted) $(if ($wanted.Count -eq 1) { 'was' } else { 'were' }) already released from Explorer."
+        }
+
+        if ($NoTakeOverWinV -and $wanted -notcontains [char] 'V' -and (Test-KeyReleased 'V')) {
+            Write-Step 'Giving Win+V back to Windows (Explorer registers it again)'
+            Set-ExplorerHotkeysReleased @([char] 'V') $false | Out-Null
+            $givenBack = @([char] 'V')
+        }
     }
 
-    # Record what was installed where (support/diagnostics; the app never reads it). A Win+V release
-    # made by an earlier run is remembered across updates.
-    $previouslyReleased = $false
-    if (Test-Path $StatePath) {
-        try {
-            $old = Get-Content $StatePath -Raw | ConvertFrom-Json
-            $previouslyReleased = [bool] ($old.PSObject.Properties['releasedWinV'] -and $old.releasedWinV)
-        }
-        catch {
-            Write-Note 'Ignoring an unreadable installer.json from a previous install.'
-        }
+    if ($released.Count -gt 0 -or $givenBack.Count -gt 0) {
+        Restart-Explorer
     }
 
+    # Record what was installed where (support/diagnostics; the app never reads it). Keys released by an earlier run
+    # stay recorded across updates, so -Uninstall knows to give them back.
+    $releasedKeys = -join @(@($recorded) + @($released) | Where-Object { $givenBack -notcontains $_ } | Select-Object -Unique)
     New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
-    $state = [ordered]@{
+    $newState = [ordered]@{
         version      = $semver
         installDir   = $InstallDir
-        releasedWinV = $releasedByUs -or $previouslyReleased
+        releasedWinV = $releasedKeys.Contains('V')
+        releasedKeys = $releasedKeys
         onUserPath   = Test-InUserPath $InstallDir
         installedUtc = (Get-Date).ToUniversalTime().ToString('o')
     }
-    $state | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
+    $newState | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
 
     if (-not $NoLaunch) {
         Write-Step 'Starting BetterClipboard'
@@ -554,10 +1001,14 @@ function Install-BetterClipboard {
 
     Write-Host ''
     Write-Host "BetterClipboard $semver is installed." -ForegroundColor Green
-    Write-Note 'Press Win+V to open it. Your history is encrypted in:'
+    $press = if ($null -ne $effective) { @($effective) -join ' or ' } else { 'your shortcut' }
+    Write-Note "Press $press to open it. Your history is encrypted in:"
     Write-Note "  $DataDir"
-    if (-not $TakeOverWinV) {
-        Write-Note 'Optional: re-run with -TakeOverWinV to release Win+V from Explorer (works over elevated windows too).'
+    if ($null -ne $effective -and @(@($effective) | Where-Object { Test-IsWinV $_ }).Count -gt 0) {
+        Write-Note 'To leave Win+V to Windows instead, re-run with -NoTakeOverWinV (and pick your own shortcuts with -Hotkey).'
+    }
+    elseif ($NoTakeOverWinV) {
+        Write-Note 'Win+V stays with Windows. Settings > Shortcut adds or removes shortcuts any time.'
     }
 
     if ($AddToPath) {
@@ -592,15 +1043,22 @@ function Uninstall-BetterClipboard {
         Write-Note "Removed $InstallDir from your user PATH."
     }
 
-    # Without BetterClipboard, a released Win+V would do nothing at all - give it back to Windows. Unless the
-    # Chocolatey copy remains: it still uses the release.
+    # Without BetterClipboard, a released Win+<key> would do nothing at all - give back every one BetterClipboard used:
+    # Win+V (what every version's installer and Settings release), the keys installer runs recorded, and the Win+letter
+    # shortcuts in its settings (Settings > Release from Explorer releases those). Unless the Chocolatey copy remains:
+    # it still uses them.
     $chocolateyCopy = Get-ChocolateyCopy
-    if (-not $KeepWinVReleased -and (Test-WinVReleased)) {
+    $configured = Get-ConfiguredHotkeys
+    $recorded = Get-RecordedReleasedKeys (Read-InstallerState)
+    $candidates = @([char] 'V') + @($recorded) + @(@($configured) | ForEach-Object { Get-ReleasableKey $_ } | Where-Object { $null -ne $_ })
+    $toGiveBack = @($candidates | Select-Object -Unique | Where-Object { Test-KeyReleased $_ })
+    if (-not $KeepWinVReleased -and $toGiveBack.Count -gt 0) {
         if ($chocolateyCopy) {
-            Write-Note "Win+V stays released from Explorer: the Chocolatey copy ($chocolateyCopy) still uses it."
+            Write-Note "$(Format-KeyNames $toGiveBack) $(if ($toGiveBack.Count -eq 1) { 'stays' } else { 'stay' }) released from Explorer: the Chocolatey copy ($chocolateyCopy) still uses $(if ($toGiveBack.Count -eq 1) { 'it' } else { 'them' })."
         }
         else {
-            Set-WinVReleased $false | Out-Null
+            Write-Step "Giving $(Format-KeyNames $toGiveBack) back to Windows"
+            Set-ExplorerHotkeysReleased $toGiveBack $false | Out-Null
             Restart-Explorer
         }
     }
@@ -637,4 +1095,16 @@ function Uninstall-BetterClipboard {
     Write-Host 'BetterClipboard was uninstalled.' -ForegroundColor Green
 }
 
-if ($Uninstall) { Uninstall-BetterClipboard } else { Install-BetterClipboard }
+# Paths the caller typed are relative to the caller's folder, so they are resolved before the installer moves to the
+# temp folder; the data folder override too (tests and dev runs pass relative ones).
+$InstallDir = Resolve-FileSystemPath $InstallDir
+$DataDir = Resolve-FileSystemPath $DataDir
+$StatePath = Join-Path $DataDir 'installer.json'
+
+Enter-WorkingFolder
+try {
+    if ($Uninstall) { Uninstall-BetterClipboard } else { Install-BetterClipboard }
+}
+finally {
+    Exit-WorkingFolder
+}

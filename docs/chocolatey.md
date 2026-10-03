@@ -319,10 +319,11 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
 - On `-Uninstall`:
   - it removes the value only when it points into its own folder or at a missing file (a stale value is still
     cleaned up);
-  - it keeps Win+V released while the Chocolatey copy remains.
+  - it keeps Win+V (and any other Win+ shortcut it would give back) released while the Chocolatey copy remains.
 
 **Not in the package:**
-- `-TakeOverWinV`: an Explorer restart during a package install; the app's Settings has the toggle.
+- Taking over Win+V, which `install.ps1` does by default since 2026-10-03 (`-NoTakeOverWinV`, `-Hotkey`): an Explorer
+  restart during a package install. The app's *Settings › Release from Explorer* does it on request.
 - `-AddToPath`: the shims cover it.
 - the Installed-apps entry: `choco uninstall` is the uninstaller.
 - `installer.json`: the app never reads it.

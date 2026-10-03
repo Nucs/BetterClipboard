@@ -55,10 +55,17 @@ public static class WindowsClipboardSettings
     /// Whether Explorer is told not to register <c>Win+V</c> (<c>DisabledHotkeys</c> contains <c>V</c>).
     /// </summary>
     /// <returns><see langword="true"/> when Win+V is released by Explorer (after its next restart).</returns>
-    public static bool IsWinVReleasedByExplorer()
+    public static bool IsWinVReleasedByExplorer() => ExplorerHotkeys.IsReleased(GetDisabledHotkeys(), 'V');
+
+    /// <summary>
+    /// Explorer's <c>DisabledHotkeys</c> value: one character per Win+&lt;key&gt; shortcut Explorer does not register (see
+    /// <see cref="ExplorerHotkeys"/> for what BetterClipboard does with it).
+    /// </summary>
+    /// <returns>The value, or <see langword="null"/> when it is absent (Explorer registers every Win+&lt;key&gt; it knows).</returns>
+    public static string? GetDisabledHotkeys()
     {
         using var key = Registry.CurrentUser.OpenSubKey(ExplorerAdvancedKeyPath);
-        return key?.GetValue("DisabledHotkeys") is string value && value.Contains('V', StringComparison.OrdinalIgnoreCase);
+        return key?.GetValue("DisabledHotkeys") as string;
     }
 
     /// <summary>
@@ -72,12 +79,34 @@ public static class WindowsClipboardSettings
     /// </remarks>
     /// <param name="release"><see langword="true"/> to release Win+V from Explorer.</param>
     /// <exception cref="UnauthorizedAccessException">The key is not writable.</exception>
-    public static void SetWinVReleasedByExplorer(bool release)
+    public static void SetWinVReleasedByExplorer(bool release) => SetReleasedByExplorer(['V'], release);
+
+    /// <summary>
+    /// Adds or removes Win+&lt;key&gt; shortcuts in Explorer's <c>DisabledHotkeys</c>, preserving every other character
+    /// there (the user's own, or other tools'). Takes effect only after Explorer restarts (see <see cref="RestartExplorer"/>)
+    /// or at the next sign-in.
+    /// </summary>
+    /// <remarks>
+    /// A released shortcut is free for a plain <c>RegisterHotKey</c>, so BetterClipboard needs no keyboard hook for it and it
+    /// works over elevated windows too. The downside, for every key released: while BetterClipboard is not running, that
+    /// shortcut does nothing at all.
+    /// </remarks>
+    /// <param name="keys">Letters or digits, each the key of an exactly Win+&lt;key&gt; shortcut (<see cref="ExplorerHotkeys.ReleasableKey"/>).</param>
+    /// <param name="release"><see langword="true"/> to release them from Explorer, <see langword="false"/> to give them back.</param>
+    /// <returns><see langword="true"/> when the value changed (Explorer must restart to notice); <see langword="false"/> when it already said so.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="keys"/> is <see langword="null"/>.</exception>
+    /// <exception cref="UnauthorizedAccessException">The key is not writable.</exception>
+    public static bool SetReleasedByExplorer(IReadOnlyCollection<char> keys, bool release)
     {
+        ArgumentNullException.ThrowIfNull(keys);
         using var key = Registry.CurrentUser.CreateSubKey(ExplorerAdvancedKeyPath, writable: true);
         var current = key.GetValue("DisabledHotkeys") as string ?? string.Empty;
-        var without = new string(current.Where(c => char.ToUpperInvariant(c) != 'V').ToArray());
-        var next = release ? without + "V" : without;
+        var next = ExplorerHotkeys.WithKeys(current, keys, release);
+        if (string.Equals(next, current, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
         if (next.Length == 0)
         {
             key.DeleteValue("DisabledHotkeys", throwOnMissingValue: false);
@@ -86,6 +115,8 @@ public static class WindowsClipboardSettings
         {
             key.SetValue("DisabledHotkeys", next, RegistryValueKind.String);
         }
+
+        return true;
     }
 
     /// <summary>

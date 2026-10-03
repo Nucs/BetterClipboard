@@ -126,7 +126,7 @@
                             <Border Style="{StaticResource ChipBorderStyle}">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
                                     <FontIcon FontSize="12" Glyph="&#xE765;" />
-                                    <TextBlock FontSize="12" Text="{x:Bind ViewModel.OpenHotkey, Mode=OneWay}" />
+                                    <TextBlock FontSize="12" Text="{x:Bind ViewModel.HotkeysSummary, Mode=OneWay}" />
                                 </StackPanel>
                             </Border>
                             <Border Style="{StaticResource ChipBorderStyle}">
@@ -147,53 +147,116 @@
                     Header="Open BetterClipboard">
                     <StackPanel Spacing="4">
                         <!--
-                          A TextBox + presets menu, not an editable ComboBox: an editable ComboBox fills its
-                          inner text box from SelectedItem when its template loads, so a bound Text value
-                          (the saved shortcut) showed up blank. TextBox.Text binds reliably; the two-way
-                          binding commits on focus loss, and Enter commits too (HotkeyBox_KeyDown).
+                          The box adds a shortcut to the list below: Enter or the Add button (HotkeyBox_KeyDown,
+                          AddHotkey_Click), never focus loss, so a half-typed shortcut never becomes a global hotkey.
+                          A TextBox + presets menu, not an editable ComboBox: an editable ComboBox fills its inner
+                          text box from SelectedItem when its template loads, so a bound Text value showed up blank.
                         -->
                         <Grid ColumnSpacing="4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBox
                                 x:Name="HotkeyBox"
                                 MinWidth="160"
-                                AutomationProperties.Name="Shortcut that opens BetterClipboard"
+                                AutomationProperties.Name="Add a shortcut that opens BetterClipboard"
                                 KeyDown="HotkeyBox_KeyDown"
-                                PlaceholderText="Win+V"
-                                Text="{x:Bind ViewModel.OpenHotkey, Mode=TwoWay}" />
-                            <DropDownButton
+                                PlaceholderText="Add, e.g. Alt+Win+V"
+                                Text="{x:Bind ViewModel.NewHotkeyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button
                                 Grid.Column="1"
+                                VerticalAlignment="Stretch"
+                                AutomationProperties.Name="Add shortcut"
+                                Click="AddHotkey_Click"
+                                Content="Add" />
+                            <!--  Presets toggle: a checked one is in the list, and picking it again removes it.  -->
+                            <DropDownButton
+                                Grid.Column="2"
                                 VerticalAlignment="Stretch"
                                 AutomationProperties.Name="Suggested shortcuts"
                                 ToolTipService.ToolTip="Suggested shortcuts">
                                 <DropDownButton.Flyout>
-                                    <MenuFlyout x:Name="HotkeyPresetsMenu" Placement="BottomEdgeAlignedRight" />
+                                    <MenuFlyout
+                                        x:Name="HotkeyPresetsMenu"
+                                        Opening="HotkeyPresetsMenu_Opening"
+                                        Placement="BottomEdgeAlignedRight" />
                                 </DropDownButton.Flyout>
                             </DropDownButton>
                         </Grid>
                         <TextBlock
-                            MaxWidth="220"
+                            MaxWidth="260"
                             Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="{x:Bind ViewModel.HotkeyError, Mode=OneWay}"
                             TextWrapping="Wrap"
                             Visibility="{x:Bind HasText(ViewModel.HotkeyError), Mode=OneWay}" />
                     </StackPanel>
+                    <controls:SettingsCard.Footer>
+                        <!--  One row per shortcut, main one first: its state, and Remove (disabled for the only one).  -->
+                        <ItemsControl ItemsSource="{x:Bind ViewModel.Hotkeys}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:HotkeyItemViewModel">
+                                    <Grid
+                                        Padding="0,6,4,6"
+                                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,1,0,0"
+                                        ColumnSpacing="12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                                            <TextBlock FontWeight="SemiBold" Text="{x:Bind Text}" />
+                                            <TextBlock
+                                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind Status}"
+                                                TextWrapping="Wrap"
+                                                Visibility="{x:Bind WorkingVisibility}" />
+                                            <TextBlock
+                                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                                Style="{StaticResource CaptionTextBlockStyle}"
+                                                Text="{x:Bind Status}"
+                                                TextWrapping="Wrap"
+                                                Visibility="{x:Bind ProblemVisibility}" />
+                                        </StackPanel>
+                                        <Button
+                                            Grid.Column="1"
+                                            VerticalAlignment="Center"
+                                            AutomationProperties.Name="{x:Bind RemoveName}"
+                                            Click="RemoveHotkey_Click"
+                                            Content="Remove"
+                                            IsEnabled="{x:Bind CanRemove}"
+                                            Tag="{x:Bind Text}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="Win+V belongs to Windows. When on, BetterClipboard intercepts exactly your shortcut with a keyboard hook while it runs — quit BetterClipboard and Windows gets it back instantly."
+                    Description="Win+V belongs to Windows, and other shortcuts may belong to other apps. When on, BetterClipboard intercepts exactly your shortcuts that are taken with a keyboard hook while it runs — quit BetterClipboard and their owners get them back instantly."
                     Glyph="&#xEDA7;"
                     Header="Take over shortcuts owned by Windows">
                     <ToggleSwitch IsOn="{x:Bind ViewModel.UseKeyboardHookFallback, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="Advanced: tells Explorer not to register Win+V at all (DisabledHotkeys), so no hook is needed. Restarts Explorer. While BetterClipboard is not running, Win+V then does nothing."
+                    Description="Advanced: tells Explorer not to register your Win+letter shortcuts (Win+V…) at all (DisabledHotkeys), so no hook is needed and they work over admin windows too. Restarts Explorer. While BetterClipboard is not running, those shortcuts then do nothing."
                     Glyph="&#xEC50;"
-                    Header="Release Win+V from Explorer">
-                    <Button Click="ReleaseWinV_Click" Content="{x:Bind ReleaseWinVText(ViewModel.IsWinVReleased), Mode=OneWay}" />
+                    Header="Release from Explorer">
+                    <Button
+                        Click="ReleaseFromExplorer_Click"
+                        Content="{x:Bind ViewModel.ExplorerReleaseButtonText, Mode=OneWay}"
+                        IsEnabled="{x:Bind ViewModel.CanChangeExplorerRelease, Mode=OneWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.ExplorerReleaseStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
 
                 <!--  History  -->

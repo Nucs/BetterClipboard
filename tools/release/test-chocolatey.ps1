@@ -253,10 +253,11 @@ try {
         Add-Note 'upgrade' 'the app cannot run in this session; the running-app checks were skipped'
     }
 
-    # 3. uninstall, with Win+V marked as released (what Settings' "Release Win+V from Explorer" writes)
+    # 3. uninstall, with Win+V marked as released (what Settings' "Release from Explorer" writes for Win+V)
     $before = Get-ItemProperty -Path $advanced -ErrorAction SilentlyContinue
     $hotkeys = if ($before -and $before.PSObject.Properties['DisabledHotkeys']) { [string] $before.DisabledHotkeys } else { '' }
-    New-Item -Path $advanced -Force | Out-Null
+    # Never New-Item -Force on Explorer\Advanced: on an existing key that deletes every Explorer setting in it.
+    if (-not (Test-Path -LiteralPath $advanced)) { New-Item -Path $advanced -Force | Out-Null }
     Set-ItemProperty -Path $advanced -Name DisabledHotkeys -Value ($hotkeys + 'V') -Type String
     $dataFolders = @($scratchData, (Join-Path $env:LOCALAPPDATA 'BetterClipboard')) | Where-Object { Test-Path -LiteralPath $_ }
 

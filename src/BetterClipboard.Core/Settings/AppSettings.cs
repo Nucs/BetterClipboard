@@ -70,11 +70,52 @@ public sealed record AppSettings
     /// </summary>
     public const int MaxFlyoutSize = 8192;
 
+    /// <summary>
+    /// The most shortcuts that open the panel (<see cref="OpenHotkey"/> plus <see cref="ExtraOpenHotkeys"/>): a sanity bound
+    /// for hand-edited files and installer arguments. Each shortcut costs one registration, and in the worst case one more
+    /// key the low-level keyboard hook checks on every keystroke.
+    /// </summary>
+    public const int MaxOpenHotkeys = 8;
+
+    /// <summary>
+    /// The shortcut the installer gives BetterClipboard when Win+V stays with Windows (<c>install.ps1 -NoTakeOverWinV</c>
+    /// without <c>-Hotkey</c>). Free on a stock Windows 11, and unlike Ctrl+Alt+V (Office's Paste Special) or Ctrl+Shift+V
+    /// (paste as plain text in browsers and editors) no app expects it.
+    /// </summary>
+    public const string AlternativeOpenHotkey = "Alt+Win+V";
+
     /// <summary>Settings file format version, for future migrations.</summary>
     public int SchemaVersion { get; init; } = 1;
 
-    /// <summary>Global shortcut that opens the flyout, e.g. <c>Win+V</c> or <c>Ctrl+Shift+V</c>.</summary>
+    /// <summary>
+    /// The main global shortcut that opens the flyout, e.g. <c>Win+V</c> or <c>Ctrl+Shift+V</c>: the first of
+    /// <see cref="OpenHotkeys"/>, and the one the tray menu and tooltip name.
+    /// </summary>
+    /// <remarks>
+    /// Kept as its own member (rather than folded into one list) so a settings file stays readable by versions from
+    /// before <see cref="ExtraOpenHotkeys"/>: they open the panel with this shortcut alone.
+    /// </remarks>
     public string OpenHotkey { get; init; } = "Win+V";
+
+    /// <summary>
+    /// More global shortcuts that open the flyout besides <see cref="OpenHotkey"/>, e.g. <c>Alt+Win+V</c> next to Win+V,
+    /// or a second key for a keyboard without a Windows key. Empty by default.
+    /// </summary>
+    /// <remarks>
+    /// Each one is taken over like the main shortcut: registered directly, or intercepted with the keyboard hook while
+    /// another app or Windows owns it (<see cref="UseKeyboardHookFallback"/>). Entries are the canonical text the
+    /// settings page and the installer save (<c>Ctrl+Alt+Shift+Win+Key</c>); invalid ones are skipped with a warning when
+    /// the shortcuts are applied. Footgun: a version from before this member drops it when it saves the file, so going
+    /// back to such a version and forward again leaves only <see cref="OpenHotkey"/>.
+    /// </remarks>
+    public IReadOnlyList<string> ExtraOpenHotkeys { get; init; } = [];
+
+    /// <summary>
+    /// Every shortcut that opens the flyout: <see cref="OpenHotkey"/> first, then <see cref="ExtraOpenHotkeys"/>. Derived,
+    /// so it is never written to the file (an older version would otherwise see a member it does not know).
+    /// </summary>
+    [JsonIgnore]
+    public IReadOnlyList<string> OpenHotkeys => [OpenHotkey, .. ExtraOpenHotkeys ?? []];
 
     /// <summary>
     /// When the shortcut is already owned by Windows (Win+V is, by Explorer), intercept it with a
@@ -311,6 +352,47 @@ public sealed record AppSettings
     public bool EnableCommandLine { get; init; }
 
     /// <summary>
+    /// Returns a copy whose shortcuts are <paramref name="hotkeys"/>: the first becomes <see cref="OpenHotkey"/>, the rest
+    /// <see cref="ExtraOpenHotkeys"/>. Use it instead of setting the two members apart, which can leave the main shortcut
+    /// duplicated among the extras.
+    /// </summary>
+    /// <remarks>
+    /// The texts are taken as given (callers validate them as gestures first); <see cref="Normalize"/> then trims them,
+    /// drops blanks and repeats, and caps the list at <see cref="MaxOpenHotkeys"/>.
+    /// </remarks>
+    /// <param name="hotkeys">The shortcuts in order; the first one is the main shortcut the tray names.</param>
+    /// <returns>The changed copy (not yet normalized).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="hotkeys"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="hotkeys"/> holds no shortcut: the panel would have no key at all.</exception>
+    public AppSettings WithOpenHotkeys(IReadOnlyList<string> hotkeys)
+    {
+        ArgumentNullException.ThrowIfNull(hotkeys);
+        if (hotkeys.Count == 0)
+        {
+            throw new ArgumentException("At least one shortcut must open the panel.", nameof(hotkeys));
+        }
+
+        return this with { OpenHotkey = hotkeys[0], ExtraOpenHotkeys = hotkeys.Skip(1).ToArray() };
+    }
+
+    /// <summary>
+    /// Whether two shortcut texts name the same keys as far as text can tell: compared ignoring case and spaces, so
+    /// <c>win + v</c> equals <c>Win+V</c>. Modifier order still counts (<c>Win+Alt+V</c> is not <c>Alt+Win+V</c> here);
+    /// the gesture parser in BetterClipboard.Windows catches those when the shortcuts are applied.
+    /// </summary>
+    /// <param name="a">One shortcut text.</param>
+    /// <param name="b">The other.</param>
+    /// <returns><see langword="true"/> when they are the same text apart from case and spaces.</returns>
+    public static bool SameHotkeyText(string? a, string? b) =>
+        string.Equals(CompactHotkeyText(a), CompactHotkeyText(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Removes every whitespace character from a shortcut text, for <see cref="SameHotkeyText"/>.</summary>
+    /// <param name="text">The text (may be <see langword="null"/>).</param>
+    /// <returns>The text without whitespace; empty for <see langword="null"/>.</returns>
+    private static string CompactHotkeyText(string? text) =>
+        string.Concat((text ?? string.Empty).Where(c => !char.IsWhiteSpace(c)));
+
+    /// <summary>
     /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
     /// into a broken state (e.g. a negative item cap), and merges catalogued password managers the
     /// settings have not seen yet into <see cref="IgnoredApps"/> (see <see cref="SeededIgnoredApps"/>).
@@ -336,10 +418,25 @@ public sealed record AppSettings
             .ToArray();
         var (withCatalog, seen) = KnownPasswordManagers.Seed(ignored, seeded);
 
+        // The main shortcut is never empty (a panel without any key could only be opened from the tray); the extras lose
+        // blanks, repeats of each other and of the main one, and anything past the cap — first come, first kept.
+        var primary = string.IsNullOrWhiteSpace(OpenHotkey) ? "Win+V" : OpenHotkey.Trim();
+        var extras = new List<string>();
+        foreach (var text in ExtraOpenHotkeys ?? [])
+        {
+            var trimmed = text?.Trim() ?? string.Empty;
+            if (trimmed.Length > 0 && extras.Count < MaxOpenHotkeys - 1 &&
+                !SameHotkeyText(trimmed, primary) && !extras.Any(e => SameHotkeyText(e, trimmed)))
+            {
+                extras.Add(trimmed);
+            }
+        }
+
         var normalized = this with
         {
             SchemaVersion = 1,
-            OpenHotkey = string.IsNullOrWhiteSpace(OpenHotkey) ? "Win+V" : OpenHotkey.Trim(),
+            OpenHotkey = primary,
+            ExtraOpenHotkeys = extras.ToArray(),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

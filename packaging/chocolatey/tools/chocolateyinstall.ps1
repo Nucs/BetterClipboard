@@ -110,7 +110,12 @@ if (-not $isUpgrade -and -not $pp.NoStartup) {
         Write-Host "'Start with Windows' stays with the other copy of BetterClipboard ($current); both use the same history."
     }
     else {
-        New-Item -Path $BetterClipboardRunKey -Force | Out-Null
+        # Only create the Run key when it is missing: New-Item -Force on an existing registry key deletes it with every
+        # value in it and creates it empty, which would erase every other app's "start with Windows" entry.
+        if (-not (Test-Path -LiteralPath $BetterClipboardRunKey)) {
+            New-Item -Path $BetterClipboardRunKey -Force | Out-Null
+        }
+
         Set-ItemProperty -Path $BetterClipboardRunKey -Name $BetterClipboardRunValue -Value "`"$exe`" --background" -Type String
     }
 }

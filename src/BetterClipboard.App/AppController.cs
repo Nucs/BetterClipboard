@@ -59,7 +59,12 @@ public sealed partial class AppController
     private SettingsWindow? settingsWindow;
     private volatile CaptureRules rules = new();
     private ForegroundContext? pasteTarget;
-    private (string Hotkey, bool HookFallback) appliedHotkey;
+
+    /// <summary>
+    /// The shortcut inputs last applied: every shortcut text joined by line breaks, and the hook fallback. A settings change
+    /// re-applies only when these differ.
+    /// </summary>
+    private (string Hotkeys, bool HookFallback) appliedHotkey;
     private bool exiting;
 
     /// <summary>The bclip pipe server while command-line access is on; <see langword="null"/> otherwise.</summary>
@@ -98,7 +103,7 @@ public sealed partial class AppController
     /// <summary>Raised on the UI thread after the history changed (forwarded from the worker thread).</summary>
     public event EventHandler<ClipChangedEventArgs>? HistoryChanged;
 
-    /// <summary>Raised on the UI thread after the global shortcut was (re)applied.</summary>
+    /// <summary>Raised on the UI thread after the global shortcuts were (re)applied; <see cref="HotkeyStatuses"/> has their states.</summary>
     public event EventHandler? HotkeyStatusChanged;
 
     /// <summary>
@@ -155,8 +160,11 @@ public sealed partial class AppController
     /// </summary>
     public ClipboardMonitorStatistics? CaptureStatistics => monitor?.Statistics;
 
-    /// <summary>Current state of the global shortcut.</summary>
-    public HotkeyRegistration HotkeyStatus => hotkeys?.Current ?? new HotkeyRegistration(default, HotkeyMode.None, 0);
+    /// <summary>
+    /// Current state of each global shortcut, in the settings' order (the main one first); empty until the shortcuts were
+    /// applied once. Invalid texts in the settings have no entry: they were skipped with a warning.
+    /// </summary>
+    public IReadOnlyList<HotkeyRegistration> HotkeyStatuses => hotkeys?.Registrations ?? [];
 
     /// <summary>Whether the bclip pipe is being served right now.</summary>
     public bool IsCommandLineActive => commandLine is not null;
@@ -531,22 +539,34 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Re-applies the shortcut from settings.
+    /// Re-applies the shortcuts from settings: the main one and every extra one (<see cref="AppSettings.OpenHotkeys"/>).
     /// </summary>
-    /// <returns>The resulting registration.</returns>
-    public async Task<HotkeyRegistration> ApplyHotkeyAsync()
+    /// <remarks>
+    /// Texts that are not shortcuts (a hand-edited file) are skipped with a warning; only when none is left does Win+V stand
+    /// in, so a broken extra never takes Win+V from Windows behind the user's back.
+    /// </remarks>
+    /// <returns>The resulting registrations, in order.</returns>
+    public async Task<IReadOnlyList<HotkeyRegistration>> ApplyHotkeyAsync()
     {
         if (hotkeys is null)
         {
-            return HotkeyStatus;
+            return HotkeyStatuses;
         }
 
         var current = Settings.Current;
-        appliedHotkey = (current.OpenHotkey, current.UseKeyboardHookFallback);
-        if (!HotkeyGesture.TryParse(current.OpenHotkey, out var gesture))
+        appliedHotkey = (string.Join('\n', current.OpenHotkeys), current.UseKeyboardHookFallback);
+        var parsed = HotkeyList.Parse(current.OpenHotkeys);
+        foreach (var invalid in parsed.Invalid)
         {
-            AppLog.Warn($"Invalid shortcut '{current.OpenHotkey}' in settings; falling back to Win+V.");
-            HotkeyGesture.TryParse("Win+V", out gesture);
+            AppLog.Warn($"Invalid shortcut '{invalid}' in settings; skipped.");
+        }
+
+        var gestures = parsed.Gestures;
+        if (gestures.Count == 0)
+        {
+            AppLog.Warn("No valid shortcut in settings; falling back to Win+V.");
+            HotkeyGesture.TryParse("Win+V", out var winV);
+            gestures = [winV];
         }
 
         // An isolated dev/test instance must never steal the shortcut from the installed app: a keyboard
@@ -558,10 +578,66 @@ public sealed partial class AppController
             AppLog.Info("Isolated instance while the installed BetterClipboard runs: not intercepting shortcuts with a keyboard hook.");
         }
 
-        var result = await hotkeys.ApplyAsync(gesture, allowHook);
+        var result = await hotkeys.ApplyAsync(gestures, allowHook);
         HotkeyStatusChanged?.Invoke(this, EventArgs.Empty);
         tray?.SetTooltip(TrayTooltip(current));
         return result;
+    }
+
+    /// <summary>
+    /// Lets go of every shortcut until <see cref="ApplyHotkeyAsync"/> runs again — so a restarting Explorer can register
+    /// the shortcuts it was just given back (it registers them once, when it starts).
+    /// </summary>
+    /// <returns>A task completing when the shortcuts and the hook are released (at once before <see cref="Start"/>).</returns>
+    public Task SuspendHotkeysAsync() => hotkeys?.DisableAsync() ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Waits until another program — normally the restarted Explorer — has registered Win+key for each of
+    /// <paramref name="keys"/>, polling every 250 ms. Call <see cref="SuspendHotkeysAsync"/> first: shortcuts BetterClipboard
+    /// holds itself count as taken.
+    /// </summary>
+    /// <remarks>
+    /// A key nobody registers (one Explorer does not use, or one another part of Windows holds already) simply ends the wait
+    /// at the timeout or at once; the caller re-applies its shortcuts either way.
+    /// </remarks>
+    /// <param name="keys">Letters or digits of exactly Win+key shortcuts.</param>
+    /// <param name="timeout">How long to wait at most.</param>
+    /// <returns><see langword="true"/> when every key was taken before the timeout.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="keys"/> is <see langword="null"/>.</exception>
+    public async Task<bool> WaitForShortcutsTakenAsync(IReadOnlyCollection<char> keys, TimeSpan timeout)
+    {
+        ArgumentNullException.ThrowIfNull(keys);
+        if (hotkeys is null || keys.Count == 0)
+        {
+            return true;
+        }
+
+        var gestures = keys.Select(k => new HotkeyGesture(HotkeyModifiers.Win, char.ToUpperInvariant(k))).ToArray();
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            bool allTaken = true;
+            foreach (var gesture in gestures)
+            {
+                if (!await hotkeys.IsTakenElsewhereAsync(gesture))
+                {
+                    allTaken = false;
+                    break;
+                }
+            }
+
+            if (allTaken)
+            {
+                return true;
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                return false;
+            }
+
+            await Task.Delay(250);
+        }
     }
 
     /// <summary>
@@ -773,7 +849,7 @@ public sealed partial class AppController
 
             // Only re-register when the shortcut inputs changed: re-registering drops and re-installs the
             // hook, which is cheap but would needlessly flicker the status text on unrelated edits.
-            if ((next.OpenHotkey, next.UseKeyboardHookFallback) != appliedHotkey)
+            if ((string.Join('\n', next.OpenHotkeys), next.UseKeyboardHookFallback) != appliedHotkey)
             {
                 await ApplyHotkeyAsync();
             }

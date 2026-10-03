@@ -137,6 +137,13 @@ restart/sign-out **[verified 2026-09-25]**: with `"V"` + Explorer restart, `Regi
 succeeds (was 1409) and the app logs `Win+V registered with RegisterHotKey (no keyboard hook needed)`;
 deleting the value + restart gives Win+V back to Explorer. `explorer.exe` contains the string
 `DisabledHotkeys`, so the knob is still read by this build. (Value absent on this machine by default.)
+A letter releases only the exact `Win+<char>` chord **[verified 2026-10-03]**: with `"V"` set (since 2026-09-25 on this
+PC), `probe_hotkeys.cs` still found Win+Ctrl+V (Windows' sound output flyout) TAKEN. So BetterClipboard releases only
+shortcuts that are exactly Win plus a letter or digit (§2.25). On a fresh Windows 11 25H2 test desktop (26200, a
+`claude-desktops` VM), `"CER1"` + Explorer restart freed Win+E, Win+R and Win+1, but **not Win+C** (Copilot): another
+part of Windows holds it, so BetterClipboard takes Win+C over with the hook. Removing the letters + restart took the
+freed ones back. **Never write this value with `New-Item -Path …\Advanced -Force`**: on an existing key that deletes
+every Explorer setting in it (§4).
 
 ### 1.6 Hotkey ownership probe (`RegisterHotKey`, 2026-09-25) **[verified]**
 
@@ -269,11 +276,11 @@ use it instead of Win+V's mechanism? Findings:
 | Project | TFM | Role |
 |---|---|---|
 | [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, and `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkey + WH_KEYBOARD_LL takeover, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (717 tests, one class at a time — §4: the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum) (211 tests). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (735 tests, one class at a time — §4: the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with) (236 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push). |
@@ -363,11 +370,13 @@ copies bytes then closes the clipboard ASAP; all writes are serialized through t
 swallow key-down/repeats/key-up of `V`, tap unassigned VK `0xE8` so releasing Win doesn't open Start, post
 to the input window, return. Our own synthetic events carry `dwExtraInfo = 0x0B0CC11B` and are ignored;
 keys injected by *other* tools (PowerToys KBM, AutoHotkey) are intercepted like physical keys. Quitting the
-app unhooks → Win+V instantly returns to Windows (verified with `probe_hotkeys.cs`). Optional
-"Release Win+V from Explorer" (Settings, or `install.ps1 -TakeOverWinV`) writes `DisabledHotkeys` and
+app unhooks → Win+V instantly returns to Windows (verified with `probe_hotkeys.cs`). "Release from Explorer"
+(Settings, and what `install.ps1` does by default since 2026-10-03) writes `DisabledHotkeys` and
 restarts Explorer; `RegisterHotKey` then succeeds and no hook is needed — works over elevated windows too,
 but Win+V is dead while the app is not running (uninstall restores it) **[verified 2026-09-25, §1.5]**.
 The log names the path: `… registered with RegisterHotKey …` vs `… intercepting it with a keyboard hook`.
+Since 2026-10-03 any number of shortcuts open the panel, each wired this way, one hook serving all that need it, and the
+installer can leave Win+V to Windows (§2.25).
 
 ### 2.5 Summon & paste flow
 
@@ -2215,13 +2224,103 @@ back out, both toward the cursor. The two fixes are commit `e75b095`; a screen r
 next/previous between images; a huge image is decoded whole (fine for a transient viewer). Only image cards (not
 Everything picks or other kinds) get the peek and the eye.
 
+### 2.25 Several shortcuts, and the installer's takeover of Win+V (built 2026-10-03)
+
+User report and request (2026-10-03), after running the `irm | iex` installer:
+1. "the folder i was cd in did not have write permissions (non admin), use temp in that case";
+2. "-TakeOverWinV must always be checked, have a flag to not to take over that";
+3. "Say we dont take over, can we be able to pick one or multiple other hotkeys please, same technique of take over".
+
+**What changed for the user.**
+- **The installer works from the temp folder.** It resolves `-InstallDir` and the data-folder override against the
+  caller's folder first, then pushes the temp folder (PowerShell location and process directory) for the whole run, and
+  pops it at the end: `irm | iex` runs in the caller's session, so their prompt is back where it was. The app is started
+  with its own folder as working folder (like the Start menu shortcut).
+  - **Not reproduced:** the old installer finished from a folder with a deny-write ACL for Everyone, in PowerShell 7.5
+    and 5.1, both `iex` and script-block forms; an app started there ran too. Nothing in the script writes to the
+    current folder. The user's error text was not available. The switch to temp stays as asked; if the error comes
+    back, its text is needed.
+- **Taking over Win+V is the default.** No flags: the Win+letter shortcuts BetterClipboard answers to (Win+V on a first
+  install) are added to `DisabledHotkeys` and Explorer restarts once — only when something changed, and never when
+  Explorer is not running in the session (it would open a stray window). `-TakeOverWinV` stays accepted; on an update
+  whose shortcuts lack Win+V it adds Win+V back.
+- **`-NoTakeOverWinV`** leaves Win+V to Windows: Win+V is taken out of BetterClipboard's shortcuts (Alt+Win+V when none
+  is left), and a released Win+V is given back (it would do nothing otherwise).
+- **`-Hotkey A, B, …`** sets the shortcuts (replacing the old ones; Win+V first unless `-NoTakeOverWinV`), each taken
+  over "the same way": an exact Win+letter/digit one is released from Explorer by the installer; any other one someone
+  owns is intercepted by the app's keyboard hook. Contradictions (`-NoTakeOverWinV -Hotkey Win+V`, both flags) fail
+  before any download.
+- **Uninstall** gives back Win+V (as before), the keys installer runs recorded (`installer.json` › `releasedKeys`, new;
+  `releasedWinV` kept), and the Win+letter shortcuts in the settings — unless the Chocolatey copy remains or
+  `-KeepWinVReleased`.
+- **A data-loss bug found and fixed on the way (in every installer since v0.1.0).** `New-Item -Path <key> -Force` on a
+  registry key that exists deletes the key with all its values and subkeys and creates it empty (PowerShell 5.1 and 7,
+  verified on a scratch key). The installer did that to `HKCU\…\Run` before adding its own value, so **every install
+  erased every other app's "start with Windows" entry**, and `-TakeOverWinV` (now the default) did it to
+  `Explorer\Advanced`, Explorer's own settings. On the test desktop that one failed with "Attempted to perform an
+  unauthorized operation" before deleting anything. `Confirm-RegistryKey` now creates a key only when it is missing; the
+  Chocolatey install script (its Run key) and `test-chocolatey.ps1` (`Explorer\Advanced`) had the same line and are
+  fixed too. On this PC, `HKCU\…\Run` held only `BetterClipboard`, while
+  `Explorer\StartupApproved\Run` still remembered 19 other entries. Six of them were enabled (IDMan, Spotify,
+  Mozilla-Firefox, RuneApps Alt1, Teams, OpenVPN-GUI); the user was told, nothing was restored.
+- **The Settings card's "Give back to Explorer" raced Explorer** (since the Win+V button existed): the app re-registered
+  its shortcuts 1.5 s after the restart, and if it came first, Explorer could not register the key and it stayed dead
+  after BetterClipboard quit (seen with Win+E on the test desktop). Giving back now suspends every shortcut, waits until
+  the keys are taken again (`HotkeyService.IsTakenElsewhereAsync`, polled every 250 ms, at most 10 s), then re-applies:
+  a key still in the list is then hooked, and Explorer has it the moment BetterClipboard quits.
+- **The app takes any number of shortcuts** (up to `AppSettings.MaxOpenHotkeys` = 8): Settings › Shortcut became a list
+  (one row per shortcut with its state, Remove — never for the last one —, an add box with Enter / Add / presets that
+  toggle). "Release Win+V from Explorer" became **Release from Explorer** for every Win+letter shortcut in the list.
+
+**Pieces.**
+- **Core `AppSettings`:** `OpenHotkey` stays the main shortcut (older versions keep working with it alone), new
+  `ExtraOpenHotkeys`, derived `OpenHotkeys` (`[JsonIgnore]`: STJ would write a get-only property), `WithOpenHotkeys`,
+  `SameHotkeyText`, `AlternativeOpenHotkey` = `Alt+Win+V`. `Normalize` trims, drops blanks and repeats (text, ignoring
+  case and spaces), caps.
+- **Windows `Input/`:** `HotkeyList.Parse` (gestures by keys, so `win+alt+v` = `Alt+Win+V`; invalid texts reported;
+  cap); `HotkeyInterceptorSet` (one interceptor per hooked gesture; the first non-pass-through decision wins, so
+  Win+V and Alt+Win+V on one key stay apart); `HotkeyService.ApplyAsync(IReadOnlyList<HotkeyGesture>, bool)` (ids
+  `0xB00C + i`, one hook for all that need it, `Registrations`); `HotkeySetupCommand`.
+- **Windows `Shell/ExplorerHotkeys`:** `ReleasableKey` (exactly Win + A–Z/0–9), `WithKeys` (keeps the user's
+  characters; adding a key already listed in either case changes nothing, so Explorer does not restart for nothing),
+  `Plan` (Release / GiveBack / None, with the status line). Of keys BetterClipboard did not record, only V counts as its
+  own: a released Win+V that is no shortcut is offered back; a user's own letter never is.
+- **`BetterClipboard.exe --set-hotkeys [--validate] SHORTCUT...`** (`HotkeySetupCommand`, run by `Program.Main` before
+  the single-instance lock): prints canonical shortcuts (UTF-8, LF) or `error:` lines; exit 0 / 2 invalid / 3 that
+  instance runs (saving only: the running app would overwrite the file) / 4 save failed. The log line names the
+  shortcuts. **Versions before it ignore unknown arguments and start normally** (Settings opens), so the installer
+  gates `-Hotkey`/`-NoTakeOverWinV` on the release being ≥ 0.2.6 (`$HotkeyOptionsMinimumVersion`) and refuses an
+  empty answer.
+- **Installer** (`install.ps1`): the order is release lookup → shortcut plan + version gate → download, SHA-256,
+  extract → `--validate` with the staging copy (a typo fails with nothing changed) → close the app, swap → `--set-hotkeys`
+  with the installed copy → shortcut, Run, Installed apps, PATH → Explorer (release / give back, one restart) →
+  `installer.json` → launch. Settings are read with `ConvertFrom-Json`; a file PowerShell 5.1 cannot parse (the app
+  allows comments; PowerShell 7 does too) is "unknown", and Explorer is then left alone.
+
+**Facts found on the way** **[verified]**:
+- With `DisabledHotkeys` = `V`, Win+Ctrl+V stayed taken: the letter releases only the exact chord (§1.5).
+- `RegisterHotKey` fails with 1459 `ERROR_REQUIRES_INTERACTIVE_WINDOWSTATION` in a private window station, so the
+  `HotkeyService` test registers Ctrl+Alt+Shift+F21–F23 on the session desktop for milliseconds (skipped where there is
+  no interactive station).
+- PowerShell's call operator neither waits for a GUI-subsystem exe nor captures its output (both versions: no exit code,
+  no lines); `Start-Process -NoNewWindow -PassThru -RedirectStandardOutput` does, with `$process.Handle` read so 5.1
+  reports the exit code. Python's `subprocess.run` waits and captures as usual.
+
+**Verified:** see §5.
+
+**Not built:**
+- an interactive picker in the installer (the shortcuts come from `-Hotkey` or Settings);
+- the Chocolatey package's uninstall still gives back only Win+V;
+- the installer releases a Win+letter key without checking that Explorer was its owner: for Win+C on 25H2 the `C` it
+  writes changes nothing (the hook takes Win+C over), and uninstall removes it again.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 940 tests (937 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 971 tests (968 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -2396,15 +2495,22 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   (failure puts the old version back) → Start-menu shortcut, Run entry in exactly the app's own format
   (`"<exe>" --background`), HKCU `Uninstall\BetterClipboard` entry (runs `install.ps1 -Uninstall` from the
   install folder) → `installer.json` in the data dir → launch (via `explorer.exe` when elevated, so the app
-  never runs elevated). `-TakeOverWinV` sets `DisabledHotkeys` + restarts Explorer. `-AddToPath` puts the
+  never runs elevated; otherwise with its own folder as working folder). The whole run works from the temp folder
+  and puts the caller's PowerShell back afterwards (§2.25). It takes over the Win+letter shortcuts BetterClipboard
+  answers to (Win+V by default): `DisabledHotkeys` + one Explorer restart, skipped when nothing changed or no Explorer
+  runs in the session; `-NoTakeOverWinV` / `-Hotkey` change the shortcuts through `BetterClipboard.exe --set-hotkeys`
+  (needs ≥ 0.2.6, §2.25); `-TakeOverWinV` is the default and stays accepted. `-AddToPath` puts the
   install folder on the user PATH (same rules as `Shell/UserPath`: raw REG_EXPAND_SZ, `%VAR%` entries kept,
   `WM_SETTINGCHANGE` via `Add-Type`, and `$env:Path` of the calling window because `irm | iex` runs in it).
   `-Uninstall` removes everything but the history (`-RemoveData` for that), removes the PATH entry (whoever
-  added it) and gives Win+V back to Explorer when released.
+  added it) and gives back to Explorer Win+V, the keys `installer.json` › `releasedKeys` records, and the Win+letter
+  shortcuts in the settings, whichever of them are released. Registry keys are created only when missing
+  (`Confirm-RegistryKey`): up to 0.2.5, `New-Item -Path $RunKeyPath -Force` emptied the user's Run key on every install
+  (§2.25, §4).
   - **A Chocolatey copy** (`lib\betterclipboard\tools\app`, §3.2) is respected:
     - install warns about it and leaves a startup entry that starts it;
     - `-Uninstall` removes the startup entry only when it points into its own folder or at a missing file, and
-      keeps Win+V released while that copy remains.
+      keeps Win+V (and the other keys it would give back) released while that copy remains.
 
     The package treats `install.ps1`'s copy the same way. Tested with the functions loaded from the AST and the
     system calls stubbed: 9 of 9 in PS 5.1 and 7.
@@ -2420,6 +2526,13 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   as a test:** it `--exit`s every BetterClipboard in the session and rewrites the Run key, shortcut and
   Installed-apps entry. When invoking Windows PowerShell 5.1 from this bash, clear `PSModulePath`
   (`env -u PSModulePath …`), or 5.1 picks up PowerShell 7's modules and even `Get-FileHash` is "not recognized".
+  - **The whole installer on this PC, safely (2026-10-03):** a harness (`installer_harness.ps1`, session 7579fd35's
+    scratchpad) rewrites a copy's Run/Uninstall/Explorer\Advanced/Environment paths, shortcut and default install folder
+    to scratch locations (each substitution must match once), replaces `Restart-Explorer` with a counter, and shadows
+    `Get-Process` (hides BetterClipboard and explorer, so nothing is signalled), `Stop-Process` (refuses), `Start-Process`
+    (records; lets only the scratch install's `--set-hotkeys` run) and the two downloads. It compares the user's Run value,
+    Installed-apps entry, `DisabledHotkeys`, shortcut, PATH and the app and Explorer PIDs before and after. 18 scenarios
+    in `run_scenarios.sh` (§5).
 - **Pre-release install on this PC** ("install it locally, don't release yet"):
   [`tools/release/install-local.ps1`](tools/release/install-local.ps1) `-Version X.Y.Z` runs the real
   `install.ps1` with the same shadowing, packaged as a script: the lookup and both downloads come from
@@ -2954,6 +3067,26 @@ shortcuts was in progress on 2026-10-03.
   - An integration with another maker's app: add its `Integration` entry with the feature. **No test notices a
     missing one.**
   - Links follow the official-link rule: the final https address, no `aka.ms`, no `/en-us/`.
+- **Never `New-Item -Path <registry key> -Force` on a key that may exist.** In the registry provider it deletes the
+  existing key with every value and subkey in it and creates it empty (PowerShell 5.1 and 7, verified 2026-10-03).
+  `install.ps1` did it to `HKCU\…\Run` from v0.1.0 to 0.2.5 — every install erased every other app's startup entry —
+  and to `Explorer\Advanced` with `-TakeOverWinV`; the Chocolatey install script and `test-chocolatey.ps1` copied it.
+  Create a key only when `Test-Path` says it is missing (`Confirm-RegistryKey`), then `Set-ItemProperty`. Tests on
+  scratch keys hid it for a week: a scratch key has no neighbours to lose, so the installer harness now seeds a
+  neighbouring value and subkey and checks they survive.
+- **PowerShell functions that return an array as one object (`return , $list`) are assigned, never wrapped in `@()`.**
+  `@(f)` collects f's single output — the array — into a new array, so it nests. Found by the installer harness
+  (2026-10-03): `@(Get-RecordedReleasedKeys $state)` made `installer.json` say `"releasedKeys": "System.Object[]V"`.
+- **Running `BetterClipboard.exe` (a GUI-subsystem program) from PowerShell for its output:** the call operator neither
+  waits nor captures (no exit code, no lines, in 5.1 and 7). Use `Start-Process -NoNewWindow -PassThru
+  -RedirectStandardOutput <file>`, read `$process.Handle` right after the start (5.1 reports no `ExitCode` otherwise),
+  then `WaitForExit`. Arguments are joined unquoted, so pass none with spaces (`install.ps1` strips them from shortcuts).
+- **`RegisterHotKey` needs the interactive window station:** in the private one the clipboard tests use it fails with
+  1459. Hotkey tests register keys no keyboard has (Ctrl+Alt+Shift+F21–F23) on the session desktop for milliseconds,
+  and skip where there is no interactive station.
+- **Editing repository files from Python: bytes, or `newline=''`.** `Path.write_text` on Windows writes CRLF; on
+  2026-10-03 it turned all of CLAUDE.md into CRLF (caught by `file`, put back before committing). The repository's files
+  are LF in the working tree.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -2963,7 +3096,13 @@ shortcuts was in progress on 2026-10-03.
 
 | Feature | How | Result |
 |---|---|---|
+| Installer and several shortcuts on a real Windows 11 25H2 (2026-10-03, a fresh `claude-desktops` VM `win-hotkeys`, PowerShell 5.1, the real installer with its lookup and download served from a locally packaged `0.2.6` x64 zip, deleted afterwards). (1) `irm \| iex` form from `C:\nowrite` (deny-write ACE for Everyone): installed, DisabledHotkeys `V`, Explorer restarted, the app logged `Win+V registered with RegisterHotKey`, the prompt back in `C:\nowrite`; a seeded `BC-TEST OtherApp` Run value kept, `Explorer\Advanced` identical to its baseline except `DisabledHotkeys`. Win+V opened the panel. (2) Settings › Shortcut (UIA set-text + Add): `ctrl + alt + f9` → "Ctrl+Alt+F9 · Registered.", `Win+Ctrl+V` → "Owned by Windows or another app: taken over with a keyboard hook"; Ctrl+Win+V (the hook, instead of the sound flyout) and Ctrl+Alt+F9 opened the panel. (3) `-NoTakeOverWinV -Hotkey Win+C,Ctrl+Alt+F9`: V given back and `C` written in one restart; Win+V then opened **Windows' own** clipboard panel and Win+C BetterClipboard's (hooked: Win+C stayed taken with `C` listed). (4) Probe: `CER1` freed Win+E, Win+R, Win+1, not Win+C. (5) `-NoTakeOverWinV -Hotkey Win+E`: Win+E registered directly. (6) Settings › Release from Explorer › Give back (the confirmation named Win+E): before the fix BetterClipboard re-registered Win+E ahead of Explorer; after it, the log showed the hook, and Win+E stayed taken (by Explorer) once BetterClipboard exited. (7) Uninstall through the Installed-apps command: Win+C given back, Run left with `BC-TEST OtherApp`, folder gone, history kept, `Explorer\Advanced` as at the baseline | `desktop_call`: `run_command`, `find_elements`/`element_action`, `press_keys`, screenshots | ✅ after two fixes it found: the installer's `New-Item -Force` on `Explorer\Advanced` ("Attempted to perform an unauthorized operation", first run) and the give-back race |
+| The registry wipe (§2.25, §4): `New-Item -Path <existing key> -Force` emptied a scratch key (value and subkey gone) in PowerShell 7.5.8 and 5.1. The installer harness, with a neighbouring Run value and an `Explorer\Advanced` value and subkey seeded, showed the 0.2.5 installer losing the Run neighbour on a plain install and the Advanced ones with `-TakeOverWinV`, and the fixed installer keeping all three in 7 scenarios (PowerShell 7 and 5.1, install, `-NoTakeOverWinV -Hotkey`, uninstall). On this PC, `HKCU\…\Run` held only `BetterClipboard` while `StartupApproved\Run` listed 19 other names (6 enabled) | scratch keys, harness, a read-only listing of value names | ✅ fixed; the user's lost startup entries were reported, not restored |
 | README photos (2026-10-03, §3.4): v0.2.5 installed with the README's `irm \| iex` command in a claude-desktops Windows 11 desktop (2560×1440 at 150 %, dark theme): SHA-256 OK, Settings opened. Demo data: `tools/readme/demo-data.ps1` (its guard refused on this PC and wrote nothing; a guard-free test copy with the histories in a scratch folder wrote 7 Claude Code lines, 2 Codex lines, PSReadLine's CRLF file and the notes), then copies from Notepad, Windows Terminal, Explorer, Snipping Tool and Edge, a pin, three groups by drag and drop. Shown as expected: the sources Notepad, Windows Terminal, Windows Explorer, Snipping Tool and Microsoft Edge; a color swatch; "2 files"; a path card; group badges; the Claude tab "6 prompts (7 sent)" with "sent 2 times"; the Codex and Pwsh tabs; the strip's arrows; the Settings chips "8 items · 3.4 MB · 1 pinned · 6 in groups". Captured per window in physical pixels, finished with `finish-shot.py` (the repository's script rebuilds all three photos byte for byte from the raw captures). The panel's first Win+V after a `--background` start left the search box unfocused and dropped the typed "git", 2 of 2 times; the second Win+V took it (§6). Docker Desktop was started for it and is still running; the desktop was deleted with its persist folder | claude-desktops MCP tools (UIA, keys, mouse), in-desktop PowerShell, Pillow | ✅ photos; ❌ the first-summon focus |
+| Installer: temp working folder, Win+V taken over by default, `-NoTakeOverWinV`, `-Hotkey`, uninstall giving keys back (§2.25, 2026-10-03). The whole `install.ps1` ran on this PC through the harness (§3.1): scratch registry paths, shortcut and install folder, `Restart-Explorer` counted, the user's app never signalled, a locally packaged `0.2.6` x64 zip served. 18 scenarios, PowerShell 7.5.8 and 5.1: (1) fresh `irm \| iex` from a deny-write folder: V released, 1 restart, `releasedKeys` "V", the caller's location restored; (2) update with V released: no restart; (3) `-NoTakeOverWinV` with `XV`: settings Alt+Win+V, V given back (X kept), 1 restart; (4) `-NoTakeOverWinV -Hotkey 'Win+C,ctrl + alt + f9'`: settings Win+C + Ctrl+Alt+F9, C released and V given back in one restart; (5) `-Hotkey Win+Alt+V`: Win+V + Alt+Win+V; (6) `Win+Foo`: "Shortcuts not accepted", nothing installed, no staging left; (7) `-NoTakeOverWinV -Hotkey 'windows + v'` and (9) both flags: refused before any download; (8) `-Version 0.2.4 -Hotkey`: refused by the version gate; (10, 15) install with Win+C over `Q`, then uninstall: `QVC` → `Q`; (11) 5.1 from the deny-write folder with ``Ctrl+` ``; (12) `-TakeOverWinV` adds Win+V back; (13) 5.1 with a commented settings file: "could not be read", Explorer left alone; (14) 5.1 fresh `iex`; (16) uninstall with a Chocolatey copy: Win+V stays; (17) `-KeepWinVReleased`; (18) 5.1 uninstall giving back V, C (recorded) and 1 (configured). Every run: the user's Run value, Installed-apps entry, `DisabledHotkeys`, shortcut, PATH and app/Explorer PIDs unchanged | `installer_harness.ps1` + `run_scenarios.sh` (session 7579fd35's scratchpad) | ✅ 18/18, after one fix it found: `@()` around a function returning `, $array` nested it (`"releasedKeys": "System.Object[]V"`, §4) |
+| The reported failure in a folder the user cannot write to: the 0.2.5 installer (before this change) run from a folder with a deny-write ACE for Everyone, `iex` form, PowerShell 7.5.8 and 5.1: both finished; the 0.2.4 app started from that folder (scoped, background) ran with no warning; `Start-Process` worked from an unwritable and from an unlistable current folder | harness + `launch_from_cwd.ps1`, `cwd_startprocess.ps1` (scratch) | ⚠️ not reproduced: the installer now works from the temp folder anyway (§2.25); the user's error text is needed if it recurs |
+| Several shortcuts, unit tests: Core 6 (`HotkeySettingsTests`) and Windows 25 (`HotkeyTakeoverTests`: list parser, the interceptor set with Win+V and Alt+Win+V on one key, `ReleasableKey`, `WithKeys`, every `Plan` state, `--set-hotkeys` validate/save/invalid/too many/app running; `HotkeyServiceTests`: three obscure shortcuts registered for real, one owned by another window refused with 1409, re-apply releases what was dropped; `IsTakenElsewhereAsync` tells a held shortcut from a free one). Full suite 971 = 968 passed + 3 skipped: 7 of 8 full runs green; the one run started right after a build had one Windows-test failure that was not captured and did not recur (6 more Windows-only runs green). No doc warnings on a full rebuild | `dotnet test --solution`, `--no-incremental` build | ✅ |
+| Several shortcuts on an isolated copy of the dev build (phase A, nothing on screen but a tray icon): `--validate` refused `Win+Foo` (exit 2, named), `--set-hotkeys` saved three canonical shortcuts keeping the other settings, the log showed Ctrl+Alt+Shift+F21 and F22 registered and Win+C refused (1409: Explorer's, and an isolated instance never hooks), saving refused while that instance ran (exit 3); the user's PIDs unchanged | `e2e/hotkeys_e2e.py` (session 7579fd35's scratchpad) | ✅ 8/8 |
 | **v0.2.5 released** (2026-10-03, "bump last time to latest commit and do actual release and push of the new version", §3.1's release procedure). No commit had landed since `c5286e6` (the record of the `64cbff6` install, docs only), so the release is `c5286e6`, and its app code equals the `0.2.5+64cbff6` build installed and running on this PC, so no reinstall. The push range (5 commits) was scanned first: no binaries, no secret-like added lines, not the user's email. `main` pushed (`4e0b1ce..c5286e6`); CI run 37100304903 passed (940 = 937 + 3 skipped, x64 package smoke test, Chocolatey smoke test 22/22). Tag `v0.2.5`: annotated (object `ef329b0` → `c5286e6`), `--cleanup=whitespace`, message = the anchored lookup's draft (`13b4f56`), identical to the notes file (6,903 characters, valid UTF-8). Release run 37100517389 passed in ~5.5 min: the notes step, tests in Release (940 = 937 + 3), both packages, `test-chocolatey.ps1` 22/22, publish; Push to Chocolatey only warned (no secret, §3.2). The page (published 05:44:30Z, Latest, not a prerelease) holds the 2 zips (70.8 / 68.5 MB), 2 `.7z` (43.0 / 39.1 MB), `betterclipboard.0.2.5.nupkg` (82.1 MB), `install.ps1` and `SHA256SUMS.txt`. All four sums match GitHub's asset digests. The body is the notes, then `---` and the Code signing policy footer, with no mojibake. The `install.ps1` asset differs from the blob only by CRLF | `gh api …/releases/tags/v0.2.5`, `gh release download`, `gh run view --log`, a Python comparison of sums, digests, body and installer (scratch) | ✅ released; Chocolatey not pushed by choice |
 | `0.2.5` moved to `64cbff6` and installed on this PC a third time (2026-10-02 night, the same request again, §3.1). New since `5cf1eef`: the two image-overlay fixes (`e75b095`: the peek no longer vanishes while the mouse is still, which the user had reported; the viewer's wheel always zooms) and their docs. In a worktree at `64cbff6`: 940 = 937 passed + 3 skipped, 0 failed; `package.ps1` 146 s (zips 71.0 / 68.5 MB); `package-chocolatey.ps1` 82.7 MB. `install-local.ps1` (13 s): SHA-256 OK, the running `0.2.5+5cf1eef` closed gracefully, swapped. Started through Explorer: parent `explorer.exe`, 74 variables without `CLAUDECODE`/`MSYSTEM`. Run value, shortcut, Installed apps (`0.2.5`) and `DisabledHotkeys` (`V`) unchanged; the exe `0.2.5+64cbff6…`. Log after "starting": 0 WRN/ERR. The replaced build logged the Cmd helper's timeout twice, 28 s apart (§6). The v0.2.5 notes draft of `13b4f56` still holds (its overlay text matches the fixed behaviour), so no new draft | as in the first 0.2.5 row below | ✅ |
 | `0.2.5` moved to `5cf1eef` and installed on this PC again (2026-10-02 evening, "Move the 0.2.5 to latest changes and reinstall here locally", §3.1). Five commits since the first 0.2.5 install: the image overlays (`516b4ee`, the only app change), then code-signing preparation, the release workflow's notes step, and docs. In a worktree at `5cf1eef`: the full suite 940 = 937 passed + 3 skipped, 0 failed; `package.ps1 -Version 0.2.5` in 163 s (zips 71.0 / 68.5 MB, `.7z` 43.3 / 39.3 MB); `package-chocolatey.ps1` packed 82.7 MB with the nuspec's new Privacy / Code signing policy line. `install-local.ps1` (10 s): SHA-256 OK, the running `0.2.5+ac65856` closed gracefully after ~9 h with no WRN/ERR in its whole run, swapped. Started through Explorer: parent `explorer.exe`, 74 variables without `CLAUDECODE`/`MSYSTEM`. Run value, shortcut, Installed apps (`0.2.5`) and `DisabledHotkeys` (`V`) unchanged; the exe 0.2.5.0 / `0.2.5+5cf1eef…`; `installer.json` re-stamped. Log after "starting": 0 WRN/ERR. The publish still warns only CS0108 (see the first 0.2.5 row). The updated draft notes (the image overlays added, a Privacy link) are in the commit that records this | as in the first 0.2.5 row below | ✅ (the overlays themselves are still unchecked on screen: their row) |
@@ -3051,6 +3190,15 @@ shortcuts was in progress on 2026-10-03.
 - Caret position for apps without a Win32 caret (WinUI, some Electron): UI Automation `TextPattern2.GetCaretRange`.
 - LL-hook watchdog (Windows removes hooks that time out) + re-install. (Hook-free mode when `DisabledHotkeys`
   is set: done — `RegisterHotKey` succeeds then.)
+- Several shortcuts and the installer's takeover (§2.25), next steps:
+  - check after Explorer's restart whether a released key really became free, and take the letter out again when not
+    (Win+C on 25H2 stays with another part of Windows);
+  - the Chocolatey package's uninstall gives back only Win+V; give back the settings' other Win+letter shortcuts like
+    `install.ps1 -Uninstall` does;
+  - the README's Settings photo (`docs/images/settings.png`, bb40f51) shows 0.2.5's single shortcut box: re-shoot it
+    with `tools/readme` once the list ships;
+  - the Settings remove button could offer a released Win+letter key back (today only a stray Win+V is offered);
+  - an interactive shortcut picker in the installer when `-NoTakeOverWinV` comes without `-Hotkey` (today: Alt+Win+V).
 - Export/backup with a user password (re-seal the DEK; the database itself need not be re-encrypted).
 - Code signing through the SignPath Foundation (§3.3, [`docs/code-signing.md`](docs/code-signing.md)). The
   repository is prepared; the application waits for reputation: posts and directory listings first, judged by

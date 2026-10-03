@@ -25,6 +25,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     private bool loading;
 
     /// <summary>
+    /// The shortcut texts of the last loaded settings (<see cref="AppSettings.OpenHotkeys"/>, main one first): what the
+    /// rows show and what adding or removing a shortcut starts from.
+    /// </summary>
+    private IReadOnlyList<string> hotkeyTexts = [];
+
+    /// <summary>
     /// Creates the view model and loads the current settings/status.
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -89,9 +95,22 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // ───── Settings (persisted on change) ─────
 
-    /// <summary>Shortcut text; only valid gestures are persisted.</summary>
+    /// <summary>
+    /// One row per shortcut that opens the panel, main one first, each with how it is wired right now. Rebuilt whole on
+    /// every settings load and shortcut re-apply (the list is short); UI thread only.
+    /// </summary>
+    public System.Collections.ObjectModel.ObservableCollection<HotkeyItemViewModel> Hotkeys { get; } = [];
+
+    /// <summary>
+    /// What is typed into the "add a shortcut" box. Nothing is saved while typing: <see cref="AddHotkey"/> runs on Enter, the
+    /// Add button or a preset, so a half-typed shortcut never becomes a global hotkey.
+    /// </summary>
     [ObservableProperty]
-    public partial string OpenHotkey { get; set; } = string.Empty;
+    public partial string NewHotkeyText { get; set; } = string.Empty;
+
+    /// <summary>The shortcuts for the header chip, e.g. "Win+V · Alt+Win+V".</summary>
+    [ObservableProperty]
+    public partial string HotkeysSummary { get; set; } = string.Empty;
 
     /// <summary>See <see cref="AppSettings.UseKeyboardHookFallback"/>.</summary>
     [ObservableProperty]
@@ -179,11 +198,14 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     // ───── Status ─────
 
-    /// <summary>How the shortcut is wired right now.</summary>
+    /// <summary>
+    /// The shortcut card's description: what the list is for, plus how many shortcuts do not work right now when any
+    /// does not (each row says why).
+    /// </summary>
     [ObservableProperty]
     public partial string HotkeyStatus { get; set; } = string.Empty;
 
-    /// <summary>Whether the shortcut is active (drives the status color).</summary>
+    /// <summary>Whether every shortcut works right now.</summary>
     [ObservableProperty]
     public partial bool IsHotkeyActive { get; set; }
 
@@ -214,9 +236,23 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string WindowsHistoryStatus { get; set; } = string.Empty;
 
-    /// <summary>Whether Explorer is told to release Win+V.</summary>
+    /// <summary>
+    /// What "Release from Explorer" would do next for the current shortcuts and Explorer's <c>DisabledHotkeys</c> (see
+    /// <see cref="ExplorerHotkeys.Plan"/>); the confirmation reads its keys. Recomputed by <see cref="RefreshExplorerRelease"/>.
+    /// </summary>
+    public ExplorerReleasePlan ExplorerPlan { get; private set; } = new(ExplorerReleaseAction.None, [], string.Empty);
+
+    /// <summary>The Explorer card's status line: which Win+letter shortcuts are released, and any released Win+V that does nothing.</summary>
     [ObservableProperty]
-    public partial bool IsWinVReleased { get; set; }
+    public partial string ExplorerReleaseStatus { get; set; } = string.Empty;
+
+    /// <summary>The Explorer card's button text: "Release…" or "Give back to Explorer…".</summary>
+    [ObservableProperty]
+    public partial string ExplorerReleaseButtonText { get; set; } = "Release…";
+
+    /// <summary>Whether the Explorer card's button has anything to do (no Win+letter shortcut and Win+V with Explorer: nothing).</summary>
+    [ObservableProperty]
+    public partial bool CanChangeExplorerRelease { get; set; }
 
     /// <summary>Validation message for the shortcut box.</summary>
     [ObservableProperty]
@@ -265,7 +301,8 @@ public sealed partial class SettingsViewModel : ObservableObject
         loading = true;
         try
         {
-            OpenHotkey = settings.OpenHotkey;
+            hotkeyTexts = settings.OpenHotkeys;
+            HotkeysSummary = string.Join(" · ", hotkeyTexts);
             UseKeyboardHookFallback = settings.UseKeyboardHookFallback;
             MaxItems = settings.MaxItems;
             RetentionDays = settings.RetentionDays;
@@ -293,6 +330,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             KeepCodexPrompts = settings.KeepCodexPrompts;
             RecordRunHistory = settings.RecordRunHistory;
             RefreshHotkeyStatus();
+            RefreshExplorerRelease();
             RefreshCommandLineStatus();
             RefreshShareXStatus();
             RefreshSnippingStatus();
@@ -429,12 +467,49 @@ public sealed partial class SettingsViewModel : ObservableObject
         RefreshCommandLineStatus();
     }
 
-    /// <summary>Re-reads the shortcut registration state.</summary>
+    /// <summary>
+    /// Re-reads how each shortcut is wired and rebuilds the rows: one per shortcut text in the settings, with the
+    /// registration of the same gesture (matched by keys, not text, since the settings may spell it differently).
+    /// </summary>
     public void RefreshHotkeyStatus()
     {
-        var status = controller.HotkeyStatus;
-        IsHotkeyActive = status.IsActive;
-        HotkeyStatus = status.Gesture.VirtualKey == 0 ? "Registering…" : status.Describe();
+        var registrations = controller.HotkeyStatuses;
+        var rows = new List<HotkeyItemViewModel>();
+        var seen = new List<HotkeyGesture>();
+        foreach (var text in hotkeyTexts)
+        {
+            if (!HotkeyGesture.TryParse(text, out var gesture))
+            {
+                // A hand-edited entry: the app skipped it, and the row says so instead of hiding it.
+                rows.Add(new HotkeyItemViewModel(text, "Not a valid shortcut, so it is skipped. Remove it.", IsActive: false));
+                continue;
+            }
+
+            if (seen.Contains(gesture))
+            {
+                continue;
+            }
+
+            seen.Add(gesture);
+            var registration = registrations.FirstOrDefault(r => r.Gesture == gesture);
+            rows.Add(registration is null
+                ? new HotkeyItemViewModel(gesture.ToString(), "Registering…", IsActive: true)
+                : new HotkeyItemViewModel(gesture.ToString(), registration.DescribeState(), registration.IsActive));
+        }
+
+        // The last shortcut cannot go: without one, only the tray icon would open BetterClipboard.
+        bool canRemove = rows.Count > 1;
+        Hotkeys.Clear();
+        foreach (var row in rows)
+        {
+            Hotkeys.Add(row with { CanRemove = canRemove });
+        }
+
+        int broken = rows.Count(r => !r.IsActive);
+        IsHotkeyActive = broken == 0;
+        HotkeyStatus = broken == 0
+            ? "Any of these opens BetterClipboard. The first one is shown in the tray."
+            : $"Any of these opens BetterClipboard. {broken} of {rows.Count} {(rows.Count == 1 ? "does" : "do")} not work right now: see below.";
     }
 
     /// <summary>Re-reads Windows-side state (clipboard history toggle, Explorer hotkey release).</summary>
@@ -447,8 +522,105 @@ public sealed partial class SettingsViewModel : ObservableObject
             : enabled == true
                 ? "On — Windows keeps its own 25-item copy of what you copy (and forgets it on restart)."
                 : "Off — BetterClipboard is your only clipboard history. Win+V pins can still be imported.";
-        IsWinVReleased = WindowsClipboardSettings.IsWinVReleasedByExplorer();
+        RefreshExplorerRelease();
     }
+
+    /// <summary>
+    /// Re-reads Explorer's <c>DisabledHotkeys</c> and works out what the "Release from Explorer" card offers for the current
+    /// shortcuts (<see cref="ExplorerPlan"/>, its status line and button).
+    /// </summary>
+    public void RefreshExplorerRelease()
+    {
+        var gestures = HotkeyList.Parse(hotkeyTexts).Gestures;
+        ExplorerPlan = ExplorerHotkeys.Plan(gestures, WindowsClipboardSettings.GetDisabledHotkeys());
+        ExplorerReleaseStatus = ExplorerPlan.Status;
+        ExplorerReleaseButtonText = ExplorerPlan.Action == ExplorerReleaseAction.GiveBack ? "Give back to Explorer…" : "Release…";
+        CanChangeExplorerRelease = ExplorerPlan.Action != ExplorerReleaseAction.None;
+    }
+
+    /// <summary>
+    /// Adds a shortcut that opens the panel (Enter in the box, the Add button, or a preset). It is saved at once, and the
+    /// app registers it — or takes it over with the keyboard hook when another app or Windows owns it.
+    /// </summary>
+    /// <param name="text">The typed or picked shortcut, any spelling (<c>ctrl + alt + v</c>).</param>
+    /// <returns><see langword="true"/> when it was added; otherwise <see cref="HotkeyError"/> says why.</returns>
+    public bool AddHotkey(string? text)
+    {
+        if (!HotkeyGesture.TryParse(text, out var gesture))
+        {
+            HotkeyError = "Not a valid shortcut. Use modifiers + a key, e.g. Win+V or Ctrl+Shift+V.";
+            return false;
+        }
+
+        var current = HotkeyList.Parse(hotkeyTexts).Gestures;
+        if (current.Contains(gesture))
+        {
+            HotkeyError = $"{gesture} is already in the list.";
+            return false;
+        }
+
+        if (current.Count >= AppSettings.MaxOpenHotkeys)
+        {
+            HotkeyError = $"At most {AppSettings.MaxOpenHotkeys} shortcuts. Remove one first.";
+            return false;
+        }
+
+        HotkeyError = string.Empty;
+        NewHotkeyText = string.Empty;
+        SaveHotkeys([.. current, gesture]);
+        return true;
+    }
+
+    /// <summary>
+    /// Removes a shortcut (its row's button). The last one stays: without a shortcut only the tray icon would open
+    /// BetterClipboard.
+    /// </summary>
+    /// <remarks>
+    /// A Win+letter shortcut that was released from Explorer stays released; the Explorer card then offers Win+V back if it
+    /// was Win+V (a released Win+V that is no shortcut does nothing).
+    /// </remarks>
+    /// <param name="text">The row's shortcut text.</param>
+    public void RemoveHotkey(string? text)
+    {
+        var current = HotkeyList.Parse(hotkeyTexts).Gestures;
+        IReadOnlyList<HotkeyGesture> remaining = HotkeyGesture.TryParse(text, out var gesture)
+            ? current.Where(g => g != gesture).ToArray()
+            : current;
+        if (remaining.Count == 0)
+        {
+            HotkeyError = "Keep at least one shortcut: without one, only the tray icon opens BetterClipboard.";
+            return;
+        }
+
+        // A hand-edited entry that does not parse is dropped by any save, which is how its row's Remove works.
+        HotkeyError = string.Empty;
+        SaveHotkeys(remaining);
+    }
+
+    /// <summary>A preset in the menu: adds it, or removes it when it is in the list already (the menu shows it checked).</summary>
+    /// <param name="preset">The preset, in canonical form.</param>
+    public void TogglePreset(string preset)
+    {
+        if (HotkeyGesture.TryParse(preset, out var gesture) && HotkeyList.Parse(hotkeyTexts).Gestures.Contains(gesture))
+        {
+            RemoveHotkey(preset);
+        }
+        else
+        {
+            AddHotkey(preset);
+        }
+    }
+
+    /// <summary>Whether a preset is among the shortcuts (its menu item shows a check).</summary>
+    /// <param name="preset">The preset, in canonical form.</param>
+    /// <returns><see langword="true"/> when it is in the list.</returns>
+    public bool HasHotkey(string preset) =>
+        HotkeyGesture.TryParse(preset, out var gesture) && HotkeyList.Parse(hotkeyTexts).Gestures.Contains(gesture);
+
+    /// <summary>Saves the shortcuts in canonical form, main one first (the app re-applies them through the settings change).</summary>
+    /// <param name="gestures">The shortcuts, at least one.</param>
+    private void SaveHotkeys(IReadOnlyList<HotkeyGesture> gestures) =>
+        Update(s => s.WithOpenHotkeys(gestures.Select(g => g.ToString()).ToArray()));
 
     /// <summary>
     /// Refreshes the statistics text.
@@ -631,25 +803,55 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Releases Win+V from Explorer (or gives it back) and restarts Explorer so it takes effect.
+    /// Carries out <paramref name="plan"/> — releases its Win+letter shortcuts from Explorer, or gives them back — and
+    /// restarts Explorer so it takes effect. Call after the user confirmed: the restart closes File Explorer windows.
     /// </summary>
-    /// <param name="release">Release (true) or restore (false).</param>
-    /// <returns>A task completing after Explorer restarted and the shortcut was re-applied.</returns>
-    public async Task SetWinVReleasedAsync(bool release)
+    /// <remarks>
+    /// Giving back suspends every BetterClipboard shortcut until Explorer has registered the keys again (at most 10 s), so
+    /// Explorer is never beaten to its own shortcut; a key that is still one of BetterClipboard's shortcuts is then taken
+    /// over through the keyboard hook, which lets go of it the moment BetterClipboard quits.
+    /// </remarks>
+    /// <param name="plan">The plan the user confirmed (the card's <see cref="ExplorerPlan"/> at that moment).</param>
+    /// <returns>A task completing after Explorer restarted and the shortcuts were re-applied; failures are logged, never thrown.</returns>
+    public async Task ApplyExplorerReleaseAsync(ExplorerReleasePlan plan)
     {
+        if (plan.Action == ExplorerReleaseAction.None)
+        {
+            return;
+        }
+
         try
         {
-            WindowsClipboardSettings.SetWinVReleasedByExplorer(release);
-            await WindowsClipboardSettings.RestartExplorer();
+            bool release = plan.Action == ExplorerReleaseAction.Release;
+            if (!release)
+            {
+                // Explorer registers its shortcuts once, when it starts. A shortcut BetterClipboard holds at that moment
+                // stays BetterClipboard's and is dead once it quits (seen on a test desktop: Win+E re-registered by
+                // BetterClipboard 1.5 s after the restart, before Explorer). So let go of every shortcut first, and take them
+                // back - through the hook - only after Explorer registered the keys it was given back.
+                await controller.SuspendHotkeysAsync();
+            }
 
-            // Give the new Explorer a moment to register (or skip) its hotkeys, then re-apply ours so we
-            // switch between RegisterHotKey and the hook as appropriate.
-            await Task.Delay(1500);
+            if (WindowsClipboardSettings.SetReleasedByExplorer(plan.Keys.ToArray(), release))
+            {
+                await WindowsClipboardSettings.RestartExplorer();
+                if (release)
+                {
+                    // Give the new Explorer a moment to start without the released keys, then re-apply ours so they switch
+                    // from the hook to RegisterHotKey.
+                    await Task.Delay(1500);
+                }
+                else if (!await controller.WaitForShortcutsTakenAsync(plan.Keys, TimeSpan.FromSeconds(10)))
+                {
+                    AppLog.Info($"{plan.KeyNames}: not registered by Explorer within 10 s of its restart; taking the shortcuts back anyway.");
+                }
+            }
+
             await controller.ApplyHotkeyAsync();
         }
         catch (Exception ex)
         {
-            AppLog.Error("Changing Explorer's Win+V registration failed.", ex);
+            AppLog.Error("Changing Explorer's shortcut registrations failed.", ex);
         }
 
         RefreshSystemStatus();
@@ -683,26 +885,6 @@ public sealed partial class SettingsViewModel : ObservableObject
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             AppLog.Error("Saving settings failed.", ex);
-        }
-    }
-
-    /// <summary>Validates and persists the shortcut.</summary>
-    /// <param name="value">New text.</param>
-    partial void OnOpenHotkeyChanged(string value)
-    {
-        if (loading)
-        {
-            return;
-        }
-
-        if (HotkeyGesture.TryParse(value, out var gesture))
-        {
-            HotkeyError = string.Empty;
-            Update(s => s with { OpenHotkey = gesture.ToString() });
-        }
-        else
-        {
-            HotkeyError = "Not a valid shortcut. Use modifiers + a key, e.g. Win+V or Ctrl+Shift+V.";
         }
     }
 
