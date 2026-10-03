@@ -3051,6 +3051,9 @@ shortcuts was in progress on 2026-10-03.
 - **A user-visible feature is not done until the README presents it.** The user, 2026-10-03: "We have had many many
   changes and our README.md is not presenting that". By then the README lagged 0.2.5: six tabs, one group at a time,
   and no image previews, resizing or prompt commands. Where things go:
+  - every user-visible feature: a bullet in the *Features* list at the top (a dash list, at the user's request on
+    2026-10-03 "a README features section made of a dash list of all our features … instead of a table"; it replaced
+    the Win+V comparison table, and its Win+V numbers now sit in the bullets they belong to);
   - a new tab: the *Use › Tabs* table, plus a subsection under *Tabs for other apps*;
   - a new key or gesture: the keys table under *Use*;
   - a new menu entry: the keys table's menu row;
