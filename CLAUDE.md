@@ -3053,7 +3053,9 @@ shortcuts was in progress on 2026-10-03.
   and no image previews, resizing or prompt commands. Where things go:
   - every user-visible feature: a bullet in the *Features* list at the top (a dash list, at the user's request on
     2026-10-03 "a README features section made of a dash list of all our features … instead of a table"; it replaced
-    the Win+V comparison table, and its Win+V numbers now sit in the bullets they belong to);
+    the Win+V comparison table, and its Win+V numbers now sit in the bullets they belong to). A new kind of item or a
+    new tab is a sub-item of *Every kind of copy*: the user moved the tabs for other apps there "as a sublist" and
+    asked to "reduce duplicates", so each feature has one bullet and no bullet repeats another;
   - a new tab: the *Use › Tabs* table, plus a subsection under *Tabs for other apps*;
   - a new key or gesture: the keys table under *Use*;
   - a new menu entry: the keys table's menu row;

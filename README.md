@@ -20,9 +20,26 @@ you send to Claude Code and Codex.
   for Windows and pick your own ([Taking over Win+V](#taking-over-winv)).
 - **Remembers everything, also after a restart.** 10,000 items by default, each up to 64 MB, with a size budget and an
   optional age limit, all adjustable. Win+V keeps 25 items of up to 4 MB, and a restart wipes all but its pins.
-- **Every kind of copy:** text, rich text and HTML, links, colors with a swatch, files copied in Explorer, paths copied
-  as text, and images with thumbnails. Each card shows which app copied it and when. A copy you make again moves to
-  the top instead of adding a duplicate, and the same picture as PNG or bitmap is one item.
+- **Every kind of copy**, with the source app and time on each card, and tabs that filter by kind and by source. A copy
+  you make again moves to the top instead of adding a duplicate ([Tabs](#tabs)):
+  - **Text, rich text and HTML, links, and colors** with a swatch.
+  - **Files** copied in Explorer, and **paths copied as text** (`C:\…`, `~/.bashrc`, `src/app/main.cs`), which still
+    paste as text ([Paths in the Files tab](#paths-in-the-files-tab)).
+  - **Images** with thumbnails. Rest the mouse on one to see it full size, or open it in a viewer that zooms and pans
+    ([Image previews](#image-previews)). The same picture as PNG or bitmap is one item.
+  - **Windows' own history:** what Win+V still remembers, its pins included, is imported at each start. What you delete
+    in BetterClipboard is not imported again.
+  - **ShareX:** every screenshot that [ShareX](https://getsharex.com) saves, the moment it is saved.
+  - **Snipping:** every screenshot that Snipping Tool's auto-save and `Win+PrtScn` save.
+  - **Run:** every command you run with `Win+R`, also after Windows' list of 26 forgets it. `Ctrl+Enter` runs one again
+    (`Ctrl+Shift+Enter`: as administrator).
+  - **Pwsh:** PowerShell's whole command history, also the old commands that its Up arrow no longer reaches.
+  - **Cmd:** the commands typed in your Command Prompt windows, kept after a window closes.
+  - **Claude and Codex:** every prompt you send to Claude Code and Codex, kept for good.
+  - **Everything:** the files you open from [Everything](https://www.voidtools.com/), to paste as a file or as a path.
+
+  The last seven are tabs for other apps. Each one has its own switch and is on by default, BetterClipboard only reads
+  its source, and the tab of an app you don't have stays hidden ([Tabs for other apps](#tabs-for-other-apps)).
 - **Instant search** in any language, Hebrew, CJK and emoji included, with VS Code's toggles: match case (`Alt+C`),
   whole word (`Alt+W`) and regular expression (`Alt+E`) ([Search](#search)). Win+V has no search.
 - **Made for the keyboard.** `Enter` pastes into the app you came from and `Shift+Enter` pastes plain text.
@@ -30,47 +47,27 @@ you send to Claude Code and Codex.
   only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were.
 - **A panel that fits you.** Drag any empty spot to move it, and drag an edge to resize it: it opens at that size from
   then on. Tabs that don't fit scroll sideways with the ‹ › arrows, the mouse wheel or a drag.
-- **Tabs:** All, Pinned, Text, Images, Links and Files, plus a tab for each of the other apps below ([Tabs](#tabs)).
 - **Pins and groups.** Pin what you reuse. Make groups with your own icons, drag cards onto them, and show one group or
   several at once (`Ctrl+click`, `Shift+click`). Pinned and grouped items outlive every limit, and *Clear* keeps them
   ([Groups](#groups)).
-- **Image previews.** Rest the mouse on an image to see it full size. Its eye button opens a viewer that zooms with the
-  wheel and pans with a drag ([Image previews](#image-previews)).
-- **Paths copied as text** (`C:\…`, `~/.bashrc`, `src/app/main.cs`, one per line) are listed in the Files tab next to
-  the files you copied, and still paste as text ([Paths in the Files tab](#paths-in-the-files-tab)).
-- **Tabs for other apps.** Each one has its own switch and is on by default. BetterClipboard only reads these sources,
-  and the tab of an app you don't have stays hidden ([Tabs for other apps](#tabs-for-other-apps)):
-  - **ShareX:** every screenshot that [ShareX](https://getsharex.com) saves, the moment it is saved, and what you copy
-    from ShareX.
-  - **Snipping:** every screenshot that Snipping Tool's auto-save and `Win+PrtScn` save.
-  - **Run:** every command you run with `Win+R`, also after Windows' list of 26 forgets it. `Ctrl+Enter` runs one again
-    (`Ctrl+Shift+Enter`: as administrator).
-  - **Pwsh:** PowerShell's whole command history, searchable, also the old commands that its Up arrow no longer
-    reaches.
-  - **Cmd:** the commands typed in your Command Prompt windows, kept after a window closes.
-  - **Claude and Codex:** every prompt you send to Claude Code and Codex, kept for good.
-  - **Everything:** the files you open from [Everything](https://www.voidtools.com/), to paste as a file or as a path,
-    or to show in Everything again.
-- **Imports Windows' own history.** Everything Win+V still remembers comes in at each start, its pinned items included.
-  What you delete in BetterClipboard is not imported again.
-- **Keeps private things out.** Copies that apps mark as private are never recorded, and 46 password managers and
-  authenticator apps are ignored out of the box. *Pause capturing* and *Ignored apps* cover the rest. **Forget
-  forever** deletes an item and never records its content again, whichever app copies it
-  ([Forget forever](#forget-forever)).
-- **Encrypted at rest.** The whole history is encrypted (ChaCha20-Poly1305), with a key that only your account on this
-  PC can unseal ([How it works](#how-it-works)). Win+V encrypts only its pins.
 - **Reads every copy at once.** Copies 2 ms apart or more are all kept. A program that copies faster than that
   overwrites its own copies before any app, Win+V included, can read them: BetterClipboard keeps the last one and
   counts the rest (*Settings › Capture reliability*).
+- **Private.** It never connects anywhere on its own: no telemetry, no update check, no account ([Privacy](#privacy)).
+  - **Encrypted at rest:** the whole history (ChaCha20-Poly1305), with a key that only your account on this PC can
+    unseal ([How it works](#how-it-works)). Win+V encrypts only its pins.
+  - **Private copies stay out:** copies that apps mark as private are never recorded, and 46 password managers and
+    authenticator apps are ignored out of the box. *Pause capturing* and *Ignored apps* cover the rest.
+  - **Forget forever** deletes an item and never records its content again, whichever app copies it
+    ([Forget forever](#forget-forever)).
 - **A command line for scripts and AI agents.** `bclip` lists, searches and greps your history, prints any item byte for
   byte, puts text on the clipboard, waits for your next copy and searches your archived prompts, with JSON output. It
   is off by default ([Command line](#command-line-for-scripts-and-ai-agents)).
-- **Private.** No telemetry, no update check, no account: it never connects anywhere on its own ([Privacy](#privacy)).
 - **One line to install.** Per user, no admin rights, SHA-256 checked, Windows 10 (2004 or newer) and Windows 11, x64
   and ARM64, nothing else to install. Uninstalling keeps your history unless you ask ([Install](#install)).
-- **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), history limits, where the panel
-  opens (text cursor, mouse or screen center), and a page that credits every app it works with and every component it
-  ships, with their official links.
+- **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (text
+  cursor, mouse or screen center), and a page that credits every app it works with and every component it ships, with
+  their official links.
 
 ## Install
 
