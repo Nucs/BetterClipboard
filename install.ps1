@@ -314,10 +314,18 @@ function ConvertTo-ComparableVersion([string] $SemanticVersion) {
 }
 
 function Stop-RunningApp([string] $PreferredExe) {
+    <#
+    .SYNOPSIS
+        Closes every BetterClipboard of this session (gracefully with --exit, forcibly after 15 s) and says whether one ran.
+    .PARAMETER PreferredExe
+        The exe to send --exit with; any copy works, since the running instance listens on a session-wide event.
+    .OUTPUTS
+        $true when an instance was running (so a failed update can start the previous version again), else $false.
+    #>
     $session = (Get-Process -Id $PID).SessionId
     $running = @(Get-Process -Name $AppName -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })
     if ($running.Count -eq 0) {
-        return
+        return $false
     }
 
     Write-Step 'Closing the running BetterClipboard (it saves queued copies first)'
@@ -338,6 +346,66 @@ function Stop-RunningApp([string] $PreferredExe) {
         Write-Warning 'BetterClipboard did not exit within 15 s; stopping it.'
         $stuck | Stop-Process -Force
     }
+
+    return $true
+}
+
+function Rename-WithRetry([string] $Path, [string] $NewName) {
+    <#
+    .SYNOPSIS
+        Renames a folder, retrying for about 10 seconds while another process holds a file in it.
+    .DESCRIPTION
+        Right after BetterClipboard exits, its folder can stay locked for a moment: an antivirus scan of the exe that just
+        ran, a helper process of the Cmd tab finishing, Explorer reading the icon. Found in the QA pass of 2026-10-09 on a
+        Windows 11 VM: an update failed with "The process cannot access the file because it is being used by another
+        process", and a moment later nothing held the folder.
+    .PARAMETER Path
+        The folder to rename.
+    .PARAMETER NewName
+        Its new leaf name.
+    #>
+    for ($attempt = 1; ; $attempt++) {
+        try {
+            Rename-Item -Path $Path -NewName $NewName -ErrorAction Stop
+            return
+        }
+        catch {
+            if ($attempt -ge 20) { throw }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+}
+
+function Undo-FailedSwap([string] $Staging, [string] $Previous, [bool] $WasRunning, [string] $Exe, [string] $Reason) {
+    <#
+    .SYNOPSIS
+        Leaves the installed version as it was after a swap that failed, starts it again when it was running, and throws.
+    .PARAMETER Staging
+        The new version's folder ("<install>.new"): removed.
+    .PARAMETER Previous
+        The old version's backup name ("<install>.old"): renamed back when the old folder was moved already.
+    .PARAMETER WasRunning
+        Whether BetterClipboard ran before the update (Stop-RunningApp's answer).
+    .PARAMETER Exe
+        The installed BetterClipboard.exe, to start again.
+    .PARAMETER Reason
+        The rename's error message, quoted in the thrown error.
+    #>
+    if ((Test-Path $Previous) -and -not (Test-Path $InstallDir)) {
+        Rename-WithRetry -Path $Previous -NewName (Split-Path $InstallDir -Leaf)
+    }
+
+    Remove-Item $Staging -Recurse -Force -ErrorAction SilentlyContinue
+
+    # The update stopped the app; leaving it stopped would leave the user without their clipboard history until sign-in.
+    $restarted = $false
+    if ($WasRunning -and (Test-Path $Exe)) {
+        Start-AppUnelevated $Exe
+        $restarted = $true
+    }
+
+    $again = if ($restarted) { ' BetterClipboard was started again.' } else { '' }
+    throw "The install folder $InstallDir stayed in use by another program for 10 s, so it was not updated; the installed version is unchanged.$again Close programs that use that folder (a terminal or File Explorer window open in it), then run the installer again. ($Reason)"
 }
 
 function Restart-Explorer {
@@ -858,18 +926,18 @@ function Install-BetterClipboard {
         }
 
         $exe = Join-Path $InstallDir $ExeName
-        Stop-RunningApp $exe
+        $wasRunning = Stop-RunningApp $exe
 
         Write-Step "Installing $tag to $InstallDir"
-        # Swap via renames: if the new files cannot be moved in, the previous version is put back.
+        # Swap via renames: if the new files cannot be moved in, the previous version is put back - and started again
+        # when it ran before (Undo-FailedSwap). Each rename retries while another process briefly holds the folder.
         New-Item -ItemType Directory -Path (Split-Path $InstallDir -Parent) -Force | Out-Null
-        if (Test-Path $InstallDir) { Rename-Item -Path $InstallDir -NewName (Split-Path $previous -Leaf) }
         try {
-            Rename-Item -Path $staging -NewName (Split-Path $InstallDir -Leaf)
+            if (Test-Path $InstallDir) { Rename-WithRetry -Path $InstallDir -NewName (Split-Path $previous -Leaf) }
+            Rename-WithRetry -Path $staging -NewName (Split-Path $InstallDir -Leaf)
         }
         catch {
-            if (Test-Path $previous) { Rename-Item -Path $previous -NewName (Split-Path $InstallDir -Leaf) }
-            throw
+            Undo-FailedSwap -Staging $staging -Previous $previous -WasRunning $wasRunning -Exe $exe -Reason $_.Exception.Message
         }
 
         if (Test-Path $previous) { Remove-Item $previous -Recurse -Force -ErrorAction SilentlyContinue }
@@ -1022,7 +1090,7 @@ function Install-BetterClipboard {
 
 function Uninstall-BetterClipboard {
     $exe = Join-Path $InstallDir $ExeName
-    Stop-RunningApp $exe
+    $null = Stop-RunningApp $exe
 
     Write-Step 'Removing the startup entry, shortcut and Installed-apps entry'
     # The startup entry stays when it starts another copy that still exists (the Chocolatey one). This copy's entry,
