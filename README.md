@@ -15,7 +15,8 @@ you send to Claude Code and Codex.
 
 ## Features
 
-- **Takes over Win+V.** Same shortcut, and the panel opens by your text cursor. The installer releases Win+V from
+- **Takes over Win+V.** Same shortcut, and the panel is there at once, by your text cursor: it is kept drawn and up to
+  date while hidden, so Win+V only has to show it ([How it works](#how-it-works)). The installer releases Win+V from
   Explorer; a copy you run without the installer intercepts it with a keyboard hook. Add more shortcuts, or keep Win+V
   for Windows and pick your own: press any key or combination in *Settings › Shortcut* (numpad and media keys, F13–F24
   and the Copilot key included), and the shortcuts you used before stay one click away
@@ -112,7 +113,7 @@ way: check the hash, then *More info › Run anyway*. See [Code signing policy](
 
 ## Use
 
-Press **Win+V**. The panel opens by your text cursor with the search box focused — just type.
+Press **Win+V**. The panel appears at once by your text cursor, with the search box focused — just type.
 
 | Key | Action |
 |---|---|
@@ -477,6 +478,10 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
 
 ## How it works
 
+- **The panel.** It is built once and never hidden between uses: Windows keeps it off the screen (cloaked) while it
+  stays drawn, and after every copy its list is updated in the background. Win+V moves the finished panel to your cursor
+  and puts it on screen in one step, with no fade or slide. On a test machine without a graphics card, the panel was
+  complete about 0.1 s after the key, against 0.6 s before this change.
 - **Capture.** BetterClipboard listens with `AddClipboardFormatListener` — the same change notification
   Windows' own clipboard-history service uses (there is no "atomic, never miss" clipboard API in
   Windows; every consumer reads the clipboard right after being told it changed). It reads each change

@@ -221,7 +221,10 @@ uninstalls, in a private Chocolatey root, §3.2),
 [`probe_agent_prompts.py`](tools/probes/probe_agent_prompts.py) (Claude Code's and Codex's prompt histories: formats,
 identities, whose prompts, rewrites — structure only, §2.21),
 [`probe_append_notify.cs`](tools/probes/probe_append_notify.cs) (what a folder watcher and the folder's listing see while
-another process appends to a file, §2.21).
+another process appends to a file, §2.21),
+[`probe_summon.cs`](tools/probes/probe_summon.cs) (how fast the panel appears after Win+V, from screen pixels; where a
+letter typed right after Win+V goes; DWM's latency per way of revealing a window — injects keys, so it runs only inside a
+claude-desktops Windows desktop, §2.27).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -275,11 +278,11 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, and `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, and `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27). **CS1591 = error.** |
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (738 tests, one class at a time — §4: the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (751 tests, one class at a time — §4: the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), and integrity levels for pasting into elevated windows (§2.5) (321 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
@@ -384,12 +387,14 @@ installer can leave Win+V to Windows (§2.25).
 ### 2.5 Summon & paste flow
 
 Hotkey → `ForegroundContext.Capture()` on the input thread (target HWND + Win32 caret via
-`GetGUIThreadInfo` + cursor) → UI: flyout shown **first** (focus to search box; keystrokes must never leak
-into the app below), then list reloads and the first card is selected → Enter/click →
-`ReplayFormats.Prepare` (plain text strips formats; file lists as plain text become paths; a stored
-"cut" drop effect is rewritten to "copy") → write clipboard while still foreground → **re-activate the
-target while we still own the foreground, then hide** (hiding first loses the right to set focus) →
-wait for foreground → release held modifiers (mask-key first for Win/Alt) → inject Ctrl+V.
+`GetGUIThreadInfo` + cursor + a Stopwatch timestamp, `CapturedAt`) → UI at **High** dispatcher priority: the panel,
+already drawn with its list current while it was cloaked, is moved to the caret, activated and uncloaked in one frame
+(§2.27; focus to the search box; keystrokes must never leak into the app below); only a list that is not current is
+reloaded afterwards → Enter/click → `ReplayFormats.Prepare` (plain text strips formats; file lists as plain text become
+paths; a stored "cut" drop effect is rewritten to "copy") → write clipboard while still foreground → **re-activate the
+target while we still own the foreground, then conceal** (`Conceal` hides the window once, which hands the foreground
+on; doing that first loses the right to set focus) → wait for foreground → release held modifiers (mask-key first for
+Win/Alt) → inject Ctrl+V.
 
 **The first summon of a session** (fixed 2026-10-09, `0718a9b`, `db9750c`; found in the QA pass).
 - **Typed keys went nowhere.** `ShowAt` focuses the search box before the XAML tree is loaded (a silent no-op), and
@@ -403,6 +408,10 @@ wait for foreground → release held modifiers (mask-key first for Win/Alt) → 
   first Win+V in 265–363 ms" there). Then: 100 / 250 / 500 ms → search box; 30 ms still leaks on that first summon
   (10 ms on later ones), faster than people type after a chord. `IsOpen` is false while only the warm-up holds the
   window visible, so a Win+V in that moment opens the panel; a summon during the warm-up keeps it shown.
+  - Since §2.27 (same day) the warm-up shows the window **cloaked** at the size the next summon will use, loads the list,
+    and leaves it shown for good; `IsOpen` is the `presented` flag. A summon before the warm-up activates the cloaked
+    window at once and uncloaks it once its tree has loaded and drawn (≤ 500 ms + 2 frames): "Panel on screen 573 ms after
+    the shortcut … (first summon)" on the VM, where the old path showed an empty window for that time.
 
 **Enter waits for the search** (2026-10-09, QA pass). The search runs 120 ms after the last key, and Enter pasted whatever
 was selected then: "delta" + Enter at once pasted the newest item ("echo"). `ReloadAsync` now keeps its task
@@ -2437,13 +2446,102 @@ item: one icon makes `MenuFlyout` reserve an icon column for every item.
 - localized key names (the layout's own character for OEM keys);
 - an accessible announcement of the hint (it is a plain text line; a screen reader reads it when focused).
 
+### 2.27 Instant summon: the panel is cloaked, not hidden (built 2026-10-09, `4d62d35`)
+
+User request (2026-10-09): "Can you now optimize the performance of the app? I want it to instantly appear when Win+V is
+clicked. Right now it shows but has some delay."
+
+**Measured first** with [`probe_summon.cs`](tools/probes/probe_summon.cs) (new) on a claude-desktops Windows 11 VM:
+1920×1080 at 100 %, no GPU, "Animation effects" on like the user's PC (checked read-only), Win+V released
+(`RegisterHotKey` path, like the user's), 41 BC-TEST items incl. two pictures. 15 summons each, times from the injected
+Win+V; the probe copies the panel's rectangle from the screen every ~23 ms (one screen `BitBlt` costs ~20–25 ms in the VM).
+
+| | In front | First pixels | Picture complete | Pictures on the way |
+|---|---|---|---|---|
+| Before (`8ea00ff`) | 30 ms (p90 50) | 78 ms (p90 129) | **630 ms** (p90 664) | 9–18 |
+| After | 25 ms (p90 44) | 102 ms (p90 134) | **102 ms** (p90 134) | 1 |
+
+A letter sent N ms after Win+V (15 tries each), before → after: 0 ms 14 → 15 leaked into the app below; 15 ms 10 → 11
+leaked; 30 ms 1 → 0; 60 and 120 ms 0 → 0. Unchanged: activation takes as long as before.
+
+**Where the 630 ms went** (the old `ShowAt`):
+- a hidden window was shown: WinUI renders it from nothing, and DWM shows a window slower than it uncloaks one (below);
+- the content faded in from opacity 0 (150 ms) and slid 10 px (220 ms): `PlayEntranceAnimation`, now removed;
+- the list was reloaded after the show — `Items.Clear()` and a new card per entry, each image card decoding its
+  thumbnail again — and ListView's default `ItemContainerTransitions` (AddDelete, Content, Reorder, Entrance; WinUI 2.3.9
+  `generic.xaml`) animated every card in.
+
+**What it does now** (`Views/ClipboardFlyout.Summon.cs`; the class remarks have the whole design):
+- **Never hidden, only cloaked.** `ConfigureChrome` cloaks the window (`DWMWA_CLOAK`) and turns DWM's show/hide
+  animations off (`DWMWA_TRANSITIONS_FORCEDISABLED`). The warm-up shows it once, cloaked, at the size the next summon will
+  use. `Conceal` (every way the panel goes away) cloaks it, hides it (Windows then hands the foreground on — a cloaked
+  foreground window would keep the keyboard, invisibly) and shows it again without activation, so XAML keeps drawing into
+  it. PowerToys' Command Palette hides its window the same way.
+- **Prepared while nobody looks.** `PrepareForNextSummon` (after every conceal) resets what a summon shows: empty search,
+  "All", no group, the strip at its start, the groups column as remembered, the first card selected at the top. A history
+  change while concealed queues one refresh at Low priority (`ScheduleConcealedRefresh`: an import's burst costs one).
+- **Current or not.** `FlyoutViewModel.IsListCurrent` compares the view the shown list was loaded for (`ViewKey`: search,
+  tab, groups, toggles) and a history version (`MarkHistoryChanged`, bumped by every change, also one applied to a card in
+  place) with now. Only views of stored history qualify; the Everything, shell and prompt tabs always reload.
+- **Patched, not rebuilt.** Reloads go through `FlyoutViewModel.ApplyEntries`: the card of every entry still listed is
+  kept (`Update`), and `Core/Presentation/CollectionPatch` (pure, unit-tested) turns the list into the new one with
+  removes, moves and inserts — a new copy costs one insert and one remove. Cards of things not stored (Everything picks,
+  shell commands, prompts) are never reused: their ids mean nothing across loads.
+  - **Footgun found in review:** the old clear also dropped the selection and the scroll position, so "the first card is
+    armed after every reload" held by itself. A patched list keeps a card's selection even when it is no longer first:
+    Down ×2, then a search that card still matches, then Enter, would have pasted it instead of the best match. The
+    `Reloaded` handler now selects and scrolls to the first card after every reload, unconditionally; callers that keep
+    a card selected (a history change, a prompt tab) select it again after awaiting the reload, as before. Verified on
+    the VM: that sequence pasted the first match.
+- **No item animations:** the list's `ItemContainerTransitions` is an empty `TransitionCollection`. Cards appear, move
+  and leave in one frame (also on delete and while searching).
+- **Presenting** (`PresentAsync`): move (still cloaked) → activate → uncloak. A new size (another monitor scale, the
+  groups column toggled) and a window never shown before (a summon before the warm-up) wait for two rendered frames
+  (≤ 100 ms), the latter also for its tree to load (≤ 500 ms), already active so keys typed meanwhile reach it.
+- **The shortcut runs at High priority** on the UI thread (`AppController`), ahead of a queued refresh.
+- **Logged:** the session's first summon and any slower than 100 ms from the key to the uncloak: "Panel on screen N ms
+  after the shortcut, its list ready (first summon)." Content-free.
+
+**Fallbacks:**
+- DWM refuses to cloak the window: logged once; the panel hides and shows like any window (the old way, minus the
+  animations).
+- The shell still cloaks the window after our uncloak: it belongs to another virtual desktop (the panel is not a tool
+  window: ex-style 0x100, so virtual desktops apply). It is hidden and shown once, which moves it to the current desktop.
+
+**Facts found on the way** **[verified on the VM]**:
+- A cloaked window stays `WS_VISIBLE`, but `WindowFromPoint` skips it, and a real click inside its rectangle went to
+  Notepad below. Nothing else needs parking it off-screen.
+- DWM's latency per way of revealing a ready window (`probe_summon.cs --reveal-test`, a plain red 400×560 window,
+  transitions off, 15 each): `SW_SHOWNA` after `SW_HIDE` 85 ms (p90 106), uncloak 43 ms (p90 53), moving it into view
+  from -32000 39 ms (p90 53). Uncloaking is as fast as moving and twice as fast as showing.
+- Trace of a summon (temporary instrumentation, removed): `ShowAt` starts 1.5 ms after the key is captured; activation
+  (`Activate` + `ForegroundHelper.Activate`) takes ~20 ms in the VM; the uncloak follows at +28 ms. Uncloaking before
+  activating measured 102.5 ms against 108 ms median (12 summons each): inside the ~10 ms between identical runs, so the
+  safer order stays (the first frame already has the active look).
+- Footgun: while any `CompositionTarget.Rendering` handler is attached, XAML renders every frame (the trace showed a frame
+  every 16 ms for as long as one stayed attached). `RenderedFramesAsync` removes its handler the moment the wait ends.
+- Idle cost of the shown-but-cloaked window: see §5 (CPU time of the whole app over 40 s, old and new build).
+
+**QA on the VM** (all ✅, §5): paste via search + Enter into Notepad; clicks on the concealed panel's area reach the
+window below; virtual desktops (a new desktop, and back); Win+D then Win+V; a copy made while concealed is on top at the
+next summon; search + another tab + a click elsewhere → the next summon starts clean; the groups column opening and
+closing across summons; the first summon right after a start.
+
+**Not built / open:**
+- keys typed within ~15 ms of Win+V still reach the app below (activation is the floor; a key buffer in the LL hook
+  would close it, §6);
+- not verified on a real GPU, a high-refresh monitor or a multi-monitor mixed-DPI setup (the size-change path is the one
+  a monitor with another scale takes);
+- a summon that comes while a concealed refresh is still queued (a Win+V a few ms after a copy) shows the previous list
+  for a moment, then patches it.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 1,059 tests (1,056 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 1,072 tests (1,069 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -3187,6 +3285,16 @@ shortcuts was in progress on 2026-10-03.
   gives it none, so it stays drawn pressed and still counts as pressed. Let the item capture first and take the capture
   from it (`ClipboardFlyout.TakeOverTabPress`), and ignore the item's `PointerCaptureLost` bubbling into the ancestor's
   handler (check `OriginalSource`).
+- **The panel is never hidden: it is concealed** (§2.27). Every way it goes away calls `Conceal` (cloak, hide once to
+  hand the foreground on, show again without activation), and `IsOpen` is the `presented` flag — `AppWindow.IsVisible` is
+  true all the time once the warm-up ran. New code that hides or shows the panel's window directly breaks the instant
+  summon; new code that asks "is the panel up?" asks `IsOpen`.
+- **WinUI list controls animate every change by default.** ListView's `ItemContainerTransitions` (AddDelete, Content,
+  Reorder, Entrance) play on every insert, remove and reload: after a summon they kept cards sliding in for ~0.3 s. Where
+  a list must show at once, give it an empty `TransitionCollection`, and patch the collection (`CollectionPatch`) instead of
+  clearing and refilling it.
+- **A `CompositionTarget.Rendering` handler makes XAML render every frame** while it is attached, changed or not
+  (measured: a frame every 16 ms). Attach one only for a bounded wait, and remove it in a `finally`.
 - **Global hotkeys beat the foreground window, also for injected keys.** Before giving the panel an Alt+letter
   shortcut, or injecting a chord in a test, probe the chord with `RegisterHotKey` (`MOD_NOREPEAT`, released at
   once; a 1409 means someone owns it). An owned chord goes to its owner, and the foreground guard does not help.
@@ -3303,6 +3411,9 @@ shortcuts was in progress on 2026-10-03.
 
 | Feature | How | Result |
 |---|---|---|
+| **Instant summon** (§2.27, 2026-10-09), on a claude-desktops Windows 11 VM ("bc-perf": 1920×1080 at 100 %, no GPU, animations on, Win+V released, 41 BC-TEST items incl. two pictures, the app started from the agent's job and seeded with plain Win32 clipboard calls). 15 summons per build, from the injected Win+V: **before** (`8ea00ff`) in front 30 ms, first pixels 78 ms, picture complete 630 ms (p90 664) through 9–18 intermediate pictures; **after** in front 25 ms, complete 102 ms (p90 134) in one step. Letter N ms after Win+V, leaked before → after: 0 ms 14 → 15 of 15, 15 ms 10 → 11, 30 ms 1 → 0, 60/120 ms 0 → 0. Plain-window reveal latency: show 85 ms, uncloak 43 ms, move 39 ms. Uncloak-before-activate 102.5 vs 108 ms (noise ±10 ms). Whole-app idle CPU over 40 s: new 234 / 344 ms, old 234 ms | `tools/probes/probe_summon.cs` (published self-contained, run in the VM), a temporary summon trace (removed), scratch `run-variant.ps1`, `seed.ps1` | ✅ |
+| Instant summon, functional QA on the same VM with the final build: Enter after a search pastes into Notepad; a click and an X typed inside the concealed panel's rectangle land in Notepad (`WindowFromPoint` → Notepad); Ctrl+Win+D → Win+V opens the panel on the new desktop, and again after Ctrl+Win+Left; Win+D then Win+V; a copy made while concealed is on top ("just now", 42 items) at the next Win+V, the pasted item had moved up meanwhile; search "short" + Text tab + a click on the wallpaper → next Win+V: empty search, All, full list, first card selected; Ctrl+G open/close across summons (window grows left, then back); Win+V right after a start: "Panel on screen 573 ms after the shortcut, its list reloaded after 681 ms (first summon)" | claude-desktops `press_keys`, `click`, `type_text`, screenshots, scratch `copy-one.ps1`, `qa-restart.ps1` | ✅ |
+| `CollectionPatchTests` (13: an unchanged list raises nothing; a new copy on a full page = one insert + one remove; used again = one move; delete = one remove; disjoint and empty lists; reference matching; a duplicate in the collection; refusals before any change; 5 × 200 random reorders end exactly as wanted with no more changes than clear-and-refill) | Core test exe `-class`; full suite; full rebuild | ✅ 13/13; full suite 1,072: 1,068 passed, 3 opt-in skipped, `ClientHangUp_CancelsHandler` failed once (7.3 s under load) and passed 5 of 5 alone (0.46 s); 0 doc warnings on a `--no-incremental` rebuild |
 | **This PC, 2026-10-09** ("Install everything", the admin account): `0.2.6-dev.b28e63f` (x64, from a worktree at `b28e63f`) installed over the running `0.2.5+64cbff6` with `tools/release/install-local.ps1` (Windows PowerShell 5.1, env stripped, `-NoLaunch`): SHA-256 OK, graceful close, swap, no Explorer restart (Win+V was released). Started through Explorer (`--background`, parent explorer.exe, 75 variables, `CLAUDECODE`/`MSYSTEM` absent). Run value, shortcut, Installed apps (`0.2.6-dev.b28e63f`), `DisabledHotkeys` `V`; the other Run value (IDMan) kept. Log after "starting": 0 WRN/ERR, "Panel prepared for the first Win+V in 559 ms" | install-local + session 7f3c8c3f's `launch_background.ps1`, `install_state.ps1`, `env_names.py` | ✅ (no UI checks on the user's screen) |
 | QA pass on a claude-desktops Windows 11 Pro 25H2 VM (26200.8037, 1920×1080), **admin "Docker", UAC off**, `0.2.6-dev.e9eb799` installed with the real installer (`-AddToPath`, Win+V released, Explorer restarted). Shortcut box: Ctrl+Shift+K recorded; Win+E recorded and File Explorer did not open; Win+V and F9 (after adding it) said "already in the list" and the panel did not open; Shift+Win+F23 (Copilot key); 11 keys via VK-level SendInput: MediaPlayPause, Pause, PrintScreen, Apps, Ctrl+Alt+Oem102, 0x97, VolumeUp, Shift+Pause, Ctrl+Break, Ctrl+Alt+NumPlus, Win+Delete; typing and Backspace still work ("ctrl + alt + page down" → Ctrl+Alt+PageDown, Registered); "ctrl+v" refused with its reason; the menu's "Used before" (newest first, checks, remove keeps it, re-add moves it to the top). F9 and Ctrl+Alt+PageDown open the panel from Notepad. Panel: search, Enter paste, Ctrl+P pin, groups (new group, drag a card, group view "1 in Work", ItemStatus "Shown"), card menu, Forget forever (a re-copy with spaces + CRLF kept out), image peek and viewer (wheel zoom, Esc), Win+PrtScn → Snipping tab, Win+R → Run tab, Command Prompt → Cmd tab, persistence across a restart, `bclip` status/list/search/get | MCP desktop tools (UIA, keys, mouse), scratch `keys.ps1` (VK-level SendInput), `tab.ps1` (UIA tab select) | ✅ after 4 fixes found here (`0718a9b`): first-summon focus, owner-less copies labeled "BetterClipboard", Settings switches without accessible names, a stale shortcut hint |
 | Same VM as the **standard user "bcuser"** (Users only, Medium; its own agent logon task, auto sign-in): `0.2.6-dev.0718a9b` installed per user without admin rights (`-AddToPath`; `DisabledHotkeys` `V` in its own hive, its Explorer restarted); app at Medium, store sealed with its DPAPI keys, 0 WRN/ERR. The first Win+V after the install's start typed "bravo" into the search box (the fix); Enter pasted. Recorder: Win+E recorded and added ("taken over with a keyboard hook"), then Win+E pressed in the box still recorded ("already in the list": the recorder re-hooks after the takeover hook) and from Notepad opened the panel instead of File Explorer; removing it gave Win+E back to Explorer at once. Every Settings switch, number box and combo box now has its card's name (UIA). `bclip` status/list/search/put. Restart: "Start with Windows" started it with `--background` (~55 s after boot). Update to `db9750c` over the running app, then the uninstall command of Installed apps: Run value, Installed-apps entry, folder, shortcut and PATH entry gone, history kept, `V` removed, Explorer restarted, Win+V probe 1409 (Explorer's again) | same tools, scratch `firstsummon.ps1`, `autologon.ps1` (Winlogon values + LSA secret) | ✅ after one more fix found here (`db9750c`): keys typed 100–250 ms after the first Win+V of a session went to Notepad |
@@ -3401,7 +3512,15 @@ shortcuts was in progress on 2026-10-03.
   has loaded, and the panel is built and rendered off-screen 3 s after startup, so keys typed 100 ms or more after the
   first Win+V reach the box (verified on a VM as a standard user after a `--background` start). Still open: keys typed
   within ~30 ms of the first summon (~10 ms of later ones) reach the app below; closing that needs a key buffer (an LL
-  hook that holds the keys typed before the panel is ready and replays them into it).
+  hook that holds the keys typed before the panel is ready and replays them into it). After §2.27 (same day) the panel
+  appears complete ~100 ms after Win+V on the GPU-less VM (630 ms before); keys sent within 15 ms still leak there.
+- The first Win+V over a window that just got the focus may open the panel at the mouse pointer instead of the caret
+  (seen with `probe_summon.cs`: the first summon of 3 runs over a new stage window, old and new build alike, while the
+  probe had checked that the stage's thread held its caret; every later summon over the same window opened at the
+  caret). Not explained yet: log `ForegroundContext.Capture`'s foreground window and `GetGUIThreadInfo` result for one
+  summon to see which part misses.
+- Instant summon (§2.27), next: check it on a real GPU and a high-refresh monitor; a key buffer for the first ~15 ms; a
+  summon a few ms after a copy could wait (≤ 30 ms, already active) for the queued refresh instead of showing the old list.
 - The first peek or viewer of a large copied image waits for a PNG encode: a 3840×2400 copy is stored as a DIB, and
   `GetImagePngAsync` encodes it with WIC first (1.7–2.0 s on the VM, `bclip get --format png`); later views use the
   cache. A BMP stream (file header + the stored DIB) would decode at once; check BI_BITFIELDS/alpha handling first.
