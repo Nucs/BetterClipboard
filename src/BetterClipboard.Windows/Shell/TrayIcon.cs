@@ -40,7 +40,8 @@ public sealed class TrayIcon : IDisposable
     private const uint CallbackMessage = WM_APP + 0x40;
     private const uint IconId = 1;
     private const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
-    private const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_SHOWTIP = 0x80;
+    private const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_INFO = 0x10, NIF_SHOWTIP = 0x80;
+    private const uint NIIF_INFO = 0x1, NIIF_NOSOUND = 0x10;
     private const uint NOTIFYICON_VERSION_4 = 4;
     private const uint NIN_SELECT = WM_USER, NIN_KEYSELECT = WM_USER + 1;
     private const uint MF_STRING = 0x0, MF_GRAYED = 0x1, MF_CHECKED = 0x8, MF_SEPARATOR = 0x800;
@@ -95,6 +96,29 @@ public sealed class TrayIcon : IDisposable
             var data = CreateData(NIF_TIP | NIF_SHOWTIP);
             Shell_NotifyIcon(NIM_MODIFY, data);
         }
+    });
+
+    /// <summary>
+    /// Shows a short notification from the tray icon (Windows 10 and 11 show it as a toast, without a sound). For a message
+    /// the user must see although no BetterClipboard window is open, such as "copied, but not pasted".
+    /// </summary>
+    /// <remarks>
+    /// Nothing appears while the icon is not in the notification area yet (early sign-in), or when the user turned off
+    /// notifications for the app; callers must not depend on it being seen.
+    /// </remarks>
+    /// <param name="title">The title (truncated to 63 characters).</param>
+    /// <param name="text">The message (truncated to 255 characters).</param>
+    public void ShowNotification(string title, string text) => window.Post(() =>
+    {
+        if (!added)
+        {
+            return;
+        }
+
+        var data = CreateData(NIF_INFO);
+        data.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
+        SetInfoTexts(ref data, title, text);
+        Shell_NotifyIcon(NIM_MODIFY, data);
     });
 
     /// <summary>Removes the icon and stops the tray thread.</summary>
@@ -242,6 +266,28 @@ public sealed class TrayIcon : IDisposable
 
         data.szTip[text.Length] = '\0';
         return data;
+    }
+
+    /// <summary>Copies a notification's title and text into the structure's fixed buffers, NUL-terminated and truncated.</summary>
+    /// <param name="data">The structure to fill.</param>
+    /// <param name="title">The title (at most 63 characters are kept).</param>
+    /// <param name="text">The text (at most 255 characters are kept).</param>
+    private static unsafe void SetInfoTexts(ref NOTIFYICONDATAW data, string title, string text)
+    {
+        var shortTitle = title.Length > 63 ? title[..63] : title;
+        for (int i = 0; i < shortTitle.Length; i++)
+        {
+            data.szInfoTitle[i] = shortTitle[i];
+        }
+
+        data.szInfoTitle[shortTitle.Length] = '\0';
+        var shortText = text.Length > 255 ? text[..255] : text;
+        for (int i = 0; i < shortText.Length; i++)
+        {
+            data.szInfo[i] = shortText[i];
+        }
+
+        data.szInfo[shortText.Length] = '\0';
     }
 
     /// <summary>Loads the small icon at the system DPI.</summary>

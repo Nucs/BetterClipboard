@@ -853,6 +853,50 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool CloseHandle(nint hObject);
 
+    /// <summary><c>TOKEN_QUERY</c>: read a token's information (its integrity level).</summary>
+    internal const uint TOKEN_QUERY = 0x0008;
+
+    /// <summary><c>TokenIntegrityLevel</c>: the <c>TOKEN_INFORMATION_CLASS</c> value that returns a <c>TOKEN_MANDATORY_LABEL</c>.</summary>
+    internal const int TokenIntegrityLevel = 25;
+
+    /// <summary>Opens a process's access token.</summary>
+    /// <param name="processHandle">A process handle with <see cref="PROCESS_QUERY_LIMITED_INFORMATION"/>.</param>
+    /// <param name="desiredAccess">Token access, e.g. <see cref="TOKEN_QUERY"/>.</param>
+    /// <param name="tokenHandle">The token handle (close with <see cref="CloseHandle"/>).</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool OpenProcessToken(nint processHandle, uint desiredAccess, out nint tokenHandle);
+
+    /// <summary>Reads one class of token information into a caller buffer (call with 0 bytes first to learn the size).</summary>
+    /// <param name="tokenHandle">Token with <see cref="TOKEN_QUERY"/>.</param>
+    /// <param name="tokenInformationClass">The class, e.g. <see cref="TokenIntegrityLevel"/>.</param>
+    /// <param name="tokenInformation">Buffer, or 0 to ask for the size.</param>
+    /// <param name="tokenInformationLength">Buffer size in bytes.</param>
+    /// <param name="returnLength">Bytes needed or written.</param>
+    /// <returns><see langword="true"/> on success (false with ERROR_INSUFFICIENT_BUFFER for the size query).</returns>
+    [LibraryImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetTokenInformation(nint tokenHandle, int tokenInformationClass, nint tokenInformation, int tokenInformationLength, out int returnLength);
+
+    /// <summary>Pointer to a SID's sub-authority count (a byte).</summary>
+    /// <param name="sid">The SID.</param>
+    /// <returns>Pointer into the SID.</returns>
+    [LibraryImport("advapi32.dll")]
+    internal static partial nint GetSidSubAuthorityCount(nint sid);
+
+    /// <summary>Pointer to one of a SID's sub-authorities (a 32-bit value).</summary>
+    /// <param name="sid">The SID.</param>
+    /// <param name="subAuthority">Zero-based index.</param>
+    /// <returns>Pointer into the SID.</returns>
+    [LibraryImport("advapi32.dll")]
+    internal static partial nint GetSidSubAuthority(nint sid, uint subAuthority);
+
+    /// <summary>Pseudo-handle of the calling process (needs no closing).</summary>
+    /// <returns>The pseudo-handle.</returns>
+    [LibraryImport("kernel32.dll")]
+    internal static partial nint GetCurrentProcess();
+
     /// <summary>Full Win32 path of a process image.</summary>
     /// <param name="hProcess">Process handle with query access.</param>
     /// <param name="dwFlags">0 = Win32 path format.</param>

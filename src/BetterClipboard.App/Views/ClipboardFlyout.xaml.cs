@@ -122,6 +122,9 @@ public sealed partial class ClipboardFlyout : Window
     private bool closingForExit;
     private bool reloadPending;
 
+    /// <summary>Set while an Enter waits for the search to settle (<see cref="PasteBestMatchAsync"/>): a second Enter is ignored.</summary>
+    private bool enterPending;
+
     /// <summary>Whether the groups column is showing (mirrors <see cref="AppSettings.ShowGroupsPane"/>).</summary>
     private bool groupsPaneOpen;
 
@@ -592,21 +595,7 @@ public sealed partial class ClipboardFlyout : Window
                 MoveSelection(-5);
                 break;
             case VirtualKey.Enter:
-                // Fall back to the first card if the selection was lost (e.g. mid-reload).
-                if ((Selected ?? ViewModel.Items.FirstOrDefault()) is { } toPaste)
-                {
-                    // Ctrl+Enter on a Win+R command runs it like the Run dialog (Ctrl+Shift+Enter as administrator);
-                    // on any other card it pastes, as it always did.
-                    if (ctrl && toPaste.Pick is null && toPaste.Entry.HasRunHistory)
-                    {
-                        _ = RunItemAsync(toPaste, asAdministrator: shift);
-                    }
-                    else
-                    {
-                        _ = PasteItemAsync(toPaste, plainText: shift);
-                    }
-                }
-
+                _ = PasteBestMatchAsync(ctrl, shift);
                 break;
             case VirtualKey.Escape when drag is { IsMoving: true } moving:
                 // Mid-drag, Esc cancels the move like it does for a title-bar drag — and only that; the
@@ -1353,6 +1342,60 @@ public sealed partial class ClipboardFlyout : Window
         if ((drop is null ? null : DropFilesCodec.Decode(drop.Data).FirstOrDefault()) is { } first)
         {
             controller.ShowInEverything(first);
+        }
+    }
+
+    /// <summary>
+    /// Enter: pastes the selected card — the best match of what was typed — or, with Ctrl on a Win+R command, runs it
+    /// (Ctrl+Shift: as administrator).
+    /// </summary>
+    /// <remarks>
+    /// The search waits for its debounce first (<see cref="FlyoutViewModel.SettleSearchAsync"/>): typed and Enter at once
+    /// used to paste the card selected before the search ran (QA pass 2026-10-09: "delta" + Enter pasted the newest item).
+    /// After the wait the first match is selected, unless the user moved the selection meanwhile. A second Enter while this
+    /// waits is ignored, so one keystroke never pastes twice.
+    /// </remarks>
+    /// <param name="ctrl">Ctrl was held (run a Win+R command).</param>
+    /// <param name="shift">Shift was held (paste as plain text, or run as administrator).</param>
+    /// <returns>A task completing when the paste or run started; failures are logged, never thrown.</returns>
+    private async Task PasteBestMatchAsync(bool ctrl, bool shift)
+    {
+        if (enterPending)
+        {
+            return;
+        }
+
+        enterPending = true;
+        try
+        {
+            await ViewModel.SettleSearchAsync();
+            if (!IsOpen)
+            {
+                return; // dismissed while the search ran: nothing is pasted behind the user's back
+            }
+
+            // Fall back to the first card if the selection was lost (e.g. mid-reload).
+            if ((Selected ?? ViewModel.Items.FirstOrDefault()) is { } toPaste)
+            {
+                // Ctrl+Enter on a Win+R command runs it like the Run dialog (Ctrl+Shift+Enter as administrator);
+                // on any other card it pastes, as it always did.
+                if (ctrl && toPaste.Pick is null && toPaste.Entry.HasRunHistory)
+                {
+                    await RunItemAsync(toPaste, asAdministrator: shift);
+                }
+                else
+                {
+                    await PasteItemAsync(toPaste, plainText: shift);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("Pasting the selected card failed.", ex);
+        }
+        finally
+        {
+            enterPending = false;
         }
     }
 

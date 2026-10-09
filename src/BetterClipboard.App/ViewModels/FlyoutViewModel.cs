@@ -32,6 +32,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     private readonly AppController controller;
     private CancellationTokenSource? queryCancellation;
+
+    /// <summary>The latest load started by <see cref="ReloadAsync"/> (it never throws), for <see cref="SettleSearchAsync"/> to await.</summary>
+    private Task currentReload = Task.CompletedTask;
+
+    /// <summary>
+    /// The search text the shown list was loaded for, or <see langword="null"/> before the first load: when it differs from
+    /// <see cref="SearchText"/>, a typed search is still waiting for its debounce.
+    /// </summary>
+    private string? loadedSearchText;
     private int loaded;
     private bool hasMore;
     private bool loadingMore;
@@ -280,8 +289,26 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// Loads the first page for the current search/filter, replacing the list.
     /// </summary>
     /// <param name="debounce">Wait briefly first (typing) so only the last keystroke queries.</param>
-    /// <returns>A task completing when the list is updated (or the query was superseded).</returns>
-    public async Task ReloadAsync(bool debounce = false)
+    /// <returns>A task completing when the list is updated (or the query was superseded); it never throws.</returns>
+    public Task ReloadAsync(bool debounce = false) => currentReload = ReloadCoreAsync(debounce);
+
+    /// <summary>
+    /// Makes the list match the search box before a paste with Enter: when the text typed last is still waiting for its
+    /// debounce (or was never loaded), the search runs now; when a load is already running, it is awaited.
+    /// </summary>
+    /// <remarks>
+    /// Found in the QA pass (2026-10-09): "delta" typed and Enter pressed at once pasted the newest item, because the search
+    /// runs 120 ms after the last key and Enter pasted whatever was selected before. A failed search (an invalid pattern)
+    /// leaves the list empty, so nothing is pasted then.
+    /// </remarks>
+    /// <returns>A task completing when the list shows the current search's results; it never throws.</returns>
+    public Task SettleSearchAsync() =>
+        string.Equals(loadedSearchText, SearchText, StringComparison.Ordinal) ? currentReload : ReloadAsync();
+
+    /// <summary>The body of <see cref="ReloadAsync"/>.</summary>
+    /// <param name="debounce">Wait briefly first (typing) so only the last keystroke queries.</param>
+    /// <returns>A task completing when the list is updated (or the query was superseded); it never throws.</returns>
+    private async Task ReloadCoreAsync(bool debounce)
     {
         queryCancellation?.Cancel();
         var cancellation = queryCancellation = new CancellationTokenSource();
@@ -292,10 +319,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 await Task.Delay(120, cancellation.Token);
             }
 
+            // The text this load searches for: what SettleSearchAsync compares with the box once the list is in.
+            var search = SearchText;
             if (IsShellView)
             {
                 // A shell tab: kept commands merged with the shell's live ones (FlyoutViewModel.Shells.cs), no paging.
                 await ReloadShellAsync(cancellation.Token);
+                MarkLoaded(search, cancellation);
                 return;
             }
 
@@ -303,6 +333,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             {
                 // A prompt tab: kept prompts, then the archive one card per text, paged (FlyoutViewModel.Prompts.cs).
                 await ReloadPromptsAsync(cancellation.Token);
+                MarkLoaded(search, cancellation);
                 return;
             }
 
@@ -326,6 +357,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 hasMore = false;
                 HasPatternError = false;
                 UpdateEmptyState();
+                MarkLoaded(search, cancellation);
                 Reloaded?.Invoke(this, EventArgs.Empty);
                 await UpdateStatusAsync();
                 return;
@@ -347,6 +379,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             hasMore = entries.Count == PageSize;
             HasPatternError = false;
             UpdateEmptyState();
+            MarkLoaded(search, cancellation);
             Reloaded?.Invoke(this, EventArgs.Empty);
             await UpdateStatusAsync();
         }
@@ -508,6 +541,20 @@ public sealed partial class FlyoutViewModel : ObservableObject
         foreach (var item in Items)
         {
             item.RefreshCaption();
+        }
+    }
+
+    /// <summary>
+    /// Records that the list now shows the results for <paramref name="search"/> — unless a newer load took over meanwhile,
+    /// whose own result is the one that counts.
+    /// </summary>
+    /// <param name="search">The search text the finished load used.</param>
+    /// <param name="cancellation">That load's cancellation (set when a newer load superseded it).</param>
+    private void MarkLoaded(string search, CancellationTokenSource cancellation)
+    {
+        if (!cancellation.IsCancellationRequested)
+        {
+            loadedSearchText = search;
         }
     }
 

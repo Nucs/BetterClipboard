@@ -68,6 +68,12 @@ public sealed partial class AppController
     private ForegroundContext? pasteTarget;
 
     /// <summary>
+    /// Elevated windows the user was already told about ("press Ctrl+V"): one notification per window and session, so
+    /// someone who pastes into an admin terminal all day is not shown it again and again. UI thread only.
+    /// </summary>
+    private readonly HashSet<nint> elevatedPasteNotified = [];
+
+    /// <summary>
     /// The shortcut inputs last applied: every shortcut text joined by line breaks, and the hook fallback. A settings change
     /// re-applies only when these differ.
     /// </summary>
@@ -427,13 +433,31 @@ public sealed partial class AppController
             flyout?.Dismiss(restoreFocus: true);
             if (paste && Settings.Current.PasteOnSelect && target != 0)
             {
-                await PasteInjector.PasteIntoAsync(target);
+                await InjectPasteAsync(target);
             }
         }
         catch (Exception ex)
         {
             AppLog.Error($"Pasting entry {entry.Id} failed.", ex);
             flyout?.Dismiss(restoreFocus: true);
+        }
+    }
+
+    /// <summary>
+    /// Injects Ctrl+V into the window the user came from (the clipboard already holds the item), and tells the user once per
+    /// window when Windows does not allow it: a window that runs as administrator drops keys from a non-elevated
+    /// BetterClipboard, which used to look like a paste that silently did nothing.
+    /// </summary>
+    /// <param name="target">The paste target's top-level window.</param>
+    /// <returns>A task completing when the paste was injected or refused; failures inside are logged by the injector.</returns>
+    private async Task InjectPasteAsync(nint target)
+    {
+        var outcome = await PasteInjector.PasteIntoWithOutcomeAsync(target);
+        if (outcome == PasteOutcome.TargetElevated && elevatedPasteNotified.Add(target))
+        {
+            tray?.ShowNotification(
+                "Copied: press Ctrl+V to paste",
+                "That window runs as administrator, and Windows does not let BetterClipboard type into it. The item is on the clipboard.");
         }
     }
 
@@ -462,7 +486,7 @@ public sealed partial class AppController
             flyout?.Dismiss(restoreFocus: true);
             if (paste && Settings.Current.PasteOnSelect && target != 0)
             {
-                await PasteInjector.PasteIntoAsync(target);
+                await InjectPasteAsync(target);
             }
         }
         catch (Exception ex)

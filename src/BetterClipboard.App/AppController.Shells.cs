@@ -96,7 +96,7 @@ public sealed partial class AppController
             flyout?.Dismiss(restoreFocus: true);
             if (paste && Settings.Current.PasteOnSelect && target != 0)
             {
-                await PasteInjector.PasteIntoAsync(target);
+                await InjectPasteAsync(target);
             }
         }
         catch (Exception ex)
