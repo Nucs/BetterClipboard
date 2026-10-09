@@ -252,8 +252,7 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
 
             // Attribute now, while the producer's owner window (and process) still exist; the latest
             // notification wins. GetClipboardOwner does not need the clipboard open.
-            nint owner = GetClipboardOwner();
-            pendingSource = resolver.Resolve(owner != 0 ? owner : GetForegroundWindow());
+            pendingSource = ResolveSource();
 
             // A newer change makes a pending retry moot: read the newest state right now.
             KillTimer(host.Handle, RetryTimerId);
@@ -304,12 +303,7 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
 
         // Prefer the attribution taken at notification time; resolving here (before opening, so the
         // clipboard is never held while we query processes) is only the fallback.
-        var source = pendingSource;
-        if (source is null)
-        {
-            nint owner = GetClipboardOwner();
-            source = resolver.Resolve(owner != 0 ? owner : GetForegroundWindow());
-        }
+        var source = pendingSource ?? ResolveSource();
 
         if (!OpenClipboard(hwnd))
         {
@@ -419,10 +413,21 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
             AppLog.Warn($"Re-registering the clipboard listener failed (error {Marshal.GetLastPInvokeError()}).");
         }
 
-        nint owner = GetClipboardOwner();
-        pendingSource = resolver.Resolve(owner != 0 ? owner : GetForegroundWindow());
+        pendingSource = ResolveSource();
         openAttempts = 0;
         CaptureNow(hwnd);
+    }
+
+    /// <summary>
+    /// Who made the current clipboard content: the process of the clipboard's owner window, or — for a copy without an
+    /// owner window — the foreground window's, unless that is BetterClipboard's own (see
+    /// <see cref="SourceAppResolver.ResolveForegroundGuess"/>).
+    /// </summary>
+    /// <returns>The source app, or <see langword="null"/> when it cannot be told (recorded as "Unknown app").</returns>
+    private SourceAppInfo? ResolveSource()
+    {
+        nint owner = GetClipboardOwner();
+        return owner != 0 ? resolver.Resolve(owner) : resolver.ResolveForegroundGuess(GetForegroundWindow());
     }
 
     /// <summary>Places formats on the clipboard (monitor thread).</summary>

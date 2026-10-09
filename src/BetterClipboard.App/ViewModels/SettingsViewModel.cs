@@ -40,6 +40,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     private IReadOnlyList<string> hotkeyHistory = [];
 
     /// <summary>
+    /// The text the recorder last wrote into the shortcut box, or <see langword="null"/>: lets
+    /// <see cref="OnNewHotkeyTextChanged(string)"/> tell the recorder's own write from the user editing the box.
+    /// </summary>
+    private string? recordedHotkeyText;
+
+    /// <summary>
     /// Creates the view model and loads the current settings/status.
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -649,6 +655,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     public void OnHotkeyRecorded(HotkeyGesture gesture)
     {
         var text = gesture.ToString();
+
+        // Set first, so the change hook below recognizes this write as the recorder's and keeps the hint it sets next.
+        recordedHotkeyText = text;
         NewHotkeyText = text;
         var current = HotkeyList.Parse(hotkeyTexts).Gestures;
         var problem = HotkeyGesture.Problem(gesture.Modifiers, gesture.VirtualKey);
@@ -667,6 +676,28 @@ public sealed partial class SettingsViewModel : ObservableObject
             HotkeyError = string.Empty;
             HotkeyHint = $"Enter adds {text}. Press other keys to change it.";
         }
+    }
+
+    /// <summary>
+    /// The box's text changed. When the user edited it (typing, Backspace, the clear button) rather than the recorder writing
+    /// it, the hint about the recorded shortcut ("Enter adds Win+E.") and an earlier problem no longer describe the text, so
+    /// both go back to their neutral state.
+    /// </summary>
+    /// <param name="value">The new text.</param>
+    partial void OnNewHotkeyTextChanged(string value)
+    {
+        if (value == recordedHotkeyText)
+        {
+            return; // the recorder's own write (OnHotkeyRecorded): its hint and error follow right after
+        }
+
+        recordedHotkeyText = null;
+        if (HotkeyHint.Length > 0)
+        {
+            HotkeyHint = ListeningHint;
+        }
+
+        HotkeyError = string.Empty;
     }
 
     /// <summary>

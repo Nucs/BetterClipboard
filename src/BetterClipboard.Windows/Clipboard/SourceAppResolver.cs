@@ -45,6 +45,30 @@ public sealed class SourceAppResolver
     }
 
     /// <summary>
+    /// Resolves the foreground window as the best guess for who made a copy that has no owner window (a script or a tool
+    /// that calls <c>OpenClipboard(NULL)</c>), except when that window is BetterClipboard's own.
+    /// </summary>
+    /// <remarks>
+    /// Such a copy can never come from BetterClipboard itself: its own writes have an owner window and are not recorded
+    /// again. So while its panel or Settings window is in front (Esc that only cleared the search keeps the panel open), a
+    /// background copy is recorded with no source ("Unknown app") instead of being labeled "BetterClipboard" — seen in a
+    /// QA pass on 2026-10-09. A copy from BetterClipboard's own text boxes has an owner window and goes through
+    /// <see cref="Resolve"/> instead, so it is still labeled correctly.
+    /// </remarks>
+    /// <param name="foregroundWindow">The foreground window when the change was announced; 0 yields <see langword="null"/>.</param>
+    /// <returns>The source app, or <see langword="null"/> when the window is gone or belongs to this process.</returns>
+    public SourceAppInfo? ResolveForegroundGuess(nint foregroundWindow)
+    {
+        if (foregroundWindow == 0)
+        {
+            return null;
+        }
+
+        GetWindowThreadProcessId(foregroundWindow, out uint processId);
+        return processId == 0 || processId == (uint)Environment.ProcessId ? null : ResolveProcess(processId);
+    }
+
+    /// <summary>
     /// Resolves a process id to its application identity.
     /// </summary>
     /// <param name="processId">Process id.</param>

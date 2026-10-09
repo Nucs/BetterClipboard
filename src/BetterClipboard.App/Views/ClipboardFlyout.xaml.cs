@@ -178,6 +178,18 @@ public sealed partial class ClipboardFlyout : Window
         };
         ItemsList.Loaded += (_, _) => HookScrollViewer();
 
+        // The very first summon runs ShowAt and OnActivated before the XAML tree is loaded, when Focus() is a silent no-op,
+        // and nothing focused the box later: the first Win+V after a start dropped everything typed (CLAUDE.md §6; seen
+        // again 2026-10-09 with UIA reporting the focus on the window's input site, not on any element). So the box takes
+        // the keyboard the moment it exists, if the panel is showing.
+        SearchBox.Loaded += (_, _) =>
+        {
+            if (IsOpen && openPopups == 0)
+            {
+                SearchBox.Focus(FocusState.Programmatic);
+            }
+        };
+
         // Background drags move the window (see class remarks). handledEventsToo: a control may mark a
         // press on its empty space as handled although that space looks like background, so IsDragSurface
         // decides what is background instead of relying on whoever handled the press.
@@ -287,6 +299,15 @@ public sealed partial class ClipboardFlyout : Window
             var groups = ViewModel.LoadGroupsAsync();
             await ViewModel.ReloadAsync();
             SelectIndex(0);
+
+            // Second line of defence for the first summon: if no element of the panel has the keyboard yet (the box's
+            // Loaded came before the window was shown, or a focus call lost a race with activation), give it to the box
+            // now — never while a popup of ours is open, which owns the keys then.
+            if (IsOpen && openPopups == 0 && Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is null)
+            {
+                SearchBox.Focus(FocusState.Programmatic);
+            }
+
             await groups;
         }
         catch (Exception ex)

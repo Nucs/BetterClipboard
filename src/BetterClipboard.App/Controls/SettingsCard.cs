@@ -1,4 +1,5 @@
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace BetterClipboard.App.Controls;
@@ -68,6 +69,37 @@ public sealed partial class SettingsCard : ContentControl
         descriptionText = GetTemplateChild("DescriptionText") as FrameworkElement;
         footerPresenter = GetTemplateChild("FooterPresenter") as FrameworkElement;
         UpdateParts();
+        NameContent();
+    }
+
+    /// <summary>The card's action control was set or replaced: give it the card's title as its accessible name when it has none.</summary>
+    /// <param name="oldContent">The previous content.</param>
+    /// <param name="newContent">The new content.</param>
+    protected override void OnContentChanged(object oldContent, object newContent)
+    {
+        base.OnContentChanged(oldContent, newContent);
+        NameContent();
+    }
+
+    /// <summary>
+    /// Names an unnamed switch, combo box, number box or slider after the card's <see cref="Header"/>, so a screen reader says
+    /// "Pause capturing, toggle switch, on" instead of an anonymous "toggle switch, on".
+    /// </summary>
+    /// <remarks>
+    /// Found in a QA pass on 2026-10-09: UI Automation reported every Settings switch with an empty name, because the card's
+    /// title is a separate text block the switch knows nothing about. Only these control types are named: a button names
+    /// itself from its text ("Add bclip to PATH"), which a card title would wrongly replace, and a panel holding several
+    /// controls (the shortcut box's row) names each of them itself. A name set in XAML always wins.
+    /// </remarks>
+    private void NameContent()
+    {
+        if (Content is ToggleSwitch or ComboBox or NumberBox or Slider &&
+            Content is UIElement control &&
+            !string.IsNullOrEmpty(Header) &&
+            string.IsNullOrEmpty(AutomationProperties.GetName(control)))
+        {
+            AutomationProperties.SetName(control, Header);
+        }
     }
 
     /// <summary>Re-evaluates part visibility when description/footer change.</summary>
