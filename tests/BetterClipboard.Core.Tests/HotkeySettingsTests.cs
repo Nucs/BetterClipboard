@@ -73,6 +73,79 @@ public sealed class HotkeySettingsTests : IDisposable
         Assert.Throws<ArgumentNullException>(() => settings.WithOpenHotkeys(null!));
     }
 
+    /// <summary>
+    /// The history behind the "Used before" menu: a file from before it starts with the current shortcuts, newly added ones
+    /// go to the front, removing one keeps it, re-adding moves it to the front again, and re-saving an unchanged list (or
+    /// normalizing again) moves nothing.
+    /// </summary>
+    [Fact]
+    public void History_RemembersEveryShortcutUsed()
+    {
+        var start = new AppSettings { OpenHotkey = "Win+V", ExtraOpenHotkeys = ["Ctrl+Alt+F9"] }.Normalize();
+        Assert.Equal(["Win+V", "Ctrl+Alt+F9"], start.HotkeyHistory);
+
+        var added = start.WithOpenHotkeys(["Win+V", "Ctrl+Alt+F9", "Alt+Win+V"]).Normalize();
+        Assert.Equal(["Alt+Win+V", "Win+V", "Ctrl+Alt+F9"], added.HotkeyHistory);
+
+        var removed = added.WithOpenHotkeys(["Win+V"]).Normalize();
+        Assert.Equal(["Win+V"], removed.OpenHotkeys);
+        Assert.Equal(["Alt+Win+V", "Win+V", "Ctrl+Alt+F9"], removed.HotkeyHistory);
+
+        var readded = removed.WithOpenHotkeys(["Win+V", "ctrl + alt + f9"]).Normalize();
+        Assert.Equal(["ctrl + alt + f9", "Alt+Win+V", "Win+V"], readded.HotkeyHistory);
+
+        Assert.Equal(readded.HotkeyHistory, readded.WithOpenHotkeys(readded.OpenHotkeys).Normalize().HotkeyHistory);
+        Assert.Equal(readded.HotkeyHistory, readded.Normalize().HotkeyHistory);
+
+        // "Clear shortcuts used before": only the current shortcuts are left.
+        Assert.Equal(["Win+V", "ctrl + alt + f9"], (readded with { HotkeyHistory = [] }).Normalize().HotkeyHistory);
+    }
+
+    /// <summary>
+    /// A hand-edited history loses blanks, nulls and repeats (by text, ignoring case and spaces), and the cap drops the
+    /// oldest entries — never a current shortcut, even one listed last.
+    /// </summary>
+    [Fact]
+    public void History_IsCleanedAndCapped_KeepingCurrentShortcuts()
+    {
+        var many = Enumerable.Range(1, 30).Select(i => $"Ctrl+Alt+F{i}").ToArray();
+        var settings = new AppSettings
+        {
+            OpenHotkey = "Win+V",
+            ExtraOpenHotkeys = ["Alt+Win+V"],
+            HotkeyHistory = ["", " ctrl + alt + f1 ", "Ctrl+Alt+F1", null!, .. many],
+        }.Normalize();
+
+        Assert.Equal(AppSettings.MaxHotkeyHistory, settings.HotkeyHistory.Count);
+        Assert.Equal(["Win+V", "Alt+Win+V", "ctrl + alt + f1", "Ctrl+Alt+F2"], settings.HotkeyHistory.Take(4));
+        Assert.Equal("Ctrl+Alt+F14", settings.HotkeyHistory[^1]);
+
+        var currentLast = new AppSettings { OpenHotkey = "Win+V", HotkeyHistory = [.. many, "Win+V"] }.Normalize();
+        Assert.Equal(AppSettings.MaxHotkeyHistory, currentLast.HotkeyHistory.Count);
+        Assert.Equal("Win+V", currentLast.HotkeyHistory[^1]);
+        Assert.Equal("Ctrl+Alt+F15", currentLast.HotkeyHistory[^2]);
+
+        Assert.Equal(["Win+V"], new AppSettings { HotkeyHistory = null! }.Normalize().HotkeyHistory);
+    }
+
+    /// <summary>The history is saved with the shortcuts and read back in order.</summary>
+    [Fact]
+    public void History_RoundTrips()
+    {
+        var path = Path.Combine(temp.Path, "settings.json");
+        var store = new SettingsStore(path);
+        store.Load();
+        store.Update(s => s.WithOpenHotkeys(["Win+V", "Ctrl+Alt+F9"]));
+        store.Update(s => s.WithOpenHotkeys(["Win+V"]));
+
+        using (var json = JsonDocument.Parse(File.ReadAllText(path)))
+        {
+            Assert.Equal(["Ctrl+Alt+F9", "Win+V"], json.RootElement.GetProperty("HotkeyHistory").EnumerateArray().Select(e => e.GetString()!).ToArray());
+        }
+
+        Assert.Equal(["Ctrl+Alt+F9", "Win+V"], new SettingsStore(path).Load().HotkeyHistory);
+    }
+
     /// <summary>Text comparison ignores case and spaces, but not modifier order (the gesture parser handles that).</summary>
     [Fact]
     public void SameHotkeyText_IgnoresCaseAndSpacesOnly()

@@ -25,6 +25,24 @@ public sealed partial class SettingsWindow : Window
     private readonly nint hwnd;
 
     /// <summary>
+    /// Records shortcuts pressed in the shortcut box; created when the box first gets focus, disposed with the window. Its
+    /// keyboard hook exists only while the box listens (see <see cref="HotkeyRecorder"/>).
+    /// </summary>
+    private HotkeyRecorder? recorder;
+
+    /// <summary>Whether this window is the active one (its <see cref="Window.Activated"/> state); the box records only then.</summary>
+    private bool isActive;
+
+    /// <summary>
+    /// Whether the box should be listening right now — set at once on focus and activation changes, so a start that
+    /// completes after the box already lost focus does not show the "Listening" hint.
+    /// </summary>
+    private bool wantListening;
+
+    /// <summary>Set when the window closes: no recorder (and no keyboard hook) may be created after that.</summary>
+    private bool closed;
+
+    /// <summary>
     /// Creates the window (not yet shown; call <see cref="Present"/>).
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -55,6 +73,7 @@ public sealed partial class SettingsWindow : Window
         controller.ForgottenChanged += OnForgottenChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
+        Activated += OnActivated;
         BuildHotkeyPresetsMenu();
     }
 
@@ -110,6 +129,119 @@ public sealed partial class SettingsWindow : Window
         controller.PromptsStatusChanged -= OnPromptsStatusChanged;
         controller.ForgottenChanged -= OnForgottenChanged;
         controller.Settings.Changed -= OnSettingsChanged;
+        Activated -= OnActivated;
+
+        // The recorder's hook must never outlive the box it records for.
+        closed = true;
+        wantListening = false;
+        recorder?.Dispose();
+        recorder = null;
+    }
+
+    /// <summary>
+    /// The window was activated or deactivated: the shortcut box records only while its window is in front, so it stops on
+    /// deactivation (another app's keys must never be taken) and starts again when the window comes back with the box focused.
+    /// </summary>
+    /// <param name="sender">This window.</param>
+    /// <param name="args">The new activation state.</param>
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        isActive = args.WindowActivationState != WindowActivationState.Deactivated;
+        if (isActive && HotkeyBox.FocusState != FocusState.Unfocused)
+        {
+            StartHotkeyListening();
+        }
+        else if (!isActive)
+        {
+            StopHotkeyListening();
+        }
+    }
+
+    /// <summary>The shortcut box got focus: record shortcuts while the window is active.</summary>
+    /// <param name="sender">The shortcut box.</param>
+    /// <param name="e">Event data.</param>
+    private void HotkeyBox_GotFocus(object sender, RoutedEventArgs e)
+    {
+        if (isActive)
+        {
+            StartHotkeyListening();
+        }
+    }
+
+    /// <summary>The shortcut box lost focus (Tab, a click elsewhere, the menu): stop recording.</summary>
+    /// <param name="sender">The shortcut box.</param>
+    /// <param name="e">Event data.</param>
+    private void HotkeyBox_LostFocus(object sender, RoutedEventArgs e) => StopHotkeyListening();
+
+    /// <summary>
+    /// Starts the recorder (creating it on first use) and shows how to record. A hook Windows refuses leaves typing working
+    /// and says so under the box.
+    /// </summary>
+    private async void StartHotkeyListening()
+    {
+        if (closed)
+        {
+            return; // a late focus event of a closing window must not hook the keyboard again
+        }
+
+        wantListening = true;
+        try
+        {
+            recorder ??= CreateRecorder();
+            await recorder.StartAsync();
+            if (wantListening)
+            {
+                ViewModel.BeginHotkeyListening();
+            }
+            else
+            {
+                // Focus or activation went away while the hook was being installed: take it out again.
+                await recorder.StopAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void's caller has nothing to catch it: a failure here must not crash the app.
+            ViewModel.HotkeyListeningFailed(ex.Message);
+        }
+    }
+
+    /// <summary>Stops the recorder (its hook goes once a just-recorded key is released) and hides the hint.</summary>
+    private async void StopHotkeyListening()
+    {
+        wantListening = false;
+        ViewModel.EndHotkeyListening();
+        try
+        {
+            if (recorder is { } active)
+            {
+                await active.StopAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void's caller has nothing to catch it: a failure here must not crash the app.
+            Core.Diagnostics.AppLog.Warn($"Stopping the shortcut recorder failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Creates the recorder for this window and routes its recordings to the box, on the UI thread.</summary>
+    /// <returns>The recorder (nothing hooked yet).</returns>
+    private HotkeyRecorder CreateRecorder()
+    {
+        var created = new HotkeyRecorder(hwnd);
+        created.Captured += (_, gesture) => DispatcherQueue.TryEnqueue(() =>
+        {
+            // A recording that arrives after the box lost focus is dropped: the hint is gone, so it would surprise.
+            if (!wantListening)
+            {
+                return;
+            }
+
+            ViewModel.OnHotkeyRecorded(gesture);
+            HotkeyBox.SelectionStart = HotkeyBox.Text.Length;
+        });
+        return created;
     }
 
     /// <summary>Something was forgotten, allowed again or kept out once more: rebuild the list.</summary>
@@ -221,36 +353,85 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Event data.</param>
     private void AddCommandLineToPath_Click(object sender, RoutedEventArgs e) => ViewModel.AddCommandLineToPath();
 
-    /// <summary>Shortcut re-applied.</summary>
+    /// <summary>
+    /// Shortcuts re-applied: refresh the rows, and re-install the recorder's hook while the box listens — the shortcuts'
+    /// takeover hook was just installed again, and the newest hook is called first, so without this Win+V pressed in the box
+    /// would open the panel instead of being recorded.
+    /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
-    private void OnHotkeyStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshHotkeyStatus();
+    private async void OnHotkeyStatusChanged(object? sender, EventArgs e)
+    {
+        ViewModel.RefreshHotkeyStatus();
+        try
+        {
+            if (recorder is { IsListening: true } active)
+            {
+                await active.RestartAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            // async void's caller has nothing to catch it; the old hook stays, so recording still works for most keys.
+            Core.Diagnostics.AppLog.Warn($"Re-installing the shortcut recorder's hook failed: {ex.Message}");
+        }
+    }
 
     /// <summary>
-    /// Fills the presets menu next to the shortcut box (<see cref="MenuFlyout"/> has no ItemsSource) with toggles: picking
-    /// one adds it through <see cref="SettingsViewModel.TogglePreset"/> — validated and saved exactly like typed text — or
-    /// removes it when it is in the list already. Their checks are set each time the menu opens.
+    /// Fills the menu next to the shortcut box (<see cref="MenuFlyout"/> has no ItemsSource): the presets, then "Used
+    /// before" — the shortcuts of <see cref="Core.Settings.AppSettings.HotkeyHistory"/> that are not presets, newest first —
+    /// as toggles. Picking one adds it through <see cref="SettingsViewModel.TogglePreset"/> (validated and saved exactly like
+    /// typed text), or removes it when it is in the list already, which its check shows.
     /// </summary>
+    /// <remarks>
+    /// Rebuilt each time the menu opens, since the history changes with every added shortcut; also built once up front, so
+    /// the menu is never empty when it is first asked to open.
+    /// </remarks>
     private void BuildHotkeyPresetsMenu()
     {
+        HotkeyPresetsMenu.Items.Clear();
         foreach (var preset in ViewModel.HotkeyPresets)
         {
-            var item = new ToggleMenuFlyoutItem { Text = preset, Tag = preset };
-            item.Click += (_, _) => ViewModel.TogglePreset(preset);
-            HotkeyPresetsMenu.Items.Add(item);
+            HotkeyPresetsMenu.Items.Add(ShortcutToggle(preset));
         }
+
+        HotkeyPresetsMenu.Items.Add(new MenuFlyoutSeparator());
+
+        // A disabled item serves as the section's heading: MenuFlyout has no header items.
+        HotkeyPresetsMenu.Items.Add(new MenuFlyoutItem { Text = "Used before", IsEnabled = false });
+        var usedBefore = ViewModel.UsedBeforeHotkeys;
+        if (usedBefore.Count == 0)
+        {
+            HotkeyPresetsMenu.Items.Add(new MenuFlyoutItem { Text = "Shortcuts you add are listed here", IsEnabled = false });
+            return;
+        }
+
+        foreach (var text in usedBefore)
+        {
+            HotkeyPresetsMenu.Items.Add(ShortcutToggle(text));
+        }
+
+        // No icon: one item with an icon makes the menu reserve an icon column for every item, shifting all the shortcuts.
+        HotkeyPresetsMenu.Items.Add(new MenuFlyoutSeparator());
+        var clear = new MenuFlyoutItem { Text = "Clear shortcuts used before" };
+        clear.Click += (_, _) => ViewModel.ClearHotkeyHistory();
+        HotkeyPresetsMenu.Items.Add(clear);
     }
 
-    /// <summary>Checks the presets that are among the shortcuts right before the menu shows.</summary>
+    /// <summary>One toggle of the menu: checked while the shortcut is in the list; a click adds or removes it.</summary>
+    /// <param name="text">The shortcut, in canonical form.</param>
+    /// <returns>The menu item.</returns>
+    private ToggleMenuFlyoutItem ShortcutToggle(string text)
+    {
+        var item = new ToggleMenuFlyoutItem { Text = text, Tag = text, IsChecked = ViewModel.HasHotkey(text) };
+        item.Click += (_, _) => ViewModel.TogglePreset(text);
+        return item;
+    }
+
+    /// <summary>Rebuilds the menu right before it shows, so its "Used before" part and the checks are current.</summary>
     /// <param name="sender">The presets menu.</param>
     /// <param name="e">Event data.</param>
-    private void HotkeyPresetsMenu_Opening(object sender, object e)
-    {
-        foreach (var item in HotkeyPresetsMenu.Items.OfType<ToggleMenuFlyoutItem>())
-        {
-            item.IsChecked = item.Tag is string preset && ViewModel.HasHotkey(preset);
-        }
-    }
+    private void HotkeyPresetsMenu_Opening(object sender, object e) => BuildHotkeyPresetsMenu();
 
     /// <summary>
     /// Enter adds the typed shortcut to the list (the box itself saves nothing, so a half-typed shortcut never becomes a

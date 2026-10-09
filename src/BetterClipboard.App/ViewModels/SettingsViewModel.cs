@@ -21,6 +21,9 @@ namespace BetterClipboard.App.ViewModels;
 /// </remarks>
 public sealed partial class SettingsViewModel : ObservableObject
 {
+    /// <summary>The shortcut box's hint while it listens and holds nothing recorded yet (<see cref="HotkeyHint"/>).</summary>
+    private const string ListeningHint = "Listening: press the shortcut, or type it. Enter adds it.";
+
     private readonly AppController controller;
     private bool loading;
 
@@ -29,6 +32,12 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// rows show and what adding or removing a shortcut starts from.
     /// </summary>
     private IReadOnlyList<string> hotkeyTexts = [];
+
+    /// <summary>
+    /// The shortcut history of the last loaded settings (<see cref="AppSettings.HotkeyHistory"/>, most recent first): what the
+    /// menu's "Used before" part is built from.
+    /// </summary>
+    private IReadOnlyList<string> hotkeyHistory = [];
 
     /// <summary>
     /// Creates the view model and loads the current settings/status.
@@ -49,6 +58,32 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>Suggested shortcuts for the presets menu next to the shortcut box, in canonical form.</summary>
     public IReadOnlyList<string> HotkeyPresets { get; }
+
+    /// <summary>
+    /// The menu's "Used before" part, below the presets: every shortcut in <see cref="AppSettings.HotkeyHistory"/> that is a
+    /// valid shortcut and not a preset, most recently added first, each once (by keys, so <c>Win+Alt+V</c> and
+    /// <c>Alt+Win+V</c> are one entry). Current shortcuts are included; the menu shows them checked.
+    /// </summary>
+    /// <remarks>Computed on each call from the last loaded settings: the menu reads it when it opens.</remarks>
+    public IReadOnlyList<string> UsedBeforeHotkeys
+    {
+        get
+        {
+            var presets = HotkeyList.Parse(HotkeyPresets).Gestures;
+            var seen = new List<HotkeyGesture>();
+            var result = new List<string>();
+            foreach (var text in hotkeyHistory)
+            {
+                if (HotkeyGesture.TryParse(text, out var gesture) && !presets.Contains(gesture) && !seen.Contains(gesture))
+                {
+                    seen.Add(gesture);
+                    result.Add(gesture.ToString());
+                }
+            }
+
+            return result;
+        }
+    }
 
     /// <summary>Version string for the About card.</summary>
     public string VersionText => $"Version {AppController.Version}";
@@ -102,11 +137,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     public System.Collections.ObjectModel.ObservableCollection<HotkeyItemViewModel> Hotkeys { get; } = [];
 
     /// <summary>
-    /// What is typed into the "add a shortcut" box. Nothing is saved while typing: <see cref="AddHotkey"/> runs on Enter, the
-    /// Add button or a preset, so a half-typed shortcut never becomes a global hotkey.
+    /// What is typed or recorded into the "add a shortcut" box. Nothing is saved while typing or recording:
+    /// <see cref="AddHotkey"/> runs on Enter, the Add button or a preset, so a half-typed shortcut, or a combination pressed
+    /// by mistake, never becomes a global hotkey.
     /// </summary>
     [ObservableProperty]
     public partial string NewHotkeyText { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The line under the shortcut box while it listens: how to record or type a shortcut, then which one Enter adds.
+    /// Empty while the box does not have focus; <see cref="HotkeyError"/> shows problems instead.
+    /// </summary>
+    [ObservableProperty]
+    public partial string HotkeyHint { get; set; } = string.Empty;
 
     /// <summary>The shortcuts for the header chip, e.g. "Win+V · Alt+Win+V".</summary>
     [ObservableProperty]
@@ -302,6 +345,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             hotkeyTexts = settings.OpenHotkeys;
+            hotkeyHistory = settings.HotkeyHistory;
             HotkeysSummary = string.Join(" · ", hotkeyTexts);
             UseKeyboardHookFallback = settings.UseKeyboardHookFallback;
             MaxItems = settings.MaxItems;
@@ -478,10 +522,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         var seen = new List<HotkeyGesture>();
         foreach (var text in hotkeyTexts)
         {
-            if (!HotkeyGesture.TryParse(text, out var gesture))
+            if (!HotkeyGesture.TryParse(text, out var gesture, out var problem))
             {
-                // A hand-edited entry: the app skipped it, and the row says so instead of hiding it.
-                rows.Add(new HotkeyItemViewModel(text, "Not a valid shortcut, so it is skipped. Remove it.", IsActive: false));
+                // A hand-edited entry, or one an older version accepted (Ctrl+V): the app skipped it, and the row says why
+                // instead of hiding it.
+                rows.Add(new HotkeyItemViewModel(text, $"{problem} It is skipped: remove it.", IsActive: false));
                 continue;
             }
 
@@ -539,16 +584,16 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Adds a shortcut that opens the panel (Enter in the box, the Add button, or a preset). It is saved at once, and the
-    /// app registers it — or takes it over with the keyboard hook when another app or Windows owns it.
+    /// Adds a shortcut that opens the panel (Enter in the box, the Add button, a preset or an entry used before). It is saved
+    /// at once, and the app registers it — or takes it over with the keyboard hook when another app or Windows owns it.
     /// </summary>
-    /// <param name="text">The typed or picked shortcut, any spelling (<c>ctrl + alt + v</c>).</param>
+    /// <param name="text">The typed, recorded or picked shortcut, any spelling (<c>ctrl + alt + v</c>).</param>
     /// <returns><see langword="true"/> when it was added; otherwise <see cref="HotkeyError"/> says why.</returns>
     public bool AddHotkey(string? text)
     {
-        if (!HotkeyGesture.TryParse(text, out var gesture))
+        if (!HotkeyGesture.TryParse(text, out var gesture, out var problem))
         {
-            HotkeyError = "Not a valid shortcut. Use modifiers + a key, e.g. Win+V or Ctrl+Shift+V.";
+            HotkeyError = problem ?? "Not a valid shortcut. Press the keys in the box, or type them, for example Ctrl+Shift+V.";
             return false;
         }
 
@@ -567,9 +612,68 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         HotkeyError = string.Empty;
         NewHotkeyText = string.Empty;
+
+        // While the box still listens (Enter added it), the hint goes back to how to record the next one.
+        if (HotkeyHint.Length > 0)
+        {
+            HotkeyHint = ListeningHint;
+        }
+
         SaveHotkeys([.. current, gesture]);
         return true;
     }
+
+    /// <summary>
+    /// The shortcut box got focus in the active window and its recorder listens: show how to record or type a shortcut.
+    /// </summary>
+    public void BeginHotkeyListening() => HotkeyHint = ListeningHint;
+
+    /// <summary>The box lost focus, or its window was deactivated: the recorder stopped, so the hint goes.</summary>
+    public void EndHotkeyListening() => HotkeyHint = string.Empty;
+
+    /// <summary>
+    /// The recorder could not start (its keyboard hook was refused): say that typing still works, and log why.
+    /// </summary>
+    /// <param name="reason">The error, for the log only.</param>
+    public void HotkeyListeningFailed(string reason)
+    {
+        AppLog.Warn($"The shortcut box cannot record shortcuts: {reason}");
+        HotkeyHint = "Recording shortcuts does not work right now. Type the shortcut instead, for example Ctrl+Alt+F9.";
+    }
+
+    /// <summary>
+    /// A shortcut was pressed in the box (the recorder swallowed it): show it there, ready for Enter or Add, or say why it
+    /// cannot be added. Nothing is saved yet, so a combination pressed by mistake costs nothing.
+    /// </summary>
+    /// <param name="gesture">The recorded shortcut (one <see cref="HotkeyGesture.Problem"/> accepts).</param>
+    public void OnHotkeyRecorded(HotkeyGesture gesture)
+    {
+        var text = gesture.ToString();
+        NewHotkeyText = text;
+        var current = HotkeyList.Parse(hotkeyTexts).Gestures;
+        var problem = HotkeyGesture.Problem(gesture.Modifiers, gesture.VirtualKey);
+        if (problem is not null)
+        {
+            HotkeyError = problem;
+            HotkeyHint = ListeningHint;
+        }
+        else if (current.Contains(gesture))
+        {
+            HotkeyError = $"{text} is already in the list.";
+            HotkeyHint = ListeningHint;
+        }
+        else
+        {
+            HotkeyError = string.Empty;
+            HotkeyHint = $"Enter adds {text}. Press other keys to change it.";
+        }
+    }
+
+    /// <summary>
+    /// Forgets the shortcuts used before ("Clear this list" in the menu). The current shortcuts stay listed: the history
+    /// always holds them (<see cref="AppSettings.HotkeyHistory"/>).
+    /// </summary>
+    public void ClearHotkeyHistory() => Update(s => s with { HotkeyHistory = [] });
 
     /// <summary>
     /// Removes a shortcut (its row's button). The last one stays: without a shortcut only the tray icon would open
@@ -597,8 +701,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         SaveHotkeys(remaining);
     }
 
-    /// <summary>A preset in the menu: adds it, or removes it when it is in the list already (the menu shows it checked).</summary>
-    /// <param name="preset">The preset, in canonical form.</param>
+    /// <summary>
+    /// A preset or a "Used before" entry in the menu: adds it, or removes it when it is in the list already (the menu shows it
+    /// checked). Removing the last shortcut is refused like the row's Remove button.
+    /// </summary>
+    /// <param name="preset">The shortcut, in canonical form.</param>
     public void TogglePreset(string preset)
     {
         if (HotkeyGesture.TryParse(preset, out var gesture) && HotkeyList.Parse(hotkeyTexts).Gestures.Contains(gesture))

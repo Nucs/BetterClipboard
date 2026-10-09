@@ -149,6 +149,10 @@
                         <!--
                           The box adds a shortcut to the list below: Enter or the Add button (HotkeyBox_KeyDown,
                           AddHotkey_Click), never focus loss, so a half-typed shortcut never becomes a global hotkey.
+                          While it has focus in the active window it also records: any key pressed with Ctrl, Alt or
+                          Win (or a key that works alone, such as F9 or a media key) is written into it by the
+                          recorder's keyboard hook (HotkeyBox_GotFocus/LostFocus, Windows.Input.HotkeyRecorder), even
+                          when Explorer or BetterClipboard itself owns that shortcut; plain typing still types.
                           A TextBox + presets menu, not an editable ComboBox: an editable ComboBox fills its inner
                           text box from SelectedItem when its template loads, so a bound Text value showed up blank.
                         -->
@@ -160,10 +164,13 @@
                             </Grid.ColumnDefinitions>
                             <TextBox
                                 x:Name="HotkeyBox"
-                                MinWidth="160"
+                                MinWidth="190"
+                                AutomationProperties.HelpText="Press the keys of the shortcut, or type its name, then press Enter."
                                 AutomationProperties.Name="Add a shortcut that opens BetterClipboard"
+                                GotFocus="HotkeyBox_GotFocus"
                                 KeyDown="HotkeyBox_KeyDown"
-                                PlaceholderText="Add, e.g. Alt+Win+V"
+                                LostFocus="HotkeyBox_LostFocus"
+                                PlaceholderText="Press a shortcut, or type one"
                                 Text="{x:Bind ViewModel.NewHotkeyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <Button
                                 Grid.Column="1"
@@ -171,12 +178,15 @@
                                 AutomationProperties.Name="Add shortcut"
                                 Click="AddHotkey_Click"
                                 Content="Add" />
-                            <!--  Presets toggle: a checked one is in the list, and picking it again removes it.  -->
+                            <!--
+                              Presets, then "Used before" (AppSettings.HotkeyHistory), rebuilt each time the menu opens.
+                              Both are toggles: a checked one is in the list, and picking it again removes it.
+                            -->
                             <DropDownButton
                                 Grid.Column="2"
                                 VerticalAlignment="Stretch"
-                                AutomationProperties.Name="Suggested shortcuts"
-                                ToolTipService.ToolTip="Suggested shortcuts">
+                                AutomationProperties.Name="Suggested shortcuts and shortcuts used before"
+                                ToolTipService.ToolTip="Suggested shortcuts, and the ones you used before">
                                 <DropDownButton.Flyout>
                                     <MenuFlyout
                                         x:Name="HotkeyPresetsMenu"
@@ -186,12 +196,19 @@
                             </DropDownButton>
                         </Grid>
                         <TextBlock
-                            MaxWidth="260"
+                            MaxWidth="300"
                             Foreground="{ThemeResource SystemFillColorCriticalBrush}"
                             Style="{StaticResource CaptionTextBlockStyle}"
                             Text="{x:Bind ViewModel.HotkeyError, Mode=OneWay}"
                             TextWrapping="Wrap"
                             Visibility="{x:Bind HasText(ViewModel.HotkeyError), Mode=OneWay}" />
+                        <TextBlock
+                            MaxWidth="300"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.HotkeyHint, Mode=OneWay}"
+                            TextWrapping="Wrap"
+                            Visibility="{x:Bind HasText(ViewModel.HotkeyHint), Mode=OneWay}" />
                     </StackPanel>
                     <controls:SettingsCard.Footer>
                         <!--  One row per shortcut, main one first: its state, and Remove (disabled for the only one).  -->

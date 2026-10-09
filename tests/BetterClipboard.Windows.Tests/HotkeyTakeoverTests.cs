@@ -106,7 +106,7 @@ public sealed class HotkeyTakeoverTests : IDisposable
     [InlineData("Alt+Win+V", ' ')]
     [InlineData("Win+Shift+V", ' ')]
     [InlineData("Ctrl+Win+V", ' ')]
-    [InlineData("Ctrl+V", ' ')]
+    [InlineData("Ctrl+B", ' ')]
     [InlineData("Win+F1", ' ')]
     [InlineData("Win+`", ' ')]
     [InlineData("Win+Space", ' ')]

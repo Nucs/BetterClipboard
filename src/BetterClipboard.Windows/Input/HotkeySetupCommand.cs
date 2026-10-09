@@ -99,7 +99,9 @@ public static class HotkeySetupCommand
         {
             foreach (var text in parsed.Invalid)
             {
-                output.WriteLine($"error: \"{text}\" is not a shortcut. Use modifiers and a key, e.g. Win+V, Alt+Win+V or Ctrl+Alt+F9.");
+                // The parser's own reason: an unknown key name, a modifier alone, or a gesture no shortcut may have.
+                HotkeyGesture.TryParse(text, out _, out var problem);
+                output.WriteLine($"error: \"{text}\" is not a shortcut BetterClipboard can use. {problem}");
             }
 
             return ExitInvalid;

@@ -84,6 +84,12 @@ public sealed record AppSettings
     /// </summary>
     public const string AlternativeOpenHotkey = "Alt+Win+V";
 
+    /// <summary>
+    /// The most shortcuts <see cref="HotkeyHistory"/> keeps: room for the current ones (at most <see cref="MaxOpenHotkeys"/>)
+    /// and as many again used before, which still fits the presets menu on one screen.
+    /// </summary>
+    public const int MaxHotkeyHistory = 16;
+
     /// <summary>Settings file format version, for future migrations.</summary>
     public int SchemaVersion { get; init; } = 1;
 
@@ -116,6 +122,26 @@ public sealed record AppSettings
     /// </summary>
     [JsonIgnore]
     public IReadOnlyList<string> OpenHotkeys => [OpenHotkey, .. ExtraOpenHotkeys ?? []];
+
+    /// <summary>
+    /// Every shortcut that has opened the panel, most recently added first: the "Used before" part of the menu next to
+    /// Settings' shortcut box, so a shortcut used once stays one click away after it was removed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Always holds the current shortcuts: <see cref="Normalize"/> puts a missing one at the front (that is also how a file
+    /// from before this member starts its history), and <see cref="WithOpenHotkeys"/> moves newly added ones to the front.
+    /// Removing a shortcut keeps it here. Capped at <see cref="MaxHotkeyHistory"/> by dropping the oldest entry that is not a
+    /// current shortcut.
+    /// </para>
+    /// <para>
+    /// Entries are the canonical texts the settings page saves; blanks and repeats (by text, ignoring case and spaces) are
+    /// dropped. The menu skips entries that are presets (they are listed above it) or no longer valid shortcuts, so a
+    /// hand-edited entry costs nothing. Footgun: a version from before this member drops it when it saves the file; the next
+    /// newer version then starts over from the current shortcuts.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> HotkeyHistory { get; init; } = [];
 
     /// <summary>
     /// When the shortcut is already owned by Windows (Win+V is, by Explorer), intercept it with a
@@ -358,7 +384,8 @@ public sealed record AppSettings
     /// </summary>
     /// <remarks>
     /// The texts are taken as given (callers validate them as gestures first); <see cref="Normalize"/> then trims them,
-    /// drops blanks and repeats, and caps the list at <see cref="MaxOpenHotkeys"/>.
+    /// drops blanks and repeats, and caps the list at <see cref="MaxOpenHotkeys"/>. Shortcuts that were not among the
+    /// current ones go to the front of <see cref="HotkeyHistory"/>, so the "Used before" menu lists the newest first.
     /// </remarks>
     /// <param name="hotkeys">The shortcuts in order; the first one is the main shortcut the tray names.</param>
     /// <returns>The changed copy (not yet normalized).</returns>
@@ -372,7 +399,15 @@ public sealed record AppSettings
             throw new ArgumentException("At least one shortcut must open the panel.", nameof(hotkeys));
         }
 
-        return this with { OpenHotkey = hotkeys[0], ExtraOpenHotkeys = hotkeys.Skip(1).ToArray() };
+        // Only the newly added ones move: re-saving an unchanged list (or removing one) must not reorder the history.
+        var before = OpenHotkeys;
+        var added = hotkeys.Where(h => !string.IsNullOrWhiteSpace(h) && !before.Any(b => SameHotkeyText(b, h)));
+        return this with
+        {
+            OpenHotkey = hotkeys[0],
+            ExtraOpenHotkeys = hotkeys.Skip(1).ToArray(),
+            HotkeyHistory = [.. added, .. HotkeyHistory ?? []],
+        };
     }
 
     /// <summary>
@@ -385,6 +420,43 @@ public sealed record AppSettings
     /// <returns><see langword="true"/> when they are the same text apart from case and spaces.</returns>
     public static bool SameHotkeyText(string? a, string? b) =>
         string.Equals(CompactHotkeyText(a), CompactHotkeyText(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Builds the normalized <see cref="HotkeyHistory"/>: the current shortcuts that are missing go first, then the history
+    /// in its order, without blanks and repeats, capped at <see cref="MaxHotkeyHistory"/>.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent, since <see cref="Normalize"/> runs on every load and save: once every current shortcut is in the list,
+    /// nothing moves. The cap drops the oldest entries that are not current shortcuts, so a current one is never lost.
+    /// </remarks>
+    /// <param name="current">The current shortcuts, already trimmed and distinct, main one first.</param>
+    /// <param name="history">The stored history (may be <see langword="null"/> or hold <see langword="null"/>, from a hand-edited file).</param>
+    /// <returns>The normalized history, most recent first.</returns>
+    private static string[] NormalizeHotkeyHistory(IReadOnlyList<string> current, IReadOnlyList<string>? history)
+    {
+        var known = (history ?? []).Select(t => t?.Trim() ?? string.Empty).Where(t => t.Length > 0).ToList();
+        var merged = new List<string>();
+        foreach (var text in current.Where(c => !known.Any(k => SameHotkeyText(k, c))).Concat(known))
+        {
+            if (!merged.Any(m => SameHotkeyText(m, text)))
+            {
+                merged.Add(text);
+            }
+        }
+
+        while (merged.Count > MaxHotkeyHistory)
+        {
+            int oldest = merged.FindLastIndex(m => !current.Any(c => SameHotkeyText(c, m)));
+            if (oldest < 0)
+            {
+                break; // only current shortcuts left: never drop one of those
+            }
+
+            merged.RemoveAt(oldest);
+        }
+
+        return merged.ToArray();
+    }
 
     /// <summary>Removes every whitespace character from a shortcut text, for <see cref="SameHotkeyText"/>.</summary>
     /// <param name="text">The text (may be <see langword="null"/>).</param>
@@ -437,6 +509,7 @@ public sealed record AppSettings
             SchemaVersion = 1,
             OpenHotkey = primary,
             ExtraOpenHotkeys = extras.ToArray(),
+            HotkeyHistory = NormalizeHotkeyHistory([primary, .. extras], HotkeyHistory),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
