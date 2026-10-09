@@ -58,13 +58,15 @@ public sealed partial class FlyoutViewModel
             return;
         }
 
-        Items.Clear();
+        // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
+        var cards = new List<ClipItemViewModel>(rows.Count);
         long syntheticId = -1;
         foreach (var row in rows)
         {
-            Items.Add(row.Entry is { } stored ? CreateItem(stored) : ClipItemViewModel.ForCommand(row.Command!, syntheticId--));
+            cards.Add(row.Entry is { } stored ? CreateItem(stored) : ClipItemViewModel.ForCommand(row.Command!, syntheticId--));
         }
 
+        ReplaceItems(cards);
         loaded = Items.Count;
         hasMore = false;
         HasPatternError = false;

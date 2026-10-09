@@ -442,13 +442,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
                     return;
                 }
 
-                Items.Clear();
+                // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
+                var cards = new List<ClipItemViewModel>(rows.Count);
                 long syntheticId = -1;
                 foreach (var row in rows)
                 {
-                    Items.Add(row.Entry is { } stored ? CreateItem(stored) : ClipItemViewModel.ForPick(row.Pick!, syntheticId--));
+                    cards.Add(row.Entry is { } stored ? CreateItem(stored) : ClipItemViewModel.ForPick(row.Pick!, syntheticId--));
                 }
 
+                ReplaceItems(cards);
                 loaded = Items.Count;
                 hasMore = false;
                 HasPatternError = false;
@@ -700,6 +702,30 @@ public sealed partial class FlyoutViewModel : ObservableObject
         CollectionPatch.Apply(Items, wanted);
     }
 
+    /// <summary>
+    /// Replaces the whole list with other cards, one change at a time: every card that is not in
+    /// <paramref name="cards"/> is removed by itself, then the new ones are inserted. Use it wherever a load builds all
+    /// its cards anew (a tab of things that are not stored: prompts, shell commands, Everything's picks) or shows none
+    /// (a search that cannot run) — never <c>Items.Clear()</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Why not clear and add: a list control that is reset while a row is selected hands that row's container on with
+    /// its selection bar still drawn. The container is then reused for another row, which shows the bar although it is
+    /// not selected (UI Automation reports one selected row; two are drawn as selected). Seen 2026-10-09 on a Windows 11
+    /// desktop: All, then Left to the Codex tab, then Right back to All showed the bar on the first and the second card.
+    /// A row that is removed by itself is deselected properly: the same check through tabs that <see cref="ApplyEntries"/>
+    /// loads (All, Images, Text) never left a bar behind.
+    /// </para>
+    /// <para>
+    /// Cost: one notification per card that leaves instead of one for all of them, which is what
+    /// <see cref="ApplyEntries"/> already costs when it replaces such a tab's cards with history entries.
+    /// </para>
+    /// </remarks>
+    /// <param name="cards">The cards to show, in order, each instance once; empty to show none.</param>
+    /// <exception cref="ArgumentException"><paramref name="cards"/> holds the same instance twice, or a <see langword="null"/>.</exception>
+    private void ReplaceItems(IReadOnlyList<ClipItemViewModel> cards) => CollectionPatch.Apply(Items, cards);
+
     /// <summary>Reloads when the search text changes (debounced).</summary>
     /// <param name="value">New text.</param>
     partial void OnSearchTextChanged(string value)
@@ -920,7 +946,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <param name="message">What went wrong and what to do.</param>
     private void ShowSearchProblem(string title, string message)
     {
-        Items.Clear();
+        // Card by card, not Items.Clear(): a cleared list leaves a stale selection bar on a reused row (ReplaceItems).
+        ReplaceItems([]);
         loaded = 0;
         hasMore = false;
         UpdateEmptyState();

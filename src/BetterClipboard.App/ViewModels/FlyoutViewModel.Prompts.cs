@@ -88,18 +88,20 @@ public sealed partial class FlyoutViewModel
             return;
         }
 
-        Items.Clear();
+        // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
+        var cards = new List<ClipItemViewModel>(stored.Count + rows.Count);
         foreach (var entry in stored)
         {
-            Items.Add(CreateItem(entry));
+            cards.Add(CreateItem(entry));
         }
 
         nextPromptCardId = -1;
         foreach (var row in rows)
         {
-            Items.Add(ClipItemViewModel.ForPrompt(row, nextPromptCardId--));
+            cards.Add(ClipItemViewModel.ForPrompt(row, nextPromptCardId--));
         }
 
+        ReplaceItems(cards);
         keptPromptHashes = kept;
         lastPromptStats = stats;
         promptOffset = rows.Count;
