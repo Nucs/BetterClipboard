@@ -37,11 +37,18 @@ namespace BetterClipboard.App;
 /// </para>
 /// <para>
 /// <b>Lifetime.</b> Created once by <see cref="App"/>; lives until <see cref="ExitAsync"/>. Windows are
-/// created lazily: the flyout once (then shown/hidden), the settings window on demand (closed = freed).
+/// created lazily: the flyout once (then shown/hidden) — a few seconds after startup at the latest, when it is prepared
+/// off-screen so the first Win+V is fast — and the settings window on demand (closed = freed).
 /// </para>
 /// </remarks>
 public sealed partial class AppController
 {
+    /// <summary>
+    /// How long after startup the panel is prepared (<see cref="WarmUpFlyoutAsync"/>): late enough to stay out of the
+    /// sign-in rush and the startup imports, early enough to come before a typical first Win+V.
+    /// </summary>
+    private static readonly TimeSpan FlyoutWarmUpDelay = TimeSpan.FromSeconds(3);
+
     private readonly DispatcherQueue ui;
     private readonly StartupOptions options;
     private readonly AppPaths paths = AppPaths.ResolveDefault();
@@ -300,9 +307,37 @@ public sealed partial class AppController
             _ = ImportWindowsHistoryAsync();
         }
 
+        // The panel is otherwise built on the first Win+V, and keys typed during those few hundred milliseconds went to the
+        // app underneath: build and render it now, once the startup work has settled (ClipboardFlyout.WarmUp).
+        _ = WarmUpFlyoutAsync();
+
         if (!options.Background)
         {
             ShowSettings();
+        }
+    }
+
+    /// <summary>
+    /// Prepares the panel <see cref="FlyoutWarmUpDelay"/> after startup, at low UI priority, so the first summon is as fast
+    /// as later ones (see <see cref="ClipboardFlyout.WarmUp"/>). Skipped when the panel was opened already or the app exits.
+    /// </summary>
+    /// <returns>A task completing once the warm-up is queued; failures are logged, never thrown.</returns>
+    private async Task WarmUpFlyoutAsync()
+    {
+        try
+        {
+            await Task.Delay(FlyoutWarmUpDelay).ConfigureAwait(false);
+            ui.TryEnqueue(DispatcherQueuePriority.Low, () =>
+            {
+                if (!exiting && flyout is null)
+                {
+                    EnsureFlyout().WarmUp();
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Queuing the panel's warm-up failed: {ex.Message}");
         }
     }
 

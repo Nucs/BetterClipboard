@@ -216,8 +216,87 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>Window handle (used to detect "shortcut pressed while we are in front").</summary>
     public nint Handle => hwnd;
 
-    /// <summary>Whether the flyout is currently shown.</summary>
-    public bool IsOpen => AppWindow.IsVisible;
+    /// <summary>
+    /// Whether the flyout is currently shown to the user. False while <see cref="WarmUp"/> has it visible off every screen,
+    /// unless a real summon came meanwhile: otherwise a Win+V pressed during the warm-up would "close" the panel instead of
+    /// opening it.
+    /// </summary>
+    public bool IsOpen => AppWindow.IsVisible && (!warmingUp || summonedDuringWarmUp);
+
+    /// <summary>Whether <see cref="WarmUp"/> is between showing the window off-screen and hiding it again.</summary>
+    private bool warmingUp;
+
+    /// <summary>Set by <see cref="ShowAt"/> when it runs during a warm-up: the warm-up then leaves the window shown.</summary>
+    private bool summonedDuringWarmUp;
+
+    /// <summary>
+    /// Builds and renders the panel once without showing it to anyone — visible but off every screen, never activated, not
+    /// in Alt+Tab or the taskbar — then hides it, so the first real summon is as fast as later ones. Call it once, in idle
+    /// time after startup (<c>AppController</c> does).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Why: the first summon used to create the window and its XAML tree, lay it out and render it — a few hundred
+    /// milliseconds — and keys typed in that time went to the app underneath. Measured 2026-10-09 on a Windows 11 VM after
+    /// a <c>--background</c> start: a letter typed 100 or 250 ms after the first Win+V landed in Notepad, one typed after
+    /// 500 ms in the search box. Later summons only show a ready window.
+    /// </para>
+    /// <para>
+    /// A summon while this waits wins: <see cref="ShowAt"/> marks it, and the window is left shown and positioned by the
+    /// summon instead of hidden. Nothing is loaded into the list here; <see cref="ShowAt"/> does that, as always.
+    /// </para>
+    /// </remarks>
+    public async void WarmUp()
+    {
+        if (AppWindow.IsVisible || warmingUp)
+        {
+            return;
+        }
+
+        warmingUp = true;
+        summonedDuringWarmUp = false;
+        var started = Stopwatch.StartNew();
+        try
+        {
+            // -32000 is where Windows itself parks windows that must not be seen; no monitor reaches it.
+            AppWindow.Move(new PointInt32(-32000, -32000));
+            AppWindow.Show(false);
+            if (!Root.IsLoaded)
+            {
+                var loaded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                RoutedEventHandler? onLoaded = null;
+                onLoaded = (_, _) =>
+                {
+                    Root.Loaded -= onLoaded;
+                    loaded.TrySetResult();
+                };
+                Root.Loaded += onLoaded;
+                await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+            }
+
+            // A couple of frames more, so the first render (backdrop, swap chain, glyph atlas) is paid now too.
+            await Task.Delay(100);
+            if (!summonedDuringWarmUp)
+            {
+                AppWindow.Hide();
+            }
+
+            AppLog.Info($"Panel prepared for the first Win+V in {started.ElapsedMilliseconds} ms.");
+        }
+        catch (Exception ex)
+        {
+            // async void: nothing above can catch it. The first summon then simply builds what is missing, as before.
+            AppLog.Warn($"Preparing the panel ahead of the first summon failed: {ex.Message}");
+            if (!summonedDuringWarmUp)
+            {
+                AppWindow.Hide();
+            }
+        }
+        finally
+        {
+            warmingUp = false;
+        }
+    }
 
     /// <summary>
     /// Shows the flyout for a summon: resets search, reloads history, positions it by the caret and
@@ -229,6 +308,12 @@ public sealed partial class ClipboardFlyout : Window
     {
         try
         {
+            // A summon during the warm-up keeps the window it is about to position and show (see WarmUp).
+            if (warmingUp)
+            {
+                summonedDuringWarmUp = true;
+            }
+
             // A drag interrupted by hiding normally ends through capture loss; never let one survive into
             // a new summon, where the next pointer move would jump the window.
             EndDrag();
