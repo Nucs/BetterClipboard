@@ -284,7 +284,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29). |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,097 tests, one class at a time — §4: the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it, one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller) (337 tests). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2). |
 
@@ -2510,6 +2510,16 @@ leaked; 30 ms 1 → 0; 60 and 120 ms 0 → 0. Unchanged: activation takes as lon
   kept (`Update`), and `Core/Presentation/CollectionPatch` (pure, unit-tested) turns the list into the new one with
   removes, moves and inserts — a new copy costs one insert and one remove. Cards of things not stored (Everything picks,
   shell commands, prompts) are never reused: their ids mean nothing across loads.
+  - **Never `Items.Clear()`** (found 2026-10-09 while the README photos were retaken, fixed in `2f86791`). The tabs
+    of things that are not stored cleared the list and added their cards. A list control that is reset while a row
+    is selected hands that row's container on with its selection bar still drawn, so the next list showed a second
+    "selected" row: All, Left to the Codex tab, Right back to All gave the bar on the first and the second card
+    (2 of 2; UI Automation reported one selected row). A row that is removed by itself is deselected properly: the
+    tabs that patch their list never showed it. So those loaders build their cards first and swap them in with
+    `FlyoutViewModel.ReplaceItems` (`CollectionPatch.Apply` with nothing to keep), and so does the "search cannot
+    run" state. Verified on the VM: one bar after All → Codex → All, Codex → Claude, and
+    Pwsh → Cmd → Claude → Codex → All. Whether 0.2.5 showed it is not known (it cleared every list, but still
+    played the item transitions).
   - **Footgun found in review:** the old clear also dropped the selection and the scroll position, so "the first card is
     armed after every reload" held by itself. A patched list keeps a card's selection even when it is no longer first:
     Down ×2, then a search that card still matches, then Enter, would have pasted it instead of the best match. The
@@ -2876,14 +2886,18 @@ neither, it is installed with a warning that states its hash.
 **Verified:** see §5.
 
 **Limits / not built:**
-- **The regular instance against a real newer release** cannot be run before a release above the running version
-  exists. Every part of that path ran: the real API and a real download (the probe), and the installer on a real install
-  folder (the VM, through an isolated instance with a stand-in feed).
+- **The regular instance against a real newer release:** run up to the installer on 2026-10-09, with a build labelled
+  0.2.3 on a test desktop (§3.4, §5). The real feed offered the real 0.2.5, the download and the checksum check ran,
+  and the app handed over to that release's installer. That installer has no update mode (only releases from 0.2.6
+  on have it), so it ended with code 1 and the app kept running, as designed. The whole path with a real release
+  needs the first release after 0.2.6 (§6). The installer's half ran on a real install folder (the VM, through an
+  isolated instance with a stand-in feed).
 - ARM64: built by the release job, never run. A standard user, and UAC on: not run for the update (the VM's user is an
   elevated administrator).
 - No delta updates (71 MB each time), no silent or automatic installation, no update at exit.
 - No Authenticode check of the package: releases are unsigned (§3.3).
-- The README's photos show the header without the update button (§3.4).
+- The README's update photo shows a build labelled 0.2.3 that is offered the real 0.2.5 (§3.4): retake it with the
+  first real update.
 
 ---
 
@@ -3425,18 +3439,23 @@ the alternatives, what was verified, and the sources.
 - After acceptance: the signing step in `release.yml` (publish → upload artifact → SignPath → archive the signed files
   → checksums), which needs `package.ps1` split into publish and archive halves.
 
-### 3.4 README photos (made 2026-10-03)
+### 3.4 README photos (made 2026-10-03, retaken 2026-10-09)
 
 User request (2026-10-03): "Install current on dev and orchestrate two photos plus one settings photo for the
-README.md". The README shows three photos, made on a claude-desktops Windows desktop with invented demo data, never on
+README.md". The README shows four photos, made on a claude-desktops Windows desktop with invented demo data, never on
 this PC (§4):
 - `docs/images/panel.png`, the hero: the All tab with the groups column (692×947).
 - `docs/images/prompts.png`, under *Tabs for other apps*: the Claude tab, the strip scrolled to the other apps' tabs
   (626×947).
 - `docs/images/settings.png`, after the Settings list under *Use*: the top of Settings (1388×1307).
+- `docs/images/update.png`, under *Updates* (new 2026-10-09): the update dialog under the highlighted update button,
+  on the wallpaper (960×1033).
 
 They replace `flyout.png` (2026-09-25: six tabs, the removed "Windows clipboard history" label, real clipboard
 content). "Current" was v0.2.5: `main` had no app change after it (docs only).
+
+**Retaken 2026-10-09** with a package of `7d7df8d`: the header got its fifth button, the update button (§2.29), and
+Settings its shortcut list (§2.25, §2.26). The three window photos kept their sizes to the pixel.
 
 **How they were made.** Repeat it when the panel or Settings change visibly. The tools are in
 [`tools/readme/`](tools/readme).
@@ -3447,24 +3466,47 @@ content). "Current" was v0.2.5: `main` had no app change after it (docs only).
    expand the Scale combo box, select "150%"), then `launch C:\Windows\Resources\Themes\dark.theme` (dark mode and the
    Dark Bloom wallpaper). At 150 % the photos stay sharp on high-DPI screens. The Settings window (940×880 DIP) needs
    1,320 px of height, hence 1440p.
-3. **Install** with the README's own command (`irm …/install.ps1 | iex`): v0.2.5 from GitHub, SHA-256 checked, 12 s.
-4. **Demo data:** copy `tools/readme/*` to the desktop's persist folder (`Q:\claude-desktops\windows\desktops\<name>\persist`
-   = `Z:`), run `demo-data.ps1` in the desktop, then restart the app (`--exit`, `--background`) so that the prompt
-   readers import the new histories.
+3. **Demo data:** copy `tools/readme/*` to the desktop's persist folder (`Q:\claude-desktops\windows\desktops\<name>\persist`
+   = `Z:`) and run `demo-data.ps1` in the desktop before the app's first start, so that its first import finds the
+   prompt histories. With the app already running, restart it afterwards (`--exit`, `--background`).
+4. **Install.**
+   - A released version: the README's own command (`irm …/install.ps1 | iex`; v0.2.5 on 2026-10-03, SHA-256 checked,
+     12 s).
+   - Code that is not released: `tools/release/package.ps1 -Version X.Y.Z -Architectures x64`, then the zip,
+     `SHA256SUMS.txt` and `install.ps1` in a new top-level folder of the persist folder, and in the desktop
+     `install.ps1 -Package <zip> -NoLaunch` (29 s) and `BetterClipboard.exe --background`.
 5. **Copies from real apps,** so every card names its app: Notepad lines (Home, Shift+End, Ctrl+C), a selection in
    Windows Terminal (drag, Ctrl+C), Explorer files (Ctrl+A, Ctrl+C), a Snipping Tool snip of the wallpaper, Edge's
    address (Ctrl+L, Ctrl+C). Spread over ~20 minutes, so the captions read "just now" to "19 min ago". Then pin the
-   reply (Ctrl+P), make three groups with **+**, and drag cards onto them.
+   reply (Ctrl+P), make three groups with **+**, and drag cards onto them. On 2026-10-09 the Terminal selection was
+   left out (7 items): no photo shows that card.
 6. **Size:** `FlyoutWidth` 432 and `FlyoutHeight` 640 in `settings.json`, written while the app is stopped. At 432 DIP
    both strips end on whole tabs ("… Files Snipping ›" at the start, "‹ Files … Codex" at the end); at 400 they read
    "Snippi›" and "‹ s Snipping".
 7. **The snip's shape** must match the card's thumbnail box (about 2.85:1 at 432 DIP, so 1426×500 px), or gray bars
    frame the picture.
 8. **Capture** with `capture-window.ps1`, the pointer away from the window (no hover, no image peek):
-   - hero: Win+D, pointer at (800, 250), Win+V (the panel opens at the pointer, over the wallpaper), Ctrl+G, Ctrl+F;
-   - Claude tab: close the column, click › until it is gone, select the Claude tab through UIA, Ctrl+F;
-   - Settings: a plain launch, then one click in its hero area.
-9. `finish-shot.py` on each capture, then `delete_desktop(delete_persist=True)`.
+   - hero: Win+D, pointer at (800, 250), Win+V (the panel opens at the pointer, over the wallpaper), the groups
+     column open (Ctrl+G; it is remembered from the drags), Ctrl+F;
+   - Claude tab: close the column (Ctrl+G), then Left twice from the All tab (the tabs go round, §2.28: Codex, then
+     Claude). The strip follows the selected tab and the search box keeps the keyboard. Before the tabs went round:
+     click › until it is gone, select the Claude tab through UIA, Ctrl+F;
+   - Settings: a plain launch, then one click in its hero area, and the pointer off the window.
+9. `finish-shot.py` on each capture.
+10. **The update dialog** is a window of its own and larger than the panel, so its photo is a piece of the screen.
+    - **The offer.** A build labelled with an older version (`package.ps1 -Version 0.2.3`), installed as the regular
+      copy, is offered the real latest release by the real feed after *Settings › Updates › Check now*. The dialog
+      then shows a real release with its real notes: nothing is invented. *Update and restart* would hand over to
+      that release's installer (§5 has what 0.2.5's does).
+    - **A plain button for the other photos.** `install.ps1` gates `-NoUpdateCheck` on the release being ≥ 0.2.6,
+      so a build labelled below that is switched with `BetterClipboard.exe --set-update-check off` before its first
+      start. For this photo the switch goes on again in Settings.
+    - **Two captures** with `capture-screen.ps1`: the panel with the dialog open (it prints both windows'
+      rectangles), then the same screen after Esc, Esc (the wallpaper alone). The pointer stays off both.
+    - `compose-shot.py <with> <without> docs/images/update.png --window <the panel's rectangle> --popup <the
+      dialog's>`: the panel's corners become round and DWM's border band goes, the dialog keeps the corners and
+      shadow XAML drew, and the cut leaves 32 px of wallpaper around what is visible.
+11. `delete_desktop(delete_persist=True)`.
 
 **Lessons** (each one cost a retake):
 - **No GPU in the VM:** acrylic and Mica draw their solid fallback colors, and DWM draws square corners with a
@@ -3480,13 +3522,14 @@ content). "Current" was v0.2.5: `main` had no app change after it (docs only).
 - **Units:** the desktop's UIA bounds are DIPs (×1.5 for pixels); its screenshots, clicks and drags are pixels. Its
   `scroll` takes dy from −50 to 50, positive = down.
 - **Found on the way:** the first Win+V after a start does not focus the search box (§6).
+- **A flyout's shadow changes bright wallpaper more than its body changes dark wallpaper,** so no amount of
+  difference tells the two apart. `compose-shot.py` finds the body by direction: a shadow only darkens, and a
+  dark-theme bubble is lighter than a dark wallpaper in at least one color.
+- **Found on the way (2026-10-09):** a second selection bar after leaving a prompt or shell tab (§2.27, fixed in
+  `2f86791`). Look at each capture for it before it becomes a photo.
 
-**Retake `settings.png` when the Shortcut section changes.** It shows 0.2.5's single shortcut; work on several
-shortcuts was in progress on 2026-10-03.
-
-**Outdated since 2026-10-09:** the panel's header has a fifth button, the update button (§2.29). `panel.png` and
-`prompts.png` show four. Retake both the same way, and add a photo of the update dialog under its highlighted
-button (an isolated instance with a stand-in feed shows it without a real release, §2.29).
+**Retake `update.png` with the first real update** (§6). It shows a build labelled 0.2.3 that is offered 0.2.5. With
+0.2.6 installed and a newer release out, steps 10 and 11 give a true pair without a labelled build.
 
 ---
 
@@ -3742,8 +3785,9 @@ button (an isolated instance with a stand-in feed shows it without a real releas
   - a new Settings section: the Settings list under *Use*.
 
   Keep the anchors other files link to: `#privacy` and `#code-signing-policy` (release.yml's footer, the nuspec,
-  `docs/code-signing.md`) and `#readme`. The README's three photos (`docs/images/panel.png`, `prompts.png`,
-  `settings.png`) show v0.2.5 with invented demo data from a claude-desktops Windows desktop, never the user's screen.
+  `docs/code-signing.md`) and `#readme`. The README's four photos (`docs/images/panel.png`, `prompts.png`,
+  `settings.png`, `update.png`) show the code of `7d7df8d` (2026-10-09) with invented demo data from a claude-desktops
+  Windows desktop, never the user's screen.
   When a change makes one of them wrong, retake that photo the same way (§3.4).
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
@@ -3853,6 +3897,18 @@ button (an isolated instance with a stand-in feed shows it without a real releas
     an update; 47–86 ms in 16 quiet runs). A click sent sooner goes to the window below.
   - Comparing two builds' timings: alternate them, and swap which one goes first halfway. The second build of each
     pair was 10–15 ms slower whichever build it was.
+  - `find_elements(app="BetterClipboard")` searches the app's first window only: the panel, which is always there
+    (shown but cloaked, §2.27). Settings and a flyout's own window are not searched, and the tool takes no window:
+    use coordinates from a screenshot.
+  - A package labelled below 0.2.6 gets neither `-NoUpdateCheck` nor the installer's closing note about the update
+    check (the version gate, §2.25). Switch such a build with `BetterClipboard.exe --set-update-check off|on`.
+  - A build labelled with an older version, installed as the regular copy, is offered the real latest release:
+    the way to see a real offer before a newer release exists (§3.4).
+- **Never `Items.Clear()` on the panel's list** (`FlyoutViewModel.Items`). A list control that is reset while a row is
+  selected hands that row's container on with its selection bar still drawn, and another row then looks selected
+  too (2026-10-09, §2.27). Build the new cards first and swap them in with `ReplaceItems`, or `ApplyEntries` for
+  stored entries: rows that are removed one by one are deselected properly. When a list looks wrong, ask UI Automation
+  which rows are selected: it told the drawing from the state.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -3862,6 +3918,9 @@ button (an isolated instance with a stand-in feed shows it without a real releas
 
 | Feature | How | Result |
 |---|---|---|
+| **README photos retaken** (§3.4, 2026-10-09): a claude-desktops Windows 11 desktop ("bc-photos", 2560×1440 at 150 %, dark theme) with a package of `7d7df8d` labelled 0.2.3, installed with `install.ps1 -Package` (SHA-256 OK, Win+V released, 29 s). Demo data from `tools/readme/demo-data.ps1` (7 Claude Code and 2 Codex prompts imported in 0.4 s), then copies from Notepad, Windows Explorer, Microsoft Edge and Snipping Tool (a 1426×500 snip), a pin, and three groups by drag and drop (5 cards in groups). Captured: the hero (All tab, groups column, five header buttons), the Claude tab (reached with Left twice; "6 prompts (7 sent)"), the top of Settings (the shortcut list; the chips "7 items · 3.3 MB · 1 pinned · 5 in groups"), and the update dialog under its highlighted button. The three window photos kept their sizes (692×947, 626×947, 1388×1307); `update.png` is 960×1033, composed from two screen captures by the new `tools/readme/compose-shot.py`, with 32 px of wallpaper on every side. The desktop was deleted with its persist folder | claude-desktops MCP tools (UIA, keys, mouse, drag), in-desktop PowerShell (`capture-window.ps1`, the new `capture-screen.ps1`), Pillow on this PC | ✅ four photos. Found on the way: a second selection bar after leaving a prompt or shell tab (two rows below) |
+| **The regular instance against the real GitHub, with an offer** (the same desktop; the build is labelled 0.2.3, so the real feed's 0.2.5 is newer). Started with the check off (`--set-update-check off`; the installer gates `-NoUpdateCheck` on ≥ 0.2.6): "automatic check off", a plain update button, no request. Settings › Updates: the switch on, then *Check now*: "BetterClipboard 0.2.5 is available. You have 0.2.3. Released Sat 8:44 AM. …", the accent button "Update to 0.2.5…", and the panel's update button filled. The dialog: the title, *Update and restart* / *Later* / *Skip this version*, then "What is new" with the real release notes (a code block, bold and italic text, a link, nested bullets). *Update and restart*: "Downloading BetterClipboard 0.2.5… 35.5 of 70.8 MB" with the ring in the header. The log: approved (74,280,969 bytes); 5 s later "Update package verified: its SHA-256 matches the release's checksum list"; "Starting the installer for 0.2.5"; 4 s later the warning "Update to 0.2.5 failed (Installer): The installer ended before it could start (code 1) …", the same text in the dialog's error bar, and the app still running under its process id. The 0.2.5 release's `install.ps1` has no update mode, so Windows PowerShell refused the arguments before the script ran. After a restart of the app, the button was filled again without a request (the cached list) | screenshots, the app's log, a listing of `updates\` | ✅ the offer, a real download, the checksum check and the hand-over, with a real release. Still open: a release whose installer has update mode (the first one after 0.2.6, §6) |
+| **A second selection bar after leaving a prompt or shell tab** (found and fixed 2026-10-09, `2f86791`, §2.27). Before, on the build of `7d7df8d`: All → Left (Codex) → Right (All) showed the bar on the first and the second card, 2 of 2; Codex → Claude showed it on another row, 2 of 3; UI Automation reported only the first row as selected. Clean before the fix: Down and Up, All → Pinned → All, All → Images → All, Images → Text (the tabs that patch their list). After the fix (a package of the fixed code installed over the running copy): All → Codex → All, All → Codex → Claude, Claude → Cmd → Pwsh, and Pwsh → Cmd → Claude → Codex → All gave one bar each; an invalid regular expression showed its empty state, and the list came back with one bar; no warning in the log; the first summon took 104 ms. Solution build: 0 errors, 0 doc warnings | region screenshots of the panel after each key sequence, `find_elements` for the rows' states | ✅ on the GPU-less VM. Not checked: the Everything tab (the same code path as the shell tabs), real hardware |
 | **Update system** (§2.29, 2026-10-09), end to end on a claude-desktops Windows 11 VM ("bc-update": Windows 11 Pro 25H2 26200, 1600×900 at 100 %, an administrator with UAC off, no GPU). Self-contained packages `0.2.6` and `0.2.7` built from the working tree; a stand-in feed on 127.0.0.1 (an `HttpListener` script with a request log and a throttle). Three passes, the desktop reset before the second and the third; the third ran the final build. (1) `install.ps1 -Package <0.2.6 zip> -NoLaunch`: verified against the `SHA256SUMS.txt` next to it, installed, Win+V released, the closing note about the update check with the privacy link; a seeded Run-key neighbor kept. (2) An isolated instance from the installed folder (its own data folder with a copy of `installer.json`, and `BETTERCLIPBOARD_UPDATE_FEED`): "installed by the installer (it can update itself); automatic check on"; the automatic check ran 62–64 s after the app started, 60 s after the update service did (`User-Agent: BetterClipboard/0.2.6`), and found 0.2.7; the update button had the accent fill and the name "Update available: BetterClipboard 0.2.7". (3) The dialog opened under its button: at full height with the panel in the upper half of the screen, shortened to about 500 DIPs, down to just above the taskbar, with the panel in the lower half. *Update and restart* / *Later* / *Skip this version*, then "What is new" with every kind of block drawn (headings, nested bullets, numbered items, a code block, a quote, a table, task boxes, a rule, links). (4) *Update and restart*: "13.8 of 71.1 MB", "37.1 of 71.1 MB" with the ring in the header button; "Installing…"; the app exited 11–22 s after the package was verified, and 0.2.7 started 7–15 s later as the same isolated instance (its parent: the installer's PowerShell), with the notification "BetterClipboard was updated to 0.2.7". Product version, Installed-apps `DisplayVersion` and the instance's `installer.json`: 0.2.7; `updates\` held only the cache; the transcript ended "BetterClipboard was updated to 0.2.7."; 0 WRN/ERR; a copy made before the update was still in the history. (5) Afterwards: "BetterClipboard is up to date", "What is new in this version", "0.2.7 · 9 Oct 2026". (6) Settings › Updates: the status line, "Update to 0.2.8…" as the accent button and the dialog under it; *Cancel* during a download ("cancelled before anything was installed", the partial file gone); *Skip this version* (button plain, `SkippedUpdateVersion` 0.2.8) and *Stop skipping this version*. (7) Failures: a package whose installer has no update mode (the real 0.2.5 zip offered as 0.2.8): the app kept running and showed "The installer ended before it could start (code 1) …" in an error bar, and the log of the earlier update was gone; a checksum the package does not have: "The download does not match the release's checksum, so it was deleted …"; the install folder held open by another process: 20 rename attempts, the old folder back, 0.2.7 started again in the background, and the notification "The update to 0.2.9 was not installed" ("… then update again."); another version offered after a failure: the old failure text gone. (8) The tray menu's *Update to 0.2.8…* opened the panel with the dialog. (9) A copy without the installer's record: *Download page* / *Copy install command* / *Later*; the command was on the clipboard and was not recorded as a copy. A copy in a `…\lib\betterclipboard\tools\app` folder: no request until *Check now*, then *Copy command*. (10) Requests: one per check; none when the dialog opened within 5 minutes of the last check; after 5 minutes, and across a restart, a conditional request (`If-None-Match`) answered 304; `--set-update-check off` while the app runs: exit 3 | `desktop_call` (keys, clicks, UIA, screenshots, `run_command`); recordings `bc-update-flow-1.mp4`, `-final.mp4` and `-pass3.mp4` in the desktop's persist folder; scratch `vm/feed-server.ps1`, `make_feed.py`, `make_variants.py` (session 3103c128) | ✅ after nine fixes the passes found: the bubble moved away from its button (now `UpdateDialogLayout`), the notes' scroll position not reset, uneven task boxes, a warning at exit ("Closing the update dialog failed"), the isolated instance coming back as the regular one (the restart went through Explorer), a failure pointing at the log of an earlier update, a failed installation's text under a newer offer, leftover packages of other versions, and "run the installer again" in an update's failure text. Not run: a standard user, UAC on, ARM64 |
 | The regular instance against the real GitHub (the same VM, first pass; 0.2.6 installed with `-Package … -NoUpdateCheck`): settings `CheckForUpdates: false`; log "Automatic update check switched off from the command line", then "automatic check off". Settings › Updates › *Check now*: "BetterClipboard is up to date. Version 0.2.6, newer than the latest release (0.2.5). Checked just now." The dialog: "The latest release", "0.2.5 · 3 Oct 2026" and the real release notes. *View on GitHub* opened the release page in Edge, and the panel got out of the way. Esc closed the dialog and the search box took the keys again; a click on another app closed the dialog and the panel; a second click on the button closed the dialog. Before the install, six refusals (`-Update` with `-AddToPath`, `-PackageSha256` without `-Package`, a wrong hash, `-Update` without an installed copy, a missing package, a malformed hash): exit 1 each, nothing installed, no staging folder | the same desktop | ✅ An offer to the regular instance needs a release above the running version: none exists yet (§6) |
 | The update button does not slow the summon (same VM, quiet): the unchanged head (`92639ea`) and the final build, each as an isolated instance from its own folder, 8 alternating runs each with the order swapped halfway. The first summon after the warm-up, from the app's log ("Panel on screen N ms"): 53–86 ms (mean 66) without the button, 47–82 ms (mean 67) with it. The warm-up: 340–1,281 ms (median 403) without, 296–632 ms (median 369) with. The second build of each pair was 10–15 ms slower whichever build it was | scratch `summon-compare.ps1` in the desktop (`--background`, 16 s, `--show-flyout`, `--exit`, the log lines) | ✅ no difference. One first summon right after an update took 912 ms on the busy desktop |
@@ -4001,8 +4060,7 @@ button (an isolated instance with a stand-in feed shows it without a real releas
   - check after Explorer's restart whether a released key really became free, and take the letter out again when not
     (Win+C on 25H2 stays with another part of Windows);
   - ~~the Chocolatey package's uninstall gives back only Win+V~~ (done 2026-10-03, §3.2);
-  - the README's Settings photo (`docs/images/settings.png`, bb40f51) shows 0.2.5's single shortcut box: re-shoot it
-    with `tools/readme` once the list ships;
+  - ~~the README's Settings photo shows 0.2.5's single shortcut box~~ (retaken 2026-10-09 with the list, §3.4);
   - the Settings remove button could offer a released Win+letter key back (today only a stray Win+V is offered);
   - an interactive shortcut picker in the installer when `-NoTakeOverWinV` comes without `-Hotkey` (today: Alt+Win+V).
 - Export/backup with a user password (re-seal the DEK; the database itself need not be re-encrypted).
@@ -4012,9 +4070,11 @@ button (an isolated instance with a stand-in feed shows it without a real releas
 - winget manifest. (The in-app update check against GitHub releases is built: §2.29. The README names it and both
   switches, §3.3.)
 - Updates (§2.29), next steps:
-  - **The first release after 0.2.6 is the first real run of the regular instance.** Watch it on a test desktop
-    (install 0.2.6 with the README's command, wait for the highlighted button, update) before announcing it.
-  - Retake the README photos: the header has a fifth button, and the update dialog deserves a photo (§3.4).
+  - **The first release after 0.2.6 is the first whole run with a real release.** Watch it on a test desktop
+    (install 0.2.6 with the README's command, wait for the highlighted button, update) before announcing it. The
+    offer, the download, the checksum check and the hand-over ran with the real 0.2.5 on 2026-10-09 (a build labelled
+    0.2.3, §5); the installer's half ran only with stand-in releases.
+  - Retake `docs/images/update.png` then: it shows a build labelled 0.2.3 that is offered 0.2.5 (§3.4).
   - Run the update as a standard user and with UAC on, and on ARM64.
   - Once releases are signed (§3.3): check the Authenticode signer of the package's `BetterClipboard.exe` before
     its installer runs, so that matching checksums on a taken-over GitHub account are not enough.

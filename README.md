@@ -10,7 +10,7 @@ you send to Claude Code and Codex.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 <p align="center">
-  <img src="docs/images/panel.png" width="461" alt="The BetterClipboard panel, opened with Win+V. Left: the groups column with three group icons. Top: the search box with its Aa, W and .* toggles, and the tabs All, Pinned, Text, Images, Links, Files and Snipping, with an arrow that scrolls to more. Cards: a pinned reply from Notepad, a Snipping Tool screenshot with its eye button, a GitHub link from Microsoft Edge, the color #7C3AED with its swatch, and two files from Windows Explorer.">
+  <img src="docs/images/panel.png" width="461" alt="The BetterClipboard panel, opened with Win+V. Left: the groups column with three group icons. Top: the header's buttons (update, pause, groups, clear, settings), the search box with its Aa, W and .* toggles, and the tabs All, Pinned, Text, Images, Links, Files and Snipping, with an arrow that scrolls to more. Cards: a pinned reply from Notepad, a Snipping Tool screenshot with its eye button, a GitHub link from Microsoft Edge, the color #7C3AED with its swatch, and two files from Windows Explorer.">
 </p>
 
 ## Features
@@ -129,6 +129,10 @@ way: check the hash, then *More info › Run anyway*. See [Code signing policy](
 BetterClipboard updates itself from its [GitHub releases](https://github.com/Nucs/BetterClipboard/releases), and only
 when you say so.
 
+<p align="center">
+  <img src="docs/images/update.png" width="640" alt="The update dialog, open under the highlighted update button in the panel's header. It says that BetterClipboard 0.2.5 is available and which version you have, with the buttons Update and restart and Later, and the link Skip this version. Below them: What is new, a View on GitHub link, and the release notes with a command, text, a link and a list.">
+</p>
+
 - **The update button** is in the panel's header, left of Pause. It looks like its neighbors while you have the latest
   version. When a newer release exists, it is filled with your accent color, and the tray icon's menu gets
   *Update to x.y.z…*.
@@ -201,7 +205,7 @@ The tray icon opens the panel and Settings:
   links.
 
 <p align="center">
-  <img src="docs/images/settings.png" width="694" alt="BetterClipboard Settings: the app's name and three chips (Capturing; Win+V; 8 items, 3.4 MB, 1 pinned, 6 in groups), then the Shortcut section and the History section.">
+  <img src="docs/images/settings.png" width="694" alt="BetterClipboard Settings: the app's name and three chips (Capturing; Win+V; 7 items, 3.3 MB, 1 pinned, 5 in groups). Then the Shortcut section: the box that records a shortcut with its Add button and menu, the Win+V row, the switch that takes over shortcuts owned by Windows, and Release from Explorer. Then the History section: maximum items, days to keep, largest item.">
 </p>
 
 ### Tabs
