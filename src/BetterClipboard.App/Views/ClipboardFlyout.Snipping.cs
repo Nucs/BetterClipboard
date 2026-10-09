@@ -10,11 +10,16 @@ public sealed partial class ClipboardFlyout
 {
     /// <summary>
     /// The Screenshots folder watch started or stopped, the setting changed, or a screenshot came in (UI thread): show or
-    /// hide the tab. A new screenshot reaches an open tab through the history's own change events, like any copy.
+    /// hide the tab, and prepare the hidden panel for it when it is the tab the user last chose and has just come (back).
+    /// A new screenshot reaches an open tab through the history's own change events, like any copy.
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
-    private void OnSnippingStatusChanged(object? sender, EventArgs e) => UpdateSnippingTab();
+    private void OnSnippingStatusChanged(object? sender, EventArgs e)
+    {
+        UpdateSnippingTab();
+        ReturnToRememberedTabWhileConcealed();
+    }
 
     /// <summary>
     /// Shows the Snipping tab while Settings › Snipping Tool and Win+PrtScn is on. If it disappears while selected, the

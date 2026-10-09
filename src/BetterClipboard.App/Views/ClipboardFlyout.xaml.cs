@@ -70,6 +70,12 @@ namespace BetterClipboard.App.Views;
 /// names them ("Clipboard › Work + Home"), the footer counts the merged list, and a card's "Remove from …" takes it out
 /// of every shown group it is in (<see cref="GroupViewText"/> words all of it).
 /// </para>
+/// <para>
+/// <b>Getting around</b> (ClipboardFlyout.Navigation.cs). A summon opens in the tab the user last chose
+/// (<see cref="AppSettings.LastTab"/>). Up and Down move through the rows, Left and Right through the tabs in a circle, and
+/// Up from the top row walks into the groups column, where Up and Down then step through the groups until Right goes
+/// back to the list. The mouse selects the row it is over, once it really moved.
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
 {
@@ -161,7 +167,13 @@ public sealed partial class ClipboardFlyout : Window
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
         controller.PromptsStatusChanged += OnPromptsStatusChanged;
         controller.GroupsChanged += OnGroupsChanged;
-        ViewModel.GroupsReloaded += (_, _) => RebuildGroupButtons();
+        ViewModel.GroupsReloaded += (_, _) =>
+        {
+            RebuildGroupButtons();
+
+            // The arrow keys cannot walk a column that lost its last group: back to the rows.
+            EndGroupsNavigationIfUnreachable();
+        };
 
         // The filter tabs scroll sideways when they do not fit (arrows, wheel, drags): ClipboardFlyout.TabStrip.cs.
         InitializeTabStrip();
@@ -171,6 +183,9 @@ public sealed partial class ClipboardFlyout : Window
             // group) must move the highlights.
             if (e.PropertyName == nameof(FlyoutViewModel.GroupSelection))
             {
+                // A change the arrow keys did not make themselves ends their walk through the column: the icon they
+                // were on may no longer be the one shown.
+                EndGroupsNavigationUnlessMoving();
                 UpdateGroupSelectionVisuals();
             }
 
@@ -180,6 +195,9 @@ public sealed partial class ClipboardFlyout : Window
                 GroupTitleColumn.Width = ViewModel.GroupTitle.Length == 0 ? GridLength.Auto : new GridLength(1, GridUnitType.Star);
             }
         };
+
+        // The remembered tab, the arrow keys beyond Up and Down, and the mouse selecting rows: ClipboardFlyout.Navigation.cs.
+        InitializeNavigation();
         ItemsList.Loaded += (_, _) => HookScrollViewer();
 
         // The very first summon runs ShowAt and OnActivated before the XAML tree is loaded, when Focus() is a silent no-op,
@@ -211,6 +229,9 @@ public sealed partial class ClipboardFlyout : Window
         // a card selected across their reload (a history change, a prompt tab) select it again after awaiting the reload.
         ViewModel.Reloaded += (_, _) =>
         {
+            // The rows changed under a mouse that may lie on the list: until it really moves, it must not take the
+            // selection from the card just armed (WinUI reports "pointer entered" to whichever row is under it now).
+            SuspendPointerSelection();
             if (ViewModel.Items.Count > 0)
             {
                 SelectIndex(0);
@@ -367,18 +388,10 @@ public sealed partial class ClipboardFlyout : Window
 
             // The resets of a summon. Concealing did them already (PrepareForNextSummon), so they are no-ops then; they still
             // run for a summon before the warm-up, and for whatever changed meanwhile (theme, tabs, the groups column).
+            // The view starts in the tab the user last chose, with the strip placed so that this tab shows, wherever the
+            // last use of the panel left it (ResetViewForShow).
             controller.ApplyTheme(Root);
-            ViewModel.ResetForShow();
-            UpdateShareXTab();
-            UpdateSnippingTab();
-            UpdateEverythingTab();
-            UpdateRunTab();
-            UpdateShellTabs();
-            UpdatePromptTabs();
-            SelectFilter(ClipFilter.All);
-
-            // "All" is the first tab: the strip starts at its beginning again, wherever the last summon left it.
-            ResetTabStrip();
+            ResetViewForShow();
             var settings = controller.Settings.Current;
             groupsPaneOpen = settings.ShowGroupsPane;
             ApplyGroupsPaneLayout();
@@ -410,6 +423,10 @@ public sealed partial class ClipboardFlyout : Window
             // Relative times ("5 min ago") are recomputed before the panel shows, so its first frame has them right.
             ViewModel.RefreshCaptions();
 
+            // The panel may appear right under the mouse, and Windows then tells it that the pointer "moved": the mouse
+            // selects no row until it has really left the spot it is on now, so the first card stays the armed one.
+            SuspendPointerSelection();
+
             // On screen in one step: no fade, no slide, no DWM animation (ClipboardFlyout.Summon.cs has the numbers).
             await PresentAsync(rect);
             if (!presented)
@@ -419,6 +436,10 @@ public sealed partial class ClipboardFlyout : Window
 
             long onScreen = Stopwatch.GetTimestamp();
             SearchBox.Focus(FocusState.Programmatic);
+
+            // The summon "entered" the tab it starts in, although no click selected it: what entering does besides showing
+            // the list (the Run tab's rescan, a prompt tab's catch-up) runs now, next to the reload below.
+            EnterTab(ViewModel.Filter);
 
             // Groups are loaded while concealed and on every GroupsChanged; only a summon before the first load reads them
             // here, alongside the list (cards created before they arrive get their badges when LoadGroupsAsync refreshes them).
@@ -568,7 +589,14 @@ public sealed partial class ClipboardFlyout : Window
         ViewModel.MarkHistoryChanged();
         if (!IsOpen)
         {
-            ScheduleConcealedRefresh();
+            // Only a view of stored history is refreshed for a history change. A remembered tab of another app would ask
+            // that app again after every copy (Everything, the shells' histories, the prompt archive), for a list the next
+            // summon reloads anyway (FlyoutViewModel.IsStoredHistoryView).
+            if (ViewModel.IsStoredHistoryView)
+            {
+                ScheduleConcealedRefresh();
+            }
+
             return;
         }
 
@@ -599,8 +627,10 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Keyboard model: arrows move, Enter pastes, Esc closes, Ctrl+P pins, Del deletes, Ctrl+1..9 quick-paste, Alt+C /
-    /// Alt+W / Alt+E toggle the search box's match case / whole word / regular expression.
+    /// Keyboard model: Up and Down move through the rows (Up from the top row walks into the groups column), Left and
+    /// Right through the tabs in a circle, Enter pastes, Esc closes, Ctrl+P pins, Del deletes, Ctrl+1..9 quick-paste,
+    /// Alt+C / Alt+W / Alt+E toggle the search box's match case / whole word / regular expression. The arrow keys' rules
+    /// are <see cref="PanelNavigation"/>'s (ClipboardFlyout.Navigation.cs acts on them).
     /// </summary>
     /// <param name="sender">Root grid.</param>
     /// <param name="e">Key data.</param>
@@ -625,19 +655,35 @@ public sealed partial class ClipboardFlyout : Window
 
         // Alt alone: AltGr arrives as Ctrl+Alt, and on many layouts AltGr+C/E types a letter (Polish ć, ę, ...).
         bool altOnly = IsKeyDown(VirtualKey.Menu) && !ctrl;
+
+        // A key that repeats because it is held down stops at an edge (the top row, the last tab); only a new press
+        // crosses it (PanelNavigation).
+        bool repeat = e.KeyStatus.WasKeyDown;
         switch (e.Key)
         {
             case VirtualKey.Down:
-                MoveSelection(1);
+                MoveVertical(1, repeat);
                 break;
             case VirtualKey.Up:
-                MoveSelection(-1);
+                MoveVertical(-1, repeat);
                 break;
             case VirtualKey.PageDown:
-                MoveSelection(5);
+                MoveVertical(PanelNavigation.PageStep, repeat);
                 break;
             case VirtualKey.PageUp:
-                MoveSelection(-5);
+                MoveVertical(-PanelNavigation.PageStep, repeat);
+                break;
+            case VirtualKey.Left:
+            case VirtualKey.Right:
+                // With Ctrl, Shift, Alt or Win held these are text-editing keys (word jumps, selections) or someone
+                // else's shortcut; without, they switch tabs unless the search text is being edited.
+                bool modified = ctrl || shift || IsKeyDown(VirtualKey.Menu) || IsKeyDown(VirtualKey.LeftWindows) || IsKeyDown(VirtualKey.RightWindows);
+                if (!MoveHorizontal(e.Key == VirtualKey.Right, repeat, modified, typedIntoText: e.OriginalSource is TextBox))
+                {
+                    NoteKeyLeftToText(e);
+                    return; // the search box's: its caret moves
+                }
+
                 break;
             case VirtualKey.Enter:
                 _ = PasteBestMatchAsync(ctrl, shift);
@@ -718,7 +764,10 @@ public sealed partial class ClipboardFlyout : Window
 
                 break;
             default:
-                return; // not ours: let the search box handle typing
+                // Not ours: let the search box handle typing. A key that edits its text also hands Left and Right back to
+                // the text (ClipboardFlyout.Navigation.cs).
+                NoteKeyLeftToText(e);
+                return;
         }
 
         e.Handled = true;
@@ -942,18 +991,26 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Starts thumbnail loading as cards are realized (virtualization-friendly lazy loading).</summary>
+    /// <summary>
+    /// Starts thumbnail loading as cards are realized (virtualization-friendly lazy loading), and makes every row report
+    /// the mouse coming over it (<see cref="WatchCardPointer"/>: hovering selects).
+    /// </summary>
     /// <param name="sender">List.</param>
     /// <param name="args">Container data.</param>
     private void ItemsList_ContainerContentChanging(ListViewBase sender, ContainerContentChangingEventArgs args)
     {
+        // Also for a row on its way into the recycle queue: it is marked once, whichever call comes first.
+        WatchCardPointer(args.ItemContainer);
         if (!args.InRecycleQueue && args.Item is ClipItemViewModel item)
         {
             item.EnsureThumbnail();
         }
     }
 
-    /// <summary>Filter pill changed.</summary>
+    /// <summary>
+    /// Filter pill changed: the list follows. A tab picked while the panel shows is also remembered for the next summon,
+    /// and entered (<see cref="EnterTab"/>).
+    /// </summary>
     /// <param name="sender">Selector bar.</param>
     /// <param name="args">Change data.</param>
     private void Filters_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
@@ -961,19 +1018,42 @@ public sealed partial class ClipboardFlyout : Window
         if (sender.SelectedItem?.Tag is string tag && Enum.TryParse<ClipFilter>(tag, out var filter))
         {
             ViewModel.Filter = filter;
-
-            // Entering the Run tab rescans Windows' Win+R list: the live watch normally has every run already, and
-            // this catches anything it could not see (a watch that failed to start, a list edited by hand).
-            if (filter == ClipFilter.Run)
+            if (!IsOpen)
             {
-                _ = RescanRunTabAsync();
+                // Selected by a reset while nobody looks (or by the bar itself while it loads): no choice of the user's,
+                // and nothing to catch up for — the summon enters its tab when it shows (ShowAt).
+                return;
             }
 
-            // Entering a prompt tab catches its archive up: the poll may not have looked at a Codex thread just written.
-            if (filter is ClipFilter.ClaudeCode or ClipFilter.Codex)
+            // A click, a key or a screen reader's select is the user's choice; a selection from code (the fallback when
+            // the selected tab disappears) is not, and must not replace the tab the user wants to come back to.
+            if (!selectingFilterFromCode)
             {
-                _ = CatchUpPromptTabAsync(filter == ClipFilter.Codex ? Core.Prompts.PromptAgent.Codex : Core.Prompts.PromptAgent.ClaudeCode);
+                RememberTab(filter);
             }
+
+            EnterTab(filter);
+        }
+    }
+
+    /// <summary>
+    /// What entering a tab does besides showing its list: a rescan of Windows' Win+R list for the Run tab, a catch-up of
+    /// the agent's archive for a prompt tab. Called for a tab picked while the panel shows, and for the tab a summon starts in.
+    /// </summary>
+    /// <param name="filter">The tab.</param>
+    private void EnterTab(ClipFilter filter)
+    {
+        // Entering the Run tab rescans Windows' Win+R list: the live watch normally has every run already, and
+        // this catches anything it could not see (a watch that failed to start, a list edited by hand).
+        if (filter == ClipFilter.Run)
+        {
+            _ = RescanRunTabAsync();
+        }
+
+        // Entering a prompt tab catches its archive up: the poll may not have looked at a Codex thread just written.
+        if (filter is ClipFilter.ClaudeCode or ClipFilter.Codex)
+        {
+            _ = CatchUpPromptTabAsync(filter == ClipFilter.Codex ? Core.Prompts.PromptAgent.Codex : Core.Prompts.PromptAgent.ClaudeCode);
         }
     }
 
@@ -1049,12 +1129,18 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="e">Event data.</param>
     private void Popup_Opened(object? sender, object e) => openPopups++;
 
-    /// <summary>Tracks our own popups closing.</summary>
+    /// <summary>
+    /// Tracks our own popups closing. The mouse may now lie over any row (a menu covers several): it selects none until it
+    /// really moves again, so the card the menu belonged to stays the selected one.
+    /// </summary>
     /// <param name="sender">Popup.</param>
     /// <param name="e">Event data.</param>
     private void Popup_Closed(object? sender, object e)
     {
         openPopups = Math.Max(0, openPopups - 1);
+
+        // A popup going away is not a move of the mouse, but WinUI reports "pointer entered" to the row it uncovers.
+        SuspendPointerSelection();
         SearchBox.Focus(FocusState.Programmatic);
     }
 
@@ -1542,6 +1628,9 @@ public sealed partial class ClipboardFlyout : Window
         {
             _ = ViewModel.ReloadAsync();
         }
+
+        // The tab the user last chose may just have come (back): the hidden panel is prepared for it.
+        ReturnToRememberedTabWhileConcealed();
     }
 
     /// <summary>
@@ -1560,19 +1649,6 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>The selected card, if any.</summary>
     private ClipItemViewModel? Selected => ItemsList.SelectedItem as ClipItemViewModel;
-
-    /// <summary>Moves the selection by <paramref name="delta"/> rows, clamped.</summary>
-    /// <param name="delta">Rows to move.</param>
-    private void MoveSelection(int delta)
-    {
-        if (ViewModel.Items.Count == 0)
-        {
-            return;
-        }
-
-        int current = ItemsList.SelectedIndex < 0 ? -1 : ItemsList.SelectedIndex;
-        SelectIndex(Math.Clamp(current + delta, 0, ViewModel.Items.Count - 1));
-    }
 
     /// <summary>Selects a row and scrolls it into view.</summary>
     /// <param name="index">Row index.</param>
@@ -1633,6 +1709,9 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="e">Click data.</param>
     private void LogoButton_Click(object sender, RoutedEventArgs e)
     {
+        // The mouse took over: a walk of the arrow keys through the column ends (also when the regular view was shown
+        // already, where the selection does not change and no change event would end it).
+        LeaveGroupsNavigation();
         ViewModel.ShowAllHistory();
         SearchBox.Focus(FocusState.Programmatic);
     }
@@ -1658,6 +1737,12 @@ public sealed partial class ClipboardFlyout : Window
         groupsPaneOpen = open;
         AppLog.Info(open ? "Groups column opened." : "Groups column closed.");
         controller.Settings.Update(s => s with { ShowGroupsPane = open });
+        if (!open)
+        {
+            // The arrow keys cannot walk a column that is not there: Up and Down are the rows' again.
+            LeaveGroupsNavigation();
+        }
+
         if (!open && ViewModel.IsGroupView)
         {
             ViewModel.ShowAllHistory();
@@ -1759,6 +1844,9 @@ public sealed partial class ClipboardFlyout : Window
     /// </remarks>
     private void ClickGroup(long groupId)
     {
+        // A click is the mouse's (or a screen reader's) choice of groups: a walk of the arrow keys through the column
+        // ends, also when the click changes nothing that is shown.
+        LeaveGroupsNavigation();
         ViewModel.ClickGroup(groupId, ctrl: IsKeyDown(VirtualKey.Control), shift: IsKeyDown(VirtualKey.Shift));
         SearchBox.Focus(FocusState.Programmatic);
     }
@@ -1813,28 +1901,40 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>
     /// Highlights the regular-view logo or every group icon shown (one, or several merged), only while the column is
     /// open, and tells screen readers which icons are shown (their item status), since they cannot see the highlight.
+    /// While the arrow keys walk the column, the icon they are on also gets its ring
+    /// (<see cref="GroupCursorPosition"/>).
     /// </summary>
     private void UpdateGroupSelectionVisuals()
     {
         var selection = ViewModel.GroupSelection;
+
+        // Positions as PanelNavigation counts them: 0 is the logo, 1.. the groups in column order (the order of the
+        // buttons, which RebuildGroupButtons creates from the same list). -1 while the keys are on the rows.
+        int cursor = groupsNavigation ? GroupCursorPosition() : -1;
+        int position = 0;
         foreach (var button in GroupButtons.Children.OfType<Button>())
         {
+            position++;
             bool shown = button.Tag is long id && selection.Contains(id);
-            button.Style = GroupStyle(selected: shown);
+            button.Style = GroupStyle(selected: shown, keyboard: position == cursor);
             AutomationProperties.SetItemStatus(button, shown ? ShownItemStatus : string.Empty);
         }
 
         // Style resets Width: set it again right after, the logo's width depends on the column state.
-        LogoButton.Style = GroupStyle(selected: groupsPaneOpen && selection.IsEmpty);
+        LogoButton.Style = GroupStyle(selected: groupsPaneOpen && selection.IsEmpty, keyboard: cursor == 0);
         LogoButton.Width = groupsPaneOpen ? LogoOpenDip : LogoClosedDip;
         LogoButton.Height = 32;
     }
 
     /// <summary>The group-icon style for a state (see App.xaml: whole styles, so brushes follow the flyout's theme).</summary>
     /// <param name="selected">Selected look.</param>
+    /// <param name="keyboard">
+    /// The arrow keys are on this icon (they walk the groups column): the selected look with a ring, whatever
+    /// <paramref name="selected"/> says — the icon the keys are on is always the one shown.
+    /// </param>
     /// <returns>The style.</returns>
-    private static Style GroupStyle(bool selected) =>
-        (Style)Application.Current.Resources[selected ? "GroupButtonSelectedStyle" : "GroupButtonStyle"];
+    private static Style GroupStyle(bool selected, bool keyboard = false) =>
+        (Style)Application.Current.Resources[keyboard ? "GroupButtonKeyboardStyle" : selected ? "GroupButtonSelectedStyle" : "GroupButtonStyle"];
 
     /// <summary>Shows or clears the drop highlight of a group icon.</summary>
     /// <param name="button">The icon.</param>
@@ -2208,10 +2308,17 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>ShareX was found or lost (UI thread): show or hide its tab.</summary>
+    /// <summary>
+    /// ShareX was found or lost (UI thread): show or hide its tab, and prepare the hidden panel for it when it is the tab
+    /// the user last chose and has just come (back).
+    /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
-    private void OnShareXStatusChanged(object? sender, EventArgs e) => UpdateShareXTab();
+    private void OnShareXStatusChanged(object? sender, EventArgs e)
+    {
+        UpdateShareXTab();
+        ReturnToRememberedTabWhileConcealed();
+    }
 
     /// <summary>
     /// Shows the ShareX tab only while ShareX is installed. If it disappears while selected, falls back to
@@ -2227,10 +2334,17 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>The Win+R history was switched on or off, read, or recorded a run (UI thread): show or hide the Run tab.</summary>
+    /// <summary>
+    /// The Win+R history was switched on or off, read, or recorded a run (UI thread): show or hide the Run tab, and prepare
+    /// the hidden panel for it when it is the tab the user last chose and has just come (back).
+    /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
-    private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => UpdateRunTab();
+    private void OnRunHistoryStatusChanged(object? sender, EventArgs e)
+    {
+        UpdateRunTab();
+        ReturnToRememberedTabWhileConcealed();
+    }
 
     /// <summary>
     /// Shows the Run tab only while Settings › Win+R history is on. If it disappears while selected, falls back to
@@ -2285,19 +2399,48 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Selects a filter pill from code (on show, and when the selected tab disappears). While the panel is open the tab
-    /// strip then scrolls the pill into view: unlike a click or a key, a selection from code brings nothing into view by
-    /// itself. (On show the strip is reset to its start right after, where "All" is.)
+    /// Selects a filter pill from code (on show, for a Left or Right key, and when the selected tab disappears). While the
+    /// panel is open the tab strip then scrolls the pill into view: unlike a click or a key in the strip, a selection from
+    /// code brings nothing into view by itself. (On show the strip is placed for the pill right after,
+    /// <see cref="PlaceTabStripForShow"/>.)
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Not a choice of the user's by itself: <see cref="Filters_SelectionChanged"/> remembers only tabs picked otherwise
+    /// (<see cref="selectingFilterFromCode"/>); a caller that acts for the user (the arrow keys) remembers the tab itself.
+    /// </para>
+    /// <para>
+    /// <b>Before the bar has loaded</b> (a summon before the warm-up) the tabs' own <c>IsSelected</c> flags are set too.
+    /// The bar's inner <see cref="ItemsView"/> selects every tab it finds flagged when it first prepares its tabs
+    /// (<c>ItemsView::OnItemsRepeaterElementPrepared</c> in microsoft-ui-xaml), and the XAML flags "All": without clearing
+    /// that flag, loading would put the selection back on "All" whatever was selected here. Once loaded, the bar keeps the
+    /// flags in step by itself.
+    /// </para>
+    /// </remarks>
     /// <param name="filter">The filter.</param>
     private void SelectFilter(ClipFilter filter)
     {
-        foreach (var item in Filters.Items)
+        bool loaded = Filters.IsLoaded;
+        selectingFilterFromCode = true;
+        try
         {
-            if (item.Tag is string tag && tag == filter.ToString())
+            foreach (var item in Filters.Items)
             {
-                Filters.SelectedItem = item;
+                bool wanted = item.Tag is string tag && tag == filter.ToString();
+                if (!loaded && item.IsSelected != wanted)
+                {
+                    item.IsSelected = wanted;
+                }
+
+                if (wanted)
+                {
+                    Filters.SelectedItem = item;
+                }
             }
+        }
+        finally
+        {
+            selectingFilterFromCode = false;
         }
 
         if (IsOpen)

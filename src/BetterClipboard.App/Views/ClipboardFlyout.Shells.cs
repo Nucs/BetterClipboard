@@ -28,6 +28,9 @@ public sealed partial class ClipboardFlyout
         {
             _ = ViewModel.ReloadAsync();
         }
+
+        // The tab the user last chose may just have come (back): the hidden panel is prepared for it.
+        ReturnToRememberedTabWhileConcealed();
     }
 
     /// <summary>

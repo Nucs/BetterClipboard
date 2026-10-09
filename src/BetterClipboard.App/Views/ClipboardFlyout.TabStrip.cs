@@ -28,6 +28,11 @@ namespace BetterClipboard.App.Views;
 /// scroll (<see cref="IsDragSurface"/>); while every tab fits, its empty space still does, as before.
 /// </para>
 /// <para>
+/// <b>A summon</b> starts in the tab the user last chose (ClipboardFlyout.Navigation.cs), so the strip is placed for that
+/// tab — at its start when the tab lies in the first screenful, otherwise just far enough to show it
+/// (<see cref="PlaceTabStripForShow"/>) — and keeps it in view until the user scrolls the strip.
+/// </para>
+/// <para>
 /// <b>The SelectorBar's template is adjusted twice</b> (<see cref="PrepareTabBarTemplate"/>). It wraps the tabs in an
 /// <see cref="ItemsView"/> whose <see cref="ScrollView"/> would claim touch and wheel input at the compositor (it redirects
 /// them to its interaction tracker) although it never has anything to scroll here — the outer viewer gives it its full
@@ -85,6 +90,20 @@ public sealed partial class ClipboardFlyout
     /// </summary>
     private (double Left, double Right, double Width, double Height)? appliedTabClip;
 
+    /// <summary>
+    /// Whether the strip is still where the last summon put it (<see cref="PlaceTabStripForShow"/>). While it is, the strip
+    /// keeps the selected tab in view by itself whenever its width or the tabs' width changes (<see cref="OnTabStripLayoutChanged"/>);
+    /// the first scroll of the strip — an arrow, the wheel, a drag, the glide to a newly selected tab — ends that
+    /// (<see cref="ScrollTabsTo"/>), because from then on the strip is where the user wants it.
+    /// </summary>
+    /// <remarks>
+    /// Why it is needed: a summon may start in any tab (the one last chosen), and the strip is placed for it while the
+    /// panel is hidden, sometimes before the tabs are laid out (a summon before the warm-up) or before the panel has its
+    /// final width (another monitor's scale, a tab that appears a moment later). Placing it once would leave the selected
+    /// tab half under an arrow in those cases.
+    /// </remarks>
+    private bool tabStripFollowsSelection;
+
     /// <summary>Whether the tabs are wider than the strip, so anything can scroll at all.</summary>
     private bool IsTabStripScrollable => TabsScroller.ScrollableWidth > TabStripScroll.EdgeTolerance;
 
@@ -108,18 +127,20 @@ public sealed partial class ClipboardFlyout
     /// <see cref="FrameworkElement.SizeChanged"/> events back the callback up (the viewer's own one also re-cuts the clip,
     /// which follows its size, and the bar's follows a tab appearing): they come after the layout pass, when
     /// <see cref="ScrollViewer.ScrollableWidth"/> is already current. <see cref="UpdateTabArrows"/> is cheap and idempotent,
-    /// so a change reported twice costs nothing.
+    /// so a change reported twice costs nothing. The size events (and the bar's load) also re-place a strip that still
+    /// follows its selected tab (<see cref="OnTabStripLayoutChanged"/>); the property callback does not, since it runs in
+    /// the middle of a layout pass, where a scroll request has no place.
     /// </remarks>
     private void InitializeTabStrip()
     {
         TabsScroller.ViewChanged += TabsScroller_ViewChanged;
         TabsScroller.RegisterPropertyChangedCallback(ScrollViewer.ScrollableWidthProperty, (_, _) => UpdateTabArrows());
-        TabsScroller.SizeChanged += (_, _) => UpdateTabArrows();
-        Filters.SizeChanged += (_, _) => UpdateTabArrows();
+        TabsScroller.SizeChanged += (_, _) => OnTabStripLayoutChanged();
+        Filters.SizeChanged += (_, _) => OnTabStripLayoutChanged();
         Filters.Loaded += (_, _) =>
         {
             PrepareTabBarTemplate();
-            UpdateTabArrows();
+            OnTabStripLayoutChanged();
         };
 
         // handledEventsToo: the SelectorBar's item containers may mark a wheel turn handled although nothing scrolled.
@@ -140,14 +161,51 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Puts the strip back at its start without animating (every summon shows "All", the first tab, selected) and forgets
-    /// any scroll still heading elsewhere.
+    /// Puts the strip where a summon shows it, without animating: at its start, or — when the tab the summon starts in
+    /// lies beyond the first screenful — scrolled just far enough that this tab is wholly visible. Forgets any scroll still
+    /// heading elsewhere and any drag, and makes the strip follow its selected tab until the user scrolls it
+    /// (<see cref="tabStripFollowsSelection"/>).
     /// </summary>
-    private void ResetTabStrip()
+    private void PlaceTabStripForShow()
     {
         tabsScrollTarget = null;
         EndTabPan(focusSearch: false);
-        TabsScroller.ChangeView(0, null, null, disableAnimation: true);
+        tabStripFollowsSelection = true;
+        PlaceTabStrip();
+        UpdateTabArrows();
+    }
+
+    /// <summary>
+    /// Scrolls the strip, without animating, to where the selected tab is wholly between the arrows, measured from the
+    /// strip's start rather than from where it is now — so the same tab always ends up at the same place, whatever the
+    /// strip did during the last use of the panel. Before the tabs are laid out it goes to the start;
+    /// <see cref="OnTabStripLayoutChanged"/> calls again once they are.
+    /// </summary>
+    private void PlaceTabStrip()
+    {
+        double target = 0;
+        if (Filters.SelectedItem is { } selected && selected.ActualWidth > 0 && IsTabStripScrollable)
+        {
+            double left = selected.TransformToVisual(Filters).TransformPoint(default).X;
+            var extent = new TabExtent(left, left + selected.ActualWidth);
+            target = TabStripScroll.Reveal(extent, 0, TabsScroller.ViewportWidth, TabsScroller.ScrollableWidth, TabArrowWidth);
+        }
+
+        TabsScroller.ChangeView(target, null, null, disableAnimation: true);
+    }
+
+    /// <summary>
+    /// The strip's width or the tabs' total width changed (the panel was resized, a tab appeared or disappeared, the tabs
+    /// were laid out for the first time): a strip that still follows its selected tab is placed again, and the arrows
+    /// follow.
+    /// </summary>
+    private void OnTabStripLayoutChanged()
+    {
+        if (tabStripFollowsSelection)
+        {
+            PlaceTabStrip();
+        }
+
         UpdateTabArrows();
     }
 
@@ -261,6 +319,9 @@ public sealed partial class ClipboardFlyout
     /// <param name="animate">Glide (arrows, wheel) or jump (a drag follows the pointer directly).</param>
     private void ScrollTabsTo(double offset, bool animate)
     {
+        // Every scroll that comes through here is a gesture or the glide to a tab just selected: from now on the strip is
+        // where the user put it, and a later change of its width must not pull it back to where the summon placed it.
+        tabStripFollowsSelection = false;
         double target = TabStripScroll.Clamp(offset, TabsScroller.ScrollableWidth);
         if (Math.Abs(target - TabsBaseOffset) <= TabStripScroll.EdgeTolerance)
         {

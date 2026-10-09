@@ -58,6 +58,17 @@
             </Style>
 
             <!--
+                The group icon the arrow keys are on (Up from the list's top row walks into the groups column,
+                ClipboardFlyout.Navigation.cs): the selected look — the list shows that group — plus an accent ring two
+                DIPs wide, so it reads as "Up and Down act here now". The keyboard focus itself stays in the search box, so
+                this ring stands in for a focus rectangle; two DIPs set it apart from the drop target's one.
+            -->
+            <Style x:Key="GroupButtonKeyboardStyle" TargetType="Button" BasedOn="{StaticResource GroupButtonSelectedStyle}">
+                <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="2" />
+            </Style>
+
+            <!--
                 The "<" / ">" arrows of the panel's tab carousel (ClipboardFlyout's TabStrip): WinUI TabView's scroll buttons
                 in look and timing — subtle fills from the theme, secondary glyph, a first repeat after a short hold
                 (Delay) and then a steady walk (Interval) — with a chevron instead of TabView's solid caret, read as "<" and

@@ -884,6 +884,19 @@ public sealed partial class AppController
     /// <summary>The paste target captured when the flyout was summoned (0 when none).</summary>
     internal nint PasteTargetWindow => pasteTarget?.TargetWindow ?? 0;
 
+    /// <summary>
+    /// Whether <see cref="ExitAsync"/> has begun: the integrations and then the history are being stopped. The panel
+    /// starts no list load from then on (<c>FlyoutViewModel.ReloadAsync</c>).
+    /// </summary>
+    /// <remarks>
+    /// Why the panel needs to know: a stopping integration still announces its last status change, and a panel that is in
+    /// that integration's tab answers with a reload. That load would still be reading when the store closes, and its end
+    /// — on whatever thread is left — was logged as an error ("Loading the flyout list failed", seen 2026-10-09 with the
+    /// panel in the Cmd tab), although nothing was wrong. A panel that opens in the tab last chosen is in such a tab far
+    /// more often than one that always opened in "All".
+    /// </remarks>
+    internal bool IsExiting => exiting;
+
     /// <summary>Capture options for the clipboard thread, from the current settings snapshot.</summary>
     /// <returns>The options.</returns>
     private CaptureOptions CreateCaptureOptions()

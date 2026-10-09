@@ -17,7 +17,9 @@ public sealed partial class ClipboardFlyout
 {
     /// <summary>
     /// A prompt tab may have appeared or disappeared, or an agent's archive changed (UI thread): update the tabs, and reload
-    /// a prompt tab of that agent while it shows, so a prompt sent meanwhile appears without reopening the panel.
+    /// a prompt tab of that agent while it shows, so a prompt sent meanwhile appears without reopening the panel. A hidden
+    /// panel that is prepared in that tab (the user last chose it) is refreshed too, so the prompt is already listed when
+    /// the next summon shows it.
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="agent">The agent whose archive or reader changed.</param>
@@ -27,6 +29,15 @@ public sealed partial class ClipboardFlyout
         if (IsOpen && ViewModel.IsPromptView && ViewModel.CurrentAgent == agent)
         {
             _ = ReloadPromptTabAsync();
+        }
+
+        // The tab the user last chose may just have come (back): the hidden panel is prepared for it (which loads it).
+        ReturnToRememberedTabWhileConcealed();
+        if (!IsOpen && ViewModel.IsPromptView && ViewModel.CurrentAgent == agent)
+        {
+            // No history event announces an archived prompt, so the hidden panel's own refresh would not see it. Queued at
+            // low priority and one at a time: a first import's stream of these events costs few refreshes.
+            ScheduleConcealedRefresh();
         }
     }
 

@@ -134,6 +134,34 @@ public sealed class GroupSelection
     public GroupSelection Toggle(IReadOnlyList<long> column, long id) => Click(column, id, ctrl: true, shift: false);
 
     /// <summary>
+    /// Shows exactly one group, whatever was shown before: the arrow keys walking through the groups column, where every
+    /// step shows the group it lands on.
+    /// </summary>
+    /// <remarks>
+    /// Footgun avoided: a plain <see cref="Click"/> on the only group shown goes back to the regular view (clicking a
+    /// shown group "closes" it). A key that lands on the group already shown must leave it shown, so the keys use this
+    /// instead of a click. The group becomes the <see cref="Anchor"/>, like after a plain click, so a later Shift+click
+    /// runs from where the keys stopped.
+    /// </remarks>
+    /// <param name="column">The ids of the groups column, top to bottom.</param>
+    /// <param name="id">The group to show.</param>
+    /// <returns>
+    /// The selection of that group alone; this instance when it is the only group shown already, or when
+    /// <paramref name="id"/> is not in <paramref name="column"/> (a group deleted while the key was on its way).
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="column"/> is <see langword="null"/>.</exception>
+    public GroupSelection Only(IReadOnlyList<long> column, long id)
+    {
+        ArgumentNullException.ThrowIfNull(column);
+        if (IndexOf(column, id) < 0 || (ids is [var only] && only == id))
+        {
+            return this;
+        }
+
+        return new GroupSelection([id], id);
+    }
+
+    /// <summary>
     /// Takes one group out of the view without touching the others — the group is being deleted. Unlike a Ctrl+click,
     /// the anchor does not move there (it is dropped if it was there: the group is about to vanish).
     /// </summary>

@@ -45,11 +45,13 @@ you send to Claude Code and Codex.
   its source, and the tab of an app you don't have stays hidden ([Tabs for other apps](#tabs-for-other-apps)).
 - **Instant search** in any language, Hebrew, CJK and emoji included, with VS Code's toggles: match case (`Alt+C`),
   whole word (`Alt+W`) and regular expression (`Alt+E`) ([Search](#search)). Win+V has no search.
-- **Made for the keyboard.** `Enter` pastes into the app you came from and `Shift+Enter` pastes plain text.
+- **Made for the keyboard.** `Enter` pastes into the app you came from and `Shift+Enter` pastes plain text. `↑` `↓`
+  move through the items, `←` `→` through the tabs in a circle, and `↑` from the top item steps into your groups.
   `Ctrl+1` … `Ctrl+9` paste the n-th item, `Ctrl+P` pins, `Del` deletes, and the Menu key opens an item's menu (copy
-  only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were.
-- **A panel that fits you.** Drag any empty spot to move it, and drag an edge to resize it: it opens at that size from
-  then on. Tabs that don't fit scroll sideways with the ‹ › arrows, the mouse wheel or a drag.
+  only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were ([Use](#use)).
+- **A panel that fits you.** It opens in the tab you used last, also after a restart. Drag any empty spot to move it,
+  and drag an edge to resize it: it opens at that size from then on. Tabs that don't fit scroll sideways with the ‹ ›
+  arrows, the mouse wheel or a drag. The mouse selects the item it is over.
 - **Pins and groups.** Pin what you reuse. Make groups with your own icons, drag cards onto them, and show one group or
   several at once (`Ctrl+click`, `Shift+click`). Pinned and grouped items outlive every limit, and *Clear* keeps them
   ([Groups](#groups)).
@@ -113,13 +115,16 @@ way: check the hash, then *More info › Run anyway*. See [Code signing policy](
 
 ## Use
 
-Press **Win+V**. The panel appears at once by your text cursor, with the search box focused — just type.
+Press **Win+V**. The panel appears at once by your text cursor, in the tab you used last, with the search box focused
+— just type.
 
 | Key | Action |
 |---|---|
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
 | `Alt+C` / `Alt+W` / `Alt+E` | Toggle the search box's **Aa** (match case), **W** (whole word) and **.\*** (regular expression) — or click them. They stay as you leave them. |
-| `↑` `↓` `PgUp` `PgDn` | Move the selection |
+| `↑` `↓` `PgUp` `PgDn` | Move the selection. With the groups column open, press `↑` on the top item to step into the groups (see [Groups](#groups)). |
+| `←` `→` | Previous / next tab, in a circle: `←` on the first tab goes to the last tab, `→` on the last tab to the first. While you edit search text, they move its caret instead; after `↑` or `↓` they switch tabs again. A held key stops at the first or last tab. |
+| Mouse over an item | Select it. Tabs and group icons are only selected by a click. |
 | `Enter` / click | Paste into the app you came from |
 | `Shift+Enter` | Paste as plain text |
 | `Ctrl+Enter` | On a command you ran with Win+R: run it again (`Ctrl+Shift+Enter`: as administrator) |
@@ -183,6 +188,11 @@ The tray icon opens the panel and Settings:
 Every tab after Files has its own switch in *Settings › Integrations*. All of them are on by default; turn one off
 and its tab goes away. [Tabs for other apps](#tabs-for-other-apps) tells what each one reads.
 
+**The panel opens in the tab you used last**, also after a restart. `←` and `→` go through the tabs in a circle. If
+the tab you used last is not there (its app is gone, or its switch is off), the panel opens in All, and returns to
+your tab when it is back. The search text and the groups you opened are not kept: each Win+V starts with an empty
+search over your whole history.
+
 ### Search
 
 Type to search. A word matches anywhere in an item's text, in any language, in upper or lower case. Three toggles
@@ -238,6 +248,9 @@ Collect the things you reuse — snippets, addresses, links for a project — in
 - **Open several:** `Ctrl+click` more icons to show their groups together, or `Shift+click` for a run of icons.
   They merge into one list in the usual order, with each item once, and the search and the tabs work on it.
   Without a keyboard: right-click an icon › *Add to view*.
+- **With the keyboard:** press `↑` on the top item. The lowest group opens, and its icon gets a ring. `↑` and `↓` now
+  step through the groups, and `↑` from the first group shows your whole history again (the logo). `→` goes back to
+  the items; so does typing, or moving the mouse over an item. `Enter` pastes the selected item at any time.
 - **Take things out:** right-click a card → *Remove from …*, or use *Groups* in the same menu. Right-click
   a group's icon to rename it, change its icon or delete it. Deleting a group never deletes its items.
 

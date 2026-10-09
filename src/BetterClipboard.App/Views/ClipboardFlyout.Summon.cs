@@ -30,10 +30,17 @@ namespace BetterClipboard.App.Views;
 /// </para>
 /// <para>
 /// <b>Preparing</b> (<see cref="PrepareForNextSummon"/>, right after concealing): reset the view a summon shows (search
-/// empty, "All", no group, the strip at its start), and reload the list if it is not current. Whenever the history changes
-/// while the panel is concealed, the list is refreshed again (<see cref="ScheduleConcealedRefresh"/>, at low priority, so a
-/// burst of changes costs one refresh). Reloads patch the list instead of rebuilding it
-/// (<c>FlyoutViewModel.ApplyEntries</c>), so a refresh after a copy only adds that copy's card.
+/// empty, the tab the user last chose, no group, the strip showing that tab), and reload the list if it is not current.
+/// Whenever the history changes while the panel is concealed, the list is refreshed again
+/// (<see cref="ScheduleConcealedRefresh"/>, at low priority, so a burst of changes costs one refresh). Reloads patch the
+/// list instead of rebuilding it (<c>FlyoutViewModel.ApplyEntries</c>), so a refresh after a copy only adds that copy's card.
+/// </para>
+/// <para>
+/// <b>A remembered tab of another app</b> (Everything, Pwsh, Cmd, Claude, Codex) is prepared too, but its list is never
+/// "current": it also shows what that app keeps, which no history event announces. Such a tab is loaded once after
+/// concealing — not again after every copy, which would ask Everything or start Command Prompt helpers each time — and
+/// once more right after a summon showed it. A prompt tab is also refreshed when its agent's archive changes, so a prompt
+/// just sent is already there when the panel appears.
 /// </para>
 /// <para>
 /// <b>Presenting</b> (<see cref="PresentAsync"/>): move the window to the caret, activate it, uncloak it. A new size (another
@@ -101,22 +108,24 @@ public sealed partial class ClipboardFlyout
             AppWindow.Hide();
         }
 
+        // The tab chosen during this use reaches the settings file now (once per use, and only when it changed), after
+        // the window is gone: the write is queued, so it never sits between a paste's conceal and its Ctrl+V.
+        SaveRememberedTab();
         PrepareForNextSummon();
     }
 
     /// <summary>
-    /// Sets the concealed panel to what the next summon shows — the regular view with an empty search, "All", the tab strip
-    /// at its start, the groups column as remembered, the first card selected at the top of the list — and reloads the list
-    /// if it is not current. <see cref="ShowAt"/> repeats the resets, which are then no-ops, so nothing changes on screen.
+    /// Sets the concealed panel to what the next summon shows — the regular view with an empty search, the tab the user
+    /// last chose (<see cref="ResetViewForShow"/>), the tab strip showing that tab, the groups column as remembered, the
+    /// first card selected at the top of the list — and reloads the list if it is not current. <see cref="ShowAt"/> repeats
+    /// the resets, which are then no-ops, so nothing changes on screen.
     /// </summary>
     private void PrepareForNextSummon()
     {
         try
         {
             controller.ApplyTheme(Root);
-            ViewModel.ResetForShow();
-            SelectFilter(ClipFilter.All);
-            ResetTabStrip();
+            ResetViewForShow();
             groupsPaneOpen = controller.Settings.Current.ShowGroupsPane;
             ApplyGroupsPaneLayout();
             if (!ViewModel.GroupsLoaded)

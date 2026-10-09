@@ -90,6 +90,12 @@ public sealed record AppSettings
     /// </summary>
     public const int MaxHotkeyHistory = 16;
 
+    /// <summary>
+    /// The tab the panel opens in until the user chose one, and whenever the remembered one cannot be shown: "All", the
+    /// whole history — what Win+V itself shows.
+    /// </summary>
+    public const string DefaultTab = nameof(Storage.ClipFilter.All);
+
     /// <summary>Settings file format version, for future migrations.</summary>
     public int SchemaVersion { get; init; } = 1;
 
@@ -207,6 +213,34 @@ public sealed record AppSettings
     /// <see cref="FlyoutWidth"/>, kept in <see cref="MinFlyoutHeight"/>..<see cref="MaxFlyoutSize"/>.
     /// </summary>
     public int FlyoutHeight { get; init; } = DefaultFlyoutHeight;
+
+    /// <summary>
+    /// The panel's tab (All, Pinned, Text, …) the user last chose, as the name of its <see cref="Storage.ClipFilter"/>:
+    /// every Win+V opens the panel in it, also after a restart. <see cref="DefaultTab"/> until a tab was chosen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only a choice changes it: a click on a tab, the Left and Right keys, a screen reader's select. A tab that is not
+    /// there when the panel opens (ShareX was uninstalled, its setting is off, another app's tab is not ready yet) makes
+    /// that summon start in All <i>without</i> changing this, so the panel is back in the remembered tab once it returns.
+    /// Saved when the panel closes, not on every tab change: stepping through the tabs with the arrow keys must not write
+    /// the file a dozen times.
+    /// </para>
+    /// <para>
+    /// <b>A name, read leniently, on purpose</b> (<see cref="ParseTab"/>): an enum member written by name makes the
+    /// whole file unreadable for a version that does not know the name (the JSON reader throws, and the file is set aside
+    /// as corrupt), and written as a number it would silently mean another tab if the tabs were ever renumbered. An
+    /// unknown name here only costs the remembered tab. Footgun: a version from before this member drops it when it saves
+    /// the file; the next newer version then starts in All again.
+    /// </para>
+    /// </remarks>
+    public string LastTab { get; init; } = DefaultTab;
+
+    /// <summary>
+    /// <see cref="LastTab"/> as a filter: what the panel selects when it opens. Derived, so it is never written to the file.
+    /// </summary>
+    [JsonIgnore]
+    public Storage.ClipFilter LastTabFilter => ParseTab(LastTab);
 
     /// <summary>
     /// The panel search box's "Aa" toggle: words match only with the same upper and lower case
@@ -422,6 +456,34 @@ public sealed record AppSettings
         string.Equals(CompactHotkeyText(a), CompactHotkeyText(b), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Reads a tab name as stored in <see cref="LastTab"/>: the name of a <see cref="Storage.ClipFilter"/> member, ignoring
+    /// case and surrounding spaces.
+    /// </summary>
+    /// <remarks>
+    /// Names only, compared one by one. <see cref="Enum.TryParse{TEnum}(string, bool, out TEnum)"/> would also accept
+    /// numbers ("3", and "99", which is no tab at all) and comma-separated lists ("Pinned, Text", which it combines into
+    /// a third tab) — neither is something this app ever writes, so both are treated like any other unknown text.
+    /// </remarks>
+    /// <param name="name">The stored name; may be <see langword="null"/> or anything a hand-edited file holds.</param>
+    /// <returns>The tab's filter, or <see cref="Storage.ClipFilter.All"/> for a blank or unknown name (never an exception).</returns>
+    public static Storage.ClipFilter ParseTab(string? name)
+    {
+        var trimmed = name?.Trim();
+        if (!string.IsNullOrEmpty(trimmed))
+        {
+            foreach (var filter in Enum.GetValues<Storage.ClipFilter>())
+            {
+                if (string.Equals(filter.ToString(), trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    return filter;
+                }
+            }
+        }
+
+        return Storage.ClipFilter.All;
+    }
+
+    /// <summary>
     /// Builds the normalized <see cref="HotkeyHistory"/>: the current shortcuts that are missing go first, then the history
     /// in its order, without blanks and repeats, capped at <see cref="MaxHotkeyHistory"/>.
     /// </summary>
@@ -510,6 +572,9 @@ public sealed record AppSettings
             OpenHotkey = primary,
             ExtraOpenHotkeys = extras.ToArray(),
             HotkeyHistory = NormalizeHotkeyHistory([primary, .. extras], HotkeyHistory),
+
+            // Canonical, so the file never keeps a name no tab answers to ("pinned" becomes "Pinned", a typo becomes "All").
+            LastTab = ParseTab(LastTab).ToString(),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

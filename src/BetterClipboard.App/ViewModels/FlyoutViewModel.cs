@@ -140,7 +140,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>
     /// The footer's key hints for the current tab (<see cref="DefaultKeyHint"/>, or <see cref="RunKeyHint"/> in the
-    /// Run tab, where Ctrl+Enter runs the selected command).
+    /// Run tab, where Ctrl+Enter runs the selected command) — or <see cref="GroupsKeyHint"/> while the arrow keys walk
+    /// the groups column (<see cref="SetGroupsNavigation"/>).
     /// </summary>
     [ObservableProperty]
     public partial string KeyHint { get; set; } = DefaultKeyHint;
@@ -150,6 +151,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>The Run tab's key hints: Enter still pastes; Ctrl+Enter runs like Win+R, Ctrl+Shift+Enter as administrator.</summary>
     public const string RunKeyHint = "↵ paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin";
+
+    /// <summary>
+    /// The key hints while the arrow keys walk the groups column (Up from the top row went there): how to move on, and —
+    /// above all — how to get back, since Up and Down no longer move through the rows. Enter still pastes the selected card.
+    /// </summary>
+    public const string GroupsKeyHint = "↑ ↓ groups · → back to the list · ↵ paste";
+
+    /// <summary>Whether the arrow keys walk the groups column (set by <see cref="SetGroupsNavigation"/>): the footer then shows <see cref="GroupsKeyHint"/>.</summary>
+    private bool groupsNavigation;
 
     /// <summary>Whether capture is paused (header toggle).</summary>
     [ObservableProperty]
@@ -204,13 +214,25 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// without the reload that used to rebuild every card after the panel appeared.
     /// </summary>
     /// <remarks>
-    /// Only views of stored history qualify. The Everything, shell and prompt tabs also show what other apps keep (picks,
-    /// shell histories, the prompt archive), which no history event announces, so they always reload — a summon never
-    /// starts in them anyway (it shows "All").
+    /// Only views of stored history qualify (<see cref="IsStoredHistoryView"/>). The Everything, shell and prompt tabs also
+    /// show what other apps keep (picks, shell histories, the prompt archive), which no history event announces, so they
+    /// always reload. A summon starts in one of them when it is the tab the user last chose: the panel then shows that
+    /// tab's list as it was last loaded, and reloads it right after it appeared.
     /// </remarks>
     public bool IsListCurrent =>
-        !IsEverythingView && !IsShellView && !IsPromptView
+        IsStoredHistoryView
         && loadedState is { } state && state.View == CurrentViewKey && state.HistoryVersion == historyVersion;
+
+    /// <summary>
+    /// Whether the list shows stored history only, so the history's change events say everything about its freshness — as
+    /// opposed to the Everything, shell and prompt tabs, which also list what other apps keep.
+    /// </summary>
+    /// <remarks>
+    /// The hidden panel refreshes its list after every history change only for such a view. For the other tabs that
+    /// refresh would ask Everything, read shell histories (starting helper processes for Command Prompt windows) or query
+    /// the prompt archive after every copy, for a list the next summon reloads anyway.
+    /// </remarks>
+    public bool IsStoredHistoryView => !IsEverythingView && !IsShellView && !IsPromptView;
 
     /// <summary>Whether <see cref="LoadGroupsAsync"/> succeeded once (until then the cards show no group badges).</summary>
     public bool GroupsLoaded { get; private set; }
@@ -259,6 +281,25 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public void ShowAllHistory() => GroupSelection = GroupSelection.None;
 
     /// <summary>
+    /// Shows one group alone, whatever was shown before: an arrow key landed on its icon in the groups column
+    /// (<see cref="GroupSelection.Only"/>). Unlike <see cref="ClickGroup"/> it never hides a group that is already the
+    /// only one shown, so stepping onto the shown group changes nothing.
+    /// </summary>
+    /// <param name="groupId">The group.</param>
+    public void ShowOnlyGroup(long groupId) => GroupSelection = GroupSelection.Only(GroupColumn(), groupId);
+
+    /// <summary>
+    /// Tells the footer whether the arrow keys walk the groups column: its key hints then say how to move on and how to
+    /// get back (<see cref="GroupsKeyHint"/>), and return to the tab's own hints afterwards.
+    /// </summary>
+    /// <param name="active">Whether Up and Down move through the groups instead of the rows.</param>
+    public void SetGroupsNavigation(bool active)
+    {
+        groupsNavigation = active;
+        KeyHint = CurrentKeyHint();
+    }
+
+    /// <summary>
     /// Takes a group out of the view without touching the other groups shown (it is about to be deleted); the regular
     /// view when it was the only one. No-op when it is not shown.
     /// </summary>
@@ -304,15 +345,20 @@ public sealed partial class FlyoutViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Resets search/filter for a fresh summon without triggering intermediate reloads.
+    /// Resets the view for a fresh summon without triggering intermediate reloads: an empty search box, the regular view
+    /// (no group), and <paramref name="filter"/> as the tab.
     /// </summary>
-    public void ResetForShow()
+    /// <param name="filter">
+    /// The tab the summon starts in: the one the user last chose, or <see cref="ClipFilter.All"/> while that tab cannot be
+    /// shown (the view decides, it knows which tabs are there).
+    /// </param>
+    public void ResetForShow(ClipFilter filter)
     {
         suppressReload = true;
         SearchText = string.Empty;
-        Filter = ClipFilter.All;
+        Filter = filter;
 
-        // Like the filter, a summon always starts in the regular view: Win+V means "what did I copy last".
+        // Unlike the tab, the groups are not remembered: a summon always starts in the regular view, over the whole history.
         GroupSelection = GroupSelection.None;
         suppressReload = false;
         IsPaused = controller.Settings.Current.IsCapturePaused;
@@ -350,6 +396,14 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private async Task ReloadCoreAsync(bool debounce)
     {
         queryCancellation?.Cancel();
+
+        // The app is closing: the load that was running is cancelled above, and no new one starts. Nobody would see its
+        // list, and the store it reads is about to close under it (AppController.IsExiting has the story).
+        if (controller.IsExiting)
+        {
+            return;
+        }
+
         var cancellation = queryCancellation = new CancellationTokenSource();
         try
         {
@@ -661,17 +715,31 @@ public sealed partial class FlyoutViewModel : ObservableObject
     partial void OnFilterChanged(ClipFilter value)
     {
         UpdateGroupTexts();
-
-        // The Run tab is where Ctrl+Enter runs a command (it works on any card with a run time, but only the
-        // Run tab has room to say so). In a shell tab Delete hides a command rather than deleting anything.
-        KeyHint = value == ClipFilter.Run ? RunKeyHint
-            : value is ClipFilter.PowerShell or ClipFilter.Cmd ? ShellKeyHint
-            : value is ClipFilter.ClaudeCode or ClipFilter.Codex ? PromptKeyHint
-            : DefaultKeyHint;
+        KeyHint = CurrentKeyHint();
         if (!suppressReload)
         {
             _ = ReloadAsync();
         }
+    }
+
+    /// <summary>
+    /// The footer's key hints for the state the panel is in: the groups column's while the arrow keys walk it, otherwise
+    /// the current tab's.
+    /// </summary>
+    /// <returns>One of the key hint texts.</returns>
+    private string CurrentKeyHint()
+    {
+        if (groupsNavigation)
+        {
+            return GroupsKeyHint;
+        }
+
+        // The Run tab is where Ctrl+Enter runs a command (it works on any card with a run time, but only the
+        // Run tab has room to say so). In a shell tab Delete hides a command rather than deleting anything.
+        return Filter == ClipFilter.Run ? RunKeyHint
+            : Filter is ClipFilter.PowerShell or ClipFilter.Cmd ? ShellKeyHint
+            : Filter is ClipFilter.ClaudeCode or ClipFilter.Codex ? PromptKeyHint
+            : DefaultKeyHint;
     }
 
     /// <summary>

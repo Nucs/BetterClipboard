@@ -547,6 +547,38 @@ public sealed class GroupSelectionTests
         Assert.Same(GroupSelection.None, without.Without(20));
     }
 
+    /// <summary>
+    /// The arrow keys walking the groups column show exactly the group they land on: one group alone, from the regular
+    /// view as well as from several merged groups. Landing on the group that is already the only one shown changes
+    /// nothing — where a plain click would hide it — and a group that is no longer in the column is ignored.
+    /// </summary>
+    [Fact]
+    public void Only_ShowsOneGroup_AndNeverHidesTheShownOne()
+    {
+        var one = GroupSelection.None.Only(Column, 50);
+        Assert.Equal([50L], one.Ids);
+        Assert.Equal(50, one.Anchor);
+
+        // The difference from a click: the same group again stays shown (and is the same instance, so nothing reloads).
+        Assert.Same(one, one.Only(Column, 50));
+        Assert.Same(GroupSelection.None, one.Click(Column, 50, ctrl: false, shift: false));
+
+        var next = one.Only(Column, 40);
+        Assert.Equal([40L], next.Ids);
+        Assert.Equal(40, next.Anchor);
+
+        // From a merged view the keys leave one group, the one they are on, even when it was among those shown.
+        var merged = GroupSelection.None.Click(Column, 20, ctrl: true, shift: false).Click(Column, 40, ctrl: true, shift: false);
+        Assert.Equal([40L], merged.Only(Column, 40).Ids);
+        Assert.Equal([10L], merged.Only(Column, 10).Ids);
+
+        // A later Shift+click runs from where the keys stopped.
+        Assert.Equal([20L, 30L, 40L], next.Click(Column, 20, ctrl: false, shift: true).Ids);
+
+        Assert.Same(merged, merged.Only(Column, 99));
+        Assert.Same(GroupSelection.None, GroupSelection.None.Only([], 10));
+    }
+
     /// <summary>The ids cannot be changed through <see cref="GroupSelection.Ids"/>; null arguments are refused.</summary>
     [Fact]
     public void Selection_IsImmutable_AndRefusesNulls()
@@ -555,6 +587,7 @@ public sealed class GroupSelectionTests
         Assert.Throws<NotSupportedException>(() => ((IList<long>)selection.Ids).Add(20));
         Assert.Equal([10L], selection.Ids);
         Assert.Throws<ArgumentNullException>(() => selection.Click(null!, 10, ctrl: false, shift: false));
+        Assert.Throws<ArgumentNullException>(() => selection.Only(null!, 10));
         Assert.Throws<ArgumentNullException>(() => selection.Retain(null!));
         Assert.Throws<ArgumentNullException>(() => selection.HasSameIds(null!));
     }

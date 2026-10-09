@@ -278,11 +278,11 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, and `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28). **CS1591 = error.** |
 | [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (751 tests, one class at a time — §4: the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (832 tests, one class at a time — §4: getting around the panel (§2.28: tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it, one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), and integrity levels for pasting into elevated windows (§2.5) (321 tests). |
 | [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
@@ -882,8 +882,9 @@ User request (2026-09-25):
   App.xaml). A brush looked up in code from `Application.Resources` would ignore the flyout's own
   `RequestedTheme`.
 - **Views:** clicking an icon shows that group; clicking it again, or the logo, returns to everything. A
-  summon always starts in the regular view, like the filter tabs. Ctrl+click and Shift+click show several
-  groups at once (below).
+  summon always starts in the regular view (unlike the filter tab, which is remembered since 2026-10-09, §2.28).
+  Ctrl+click and Shift+click show several groups at once (below). The arrow keys reach the column too: Up from
+  the top row (§2.28).
 - **Header:** the header reads "Clipboard › Name". `TitlePanel` is a grid whose name column is `*` only
   while it has text, so the "Paused" chip always fits (a StackPanel cut it to "Pau"). The placeholder reads
   "Search in Name…" and the footer "N in Name".
@@ -2165,7 +2166,10 @@ scroll"); a middle-button drag pulls it too.
   - A clicked or focused tab raises `BringIntoViewRequested`. `Filters_BringIntoViewRequested` widens the rect by an
     arrow on each side before the outer viewer acts, so the tab ends clear of the arrows.
   - A selection from code (`SelectFilter`) reveals the tab itself (`RevealSelectedTab`).
-  - Every summon resets the strip to its start, where "All" is.
+  - Every summon places the strip for the tab it starts in, without animation (`PlaceTabStripForShow`, since
+    2026-10-09, §2.28): at its start when that tab lies in the first screenful, otherwise just far enough to show it.
+    Until the user scrolls the strip, it keeps that tab in view when its width or the tabs change
+    (`tabStripFollowsSelection`). Before, every summon reset the strip to its start, where "All" is.
 
 **The SelectorBar's template, adjusted** (`PrepareTabBarTemplate`, at `Filters.Loaded`; both found as descendants, so a
 future template without them only loses the fix).
@@ -2478,11 +2482,14 @@ leaked; 30 ms 1 → 0; 60 and 120 ms 0 → 0. Unchanged: activation takes as lon
   foreground window would keep the keyboard, invisibly) and shows it again without activation, so XAML keeps drawing into
   it. PowerToys' Command Palette hides its window the same way.
 - **Prepared while nobody looks.** `PrepareForNextSummon` (after every conceal) resets what a summon shows: empty search,
-  "All", no group, the strip at its start, the groups column as remembered, the first card selected at the top. A history
-  change while concealed queues one refresh at Low priority (`ScheduleConcealedRefresh`: an import's burst costs one).
+  the tab last chosen ("All" until 2026-10-09, §2.28), no group, the strip showing that tab, the groups column as
+  remembered, the first card selected at the top. A history change while concealed queues one refresh at Low priority
+  (`ScheduleConcealedRefresh`: an import's burst costs one).
 - **Current or not.** `FlyoutViewModel.IsListCurrent` compares the view the shown list was loaded for (`ViewKey`: search,
   tab, groups, toggles) and a history version (`MarkHistoryChanged`, bumped by every change, also one applied to a card in
-  place) with now. Only views of stored history qualify; the Everything, shell and prompt tabs always reload.
+  place) with now. Only views of stored history qualify; the Everything, shell and prompt tabs always reload. Since a
+  summon can start in one of those (§2.28), the hidden panel loads such a tab once after concealing and not after every
+  copy (`IsStoredHistoryView`).
 - **Patched, not rebuilt.** Reloads go through `FlyoutViewModel.ApplyEntries`: the card of every entry still listed is
   kept (`Update`), and `Core/Presentation/CollectionPatch` (pure, unit-tested) turns the list into the new one with
   removes, moves and inserts — a new copy costs one insert and one remove. Cards of things not stored (Everything picks,
@@ -2535,13 +2542,145 @@ closing across summons; the first summon right after a start.
 - a summon that comes while a concealed refresh is still queued (a Win+V a few ms after a copy) shows the previous list
   for a moment, then patches it.
 
+### 2.28 Getting around the panel: the remembered tab, arrow keys through tabs and groups, hover selection (built 2026-10-09)
+
+User request (2026-10-09): "1. Remember the last tab that was selected across opens of the betterclipboard 2. When using
+up/down arrows, i want left/right arrows to support in a circular (0 to left moves to end and end to 0). Clicking up when
+you are at the top moves you to a selection on the group where the last(lowest) gets selected and moving up. user will
+need to click to the right-arrow to exit or use the mouse to hover another row. (add that on mouse-hover, we select the
+row we are hovering over, make sure to make it performant as mouse event will spam as user moves mouse over). Mouse over
+the categories doesn't select them, only click selects them."
+
+**What the user gets.**
+- **The panel opens in the tab last chosen,** also after a restart (`AppSettings.LastTab`). Only the tab is kept: every
+  summon still starts with an empty search over the whole history (no group).
+- **Left / Right** select the previous / next tab among those that show, in a circle: Left on the first tab goes to the
+  last one, Right on the last tab to the first.
+- **Up on the top row** walks into the groups column: the lowest group is shown and its icon gets a ring. Up and Down
+  then step through the groups; Up from the first group shows the whole history again (the logo). Right goes back to the
+  rows. So does the mouse over a row, typing, or a click on an icon.
+- **The mouse selects the row it is over.** Tabs and group icons are still selected by a click only.
+
+**Decisions where the request left room** (told to the user in the reply; change them here if they ask):
+- **Left / Right against the search box's caret.** The box keeps the focus, so the keys serve two masters. They are the
+  text's while it is edited: the box holds text and the last key went into it. They are the tabs' with an empty box, and
+  after an arrow key steered the panel (Up, Down, Page Up, Page Down, Left, Right) until something is typed or the box is
+  clicked. With Ctrl, Shift, Alt or Win they are never the tabs' (word jumps, selections).
+- **A held key stops at an edge.** A key that repeats (`KeyStatus.WasKeyDown`) does not wrap from the last tab to the
+  first and does not walk from the top row into the column. Holding Up to return from far down a list would otherwise
+  run on through every group. A new press crosses.
+- **Into the column only when there is one:** it must be open and hold at least one group. Closed, Up on the top row
+  does nothing, as before. Page Up never enters.
+- **Always the lowest group,** as asked, also when another group is shown at that moment.
+- **Positions in the column:** the logo (the whole history) on top, then the groups. "+" is not one. Down stops at the
+  lowest group: only Right, the mouse or typing leaves.
+- **In the column, the other keys keep their meaning:** Enter, Ctrl+P and Del act on the selected card (the first card
+  of the group shown), Esc closes. The footer shows `GroupsKeyHint` ("↑ ↓ groups · → back to the list · ↵ paste").
+- **Kept in `settings.json`,** as a tab name, not only for the session.
+
+**Pieces.**
+- **Core `Presentation/PanelNavigation`** (pure, tested): `CycleTab`, `HorizontalArrow` (→ `HorizontalArrowAction`),
+  `MoveInList` (→ `ListMove`), `EnterGroups`, `MoveInGroups`, `PageStep`.
+- **Core `Presentation/PointerSelectionGate`** (pure, tested): `Suspend` (the keyboard or the panel set the selection;
+  remember where the cursor is), `Observe` (the mouse owns the selection once the cursor is farther than the threshold
+  from that spot on either axis), `Activate` (the wheel).
+- **Core `GroupSelection.Only`:** one group alone. Unlike a plain `Click` it never hides the only group shown.
+- **Core `AppSettings`:** `LastTab` (a `ClipFilter` name), `LastTabFilter`, `ParseTab`, `DefaultTab`.
+- **App `Views/ClipboardFlyout.Navigation.cs`** (new): the remembered tab, the arrow keys, the hover selection. Its class
+  remarks are the full design.
+- **App, changed:** `FlyoutViewModel.ResetForShow(filter)`, `IsStoredHistoryView`, `ShowOnlyGroup`, `SetGroupsNavigation`;
+  `ClipboardFlyout.SelectFilter` (below), `PlaceTabStripForShow` (replaces `ResetTabStrip`), `EnterTab`,
+  `Popup_Closed`; `AppController.IsExiting`; `GroupButtonKeyboardStyle` in `App.xaml` (the ring).
+
+**The remembered tab** (`rememberedTab`, `StartFilter`, `ResetViewForShow`).
+- **Only a choice changes it:** a click on a tab, Left / Right, a screen reader's select. `Filters_SelectionChanged`
+  counts a selection as a choice only while the panel is presented and `SelectFilter` is not running
+  (`selectingFilterFromCode`). A reset, the bar's own selection while it loads, and the fallback to "All" when the
+  selected tab disappears are not choices.
+- **A tab that is not there** (ShareX gone, its switch off, another app's tab not known yet right after a start): the
+  summon starts in "All" and the remembered tab stays. `IsTabAvailable` asks the controller the same questions the
+  `Update…Tab` methods ask.
+- **It comes back while the panel is hidden:** every status handler ends with `ReturnToRememberedTabWhileConcealed`,
+  which prepares the hidden panel again when `StartFilter()` is no longer the tab shown. An open panel is left alone.
+- **Saved once per use,** when the panel is concealed and only when it changed (`SaveRememberedTab`), queued at Low
+  priority: a paste's conceal is on the way to its Ctrl+V, and stepping through a dozen tabs must not write the file a
+  dozen times (every `SettingsStore.Update` writes it and re-applies the settings).
+- **A name, read leniently** (`ParseTab`: names only, any case): an enum member written by name makes the whole file
+  unreadable for a version that does not know it (`JsonException`, and `SettingsStore.Load` sets the file aside as
+  corrupt). `Enum.TryParse` would also take "3" and "Pinned, Text". `Normalize` writes the canonical name back.
+- **A summon enters its tab** (`EnterTab`, after presenting): the Run tab's rescan and a prompt tab's catch-up used to
+  run only on a click.
+- **Tabs of other apps** (Everything, Pwsh, Cmd, Claude, Codex) are never "current" (§2.27). The hidden panel loads such
+  a tab once after concealing, and not after every history change: that would ask Everything, read the shells (helper
+  processes for Command Prompt windows) or query the archive after every copy. A summon reloads the tab right after it
+  showed. A hidden prompt tab is also refreshed when its agent's archive changes (`OnPromptsStatusChanged`).
+- **The strip** is placed for the tab without animation, measured from the strip's start, so the same tab always lands
+  at the same place (`PlaceTabStrip`). It follows that tab on size changes until the user scrolls it (§2.23).
+
+**Selecting a tab before the bar has loaded** (a summon before the warm-up) **[verified from source and live]**.
+- The SelectorBar's inner `ItemsView` selects every tab it finds flagged `IsSelected` when it first prepares its
+  containers (`ItemsView::OnItemsRepeaterElementPrepared`: "the ItemsSource may be a list of ItemContainers, some of them
+  having IsSelected==True"). The XAML flags "All". So a `SelectedItem` set before the load lost to "All" when the tree
+  loaded.
+- `SelectFilter` therefore also sets the tabs' own `IsSelected` flags while `Filters.IsLoaded` is false. Once loaded,
+  the bar keeps the flags in step itself.
+- `SelectorBar.SelectionChanged` is raised inside the `SelectedItem` setter (`SelectorBar::OnPropertyChanged`), which is
+  what makes the `selectingFilterFromCode` flag reliable.
+
+**Hover selection: cheap, and never against the keyboard.**
+- **A pointer event is not proof of movement** **[verified from source]**. After every frame that changed the picture,
+  WinUI replays the last pointer position, at most every 500 ms (`CCoreServices::ReplayPreviousPointerUpdate`,
+  `MIN_POINTER_REPLAY_PERIOD_IN_MS`), and again when a wheel scroll has settled. The row now under a mouse that lies
+  still gets `PointerEntered`. A replay raises `PointerMoved` only when the entered elements changed, and marks its events
+  `PointerRoutedEventArgs.IsGenerated`. Windows also sends a mouse move to a window that appears under the cursor.
+- **So the cursor's position decides** (`GetCursorPos`, like the image peek, §2.24). The keyboard, a reload that arms
+  the first card, a summon and a closing popup call `SuspendPointerSelection`. The mouse selects again once the cursor is
+  more than 4 DIPs (the drag threshold) from the spot it was on then.
+- **Per row, not per move.** Each row's container gets one `PointerEntered` handler (`WatchCardPointer`, marked in the
+  row's `Tag`, attached in `ContainerContentChanging`). That is the event WinUI's own hover highlight follows, so
+  highlight and selection agree. Handled on the container, not on the card's content: the content starts 10 to 12 DIPs
+  inside the row, and the selection would lag the highlight by that much.
+- **A move handler only while the keyboard owns the selection** (`ItemsList_PointerMovedWhileSuspended`): it notices the
+  mouse taking over inside the row it was resting on (no `PointerEntered` comes for that row), selects it, and removes
+  itself. While the mouse owns the selection, nothing of this runs per mouse move.
+- **The wheel over the list** hands the selection to the mouse without a move. The rows that scroll under the cursor
+  are then selected as WinUI reports them.
+- **Hovering never scrolls** (`SelectByPointer` sets `SelectedItem` only): a row peeking in at the bottom would pull its
+  neighbors under the cursor one after the other.
+- **Not while** a menu or flyout of ours is open, the image viewer shows, the window is dragged or a card is dragged
+  onto a group (`CanPointerSelect`). Touch and pen select by tapping, as before.
+
+**Found on the way.**
+- **An error at exit** (QA, 2026-10-09): with the panel in the Cmd tab, `--exit` logged "Loading the flyout list failed"
+  (`COMException 0x8001010E`, wrong thread). The stopping Cmd reader announced its status, the panel answered with a
+  reload, and that load ended after the dispatcher was gone. `FlyoutViewModel.ReloadAsync` now starts no load while
+  `AppController.IsExiting`. A panel that opens in the tab last chosen is in such a tab far more often.
+- **After a mouse click on a tab, the keyboard focus is on the tab** (not new): typing then does not reach the search
+  box until Ctrl+F or a click into it. Left / Right move that focus along with the selection (`CycleTab`).
+- **A closing menu** left the selection to the row under the mouse (the mouse was the active device). `Popup_Closed`
+  now suspends the mouse, so the card the menu belonged to stays selected until the mouse moves.
+- **A summon before the warm-up with a far tab remembered:** 481–767 ms to the screen in 4 runs (Cmd 481, 514 and 540;
+  Pwsh 767), as before (573 ms, §2.27). One earlier run took 3,195 ms: the first restart, right after the exit that
+  logged the error above. It did not recur.
+
+**Verified:** see §5.
+
+**Not built / open:**
+- a Settings switch for "always open in All" (not asked for);
+- remembering the groups shown;
+- giving the focus back to the search box after a click on a tab;
+- the Menu key in the column opening the group's menu (it opens the card's), and creating a group from the keyboard;
+- an announcement for screen readers when the keys step through the groups (the focus stays in the search box);
+- a tab chosen in a panel that is still open when the app exits is not saved (the queued save no longer runs);
+- not verified on real hardware: a touchpad, a mouse with a high polling rate, touch and pen.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 1,072 tests (1,069 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 1,153 tests (1,150 run; opt-in tests + 1 explicit measurement skipped)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -3295,6 +3434,25 @@ shortcuts was in progress on 2026-10-03.
   clearing and refilling it.
 - **A `CompositionTarget.Rendering` handler makes XAML render every frame** while it is attached, changed or not
   (measured: a frame every 16 ms). Attach one only for a bounded wait, and remove it in a `finally`.
+- **A pointer event is not proof that the mouse moved** (§2.28, §2.24).
+  - WinUI replays the last pointer position after every frame that changed the picture (at most every 500 ms), and
+    Windows sends a move to a window that appears under the cursor. So `PointerEntered` and `PointerMoved` also come to
+    whatever arrives under a mouse that lies still: a row that scrolled there, a list that reloaded, a popup that closed.
+  - Anything a hover does must first compare `ScreenPointer.Cursor()` with a spot recorded earlier
+    (`PointerSelectionGate`, the peek's `PeekCursorMoved`). Without that, the keyboard's selection jumps back to the
+    row under the mouse, and Enter after a typed search pastes that row.
+  - New code that sets the list's selection without the mouse calls `SuspendPointerSelection()`.
+- **Hovering never scrolls a list.** A hover that brings its row into view moves the next row under the cursor, which is
+  then hovered in turn. `SelectByPointer` sets `SelectedItem` only; `SelectIndex` (which scrolls) is for the keyboard.
+- **To select a `SelectorBar` tab from code before the bar has loaded, set the tabs' `IsSelected` flags too** (§2.28).
+  The bar's inner `ItemsView` selects every flagged tab when it first prepares its containers, so the tab flagged in
+  XAML wins over a `SelectedItem` set earlier. `ClipboardFlyout.SelectFilter` is the pattern.
+- **The panel starts no list load while the app exits** (`AppController.IsExiting`, checked in
+  `FlyoutViewModel.ReloadAsync`). A stopping integration still announces its status, and a load started then ends after
+  the dispatcher is gone: "Loading the flyout list failed" in the log, with nothing wrong (§2.28). A new way to reload
+  the list goes through `ReloadAsync`, never around it.
+- **A summon can start in any tab** (the one last chosen, §2.28). Code that assumed "a summon shows All" is wrong now:
+  the first frame can be an Everything, shell or prompt tab, whose list always reloads after the panel showed.
 - **Global hotkeys beat the foreground window, also for injected keys.** Before giving the panel an Alt+letter
   shortcut, or injecting a chord in a test, probe the chord with `RegisterHotKey` (`MOD_NOREPEAT`, released at
   once; a 1409 means someone owns it). An owned chord goes to its owner, and the foreground guard does not help.
@@ -3407,6 +3565,17 @@ shortcuts was in progress on 2026-10-03.
     for text. Seeding many items: a PowerShell `Add-Type` helper doing those calls, pumping messages between copies.
   - One screen `BitBlt` costs ~20–25 ms in those desktops (no GPU), whatever its size: copy one rectangle per sample,
     not several rows (§2.27's probe).
+  - Also (2026-10-09, §2.28): `move_mouse` is one jump, so one pointer event. A hover test needs a second small move:
+    after the image peek (a windowed popup) closed on that one event, the row under the pointer got no
+    `PointerEntered` until the next move. A real mouse sends dozens of events, so this is the test's limit, not the app's.
+  - A key held down is two or more key-downs without a key-up (`keybd_event(vk, 0, KEYEVENTF_EXTENDEDKEY, 0)` in a
+    loop, then one key-up): the second one arrives with `KeyStatus.WasKeyDown`. `press_keys` always sends new presses.
+  - Read the panel's state with one UI Automation script instead of screenshots (selected tab, selected row, groups
+    with their `ItemStatus`, header and footer texts, focus, cursor): `state.ps1` in session 805f9263's scratchpad
+    (`qa/`). In PowerShell, `$T` and `$t` are the same variable: a type kept in `$T` was overwritten by a
+    `foreach ($t in …)` and every later call failed silently under `SilentlyContinue`.
+  - A click at a remembered coordinate pastes when the panel has moved (a click on a card pastes): take the tab's or
+    row's position from the state script right before each click.
 - **Editing repository files from Python: bytes, or `newline=''`.** `Path.write_text` on Windows writes CRLF; on
   2026-10-03 it turned all of CLAUDE.md into CRLF (caught by `file`, put back before committing). The repository's files
   are LF in the working tree.
@@ -3419,6 +3588,8 @@ shortcuts was in progress on 2026-10-03.
 
 | Feature | How | Result |
 |---|---|---|
+| **Getting around the panel** (§2.28, 2026-10-09), live on a claude-desktops Windows 11 VM ("bc-nav": 1600×900 at 100 %, no GPU; self-contained builds `0.2.6-dev.nav1` and `nav2` from a private worktree; 17 BC-TEST items through `bclip put` and a PNG in the Screenshots folder; three groups made with **+** and filled by drag and drop). **Remembered tab:** Right ×2 → Text, Esc, Win+V → Text, `"LastTab": "Text"`; the last tab (Cmd) → Esc, Win+V → Cmd with the strip at its end ("‹" shown); after a restart, before the warm-up (Win+V 1.5–1.7 s after the start: 481, 514, 540 ms with Cmd, 767 ms with Pwsh) and after it (52 and 86 ms); "Cmd tab" switched off in the file → the summon starts in All and `LastTab` stays "Cmd"; switched on in Settings while the panel was hidden → the next summon is in Cmd. **Left / Right:** from the last tab Right → All, from All Left → Cmd; with "fox" typed they move the caret ("foZx" after Left, Left, Right, Z); after Down they switch tabs with the search kept; nine key-downs without a key-up from Text stop at Cmd; with a tab focused (after a click) the focus moves along. **Groups:** Up on the top row → Ideas (the lowest) shown, ring on its icon, footer "↑ ↓ groups · → back to the list · ↵ paste"; Up → Home → Work → the logo (16 items, ring on the logo) and stays; Down → Work; Right → the tab's own footer, Down selects row 1; from Work's view Up, Up → Ideas again; four key-downs of Up from row 1 stop at row 0; with the column closed Up does nothing; typing "33" in the column searches the group and ends the walk, Enter pastes "#3366FF" into Notepad. **Hover:** the panel opened under a mouse resting where row 3 appears → row 0 stays selected; Down ×7 scrolls rows under it → the keyboard's row stays; a 2-px nudge → nothing; a 14-px move inside the row → that row; another row → that row; a wheel turn → the row now under the cursor; "number 0" typed with the mouse over row 1 → row 0 selected, Enter pastes it; a card menu closed with Esc → its card stays selected until the mouse moves; over tabs and group icons → nothing changes; the image peek still opens on rest and closes on a move; five drags of cards onto group icons still work. **Exit** with the panel open in the Cmd tab: no error (nav1 logged one, see §2.28) | claude-desktops MCP tools (`press_keys`, `move_mouse`, `scroll`, `drag`, `click`, screenshots), `state.ps1` / `restart-summon.ps1` / `toggle.ps1` (UI Automation and `keybd_event` inside the desktop; session 805f9263's scratchpad, `qa/`) | ✅ after two fixes found here: the exit-time reload error, and a closing menu handing the selection to the row under the mouse. The wheel was turned with the mouse already live; "the wheel alone hands over" is covered by the unit test only. Not on real hardware (§2.28 "Not built / open") |
+| Getting around the panel, unit tests: `PanelNavigationTests` (51 cases: the circle both ways, held keys at the ends, no selection, no tabs; 15 cases of Left / Right between tabs, text and groups; list moves and clamps; the walk into the column only for a new Up on the top row; the column's ends; extreme values), `PointerSelectionGateTests` (10: the spot, the threshold on both axes, every suspend, an unknown spot, the wheel, extremes), `LastTabSettingsTests` (19: default, by name in the file, lenient reading, every filter round-trips, an unknown name does not quarantine the file), `GroupSelectionTests.Only` (1) | Core test exe `-class`; `dotnet test --solution` and a `--no-incremental` rebuild in the worktree | ✅ 81 new; full suite 1,153: 1,150 passed, 3 opt-in skipped, 0 failed; 0 doc warnings (117 warnings as before: xUnit analyzers and CS0108) |
 | **This PC, 2026-10-09, later** ("install on this machine"): `0.2.6-dev.52539eb` (x64, from a worktree at `52539eb`: the instant summon `4d62d35` and its docs on top of the installed `b28e63f`) installed over the running `0.2.6-dev.b28e63f` with `tools/release/install-local.ps1` (Windows PowerShell 5.1, env stripped, Windows paths, `-NoLaunch`): the full suite first, 1,072 = 1,069 passed + 3 skipped, 0 failed; package 96 s (zip 71.0 MB, only CS0108); install 12 s, SHA-256 OK, graceful close ("Exiting."), "Win+V was already released from Explorer", no Explorer restart. Started through Explorer (`--background`, parent explorer.exe, 75 variables, `CLAUDECODE`/`MSYSTEM` absent). Run value, shortcut, `DisabledHotkeys` `V` unchanged; Installed apps and `installer.json` `0.2.6-dev.52539eb`; the exe `0.2.6-dev.52539eb+52539eb…`; the other Run value (IDMan) kept. Log after "starting": 0 WRN/ERR, "Panel prepared for the first Win+V in 501 ms" | install-local + session 7f3c8c3f's `launch_background.ps1`, `install_state.ps1`, `env_names.py` | ✅ (no UI checks on the user's screen) |
 | **Instant summon** (§2.27, 2026-10-09), on a claude-desktops Windows 11 VM ("bc-perf": 1920×1080 at 100 %, no GPU, animations on, Win+V released, 41 BC-TEST items incl. two pictures, the app started from the agent's job and seeded with plain Win32 clipboard calls). 15 summons per build, from the injected Win+V: **before** (`8ea00ff`) in front 30 ms, first pixels 78 ms, picture complete 630 ms (p90 664) through 9–18 intermediate pictures; **after** in front 25 ms, complete 102 ms (p90 134) in one step. Letter N ms after Win+V, leaked before → after: 0 ms 14 → 15 of 15, 15 ms 10 → 11, 30 ms 1 → 0, 60/120 ms 0 → 0. Plain-window reveal latency: show 85 ms, uncloak 43 ms, move 39 ms. Uncloak-before-activate 102.5 vs 108 ms (noise ±10 ms). Whole-app idle CPU over 40 s: new 234 / 344 ms, old 234 ms | `tools/probes/probe_summon.cs` (published self-contained, run in the VM), a temporary summon trace (removed), scratch `run-variant.ps1`, `seed.ps1` | ✅ |
 | Instant summon, functional QA on the same VM with the final build: Enter after a search pastes into Notepad; a click and an X typed inside the concealed panel's rectangle land in Notepad (`WindowFromPoint` → Notepad); Ctrl+Win+D → Win+V opens the panel on the new desktop, and again after Ctrl+Win+Left; Win+D then Win+V; a copy made while concealed is on top ("just now", 42 items) at the next Win+V, the pasted item had moved up meanwhile; search "short" + Text tab + a click on the wallpaper → next Win+V: empty search, All, full list, first card selected; Ctrl+G open/close across summons (window grows left, then back); Win+V right after a start: "Panel on screen 573 ms after the shortcut, its list reloaded after 681 ms (first summon)" | claude-desktops `press_keys`, `click`, `type_text`, screenshots, scratch `copy-one.ps1`, `qa-restart.ps1` | ✅ |
@@ -3516,6 +3687,14 @@ shortcuts was in progress on 2026-10-03.
 
 ## 6. Roadmap / known gaps
 
+- Getting around the panel (§2.28), next steps:
+  - give the focus back to the search box after a mouse click on a tab, so typing searches at once (today the tab keeps
+    the focus until Ctrl+F or a click into the box);
+  - check the hover selection on real hardware: a touchpad, a mouse with a high polling rate, touch and pen;
+  - the Menu key in the groups column for the group's own menu, and a key that creates a group;
+  - an announcement for screen readers when the arrow keys step through the groups;
+  - save the tab last chosen also when the app exits while the panel is open;
+  - optional: remember the groups shown, and a Settings switch for "always open in All".
 - ~~**Bug (found 2026-10-03, §3.4): the first Win+V after a start leaves the search box without keyboard focus.**~~
   Fixed 2026-10-09 (`0718a9b`, `db9750c`; §2.5 "The first summon of a session"): the box takes the focus once its tree
   has loaded, and the panel is built and rendered off-screen 3 s after startup, so keys typed 100 ms or more after the
