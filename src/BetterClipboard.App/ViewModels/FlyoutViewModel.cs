@@ -50,6 +50,18 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private EverythingPicksResult? lastPicks;
 
     /// <summary>
+    /// Counts the history changes the view reported (<see cref="MarkHistoryChanged"/>): a load remembers the count it
+    /// started at, so a change that arrives while it runs still leaves the list marked stale.
+    /// </summary>
+    private int historyVersion;
+
+    /// <summary>
+    /// What the shown list was loaded for — the view and <see cref="historyVersion"/> at the start of the latest load that
+    /// finished — or <see langword="null"/> before the first load. <see cref="IsListCurrent"/> compares it with now.
+    /// </summary>
+    private (ViewKey View, int HistoryVersion)? loadedState;
+
+    /// <summary>
     /// Creates the view model, with the search toggles as the user last left them.
     /// </summary>
     /// <param name="controller">App controller (history access, settings).</param>
@@ -186,6 +198,32 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <summary>Whether the list shows groups (one or several) rather than the whole history.</summary>
     public bool IsGroupView => !GroupSelection.IsEmpty;
 
+    /// <summary>
+    /// Whether the list already shows what a load would show now: it was loaded for the current search, tab, groups and
+    /// search toggles, and no history change was reported since that load started. A summon then shows the list as it is,
+    /// without the reload that used to rebuild every card after the panel appeared.
+    /// </summary>
+    /// <remarks>
+    /// Only views of stored history qualify. The Everything, shell and prompt tabs also show what other apps keep (picks,
+    /// shell histories, the prompt archive), which no history event announces, so they always reload — a summon never
+    /// starts in them anyway (it shows "All").
+    /// </remarks>
+    public bool IsListCurrent =>
+        !IsEverythingView && !IsShellView && !IsPromptView
+        && loadedState is { } state && state.View == CurrentViewKey && state.HistoryVersion == historyVersion;
+
+    /// <summary>Whether <see cref="LoadGroupsAsync"/> succeeded once (until then the cards show no group badges).</summary>
+    public bool GroupsLoaded { get; private set; }
+
+    /// <summary>The view a load is made for (see <see cref="IsListCurrent"/>).</summary>
+    private ViewKey CurrentViewKey => new(SearchText, Filter, string.Join(",", GroupSelection.Ids), CurrentSearchOptions);
+
+    /// <summary>
+    /// Notes that the history changed (an entry added, updated, removed or reordered), whether or not the change was applied
+    /// to the shown cards in place: <see cref="IsListCurrent"/> is then false until the next load that starts after it.
+    /// </summary>
+    public void MarkHistoryChanged() => historyVersion++;
+
     /// <summary>Raised (UI thread) after <see cref="Groups"/> was reloaded, so the view rebuilds its group icons.</summary>
     public event EventHandler? GroupsReloaded;
 
@@ -238,6 +276,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
         try
         {
             Groups = await controller.History.GetGroupsAsync();
+            GroupsLoaded = true;
 
             // Deleted meanwhile: out of the view; Retain hands back the same instance when nothing vanished, so an
             // unchanged view is not reloaded.
@@ -319,13 +358,16 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 await Task.Delay(120, cancellation.Token);
             }
 
-            // The text this load searches for: what SettleSearchAsync compares with the box once the list is in.
+            // The text this load searches for: what SettleSearchAsync compares with the box once the list is in. The view and
+            // the history version are taken at the same moment: a change reported after this point marks the result stale.
             var search = SearchText;
+            var view = CurrentViewKey;
+            int version = historyVersion;
             if (IsShellView)
             {
                 // A shell tab: kept commands merged with the shell's live ones (FlyoutViewModel.Shells.cs), no paging.
                 await ReloadShellAsync(cancellation.Token);
-                MarkLoaded(search, cancellation);
+                MarkLoaded(search, cancellation, view, version);
                 return;
             }
 
@@ -333,7 +375,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             {
                 // A prompt tab: kept prompts, then the archive one card per text, paged (FlyoutViewModel.Prompts.cs).
                 await ReloadPromptsAsync(cancellation.Token);
-                MarkLoaded(search, cancellation);
+                MarkLoaded(search, cancellation, view, version);
                 return;
             }
 
@@ -357,7 +399,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 hasMore = false;
                 HasPatternError = false;
                 UpdateEmptyState();
-                MarkLoaded(search, cancellation);
+                MarkLoaded(search, cancellation, view, version);
                 Reloaded?.Invoke(this, EventArgs.Empty);
                 await UpdateStatusAsync();
                 return;
@@ -369,17 +411,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return;
             }
 
-            Items.Clear();
-            foreach (var entry in entries)
-            {
-                Items.Add(CreateItem(entry));
-            }
-
+            // Patched, not rebuilt: unchanged cards keep their layout and decoded thumbnails (see ApplyEntries).
+            ApplyEntries(entries);
             loaded = entries.Count;
             hasMore = entries.Count == PageSize;
             HasPatternError = false;
             UpdateEmptyState();
-            MarkLoaded(search, cancellation);
+            MarkLoaded(search, cancellation, view, version);
             Reloaded?.Invoke(this, EventArgs.Empty);
             await UpdateStatusAsync();
         }
@@ -545,17 +583,67 @@ public sealed partial class FlyoutViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Records that the list now shows the results for <paramref name="search"/> — unless a newer load took over meanwhile,
-    /// whose own result is the one that counts.
+    /// Records that the list now shows the results for <paramref name="search"/> in <paramref name="view"/> as of history
+    /// version <paramref name="version"/> — unless a newer load took over meanwhile, whose own result is the one that counts.
     /// </summary>
     /// <param name="search">The search text the finished load used.</param>
     /// <param name="cancellation">That load's cancellation (set when a newer load superseded it).</param>
-    private void MarkLoaded(string search, CancellationTokenSource cancellation)
+    /// <param name="view">The view the load was made for.</param>
+    /// <param name="version">The history version when the load started (see <see cref="IsListCurrent"/>).</param>
+    private void MarkLoaded(string search, CancellationTokenSource cancellation, ViewKey view, int version)
     {
         if (!cancellation.IsCancellationRequested)
         {
             loadedSearchText = search;
+            loadedState = (view, version);
         }
+    }
+
+    /// <summary>
+    /// Makes <see cref="Items"/> show <paramref name="entries"/> in their order, keeping the card of every entry that is
+    /// already shown (its data updated in place) and creating cards only for entries that are new to the list.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reload used to clear the list and add a new card for every entry, so each card was laid out and drawn again, each
+    /// image card decoded its thumbnail again, and the list played its add animations — after the panel was already on
+    /// screen. Patching the collection (remove what left, move what moved, insert what is new) leaves an unchanged card
+    /// alone, which is what lets the hidden panel refresh its list cheaply after every copy (<c>ClipboardFlyout.Summon.cs</c>).
+    /// </para>
+    /// <para>
+    /// Only cards of stored entries are reused. A card that stands for something not stored — an Everything pick, a shell
+    /// command, an archived prompt — has an id that means nothing outside the load that made it, so it is never kept.
+    /// </para>
+    /// </remarks>
+    /// <param name="entries">The entries to show, in order, each id once (a query result).</param>
+    private void ApplyEntries(IReadOnlyList<ClipEntry> entries)
+    {
+        var reusable = new Dictionary<long, ClipItemViewModel>();
+        foreach (var item in Items)
+        {
+            if (item.Pick is null && item.Command is null && item.Prompt is null)
+            {
+                reusable.TryAdd(item.Id, item);
+            }
+        }
+
+        var wanted = new List<ClipItemViewModel>(entries.Count);
+        foreach (var entry in entries)
+        {
+            if (reusable.Remove(entry.Id, out var card))
+            {
+                // Same entry, maybe newer data (used again, pinned, regrouped); Update also recomputes the relative time.
+                card.Update(entry);
+                wanted.Add(card);
+            }
+            else
+            {
+                wanted.Add(CreateItem(entry));
+            }
+        }
+
+        // Removes what left, moves what moved, inserts what is new; an unchanged list raises no notification at all.
+        CollectionPatch.Apply(Items, wanted);
     }
 
     /// <summary>Reloads when the search text changes (debounced).</summary>
@@ -987,4 +1075,14 @@ public sealed partial class FlyoutViewModel : ObservableObject
             AppLog.Warn($"Reading history stats failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// Everything that decides which entries a load shows: two keys are equal exactly when a load for one would show the
+    /// same list as a load for the other (with the same history), which is what <see cref="IsListCurrent"/> relies on.
+    /// </summary>
+    /// <param name="Search">The search box's text, as typed.</param>
+    /// <param name="Filter">The tab.</param>
+    /// <param name="Groups">The ids of the groups shown, in column order, comma-separated (empty in the regular view).</param>
+    /// <param name="Options">The search toggles.</param>
+    private readonly record struct ViewKey(string Search, ClipFilter Filter, string Groups, SearchOptions Options);
 }

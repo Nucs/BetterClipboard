@@ -411,6 +411,14 @@
             RightTapped="ItemsList_RightTapped"
             SelectionMode="Single"
             TabIndex="1">
+            <!--
+                No item animations: ListView's default add, delete, content, reorder and entrance transitions played after
+                every reload, so cards kept sliding in for ~0.3 s after the panel was already on screen. Cards now appear,
+                move and leave in one frame (ClipboardFlyout.Summon.cs).
+            -->
+            <ListView.ItemContainerTransitions>
+                <TransitionCollection />
+            </ListView.ItemContainerTransitions>
             <ListView.ItemTemplate>
                 <DataTemplate x:DataType="vm:ClipItemViewModel">
                     <Grid AutomationProperties.Name="{x:Bind AutomationName}" RowSpacing="6">

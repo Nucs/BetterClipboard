@@ -37,12 +37,20 @@ public readonly record struct ScreenRect(int Left, int Top, int Right, int Botto
 /// <param name="Cursor">Mouse cursor position.</param>
 public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, ScreenRect? Caret, ScreenPoint Cursor)
 {
+    /// <summary>
+    /// When the context was captured, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp — for a shortcut, a few
+    /// microseconds after the key reached BetterClipboard — so the panel can log how long it took to appear. 0 for a context
+    /// built without <see cref="Capture"/> or <see cref="CursorOnly"/> (tests): nothing is measured from it then.
+    /// </summary>
+    public long CapturedAt { get; init; }
+
     /// <summary>A context with no paste target, positioned at the mouse cursor (tray/menu invocations).</summary>
     /// <returns>The context.</returns>
     public static ForegroundContext CursorOnly()
     {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
         GetCursorPos(out var cursor);
-        return new ForegroundContext(0, 0, null, new ScreenPoint(cursor.X, cursor.Y));
+        return new ForegroundContext(0, 0, null, new ScreenPoint(cursor.X, cursor.Y)) { CapturedAt = now };
     }
 
     /// <summary>
@@ -51,6 +59,7 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
     /// <returns>The context.</returns>
     public static ForegroundContext Capture()
     {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
         GetCursorPos(out var cursor);
         nint foreground = GetForegroundWindow();
         uint thread = foreground == 0 ? 0 : GetWindowThreadProcessId(foreground, out _);
@@ -68,6 +77,6 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
             }
         }
 
-        return new ForegroundContext(foreground, processId, caret, new ScreenPoint(cursor.X, cursor.Y));
+        return new ForegroundContext(foreground, processId, caret, new ScreenPoint(cursor.X, cursor.Y)) { CapturedAt = now };
     }
 }

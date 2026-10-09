@@ -30,8 +30,9 @@ using WinRT.Interop;
 namespace BetterClipboard.App.Views;
 
 /// <summary>
-/// The Win+V replacement window: created once, then shown next to the caret and hidden again after
-/// each use (showing a warm window is instant; creating a XAML window is not).
+/// The Win+V replacement window: created once and shown once, then only uncloaked next to the caret for a summon and
+/// cloaked again after each use, with its list kept ready in between — so a summon puts an already drawn panel on screen in
+/// one frame (ClipboardFlyout.Summon.cs; creating, or even re-showing, a XAML window is not instant).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -39,11 +40,11 @@ namespace BetterClipboard.App.Views;
 /// DWM rounded corners — the look of a system flyout — but resizable by its borders: width and height are remembered
 /// (<see cref="AppSettings.FlyoutWidth"/> / <see cref="AppSettings.FlyoutHeight"/>, ClipboardFlyout.Size.cs) and every
 /// summon opens it at that size next to the caret. Wider shows more of the filter tabs, which scroll sideways when they do
-/// not fit (ClipboardFlyout.TabStrip.cs).
+/// not fit (ClipboardFlyout.TabStrip.cs). DWM's show/hide animations are off: it appears without any transition.
 /// </para>
 /// <para>
-/// <b>Dismissal.</b> Like a flyout it hides when it loses activation, except while one of its own popups
-/// (context menu, clear confirmation) is open — those take activation briefly.
+/// <b>Dismissal.</b> Like a flyout it goes away (is concealed) when it loses activation, except while one of its own
+/// popups (context menu, clear confirmation) is open — those take activation briefly.
 /// </para>
 /// <para>
 /// <b>Moving.</b> Having no title bar, it moves by dragging its background: anything that is not a
@@ -203,10 +204,14 @@ public sealed partial class ClipboardFlyout : Window
         Root.PointerCaptureLost += Root_PointerEnded;
 
         // Like Win+V, the top item is always "armed": after every (re)load — typing a search, switching
-        // a filter — select the first card so Enter pastes the best match immediately.
+        // a filter — select the first card so Enter pastes the best match immediately. Unconditionally: a reload patches
+        // the list (FlyoutViewModel.ApplyEntries) instead of clearing it, so a card that is still listed keeps its
+        // selection, which may no longer be the first card (it used to be lost with the clear), and the list keeps its
+        // scroll position (the clear used to reset it): SelectIndex also scrolls the first card into view. Callers that keep
+        // a card selected across their reload (a history change, a prompt tab) select it again after awaiting the reload.
         ViewModel.Reloaded += (_, _) =>
         {
-            if (ItemsList.SelectedIndex < 0 && ViewModel.Items.Count > 0)
+            if (ViewModel.Items.Count > 0)
             {
                 SelectIndex(0);
             }
@@ -220,49 +225,55 @@ public sealed partial class ClipboardFlyout : Window
     public nint Handle => hwnd;
 
     /// <summary>
-    /// Whether the flyout is currently shown to the user. False while <see cref="WarmUp"/> has it visible off every screen,
-    /// unless a real summon came meanwhile: otherwise a Win+V pressed during the warm-up would "close" the panel instead of
-    /// opening it.
+    /// Whether the flyout is currently shown to the user: from a summon until it is concealed again. The window itself stays
+    /// shown, cloaked, between uses (ClipboardFlyout.Summon.cs), so <c>AppWindow.IsVisible</c> says nothing about this; nor
+    /// does the warm-up, during which a Win+V must open the panel, not "close" it.
     /// </summary>
-    public bool IsOpen => AppWindow.IsVisible && (!warmingUp || summonedDuringWarmUp);
+    public bool IsOpen => presented;
 
-    /// <summary>Whether <see cref="WarmUp"/> is between showing the window off-screen and hiding it again.</summary>
+    /// <summary>Whether <see cref="WarmUp"/> is running (a second call returns at once).</summary>
     private bool warmingUp;
 
-    /// <summary>Set by <see cref="ShowAt"/> when it runs during a warm-up: the warm-up then leaves the window shown.</summary>
-    private bool summonedDuringWarmUp;
-
     /// <summary>
-    /// Builds and renders the panel once without showing it to anyone — visible but off every screen, never activated, not
-    /// in Alt+Tab or the taskbar — then hides it, so the first real summon is as fast as later ones. Call it once, in idle
-    /// time after startup (<c>AppController</c> does).
+    /// Builds and renders the panel once without showing it to anyone — shown but cloaked, never activated, not in Alt+Tab
+    /// or the taskbar — with its list loaded, so the first real summon is as fast as later ones. Call it once, in idle time
+    /// after startup (<c>AppController</c> does).
     /// </summary>
     /// <remarks>
     /// <para>
     /// Why: the first summon used to create the window and its XAML tree, lay it out and render it — a few hundred
     /// milliseconds — and keys typed in that time went to the app underneath. Measured 2026-10-09 on a Windows 11 VM after
     /// a <c>--background</c> start: a letter typed 100 or 250 ms after the first Win+V landed in Notepad, one typed after
-    /// 500 ms in the search box. Later summons only show a ready window.
+    /// 500 ms in the search box.
     /// </para>
     /// <para>
-    /// A summon while this waits wins: <see cref="ShowAt"/> marks it, and the window is left shown and positioned by the
-    /// summon instead of hidden. Nothing is loaded into the list here; <see cref="ShowAt"/> does that, as always.
+    /// The window is shown at the size the next summon will most likely use (the remembered size on the monitor under the
+    /// pointer), so that summon only moves it, and it stays shown — cloaked — from then on. Where DWM refuses to cloak it,
+    /// it is shown off every screen instead and hidden again at the end, as before. A summon while this waits wins: it
+    /// positions and uncloaks the window, and the end of the warm-up leaves it alone.
     /// </para>
     /// </remarks>
     public async void WarmUp()
     {
-        if (AppWindow.IsVisible || warmingUp)
+        if (AppWindow.IsVisible || warmingUp || presented)
         {
             return;
         }
 
         warmingUp = true;
-        summonedDuringWarmUp = false;
         var started = Stopwatch.StartNew();
         try
         {
-            // -32000 is where Windows itself parks windows that must not be seen; no monitor reaches it.
-            AppWindow.Move(new PointInt32(-32000, -32000));
+            if (cloaking)
+            {
+                AppWindow.MoveAndResize(WarmUpBounds());
+            }
+            else
+            {
+                // -32000 is where Windows itself parks windows that must not be seen; no monitor reaches it.
+                AppWindow.Move(new PointInt32(-32000, -32000));
+            }
+
             AppWindow.Show(false);
             if (!Root.IsLoaded)
             {
@@ -277,20 +288,27 @@ public sealed partial class ClipboardFlyout : Window
                 await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromSeconds(5)));
             }
 
-            // A couple of frames more, so the first render (backdrop, swap chain, glyph atlas) is paid now too.
+            if (!presented)
+            {
+                // The view and the list the first summon shows, loaded now (the list is otherwise empty until a summon).
+                PrepareForNextSummon();
+                await RefreshConcealedListAsync();
+            }
+
+            // A couple of frames more, so the first render (backdrop, swap chain, glyph atlas, the cards) is paid now too.
             await Task.Delay(100);
-            if (!summonedDuringWarmUp)
+            if (!presented && !cloaking)
             {
                 AppWindow.Hide();
             }
 
-            AppLog.Info($"Panel prepared for the first Win+V in {started.ElapsedMilliseconds} ms.");
+            AppLog.Info($"Panel prepared for the first Win+V in {started.ElapsedMilliseconds} ms{(cloaking ? string.Empty : " (DWM does not cloak it: hidden between uses)")}.");
         }
         catch (Exception ex)
         {
             // async void: nothing above can catch it. The first summon then simply builds what is missing, as before.
             AppLog.Warn($"Preparing the panel ahead of the first summon failed: {ex.Message}");
-            if (!summonedDuringWarmUp)
+            if (!presented && !cloaking)
             {
                 AppWindow.Hide();
             }
@@ -302,8 +320,29 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the flyout for a summon: resets search, reloads history, positions it by the caret and
-    /// takes focus (search box focused so the user can type immediately).
+    /// Where the warm-up shows the cloaked window: the remembered size (and the groups column, if open) at the scale of the
+    /// monitor under the pointer, at that monitor's work-area corner — where a summon on that monitor needs no resize.
+    /// </summary>
+    /// <returns>The bounds in physical screen pixels.</returns>
+    private RectInt32 WarmUpBounds()
+    {
+        var settings = controller.Settings.Current;
+        var cursor = ForegroundContext.CursorOnly().Cursor;
+        var (workArea, scale) = MonitorLookup.FromPoint(cursor);
+        // The same arithmetic as ShowAt (the column added in whole pixels after the list's size), so the sizes match exactly.
+        var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
+        if (settings.ShowGroupsPane)
+        {
+            width += (int)Math.Round(GroupsPaneDip * scale);
+        }
+
+        return new RectInt32(workArea.Left, workArea.Top, Math.Min(width, workArea.Width), Math.Min(height, workArea.Height));
+    }
+
+    /// <summary>
+    /// Shows the flyout for a summon: positions it by the caret, puts it on screen at once with the list as it was prepared
+    /// while concealed (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately).
+    /// The list is reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
     /// </summary>
     /// <param name="context">Caret/cursor snapshot.</param>
     /// <param name="placement">Placement preference.</param>
@@ -311,12 +350,6 @@ public sealed partial class ClipboardFlyout : Window
     {
         try
         {
-            // A summon during the warm-up keeps the window it is about to position and show (see WarmUp).
-            if (warmingUp)
-            {
-                summonedDuringWarmUp = true;
-            }
-
             // A drag interrupted by hiding normally ends through capture loss; never let one survive into
             // a new summon, where the next pointer move would jump the window.
             EndDrag();
@@ -332,6 +365,8 @@ public sealed partial class ClipboardFlyout : Window
                 openPopups = 0;
             }
 
+            // The resets of a summon. Concealing did them already (PrepareForNextSummon), so they are no-ops then; they still
+            // run for a summon before the warm-up, and for whatever changed meanwhile (theme, tabs, the groups column).
             controller.ApplyTheme(Root);
             ViewModel.ResetForShow();
             UpdateShareXTab();
@@ -348,9 +383,9 @@ public sealed partial class ClipboardFlyout : Window
             groupsPaneOpen = settings.ShowGroupsPane;
             ApplyGroupsPaneLayout();
 
-            // Show and take focus FIRST, load after: keys typed right after the shortcut must land in our
-            // search box. Loading first (even for a few ms, more on a cold start) lets fast typists' keys
-            // leak into the document underneath. The list briefly shows its previous (near-identical) content.
+            // Show and take focus FIRST, load after (and only if needed): keys typed right after the shortcut must land in
+            // our search box. Loading first (even for a few ms, more on a cold start) lets fast typists' keys leak into the
+            // document underneath. A list that is not current briefly shows its previous (near-identical) content.
             var anchorPoint = placement == FlyoutPlacement.CenterScreen && context.TargetWindow != 0
                 ? default
                 : (context.Caret is { } caret && placement == FlyoutPlacement.NearCaret
@@ -372,21 +407,30 @@ public sealed partial class ClipboardFlyout : Window
 
             var rect = new RectInt32(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
 
-            AppWindow.MoveAndResize(rect);
-            AppWindow.Show(true);
-            // Moving between monitors with different DPI may have rescaled the window on show; re-apply.
-            AppWindow.MoveAndResize(rect);
-            Activate();
-            ForegroundHelper.Activate(hwnd);
+            // Relative times ("5 min ago") are recomputed before the panel shows, so its first frame has them right.
+            ViewModel.RefreshCaptions();
 
+            // On screen in one step: no fade, no slide, no DWM animation (ClipboardFlyout.Summon.cs has the numbers).
+            await PresentAsync(rect);
+            if (!presented)
+            {
+                return; // dismissed again (the shortcut pressed twice) while it waited for a frame
+            }
+
+            long onScreen = Stopwatch.GetTimestamp();
             SearchBox.Focus(FocusState.Programmatic);
-            PlayEntranceAnimation();
 
-            // Groups load alongside the list: cards created before the groups arrive get their badges when
-            // LoadGroupsAsync refreshes them.
-            var groups = ViewModel.LoadGroupsAsync();
-            await ViewModel.ReloadAsync();
+            // Groups are loaded while concealed and on every GroupsChanged; only a summon before the first load reads them
+            // here, alongside the list (cards created before they arrive get their badges when LoadGroupsAsync refreshes them).
+            var groups = ViewModel.GroupsLoaded ? Task.CompletedTask : ViewModel.LoadGroupsAsync();
+            bool reload = !ViewModel.IsListCurrent;
+            if (reload)
+            {
+                await ViewModel.ReloadAsync();
+            }
+
             SelectIndex(0);
+            LogSummon(context, onScreen, reload);
 
             // Second line of defence for the first summon: if no element of the panel has the keyboard yet (the box's
             // Loaded came before the window was shown, or a focus call lost a race with activation), give it to the box
@@ -405,7 +449,7 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Hides the flyout.
+    /// Takes the flyout off the screen (<see cref="Conceal"/>: cloaked, its window kept ready for the next summon).
     /// </summary>
     /// <param name="restoreFocus">Re-activate the window the user came from (Esc / toggle), as opposed to a paste which handles focus itself.</param>
     public void Dismiss(bool restoreFocus)
@@ -419,17 +463,17 @@ public sealed partial class ClipboardFlyout : Window
         CloseImageOverlays();
 
         // Order matters: re-activate the target while we are still the foreground window (then
-        // SetForegroundWindow is always allowed), and only then hide. Hiding first hands activation to
-        // whatever window Windows picks next, after which we may no longer steal it back.
+        // SetForegroundWindow is always allowed), and only then conceal. Concealing hides the window once, which
+        // hands activation to whatever window Windows picks next, after which we may no longer steal it back.
         if (restoreFocus)
         {
             ForegroundHelper.Activate(controller.PasteTargetWindow);
         }
 
-        AppWindow.Hide();
+        Conceal();
     }
 
-    /// <summary>Really closes the window during app exit (normal closes are turned into hides).</summary>
+    /// <summary>Really closes the window during app exit (normal closes are turned into a conceal, <see cref="OnClosing"/>).</summary>
     public void CloseForExit()
     {
         closingForExit = true;
@@ -463,31 +507,20 @@ public sealed partial class ClipboardFlyout : Window
         AppWindow.IsShownInSwitchers = false;
         SystemBackdrop = new DesktopAcrylicBackdrop();
         WindowInterop.UseRoundedCorners(hwnd);
+
+        // No zoom-and-fade from DWM when the window shows or hides: a panel summoned by a key must appear in one frame.
+        WindowInterop.DisableTransitions(hwnd);
+
+        // Cloaked from the start: the window is shown once and afterwards only cloaked and uncloaked, so a summon finds a
+        // finished picture (ClipboardFlyout.Summon.cs). Where DWM refuses, the panel hides and shows like any window.
+        cloaking = WindowInterop.SetCloaked(hwnd, true);
+        if (!cloaking)
+        {
+            AppLog.Warn("DWM refused to cloak the panel's window; it is hidden and shown like any window, which makes summons slower.");
+        }
     }
 
-    /// <summary>Slides and fades the content in (150 ms) for a polished appearance.</summary>
-    private void PlayEntranceAnimation()
-    {
-        var visual = ElementCompositionPreview.GetElementVisual(Root);
-        ElementCompositionPreview.SetIsTranslationEnabled(Root, true);
-        var compositor = visual.Compositor;
-        var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.1f, 0.9f), new Vector2(0.2f, 1f));
-
-        var fade = compositor.CreateScalarKeyFrameAnimation();
-        fade.InsertKeyFrame(0f, 0f);
-        fade.InsertKeyFrame(1f, 1f, easing);
-        fade.Duration = TimeSpan.FromMilliseconds(150);
-
-        var slide = compositor.CreateVector3KeyFrameAnimation();
-        slide.InsertKeyFrame(0f, new Vector3(0, 10, 0));
-        slide.InsertKeyFrame(1f, Vector3.Zero, easing);
-        slide.Duration = TimeSpan.FromMilliseconds(220);
-
-        visual.StartAnimation("Opacity", fade);
-        visual.StartAnimation("Translation", slide);
-    }
-
-    /// <summary>Hides on deactivation (flyout semantics) unless one of our popups took activation.</summary>
+    /// <summary>Conceals on deactivation (flyout semantics) unless one of our popups took activation.</summary>
     /// <param name="sender">The window.</param>
     /// <param name="args">Activation data.</param>
     private void OnActivated(object sender, WindowActivatedEventArgs args)
@@ -496,7 +529,7 @@ public sealed partial class ClipboardFlyout : Window
         {
             if (openPopups == 0 && IsOpen)
             {
-                AppWindow.Hide();
+                Conceal();
             }
 
             return;
@@ -510,7 +543,7 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Turns user/system close requests into a hide so the warm window can be reused.</summary>
+    /// <summary>Turns user/system close requests (Alt+F4) into a conceal, so the drawn window is reused by the next summon.</summary>
     /// <param name="sender">The app window.</param>
     /// <param name="args">Close data.</param>
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -522,12 +555,24 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Keeps the list current while visible; defers reloads while hidden.</summary>
+    /// <summary>
+    /// Keeps the list current: in place or by a coalesced reload while visible, by a background refresh while concealed (so
+    /// the next summon finds it ready, ClipboardFlyout.Summon.cs).
+    /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="change">What changed.</param>
     private async void OnHistoryChanged(object? sender, ClipChangedEventArgs change)
     {
-        if (!IsOpen || !ViewModel.TryApplyInPlace(change) || reloadPending)
+        // Every change may leave the shown list stale, also one applied to a card in place (that card does not move up), so
+        // the list counts as not current until a load that starts after it.
+        ViewModel.MarkHistoryChanged();
+        if (!IsOpen)
+        {
+            ScheduleConcealedRefresh();
+            return;
+        }
+
+        if (!ViewModel.TryApplyInPlace(change) || reloadPending)
         {
             return;
         }

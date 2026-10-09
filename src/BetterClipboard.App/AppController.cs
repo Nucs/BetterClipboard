@@ -301,7 +301,10 @@ public sealed partial class AppController
         }
 
         hotkeys = new HotkeyService();
-        hotkeys.Pressed += (_, context) => ui.TryEnqueue(() => OnHotkey(context));
+
+        // High priority: the summon goes ahead of whatever else is queued (a list refresh, thumbnail decodes), since every
+        // millisecond until the panel is in front is a millisecond in which typed keys still reach the app underneath.
+        hotkeys.Pressed += (_, context) => ui.TryEnqueue(DispatcherQueuePriority.High, () => OnHotkey(context));
         _ = ApplyHotkeyAsync();
 
         tray = new TrayIcon(IconPath, TrayTooltip(settings.Current));
