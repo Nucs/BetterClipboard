@@ -3399,6 +3399,14 @@ shortcuts was in progress on 2026-10-03.
   full control of `C:\ProgramData\claude-desktop`, and auto sign-in through the Winlogon values **plus** the LSA secret
   `DefaultPassword`; with UAC on, `explorer.exe <file>` from the elevated agent starts a non-elevated process (the
   installer test of a normal admin prompt).
+  - Also (2026-10-09, §2.27): OLE's clipboard fails there — WinForms `Clipboard.SetText`/`SetDataObject` throw
+    `CLIPBRD_E_CANT_OPEN` (0x800401D0) every time, from the agent's job and from a process Explorer started, while nobody
+    holds the clipboard (`GetOpenClipboardWindow` sampled 1.2 million times: never). Plain Win32 calls work:
+    `OpenClipboard(owner window)`, `EmptyClipboard`, `SetClipboardData` (`CF_UNICODETEXT`, or `CF_DIB` built from a
+    bitmap), `CloseClipboard`. With a null owner, `SetClipboardData` fails (§1.7). The agent's own `clipboard` tool works
+    for text. Seeding many items: a PowerShell `Add-Type` helper doing those calls, pumping messages between copies.
+  - One screen `BitBlt` costs ~20–25 ms in those desktops (no GPU), whatever its size: copy one rectangle per sample,
+    not several rows (§2.27's probe).
 - **Editing repository files from Python: bytes, or `newline=''`.** `Path.write_text` on Windows writes CRLF; on
   2026-10-03 it turned all of CLAUDE.md into CRLF (caught by `file`, put back before committing). The repository's files
   are LF in the working tree.
