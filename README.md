@@ -17,7 +17,9 @@ you send to Claude Code and Codex.
 
 - **Takes over Win+V.** Same shortcut, and the panel opens by your text cursor. The installer releases Win+V from
   Explorer; a copy you run without the installer intercepts it with a keyboard hook. Add more shortcuts, or keep Win+V
-  for Windows and pick your own ([Taking over Win+V](#taking-over-winv)).
+  for Windows and pick your own: press any key or combination in *Settings › Shortcut* (numpad and media keys, F13–F24
+  and the Copilot key included), and the shortcuts you used before stay one click away
+  ([Choosing shortcuts](#choosing-shortcuts)).
 - **Remembers everything, also after a restart.** 10,000 items by default, each up to 64 MB, with a size budget and an
   optional age limit, all adjustable. Win+V keeps 25 items of up to 4 MB, and a restart wipes all but its pins.
 - **Every kind of copy**, with the source app and time on each card, and tabs that filter by kind and by source. A copy
@@ -132,10 +134,18 @@ Press **Win+V**. The panel opens by your text cursor with the search box focused
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
 
+Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match.
+
+**Pasting into a window that runs as administrator** (an elevated terminal, say): Windows does not let an app that runs
+without administrator rights type into it. BetterClipboard puts the item on the clipboard, goes back to that window, and
+tells you once (a notification) to press `Ctrl+V` yourself. The shortcut itself works over such windows when Win+V is
+released from Explorer (the installer's default).
+
 The tray icon opens the panel and Settings:
 
-- **Shortcut:** the keys that open the panel (add as many as you like), and releasing Win+letter shortcuts from
-  Explorer.
+- **Shortcut:** the keys that open the panel (add as many as you like: click the box and press them, or pick one from
+  its menu of suggestions and shortcuts used before), and releasing Win+letter shortcuts from Explorer
+  ([Choosing shortcuts](#choosing-shortcuts)).
 - **History:** how many items, for how many days, how large, and what to record.
 - **Pasting:** paste after choosing, move pasted items to the top, pinned items first, where the panel opens.
 - **Privacy:** pause, ignored apps, *Forgotten forever*, capture reliability, clear history.
@@ -287,6 +297,29 @@ way:
 
 Explorer can release only an exact Win+letter or Win+digit shortcut: the `V` releases Win+V, but Win+Ctrl+V stays with
 Windows.
+
+### Choosing shortcuts
+
+In *Settings › Shortcut*, click the box and **press the shortcut**. The box shows it (`Ctrl+Shift+K`), and `Enter` or
+**Add** saves it. Nothing is saved before that, so a combination pressed by mistake costs nothing. While the box has
+focus it takes the keys even when Explorer or BetterClipboard itself owns them: `Win+E` is written into the box instead
+of opening File Explorer.
+
+- **Any key works:** letters, digits and punctuation, the numeric keypad (`Ctrl+Alt+Num5`, `Ctrl+NumPlus`), `Pause`,
+  `PrintScreen`, the Lock keys, the Menu key (`Apps`), media and volume keys, browser keys, `F1`–`F24` (the Copilot
+  key of new laptops sends `Shift+Win+F23`), and keys without a name, which are written as their code (`0x97`, from
+  macro pads).
+- **Keys that do nothing in text may stand alone:** `F9`, `Pause`, `MediaPlayPause`. Keys that type or edit need
+  `Ctrl`, `Alt` or `Win`, because a bare `V` (or `Shift+V`) as a global shortcut would stop that key from typing in
+  every app.
+- **Refused, with the reason under the box:** `Ctrl+C`, `Ctrl+X`, `Ctrl+V` and `Ctrl+Insert` (copying must keep
+  working, and BetterClipboard pastes with `Ctrl+V` itself), and the keys Windows keeps: `Ctrl+Alt+Delete`, `Win+L`,
+  `Alt+Tab`, `Alt+Esc`, `Ctrl+Esc`, `Ctrl+Shift+Esc` and `Alt+F4`. These keep working in the box (`Alt+Tab` switches
+  windows, `Ctrl+V` pastes text).
+- **Typing still works:** letters, `Backspace` and `Enter` reach the box, so you can also type a name such as
+  `ctrl + alt + page down` or `0x97`.
+- **The menu next to the box** lists suggestions, then **Used before**: every shortcut you had, newest first. A check
+  marks the ones in use; click one to add or remove it.
 
 ## Tabs for other apps
 
