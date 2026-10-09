@@ -27,6 +27,17 @@
     your Windows account) and is never touched by install or update; -Uninstall keeps it unless
     -RemoveData is given.
 
+    Updates from inside the app: BetterClipboard 0.2.6 and newer ask GitHub once a day whether a newer release
+    exists (a plain request for this project's public release list; nothing about you, your PC or your clipboard
+    is sent) and light up an update button when one does. Nothing is downloaded until you approve it. Settings >
+    Updates switches the daily question off, and so does installing with -NoUpdateCheck. An approved update runs
+    this script from the new release's own zip as:
+
+      install.ps1 -Update -Package <zip> -PackageSha256 <hash> -InstallDir <folder> -ResultPath <file> -LogPath <file>
+
+    That command line is a contract with every released BetterClipboard: later versions of this script must keep
+    accepting it.
+
 .PARAMETER Version
     Release to install: 'latest' (default) or a version such as 0.1.0 / v0.1.0.
 
@@ -65,6 +76,36 @@
 .PARAMETER NoLaunch
     Do not start BetterClipboard after installing.
 
+.PARAMETER NoUpdateCheck
+    Install with the automatic update check off: BetterClipboard then never asks GitHub for new versions by itself.
+    Settings > Updates still has "Check now" for when you want to know, and the switch to turn the automatic check
+    back on. Releases before 0.2.6 have no update check, so there the option changes nothing.
+
+.PARAMETER Package
+    Install from this release zip on disk (BetterClipboard-<version>-win-<arch>.zip) instead of downloading one:
+    an offline install, or the app's own updater, which has downloaded and checked the zip already. The version is
+    read from the file name unless -Version names it. The zip is verified against -PackageSha256 when given, else
+    against a SHA256SUMS.txt in the same folder when there is one; without either it is installed unverified,
+    with a warning. A relative path is relative to the folder you run the installer from.
+
+.PARAMETER PackageSha256
+    With -Package: the SHA-256 the zip must have (64 hex digits). A zip with another hash is not installed.
+
+.PARAMETER Update
+    Replace the files of the copy in -InstallDir and change nothing else - what the app's update button runs. The
+    Start menu shortcut, "Start with Windows", your PATH and Explorer's shortcuts stay exactly as they are (no
+    Explorer restart); the Installed-apps entry and installer.json only get the new version, and only when they
+    belong to that folder. Only programs running from that folder are closed, and BetterClipboard is started
+    again in the background when it was running. It cannot be combined with the options that change those things
+    (-Hotkey, -TakeOverWinV, -NoTakeOverWinV, -AddToPath, -NoStartup, -NoShortcut, -NoUpdateCheck).
+
+.PARAMETER ResultPath
+    Write the outcome to this file as JSON (version, ok, error, finishedUtc), before BetterClipboard is started
+    again - how the app learns, at its next start, whether its update worked.
+
+.PARAMETER LogPath
+    Also write everything the installer prints to this file (a PowerShell transcript), for runs without a window.
+
 .PARAMETER Uninstall
     Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). While BetterClipboard's Chocolatey
     package stays installed, the startup entry starts that copy instead of being removed. Win+V - and every other
@@ -94,6 +135,11 @@
     & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AddToPath
 
     Installs or updates, and makes bclip runnable by name.
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File .\install.ps1 -Package .\BetterClipboard-0.2.6-win-x64.zip
+
+    Installs from a release zip you downloaded (put SHA256SUMS.txt next to it and it is verified first).
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -Uninstall
@@ -129,6 +175,25 @@ param(
     [Parameter(ParameterSetName = 'Install')]
     [switch] $NoLaunch,
 
+    [Parameter(ParameterSetName = 'Install')]
+    [switch] $NoUpdateCheck,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [string] $Package,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [ValidatePattern('^\s*[0-9a-fA-F]{64}\s*$')]
+    [string] $PackageSha256,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [switch] $Update,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [string] $ResultPath,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [string] $LogPath,
+
     [Parameter(ParameterSetName = 'Uninstall', Mandatory = $true)]
     [switch] $Uninstall,
 
@@ -159,6 +224,13 @@ $ShortcutPath = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName.l
 # The first release whose BetterClipboard.exe knows --set-hotkeys, which -Hotkey and -NoTakeOverWinV need. Older
 # versions ignore unknown arguments and start normally (a plain start opens Settings), so they are never asked.
 $HotkeyOptionsMinimumVersion = [version] '0.2.6'
+# The first release that checks for updates by itself and whose BetterClipboard.exe knows --set-update-check, which
+# -NoUpdateCheck runs. Older versions have no check to switch off (and would start normally on the unknown argument).
+$UpdateCheckMinimumVersion = [version] '0.2.6'
+# What -ResultPath reports: the version this run installs (known once the release or package is identified), and
+# whether the outcome was written already - it must be on disk before BetterClipboard is started again.
+$script:ResultVersion = ''
+$script:ResultWritten = $false
 # What BetterClipboard opens with when Win+V stays with Windows and no -Hotkey is given: free on a stock Windows 11,
 # and no app expects it (Ctrl+Alt+V is Office's Paste Special). The app's canonical spelling of Win+Alt+V.
 $AlternativeHotkey = 'Alt+Win+V'
@@ -313,6 +385,126 @@ function ConvertTo-ComparableVersion([string] $SemanticVersion) {
     return $null
 }
 
+function Get-PackageInfo([string] $Path) {
+    <#
+    .SYNOPSIS
+        The version and architecture a release zip's file name states, or $null for a name of another shape.
+    .DESCRIPTION
+        Release zips are named BetterClipboard-<version>-win-<arch>.zip by tools/release/package.ps1; -Package reads
+        the version from that name, so an offline install needs no -Version.
+    .PARAMETER Path
+        Path or file name of the zip.
+    .OUTPUTS
+        PSCustomObject with Version (without 'v') and Architecture ('x64' or 'arm64'), or $null.
+    #>
+    $name = Split-Path -Leaf $Path
+    if ($name -match "^$AppName-(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)-win-(x64|arm64)\.zip$") {
+        return [pscustomobject]@{ Version = $Matches[1]; Architecture = $Matches[2].ToLowerInvariant() }
+    }
+
+    return $null
+}
+
+function Write-InstallResult([bool] $Ok, [string] $Message) {
+    <#
+    .SYNOPSIS
+        Writes this run's outcome to -ResultPath (once); does nothing without -ResultPath.
+    .DESCRIPTION
+        The app's updater starts this script and is then closed by it, so the file is how the outcome reaches the
+        user: BetterClipboard reads it at its next start and says "updated" or why not. It is therefore written
+        before BetterClipboard is started again, never after. A failure to write it only warns: the update itself
+        must not fail over its report.
+    .PARAMETER Ok
+        Whether the new version is in place.
+    .PARAMETER Message
+        The error message when it is not; empty otherwise.
+    #>
+    if (-not $ResultPath -or $script:ResultWritten) {
+        return
+    }
+
+    $script:ResultWritten = $true
+    try {
+        $folder = Split-Path -Parent $ResultPath
+        if ($folder) { New-Item -ItemType Directory -Path $folder -Force | Out-Null }
+        $result = [ordered]@{
+            version     = $script:ResultVersion
+            ok          = $Ok
+            error       = $Message
+            finishedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $result | ConvertTo-Json | Set-Content -LiteralPath $ResultPath -Encoding UTF8
+    }
+    catch {
+        Write-Warning "The result could not be written to $ResultPath ($($_.Exception.Message))."
+    }
+}
+
+function Get-InstalledProcess([string] $Folder) {
+    <#
+    .SYNOPSIS
+        The BetterClipboard and bclip processes that run from $Folder - the ones that keep that folder from being replaced.
+    .DESCRIPTION
+        Matched by the path of each process's program, so another copy of BetterClipboard (a second install, a test
+        instance in its own folder) is never among them. A process whose path cannot be read (another account's)
+        is not ours to judge and is left out.
+    .PARAMETER Folder
+        The install folder.
+    .OUTPUTS
+        System.Diagnostics.Process objects, possibly none. PowerShell unrolls a returned array, so callers wrap the
+        call in @() before counting.
+    #>
+    $prefix = $Folder.TrimEnd('\', '/') + '\'
+    return @(Get-Process -Name $AppName, 'bclip' -ErrorAction SilentlyContinue | Where-Object {
+            $path = $null
+            try { $path = $_.Path } catch { $path = $null }
+            $path -and $path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+        })
+}
+
+function Stop-InstalledApp([string] $Exe) {
+    <#
+    .SYNOPSIS
+        Closes the programs running from $Exe's folder (gracefully with --exit, forcibly after 20 s) and says whether
+        BetterClipboard was among them. The -Update counterpart of Stop-RunningApp.
+    .DESCRIPTION
+        An update replaces one folder, so only what runs from that folder is closed - not every BetterClipboard of
+        the session, as a fresh install does. --exit reaches the instance this script's environment names (the app
+        that started the update hands its environment on, so that is the app itself); bclip ends by itself once the
+        app it talks to is gone.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe.
+    .OUTPUTS
+        $true when BetterClipboard was running from that folder (so it is started again afterwards), else $false.
+    #>
+    $running = @(Get-InstalledProcess (Split-Path -Parent $Exe))
+    $apps = @($running | Where-Object { $_.ProcessName -eq $AppName })
+    if ($running.Count -eq 0) {
+        return $false
+    }
+
+    Write-Step 'Closing the running BetterClipboard (it saves queued copies first)'
+    if ($apps.Count -gt 0) {
+        Start-Process -FilePath $Exe -ArgumentList '--exit' -WindowStyle Hidden -Wait
+    }
+
+    $deadline = (Get-Date).AddSeconds(20)
+    while ((Get-Date) -lt $deadline -and @($running | Where-Object { -not $_.HasExited }).Count -gt 0) {
+        Start-Sleep -Milliseconds 250
+        $running | ForEach-Object { $_.Refresh() }
+    }
+
+    $stuck = @($running | Where-Object { -not $_.HasExited })
+    if ($stuck.Count -gt 0) {
+        Write-Warning 'BetterClipboard did not exit within 20 s; stopping it.'
+        $stuck | Stop-Process -Force -ErrorAction SilentlyContinue
+        # Stop-Process returns before the process is gone, and its files stay locked until it is.
+        $stuck | ForEach-Object { try { [void] $_.WaitForExit(5000) } catch { } }
+    }
+
+    return ($apps.Count -gt 0)
+}
+
 function Stop-RunningApp([string] $PreferredExe) {
     <#
     .SYNOPSIS
@@ -397,15 +589,24 @@ function Undo-FailedSwap([string] $Staging, [string] $Previous, [bool] $WasRunni
 
     Remove-Item $Staging -Recurse -Force -ErrorAction SilentlyContinue
 
+    $failure = "The install folder $InstallDir stayed in use by another program for 10 s, so it was not updated; the installed version is unchanged."
+    # After the app's own update the way back is its update button, not an installer the user never ran.
+    $retry = if ($Update) { 'then update again' } else { 'then run the installer again' }
+    $advice = "Close programs that use that folder (a terminal or File Explorer window open in it), $retry. ($Reason)"
+
+    # Before the app is started again: it reads the result at its start, to tell the user the update failed.
+    Write-InstallResult $false "$failure $advice"
+
     # The update stopped the app; leaving it stopped would leave the user without their clipboard history until sign-in.
+    # After the app's own update it comes back the way it ran, in the background (a plain start opens Settings).
     $restarted = $false
     if ($WasRunning -and (Test-Path $Exe)) {
-        Start-AppUnelevated $Exe
+        if ($Update) { Start-AppAsBefore $Exe } else { Start-AppUnelevated $Exe }
         $restarted = $true
     }
 
     $again = if ($restarted) { ' BetterClipboard was started again.' } else { '' }
-    throw "The install folder $InstallDir stayed in use by another program for 10 s, so it was not updated; the installed version is unchanged.$again Close programs that use that folder (a terminal or File Explorer window open in it), then run the installer again. ($Reason)"
+    throw "$failure$again $advice"
 }
 
 function Restart-Explorer {
@@ -814,6 +1015,17 @@ function Test-Elevated {
 }
 
 function Start-AppUnelevated([string] $Exe) {
+    <#
+    .SYNOPSIS
+        Starts BetterClipboard after an install with the user's normal (unelevated) rights, also from an elevated
+        installer. A plain start: on a fresh install it opens Settings.
+    .DESCRIPTION
+        From an elevated prompt the app is started through Explorer, which gives it the rights and the environment of
+        a program started at sign-in instead of the prompt's. An update does not use this (Start-AppAsBefore): there
+        the app must come back exactly as it ran.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe.
+    #>
     if (Test-Elevated) {
         # An app started from an elevated prompt runs elevated; asking the shell to start it gives it the
         # normal (unelevated) token it gets at sign-in.
@@ -825,8 +1037,136 @@ function Start-AppUnelevated([string] $Exe) {
     }
 }
 
+function Start-AppAsBefore([string] $Exe) {
+    <#
+    .SYNOPSIS
+        Starts BetterClipboard in the notification area with the rights and the environment of the app that asked for
+        the update: after an -Update, the app comes back the way it was running.
+    .DESCRIPTION
+        The app's updater starts this script, so the script has the app's rights and environment, and what it starts
+        directly gets them too. That is on purpose, and why Explorer is not asked to start it (Start-AppUnelevated):
+        Explorer gives a process its own environment, so an instance that runs with its own data folder
+        (BETTERCLIPBOARD_DATA_DIR) would come back as the regular instance, on the regular history. Found in the first
+        test of the update flow: the instance that had asked for the update never came back; another one did.
+
+        One variable is not handed on: PSModulePath. PowerShell puts its own module folders into its process's
+        environment, and an app that inherited them would pass them to every shell it starts (the Run tab), where
+        another PowerShell version cannot load its modules from them. Without the variable each shell works out its
+        own. It is removed from this process only while the app is started, through .NET rather than a cmdlet: a
+        cmdlet from a module that is not loaded yet could not be found without the very variable that was removed.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe.
+    #>
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $Exe
+    $startInfo.Arguments = '--background'
+    $startInfo.WorkingDirectory = Split-Path -Parent $Exe
+    # Through the shell: the app then inherits no handles of this process (its console, its transcript).
+    $startInfo.UseShellExecute = $true
+    $modulePath = [Environment]::GetEnvironmentVariable('PSModulePath')
+    try {
+        [Environment]::SetEnvironmentVariable('PSModulePath', $null)
+        $started = [System.Diagnostics.Process]::Start($startInfo)
+        if ($started) { $started.Dispose() }
+    }
+    finally {
+        [Environment]::SetEnvironmentVariable('PSModulePath', $modulePath)
+    }
+}
+
+function Set-UpdateCheck([string] $Exe, [bool] $Enabled) {
+    <#
+    .SYNOPSIS
+        Runs "BetterClipboard.exe --set-update-check on|off", which saves the choice in the app's own settings.
+    .DESCRIPTION
+        The app's settings store writes the file (it refuses while that BetterClipboard runs, so call this while the
+        app is closed). It is a GUI program, so the call operator would neither wait for it nor see its output:
+        Start-Process redirects its standard output to a temp file instead, as Invoke-HotkeyCommand does.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe (0.2.6 or newer: older versions start normally on the unknown argument).
+    .PARAMETER Enabled
+        $true for "on", $false for "off".
+    #>
+    $value = if ($Enabled) { 'on' } else { 'off' }
+    $outFile = [IO.Path]::GetTempFileName()
+    try {
+        $process = Start-Process -FilePath $Exe -ArgumentList @('--set-update-check', $value) -WorkingDirectory (Split-Path -Parent $Exe) -NoNewWindow -PassThru -RedirectStandardOutput $outFile
+        # Windows PowerShell reports no exit code for a process whose handle was never taken while it ran.
+        $null = $process.Handle
+        if (-not $process.WaitForExit(60000)) {
+            $process.Kill()
+            throw "$ExeName did not answer within 60 s."
+        }
+
+        $lines = @([IO.File]::ReadAllLines($outFile) | Where-Object { $_ })
+        $code = $process.ExitCode
+    }
+    finally {
+        Remove-Item -LiteralPath $outFile -Force -ErrorAction SilentlyContinue
+    }
+
+    # An exit code of 0 with nothing printed means the program never ran the command.
+    if ($code -ne 0 -or @($lines | Where-Object { $_ -eq "update-check: $value" }).Count -eq 0) {
+        $reasons = @($lines | ForEach-Object { $_ -replace '^error:\s*', '' })
+        if ($reasons.Count -eq 0) { $reasons = @("exit code $code") }
+        throw ($reasons -join ' ')
+    }
+}
+
+function Complete-Update([string] $Exe, [string] $Semver, [bool] $WasRunning) {
+    <#
+    .SYNOPSIS
+        Finishes an -Update after the new files are in place: refreshes the version this install is recorded with,
+        reports the outcome, and starts BetterClipboard again when it was running.
+    .DESCRIPTION
+        Nothing here may fail the update - the new version is already installed - so bookkeeping problems only warn.
+        The Installed-apps entry and installer.json are touched only when they name this install folder: an update
+        of one copy must not rewrite another copy's records. Everything else an install sets up (shortcut, startup
+        entry, PATH, Explorer's shortcuts) is left exactly as the user has it.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe.
+    .PARAMETER Semver
+        The version that was installed.
+    .PARAMETER WasRunning
+        Whether BetterClipboard ran from this folder before the update (Stop-InstalledApp's answer).
+    #>
+    try {
+        $entry = Get-ItemProperty -Path $UninstallKeyPath -ErrorAction SilentlyContinue
+        if ($entry -and $entry.PSObject.Properties['InstallLocation'] -and (Test-SamePath ([string] $entry.InstallLocation) $InstallDir)) {
+            $sizeKb = [int] ((Get-ChildItem -Path $InstallDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB)
+            Set-ItemProperty -Path $UninstallKeyPath -Name DisplayVersion -Value $Semver -Type String
+            Set-ItemProperty -Path $UninstallKeyPath -Name EstimatedSize -Value $sizeKb -Type DWord
+        }
+
+        $state = Read-InstallerState
+        if ($state -and $state.PSObject.Properties['installDir'] -and (Test-SamePath ([string] $state.installDir) $InstallDir)) {
+            # Every recorded value stays (the keys released from Explorer above all); only the version moves.
+            $newState = [ordered]@{}
+            foreach ($property in $state.PSObject.Properties) { $newState[$property.Name] = $property.Value }
+            $newState['version'] = $Semver
+            $newState['installedUtc'] = (Get-Date).ToUniversalTime().ToString('o')
+            $newState | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
+        }
+    }
+    catch {
+        Write-Warning "BetterClipboard $Semver is installed, but its version record could not be refreshed ($($_.Exception.Message))."
+    }
+
+    # On disk before the app starts: it reads the result at its start.
+    Write-InstallResult $true ''
+
+    if ($WasRunning -and -not $NoLaunch) {
+        Write-Step 'Starting BetterClipboard'
+        Start-AppAsBefore $Exe
+    }
+
+    Write-Host ''
+    Write-Host "BetterClipboard was updated to $Semver." -ForegroundColor Green
+}
+
 function Install-BetterClipboard {
-    if (Test-Elevated) {
+    # Not for an update: it runs with whatever rights the app has that asked for it, and changes nothing but that copy.
+    if ((Test-Elevated) -and -not $Update) {
         Write-Warning 'Running elevated. BetterClipboard installs per user; a normal (non-admin) PowerShell is recommended.'
     }
 
@@ -839,21 +1179,75 @@ function Install-BetterClipboard {
         throw '-NoTakeOverWinV leaves Win+V to Windows, so Win+V cannot be one of the -Hotkey shortcuts too.'
     }
 
+    if ($PackageSha256 -and -not $Package) {
+        throw '-PackageSha256 is the checksum of a -Package; give the zip too.'
+    }
+
+    if ($Update) {
+        # An update replaces files and nothing else: the options that set up or change the install do not go with it.
+        $given = @()
+        if ($Hotkey) { $given += '-Hotkey' }
+        if ($TakeOverWinV) { $given += '-TakeOverWinV' }
+        if ($NoTakeOverWinV) { $given += '-NoTakeOverWinV' }
+        if ($AddToPath) { $given += '-AddToPath' }
+        if ($NoStartup) { $given += '-NoStartup' }
+        if ($NoShortcut) { $given += '-NoShortcut' }
+        if ($NoUpdateCheck) { $given += '-NoUpdateCheck' }
+        if ($given.Count -gt 0) {
+            throw "-Update only replaces the files of an installed copy, so it cannot be combined with $($given -join ', '). Run the installer without -Update for those."
+        }
+
+        if (-not (Test-Path -LiteralPath (Join-Path $InstallDir $ExeName))) {
+            throw "There is no BetterClipboard in $InstallDir to update. Run the installer without -Update to install it."
+        }
+    }
+
     $chocolateyCopy = Get-ChocolateyCopy
-    if ($chocolateyCopy) {
+    # Not on an update: it replaces one known copy and registers nothing, so the other copy does not matter to it.
+    if ($chocolateyCopy -and -not $Update) {
         Write-Warning "BetterClipboard is also installed with Chocolatey ($chocolateyCopy); 'choco upgrade betterclipboard' updates that copy. Both copies use the same history."
     }
 
     $arch = Get-OsArchitecture
-    Write-Step "Looking up $Repository release '$Version' for win-$arch"
-    $release = Get-Release $Version
-    $tag = [string] $release.tag_name
-    $semver = $tag.TrimStart('v', 'V')
-    $zipName = "$AppName-$semver-win-$arch.zip"
-    $asset = @($release.assets | Where-Object { $_.name -eq $zipName }) | Select-Object -First 1
-    $sumsAsset = @($release.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' }) | Select-Object -First 1
-    if (-not $asset) { throw "Release $tag has no $zipName." }
-    if (-not $sumsAsset) { throw "Release $tag has no SHA256SUMS.txt; refusing to install an unverified download." }
+    if ($Package) {
+        # A release zip on disk: nothing is looked up or downloaded.
+        if (-not (Test-Path -LiteralPath $Package -PathType Leaf)) {
+            throw "There is no package at $Package."
+        }
+
+        $zipName = Split-Path -Leaf $Package
+        $named = Get-PackageInfo $Package
+        if ($Version -ne 'latest') {
+            $semver = $Version.TrimStart('v', 'V')
+        }
+        elseif ($named) {
+            $semver = $named.Version
+        }
+        else {
+            throw "$zipName is not named like a release zip ($AppName-<version>-win-<arch>.zip), so its version is unknown. Name it with -Version."
+        }
+
+        # An x64 package runs on an ARM64 PC (emulated); an ARM64 package cannot run on an x64 PC.
+        if ($named -and $named.Architecture -eq 'arm64' -and $arch -ne 'arm64') {
+            throw "$zipName is for ARM64 PCs, and this PC is $arch. Use the win-$arch zip."
+        }
+
+        $tag = "v$semver"
+        Write-Step "Installing $tag from $Package"
+    }
+    else {
+        Write-Step "Looking up $Repository release '$Version' for win-$arch"
+        $release = Get-Release $Version
+        $tag = [string] $release.tag_name
+        $semver = $tag.TrimStart('v', 'V')
+        $zipName = "$AppName-$semver-win-$arch.zip"
+        $asset = @($release.assets | Where-Object { $_.name -eq $zipName }) | Select-Object -First 1
+        $sumsAsset = @($release.assets | Where-Object { $_.name -eq 'SHA256SUMS.txt' }) | Select-Object -First 1
+        if (-not $asset) { throw "Release $tag has no $zipName." }
+        if (-not $sumsAsset) { throw "Release $tag has no SHA256SUMS.txt; refusing to install an unverified download." }
+    }
+
+    $script:ResultVersion = $semver
 
     # The shortcuts this run sets, if any. Settings are read now, while the running app still owns them unchanged.
     $configured = Get-ConfiguredHotkeys
@@ -869,25 +1263,53 @@ function Install-BetterClipboard {
     New-Item -ItemType Directory -Path $temp | Out-Null
     $canonical = $null
     try {
-        Write-Step "Downloading $zipName ($([Math]::Round($asset.size / 1MB, 1)) MB)"
-        $zip = Join-Path $temp $zipName
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = "$AppName-installer" }
-        $sums = (Invoke-WebRequest -Uri $sumsAsset.browser_download_url -UseBasicParsing -Headers @{ 'User-Agent' = "$AppName-installer" }).Content
-        if ($sums -is [byte[]]) { $sums = [Text.Encoding]::ASCII.GetString($sums) }
+        if ($Package) {
+            $zip = $Package
+            Write-Step 'Verifying SHA-256'
+            $actual = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
 
-        Write-Step 'Verifying SHA-256'
-        $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-        $expected = Get-AssetSha256 $asset $sums
-        if ($actual -ne $expected) {
-            throw "Checksum mismatch for $zipName (expected $expected, got $actual). Nothing was installed."
+            # The caller's checksum first (the app's updater passes the one from the release); else the release's own
+            # list when it sits next to the zip, which then must name the zip.
+            $expected = ''
+            $sumsPath = Join-Path (Split-Path -Parent $zip) 'SHA256SUMS.txt'
+            if ($PackageSha256) {
+                $expected = $PackageSha256.Trim().ToLowerInvariant()
+            }
+            elseif (Test-Path -LiteralPath $sumsPath -PathType Leaf) {
+                $expected = Get-AssetSha256 ([pscustomobject]@{ name = $zipName }) ([IO.File]::ReadAllText($sumsPath))
+            }
+
+            if (-not $expected) {
+                Write-Warning "$zipName was not verified: there is no -PackageSha256 and no SHA256SUMS.txt next to it. Its SHA-256 is $actual."
+            }
+            elseif ($actual -ne $expected) {
+                throw "Checksum mismatch for $zipName (expected $expected, got $actual). Nothing was installed."
+            }
+            else {
+                Write-Note "OK $actual"
+            }
         }
+        else {
+            Write-Step "Downloading $zipName ($([Math]::Round($asset.size / 1MB, 1)) MB)"
+            $zip = Join-Path $temp $zipName
+            Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zip -UseBasicParsing -Headers @{ 'User-Agent' = "$AppName-installer" }
+            $sums = (Invoke-WebRequest -Uri $sumsAsset.browser_download_url -UseBasicParsing -Headers @{ 'User-Agent' = "$AppName-installer" }).Content
+            if ($sums -is [byte[]]) { $sums = [Text.Encoding]::ASCII.GetString($sums) }
 
-        # GitHub computes its own digest at upload time; when present it independently confirms the file.
-        if ($asset.PSObject.Properties['digest'] -and $asset.digest -and $asset.digest -ne "sha256:$actual") {
-            throw "GitHub's digest for $zipName ($($asset.digest)) does not match the download. Nothing was installed."
+            Write-Step 'Verifying SHA-256'
+            $actual = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+            $expected = Get-AssetSha256 $asset $sums
+            if ($actual -ne $expected) {
+                throw "Checksum mismatch for $zipName (expected $expected, got $actual). Nothing was installed."
+            }
+
+            # GitHub computes its own digest at upload time; when present it independently confirms the file.
+            if ($asset.PSObject.Properties['digest'] -and $asset.digest -and $asset.digest -ne "sha256:$actual") {
+                throw "GitHub's digest for $zipName ($($asset.digest)) does not match the download. Nothing was installed."
+            }
+
+            Write-Note "OK $actual"
         }
-
-        Write-Note "OK $actual"
 
         $staging = "$InstallDir.new"
         $previous = "$InstallDir.old"
@@ -895,7 +1317,8 @@ function Install-BetterClipboard {
             if (Test-Path $leftover) { Remove-Item $leftover -Recurse -Force }
         }
 
-        Expand-Archive -Path $zip -DestinationPath $staging -Force
+        # -LiteralPath: a -Package path is the caller's, and "[" or "]" in it would otherwise be read as a wildcard.
+        Expand-Archive -LiteralPath $zip -DestinationPath $staging -Force
         Get-ChildItem -Path $staging -Recurse -File | Unblock-File
         if (-not (Test-Path (Join-Path $staging $ExeName))) {
             throw "The archive does not contain $ExeName at its root."
@@ -926,7 +1349,9 @@ function Install-BetterClipboard {
         }
 
         $exe = Join-Path $InstallDir $ExeName
-        $wasRunning = Stop-RunningApp $exe
+        # An update closes only what runs from the folder it replaces; an install closes every BetterClipboard of the
+        # session, since it is about to register this copy as the one that runs.
+        $wasRunning = if ($Update) { Stop-InstalledApp $exe } else { Stop-RunningApp $exe }
 
         Write-Step "Installing $tag to $InstallDir"
         # Swap via renames: if the new files cannot be moved in, the previous version is put back - and started again
@@ -946,6 +1371,13 @@ function Install-BetterClipboard {
         Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
     }
 
+    if ($Update) {
+        # The files are replaced, and that is all an update does: the shortcut, the startup entry, the PATH and
+        # Explorer's shortcuts stay as the user has them.
+        Complete-Update -Exe $exe -Semver $semver -WasRunning $wasRunning
+        return
+    }
+
     # What BetterClipboard answers to from now on: the shortcuts just set, else the ones it already had.
     $effective = $configured
     if ($null -ne $canonical) {
@@ -956,6 +1388,24 @@ function Install-BetterClipboard {
         catch {
             # The new version is in place; only the shortcuts stay as they were. Explorer is then left alone too.
             Write-Warning "The shortcuts were not changed ($($_.Exception.Message)). Set them in Settings > Shortcut."
+        }
+    }
+
+    # The automatic update check, switched off on request while the app is still closed (it is on by default).
+    $comparableVersion = ConvertTo-ComparableVersion $semver
+    $hasUpdateCheck = $null -ne $comparableVersion -and $comparableVersion -ge $UpdateCheckMinimumVersion
+    if ($NoUpdateCheck) {
+        if (-not $hasUpdateCheck) {
+            Write-Note "BetterClipboard $semver has no automatic update check, so there is nothing to switch off."
+        }
+        else {
+            Write-Step 'Switching the automatic update check off'
+            try {
+                Set-UpdateCheck -Exe $exe -Enabled $false
+            }
+            catch {
+                Write-Warning "The update check was not switched off ($($_.Exception.Message)). Switch it off in Settings > Updates."
+            }
         }
     }
 
@@ -1086,6 +1536,21 @@ function Install-BetterClipboard {
     else {
         Write-Note 'Optional: re-run with -AddToPath to use bclip, the command line for scripts and AI agents.'
     }
+
+    # The one request BetterClipboard makes by itself is announced where it is installed, with both ways to stop it
+    # and where the whole privacy policy is.
+    if ($hasUpdateCheck -and $NoUpdateCheck) {
+        Write-Note 'The automatic update check is off. Settings > Updates > Check now asks GitHub when you want to know.'
+    }
+    elseif ($hasUpdateCheck) {
+        Write-Note 'By default, BetterClipboard asks GitHub once a day whether a newer version exists (nothing about you,'
+        Write-Note 'your PC or your clipboard is sent), and installs nothing without your approval. Settings > Updates'
+        Write-Note 'switches that off; so does installing with -NoUpdateCheck.'
+    }
+
+    if ($hasUpdateCheck) {
+        Write-Note "Privacy: https://github.com/$Repository#privacy"
+    }
 }
 
 function Uninstall-BetterClipboard {
@@ -1176,11 +1641,48 @@ function Uninstall-BetterClipboard {
 $InstallDir = Resolve-FileSystemPath $InstallDir
 $DataDir = Resolve-FileSystemPath $DataDir
 $StatePath = Join-Path $DataDir 'installer.json'
+if ($Package) { $Package = Resolve-FileSystemPath $Package }
+if ($ResultPath) { $ResultPath = Resolve-FileSystemPath $ResultPath }
+if ($LogPath) { $LogPath = Resolve-FileSystemPath $LogPath }
+
+# -LogPath: a run without a window (the app's updater) leaves what it printed in a file. A transcript that cannot be
+# started only warns: the install matters more than its log.
+$transcribing = $false
+if ($LogPath) {
+    try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $LogPath) -Force | Out-Null
+        Start-Transcript -LiteralPath $LogPath -Force | Out-Null
+        $transcribing = $true
+    }
+    catch {
+        Write-Warning "Nothing is logged to $LogPath ($($_.Exception.Message))."
+    }
+}
 
 Enter-WorkingFolder
 try {
-    if ($Uninstall) { Uninstall-BetterClipboard } else { Install-BetterClipboard }
+    if ($Uninstall) {
+        Uninstall-BetterClipboard
+    }
+    else {
+        Install-BetterClipboard
+        # An update wrote its result before it started the app again; this covers every other run with -ResultPath.
+        Write-InstallResult $true ''
+    }
+}
+catch {
+    # The report first (the app that asked for this update reads it), then the error goes on to the caller.
+    Write-InstallResult $false $_.Exception.Message
+    if ($transcribing) {
+        # PowerShell prints an uncaught error only after the script ended, which is after the transcript stopped.
+        Write-Host "Failed: $($_.Exception.Message)"
+    }
+
+    throw
 }
 finally {
     Exit-WorkingFolder
+    if ($transcribing) {
+        try { Stop-Transcript | Out-Null } catch { }
+    }
 }

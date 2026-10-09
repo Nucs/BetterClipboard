@@ -519,7 +519,13 @@ both cases (the user then finds it by Win+V or the tray icon). That keeps decisi
 **Follow-ups in the app,** independent of the package:
 - Settings › *Add bclip to PATH* is redundant under Chocolatey; it could hide itself when the exe runs from a
   Chocolatey `lib` folder.
-- An update check (roadmap) must not compete with `choco upgrade` there.
+- ~~An update check (roadmap) must not compete with `choco upgrade` there.~~ Built 2026-10-09 with that rule
+  ([CLAUDE.md](../CLAUDE.md) §2.29): a copy that runs from a `…\lib\betterclipboard\tools\app` folder is a Chocolatey
+  copy. It never asks GitHub by itself, and it never replaces its own files. Its update dialog, after the user's own
+  *Check now*, names `choco upgrade betterclipboard` and offers *Copy command*. The switch in *Settings › Updates* is
+  disabled there, and its status line says "Chocolatey updates this copy, so BetterClipboard does not check by itself."
+  Verified on a test desktop with a copy in a folder of that shape: no request until *Check now*.
+  - For the package's description, this matters to moderators: the app does not update itself outside Chocolatey.
 
 ## 7. Verification
 

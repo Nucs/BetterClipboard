@@ -190,11 +190,12 @@ public sealed class InputTests
     [Fact]
     public void Sizing_MinimumTrackSizeFollowsScaleAndColumn()
     {
-        Assert.Equal((360, 320), FlyoutSizing.MinimumTrackSize(1.0, extraWidthDip: 0));
-        Assert.Equal((606, 480), FlyoutSizing.MinimumTrackSize(1.5, extraWidthDip: 44));
-        Assert.Equal((450, 400), FlyoutSizing.MinimumTrackSize(1.25, extraWidthDip: 0));
-        Assert.Equal((630, 560), FlyoutSizing.MinimumTrackSize(1.75, extraWidthDip: 0));
-        Assert.Equal((360, 320), FlyoutSizing.MinimumTrackSize(double.NaN, extraWidthDip: 0));
+        // 396 DIPs wide since the header holds a fifth button (the update button): 360 before.
+        Assert.Equal((396, 320), FlyoutSizing.MinimumTrackSize(1.0, extraWidthDip: 0));
+        Assert.Equal((660, 480), FlyoutSizing.MinimumTrackSize(1.5, extraWidthDip: 44));
+        Assert.Equal((495, 400), FlyoutSizing.MinimumTrackSize(1.25, extraWidthDip: 0));
+        Assert.Equal((693, 560), FlyoutSizing.MinimumTrackSize(1.75, extraWidthDip: 0));
+        Assert.Equal((396, 320), FlyoutSizing.MinimumTrackSize(double.NaN, extraWidthDip: 0));
     }
 
     /// <summary>On a monitor smaller than the flyout it shrinks to fit instead of spilling off-screen.</summary>

@@ -52,10 +52,15 @@ public sealed record AppSettings
 
     /// <summary>
     /// The narrowest the user can make the panel, in DIPs (without the groups column): the header's logo, "Clipboard", the
-    /// "Paused" chip and its four buttons still fit side by side, and the search box keeps room for text left of its
-    /// Aa / W / .* toggles. Narrower, the header's title would be cut off. Enforced while resizing and when loading.
+    /// "Paused" chip and its five buttons (updates, pause, groups, clear, settings) still fit side by side, and the search
+    /// box keeps room for text left of its Aa / W / .* toggles. Narrower, the header's title would be cut off. Enforced
+    /// while resizing and when loading.
     /// </summary>
-    public const int MinFlyoutWidth = 360;
+    /// <remarks>
+    /// 360 until the update button joined the header (four buttons took 312 of the 322 content DIPs); a fifth button is
+    /// 36 DIPs more. A width saved below this by an older version is raised to it when the settings load.
+    /// </remarks>
+    public const int MinFlyoutWidth = 396;
 
     /// <summary>
     /// The lowest the user can make the panel, in DIPs: header, search box, tabs and footer take ~180 of them, so the list
@@ -412,6 +417,34 @@ public sealed record AppSettings
     public bool EnableCommandLine { get; init; }
 
     /// <summary>
+    /// Ask GitHub once a day whether a newer release of BetterClipboard exists, so the panel's update button can light up.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>On by default, and the only request the app makes by itself.</b> It is a plain download of this project's public
+    /// release list: nothing about the user, the PC or the clipboard is sent (the server sees what any web request shows:
+    /// the network address, and the app's name and version). Off means no request at all until the user presses
+    /// "Check now"; <c>install.ps1 -NoUpdateCheck</c> installs with it off.
+    /// </para>
+    /// <para>
+    /// Checking never installs anything: an update is downloaded only after the user approves it in the update dialog.
+    /// Copies that a package manager updates (Chocolatey) and isolated test instances never check by themselves,
+    /// whatever this says.
+    /// </para>
+    /// </remarks>
+    public bool CheckForUpdates { get; init; } = true;
+
+    /// <summary>
+    /// A release the user chose not to be reminded of ("Skip this version" in the update dialog), as its version text
+    /// (<c>0.2.7</c>); empty for none.
+    /// </summary>
+    /// <remarks>
+    /// Only the highlight is skipped: the dialog still offers that version. A newer release ends the skip by itself,
+    /// because only an exact match counts. Text that is not a version skips nothing.
+    /// </remarks>
+    public string SkippedUpdateVersion { get; init; } = string.Empty;
+
+    /// <summary>
     /// Returns a copy whose shortcuts are <paramref name="hotkeys"/>: the first becomes <see cref="OpenHotkey"/>, the rest
     /// <see cref="ExtraOpenHotkeys"/>. Use it instead of setting the two members apart, which can leave the main shortcut
     /// duplicated among the extras.
@@ -585,6 +618,9 @@ public sealed record AppSettings
             FlyoutHeight = Math.Clamp(FlyoutHeight, MinFlyoutHeight, MaxFlyoutSize),
             IgnoredApps = withCatalog,
             SeededIgnoredApps = seen,
+
+            // Free text from the file: kept short, compared as a version by the updater (anything else skips nothing).
+            SkippedUpdateVersion = (SkippedUpdateVersion ?? string.Empty).Trim() is { Length: <= 64 } skipped ? skipped : string.Empty,
             Placement = Enum.IsDefined(Placement) ? Placement : FlyoutPlacement.NearCaret,
             Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
         };

@@ -84,6 +84,13 @@ jobs:
         shell: pwsh
         run: tools/release/package.ps1 -Version ${{ steps.version.outputs.version }} -OutputDirectory artifacts/release
 
+      # The app's update button runs this release's own install.ps1 with a fixed command line (-Update -Package ...).
+      # A release whose installer no longer accepts it could not be installed by any earlier version, so the exact zip
+      # that is published below is updated to once here, in scratch folders (tools/release/test-update.ps1).
+      - name: Update mode of the installer (x64)
+        shell: pwsh
+        run: tools/release/test-update.ps1 -Version ${{ steps.version.outputs.version }} -Architecture x64 -PackageDirectory artifacts/release
+
       # The exact .nupkg that is pushed below, tested by a real install/upgrade/uninstall on this disposable runner
       # (Chocolatey's own verifier cannot: its Windows Server 2019 is older than the app's minimum).
       - name: Chocolatey package

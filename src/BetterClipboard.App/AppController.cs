@@ -311,6 +311,10 @@ public sealed partial class AppController
         tray.Invoked += (_, _) => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()));
         tray.MenuProvider = BuildTrayMenu;
 
+        // Updates from GitHub's releases (AppController.Updates.cs). After the tray icon: the outcome of an update that
+        // restarted the app is told through its notification. The first automatic check comes a minute later.
+        StartUpdates();
+
         if (settings.Current.ImportWindowsHistoryOnStartup)
         {
             _ = ImportWindowsHistoryAsync();
@@ -789,6 +793,10 @@ public sealed partial class AppController
         // Release the shortcut first so Win+V instantly belongs to Windows again.
         hotkeys?.Dispose();
 
+        // No more requests to GitHub, and a download in flight is cancelled. An installer that asked for this exit keeps
+        // running: it waits for this process to end before it replaces the files.
+        await DisposeUpdatesAsync();
+
         // Stop answering bclip before the history it reads from is drained and disposed.
         await SetCommandLineAsync(enabled: false);
 
@@ -918,6 +926,10 @@ public sealed partial class AppController
     {
         var previous = rules;
         rules = CaptureRules.FromSettings(next);
+
+        // Thread-safe and cheap (it announces a change only when the update settings themselves changed): the automatic
+        // check follows its switch at once, and a skipped version stops highlighting the update button.
+        ApplyUpdateSettings();
         ui.TryEnqueue(async () =>
         {
             tray?.SetTooltip(TrayTooltip(next));
@@ -1193,15 +1205,24 @@ public sealed partial class AppController
     private IReadOnlyList<TrayMenuItem> BuildTrayMenu()
     {
         var current = Settings.Current;
-        return
+        List<TrayMenuItem> items =
         [
             new TrayMenuItem($"Open clipboard\t{current.OpenHotkey}", () => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()))),
             new TrayMenuItem("Settings…", () => ui.TryEnqueue(ShowSettings)),
-            TrayMenuItem.Separator,
-            new TrayMenuItem("Pause capturing", () => ui.TryEnqueue(() => Settings.Update(s => s with { IsCapturePaused = !s.IsCapturePaused })), IsChecked: current.IsCapturePaused),
-            TrayMenuItem.Separator,
-            new TrayMenuItem("Exit", () => ui.TryEnqueue(() => _ = ExitAsync())),
         ];
+
+        // Only while an update waits that the user did not skip: the same condition that highlights the panel's update
+        // button, so the menu never nags about a version they chose to pass over. The snapshot is safe to read here.
+        if (UpdateStatus is { IsInstalling: false, IsSkipped: false, Offer: { } offer })
+        {
+            items.Add(new TrayMenuItem($"Update to {offer.Release.Version}…", () => ui.TryEnqueue(ShowUpdate)));
+        }
+
+        items.Add(TrayMenuItem.Separator);
+        items.Add(new TrayMenuItem("Pause capturing", () => ui.TryEnqueue(() => Settings.Update(s => s with { IsCapturePaused = !s.IsCapturePaused })), IsChecked: current.IsCapturePaused));
+        items.Add(TrayMenuItem.Separator);
+        items.Add(new TrayMenuItem("Exit", () => ui.TryEnqueue(() => _ = ExitAsync())));
+        return items;
     }
 
     /// <summary>Tray hover text reflecting capture state and shortcut.</summary>

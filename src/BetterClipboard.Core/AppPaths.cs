@@ -93,6 +93,20 @@ public sealed class AppPaths
     public string LogDirectory => Path.Combine(DataDirectory, "logs");
 
     /// <summary>
+    /// The updater's working folder: the cached release list, a downloaded package until it is installed, the installer
+    /// script taken from it, and the installer's result. Everything in it can be deleted at any time; the app empties it
+    /// of old downloads when it starts.
+    /// </summary>
+    public string UpdatesDirectory => Path.Combine(DataDirectory, "updates");
+
+    /// <summary>
+    /// <c>installer.json</c>, which <c>install.ps1</c> writes on every install: what was installed where. The updater
+    /// reads its <c>installDir</c> to tell a copy the installer owns from one extracted by hand
+    /// (<see cref="Updates.InstalledCopy"/>).
+    /// </summary>
+    public string InstallerStatePath => Path.Combine(DataDirectory, "installer.json");
+
+    /// <summary>
     /// Creates the data and log directories if missing.
     /// </summary>
     /// <exception cref="IOException">The directories could not be created.</exception>

@@ -141,6 +141,39 @@
             </Style>
 
             <!--
+                The panel's update button while an update waits: the accent fill of a primary button in the shape of the
+                toolbar's icon buttons, so it is the one highlighted icon in the header. Based on AccentButtonStyle, not on
+                IconButtonStyle with accent setters: the accent button's template owns the hover, pressed and disabled
+                fills and the on-accent glyph color, and resolves them in the flyout's own theme. Swapped in as a whole
+                style from code (ClipboardFlyout.Update.cs), like the other icon states.
+            -->
+            <Style x:Key="IconButtonAttentionStyle" TargetType="Button" BasedOn="{StaticResource AccentButtonStyle}">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Width" Value="34" />
+                <Setter Property="Height" Value="32" />
+                <Setter Property="CornerRadius" Value="6" />
+                <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
+                <Setter Property="FontSize" Value="15" />
+            </Style>
+
+            <!--
+                The update dialog's bubble (Views/UpdateDialog.cs): wider than a stock flyout's content needs, without the
+                presenter's own padding and scrolling. The view pads itself and scrolls only its release notes, so the
+                title and the decision buttons stay in place while the notes below them move. MaxHeight bounds the whole
+                bubble; the notes take what is left of it.
+            -->
+            <Style x:Key="UpdateFlyoutPresenterStyle" TargetType="FlyoutPresenter" BasedOn="{StaticResource DefaultFlyoutPresenterStyle}">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="MinWidth" Value="320" />
+                <Setter Property="MaxWidth" Value="480" />
+                <Setter Property="MaxHeight" Value="640" />
+                <Setter Property="ScrollViewer.HorizontalScrollMode" Value="Disabled" />
+                <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+                <Setter Property="ScrollViewer.VerticalScrollMode" Value="Disabled" />
+                <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Disabled" />
+            </Style>
+
+            <!--
                 The eye button on an image card (bottom-right): opens the full-screen zoom/pan viewer. Its colors are fixed,
                 not theme brushes, because it sits over image content rather than the themed panel surface — a dark circular
                 scrim with a white glyph keeps it legible over a light or dark picture alike. States are template setters so

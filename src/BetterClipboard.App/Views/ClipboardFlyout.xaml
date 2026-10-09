@@ -108,6 +108,35 @@
                 Grid.Column="2"
                 Orientation="Horizontal"
                 Spacing="2">
+                <!--
+                    Updates (ClipboardFlyout.Update.cs): left of Pause, always there. It looks like its neighbors while
+                    there is nothing to do, gets the accent fill of a primary button while an update waits (a whole style
+                    swapped in from code), and shows a small ring instead of its glyph while an update downloads or is
+                    being installed. A click opens the update dialog under it: the decision buttons, and below them the
+                    release notes. E895 = Sync, two arrows chasing each other in a circle (checked by rendering). The
+                    tooltip and the accessible name say the state in words and are set from code. The ring's size is
+                    explicit because a ProgressRing is 32 DIPs by default, taller than the button's room for it.
+                -->
+                <Button
+                    x:Name="UpdateButton"
+                    AutomationProperties.Name="Updates"
+                    Style="{StaticResource IconButtonStyle}"
+                    ToolTipService.ToolTip="Updates">
+                    <Grid>
+                        <FontIcon
+                            x:Name="UpdateGlyph"
+                            FontSize="15"
+                            Glyph="&#xE895;" />
+                        <ProgressRing
+                            x:Name="UpdateRing"
+                            Width="16"
+                            Height="16"
+                            MinWidth="16"
+                            MinHeight="16"
+                            IsActive="False"
+                            Visibility="Collapsed" />
+                    </Grid>
+                </Button>
                 <Button
                     x:Name="PauseButton"
                     AutomationProperties.Name="Pause or resume capturing"

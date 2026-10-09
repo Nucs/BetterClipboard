@@ -379,6 +379,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             KeepClaudeCodePrompts = settings.KeepClaudeCodePrompts;
             KeepCodexPrompts = settings.KeepCodexPrompts;
             RecordRunHistory = settings.RecordRunHistory;
+            CheckForUpdates = settings.CheckForUpdates;
             RefreshHotkeyStatus();
             RefreshExplorerRelease();
             RefreshCommandLineStatus();
@@ -388,6 +389,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RefreshRunHistoryStatus();
             RefreshShellHistoryStatus();
             RefreshPromptsStatus();
+            RefreshUpdateStatus();
         }
         finally
         {

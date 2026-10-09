@@ -704,6 +704,42 @@
                 </controls:SettingsCard>
 
                 <!--
+                  Updates (ViewModel: SettingsViewModel.Updates.cs). The switch is the one thing in BetterClipboard that
+                  decides whether it contacts a server by itself, so the card says exactly what is asked and what is not
+                  sent. "Check now" asks once whatever the switch says. The second button opens the same update dialog as
+                  the panel's update button (the decision buttons, and below them the release notes); it is the accent
+                  button while an update waits. E895 = Sync, the update button's glyph (checked by rendering).
+                -->
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="Updates" />
+                <controls:SettingsCard
+                    Description="Once a day, BetterClipboard asks GitHub for the list of its releases and highlights the update button in the panel when a newer version exists. The request names only the app's version: nothing about you, your PC or your clipboard is sent. Nothing is downloaded or installed until you approve it. Off: it asks only when you press Check now."
+                    Glyph="&#xE895;"
+                    Header="Check for updates automatically">
+                    <ToggleSwitch IsEnabled="{x:Bind ViewModel.CanToggleUpdateCheck, Mode=OneWay}" IsOn="{x:Bind ViewModel.CheckForUpdates, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                IsTextSelectionEnabled="True"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.UpdateStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    Click="CheckForUpdates_Click"
+                                    Content="Check now"
+                                    IsEnabled="{x:Bind ViewModel.CanCheckForUpdates, Mode=OneWay}" />
+                                <!--  Its flyout (the update dialog) and its accent style while an update waits are set in code-behind.  -->
+                                <Button
+                                    x:Name="UpdateDialogButton"
+                                    Content="{x:Bind ViewModel.UpdateActionText, Mode=OneWay}"
+                                    IsEnabled="{x:Bind ViewModel.HasUpdateSystem, Mode=OneWay}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+
+                <!--
                   Third party: the apps BetterClipboard works with and the components it ships, each with its official
                   link. The rows come from Core's ThirdPartyCatalog, whose tests keep it in step with
                   THIRD-PARTY-NOTICES.md and with the packages the app restores (CLAUDE.md, "Third party" section).

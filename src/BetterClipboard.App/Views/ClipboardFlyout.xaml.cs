@@ -177,6 +177,9 @@ public sealed partial class ClipboardFlyout : Window
 
         // The filter tabs scroll sideways when they do not fit (arrows, wheel, drags): ClipboardFlyout.TabStrip.cs.
         InitializeTabStrip();
+
+        // The update button left of Pause, and the dialog it opens: ClipboardFlyout.Update.cs.
+        InitializeUpdateButton();
         ViewModel.PropertyChanged += (_, e) =>
         {
             // Any route to another view (icon click with or without Ctrl/Shift, the icon menu, reset on show, a deleted
@@ -378,6 +381,9 @@ public sealed partial class ClipboardFlyout : Window
             // An image peek or viewer left over from a previous summon must not linger (each also holds a popup count).
             CloseImageOverlays();
 
+            // Nor may the update dialog: a summon starts with the panel alone (the tray's "Update…" opens it again below).
+            CloseUpdateDialog();
+
             // A popup count that no open popup accounts for is stale (a Closed that never came). Left alone it
             // would mute the whole key model (IsPopupKey) and keep deactivation from hiding the panel.
             if (openPopups > 0 && Root.XamlRoot is { } xamlRoot && VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count == 0)
@@ -462,6 +468,9 @@ public sealed partial class ClipboardFlyout : Window
             }
 
             await groups;
+
+            // The tray menu's "Update…" summons the panel for its update dialog: open it now that the panel is on screen.
+            OpenPendingUpdateDialog();
         }
         catch (Exception ex)
         {
@@ -483,6 +492,9 @@ public sealed partial class ClipboardFlyout : Window
         // The image overlays belong to the open panel: tear them down before it goes away.
         CloseImageOverlays();
 
+        // So does the update dialog, a window of its own that would otherwise stay on screen without its panel.
+        CloseUpdateDialog();
+
         // Order matters: re-activate the target while we are still the foreground window (then
         // SetForegroundWindow is always allowed), and only then conceal. Concealing hides the window once, which
         // hands activation to whatever window Windows picks next, after which we may no longer steal it back.
@@ -499,6 +511,7 @@ public sealed partial class ClipboardFlyout : Window
     {
         closingForExit = true;
         CloseImageOverlays();
+        DisposeUpdateButton();
         sizeHook?.Dispose();
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;

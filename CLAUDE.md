@@ -278,13 +278,13 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28, and for the update dialog `Presentation/Markdown`, the release-notes parser, `Presentation/UpdateText` and `Presentation/UpdateDialogLayout`, §2.29), and the update system (`Updates/`: GitHub's release list, SemVer precedence, which release is offered and which notes are shown, `SHA256SUMS.txt`, the release feed and its download-trust rule, the HTTP client, the update service with its schedule and cache, how a copy was installed, the installer contract, the `--set-update-check` command — §2.29). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21), `Updates/` (the Installed-apps record of the running copy, the OS architecture, and `ScriptUpdateInstaller`, which takes `install.ps1` out of a verified package and runs it in update mode — §2.29). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
-| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (832 tests, one class at a time — §4: getting around the panel (§2.28: tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it, one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), and integrity levels for pasting into elevated windows (§2.5) (321 tests). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
+| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,097 tests, one class at a time — §4: the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it, one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller) (337 tests). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2). |
 
@@ -335,6 +335,12 @@ History worker (single consumer Channel) ── classify → WIC analyze (thumbn
  pass at a time: watcher paths (debounced 200 ms), the hot poll (every 5 s: files written within 6 h opened, real length
  vs checkpoint), the reconcile (start, every 5 min, watcher overflow) → JsonlTail reads only the new bytes → prompts in
  slices of 1,000 through the history worker (ClipHistoryService.IngestPromptsAsync) with the file's checkpoint, §2.21
+
+"Updates" timer (pool threads; only while the copy checks by itself) ── a tick 60 s after start, then hourly: when the
+ last successful check is older than 24 h (or a failed one's retry time has come) → GET GitHub's release list with
+ If-None-Match → cache (updates\releases.json + releases-state.json) → a new UpdateSnapshot → Changed → UI (the update
+ button). An approved update: a pool thread downloads to updates\<zip>.part (SHA-256 while streaming) → verify →
+ powershell.exe install.ps1 -Update in its own process, which closes the app, swaps its folder and starts it, §2.29
 ```
 
 Rules: nothing heavy on the hook thread (Windows silently drops slow LL hooks); the clipboard thread only
@@ -604,12 +610,20 @@ source for imports ("Unknown app" is reserved for live copies whose producer cou
 ### 2.8 Data & privacy decisions
 
 Data dir: `%LOCALAPPDATA%\BetterClipboard\` (`stores\{id}\history.db` + `history.key`, `settings.json`,
-`logs\betterclipboard-*.log` with 14-day retention, `installer.json` from `install.ps1`); override with env
+`logs\betterclipboard-*.log` with 14-day retention, `installer.json` from `install.ps1`, `updates\` with the
+updater's cached release list and, during an update, its download — §2.29); override with env
 `BETTERCLIPBOARD_DATA_DIR` (tests, dev runs; the installer honors it too — **always use it when
 experimenting** so the real history stays clean). An override also **scopes the instance** (§2.9): its own
 single-instance lock, `--exit`/`--show-flyout` events and pipe, so an isolated run coexists with the
 user's installed app instead of signalling it. Everything is encrypted at rest (§2.6.1); Windows itself
 encrypts only pins. Logs never contain clipboard content, keys, the binding or the identifiers.
+
+**The network** (since 2026-10-09, §2.29). The update check is the only request the app makes by itself: once a
+day, GitHub's public release list, with nothing but the app's version in the request. `AppSettings.CheckForUpdates`
+(on by default) and `install.ps1 -NoUpdateCheck` switch it off; Chocolatey copies and isolated instances never check
+by themselves. Everything else that uses the network is asked for by the user: *Check now*, *Update and restart*,
+and links that open in the browser. The README's *Privacy* section is the privacy policy and must name every such
+use (§4).
 
 **Password managers are ignored by default** (`Core/Settings/KnownPasswordManagers`, added 2026-09-25 on
 request: "Add to Ignored apps all known password managers you can find").
@@ -2121,7 +2135,7 @@ scroll"); a middle-button drag pulls it too.
   that row for a window without a title bar, so no `InputNonClientPointerSource` region was needed.
 - **Remembered:** `AppSettings.FlyoutWidth` / `FlyoutHeight`.
   - Whole DIPs of the outer window, frame included; the width without the groups column.
-  - Defaults 400 × 560, the old fixed size. `Normalize` clamps them to 360..8192 × 320..8192.
+  - Defaults 400 × 560, the old fixed size. `Normalize` clamps them to 396..8192 × 320..8192 (360 until 2026-10-09, §2.29).
 - **Applied at every summon:** `FlyoutSizing.ToPixels` at the anchor monitor's scale → `FlyoutPositioner.Compute`
   (which still shrinks the size to the work area, without saving that) → `ExtendLeft` for an open column.
 - **Saved once per resize, and only the user's** (`Interop/WindowSizeHook`, comctl32 `SetWindowSubclass`):
@@ -2131,9 +2145,11 @@ scroll"); a middle-button drag pulls it too.
     move: `SettingsStore.Update` writes the file on every call.
   - Size changes the panel makes itself are never saved: the summon, the groups column, a move to another monitor's
     scale, the work-area shrink.
-- **Minimum:** 360 × 320 DIPs (+44 with the column), answered in `WM_GETMINMAXINFO` from the window's scale at that
+- **Minimum:** 396 × 320 DIPs (+44 with the column), answered in `WM_GETMINMAXINFO` from the window's scale at that
   moment (`FlyoutSizing.MinimumTrackSize`).
-  - 360 is the header: logo, "Clipboard", the "Paused" chip and four buttons take 312 of the 322 content DIPs.
+  - 396 is the header: logo, "Clipboard", the "Paused" chip and five buttons take 348 of the 358 content DIPs. It
+    was 360 (four buttons, 312 of 322) until the update button joined them on 2026-10-09 (§2.29); a width saved
+    below 396 is raised when the settings load.
   - Not `OverlappedPresenter.PreferredMinimumWidth`: it takes raw pixels and keeps them when the window moves to a
     monitor with another scale (microsoft-ui-xaml issues 10452, 10475).
 - **Gone:** the window no longer grows for the tabs (`MeasureTabsExtraDip`, `WindowFrameDip`, `ApplyTabsWidth`, the
@@ -2674,13 +2690,210 @@ the categories doesn't select them, only click selects them."
 - a tab chosen in a panel that is still open when the app exits is not saved (the queued save no longer runs);
 - not verified on real hardware: a touchpad, a mouse with a high polling rate, touch and pen.
 
+### 2.29 Updates from GitHub releases: the update button, its dialog, and `install.ps1 -Update` (built 2026-10-09)
+
+User request (2026-10-09): "We need an update system that uses releases in github. We will have an icon left to the pause
+icon that is highlighted to update and on click it will open dialog approval for update and the changelog is loaded and
+displayed below the buttons of decision."
+
+**What the user gets.**
+- **The update button** in the panel's header, left of Pause (`UpdateButton`; glyph E895 = Sync, two arrows in a circle,
+  checked by rendering). It is always there:
+  - like its neighbors while there is nothing to do;
+  - with the accent fill of a primary button while an update waits that the user did not skip
+    (`IconButtonAttentionStyle`, a whole style, based on `AccentButtonStyle`);
+  - a 16-DIP ring instead of the glyph while an approved update downloads, is verified or is installed, and while a
+    check runs with no offer known. A check that runs while an update is already offered keeps the highlight.
+  - Its tooltip and accessible name say the state (`UpdateText.ButtonTip`: "Update available: BetterClipboard 0.2.7",
+    "BetterClipboard 0.2.6 is up to date", "Downloading BetterClipboard 0.2.7: 33 %").
+- **The update dialog** (a click on the button; also the tray menu's *Update to x.y.z…* and *Settings › Updates*): a
+  title, one or two sentences, the decision buttons, and **below them** the release notes.
+  - An update on an installed copy: *Update and restart* (accent), *Later*, and the link *Skip this version*.
+  - Up to date: "What is new in this version" (or "The latest release" for a build newer than every release),
+    *Check now*, *Close*.
+  - Downloading: a progress bar, "23.4 of 70.8 MB", *Cancel*. Verifying and installing: a moving bar. Installing has no
+    buttons: the installer owns the update then.
+  - A failed check shows a warning bar, a failed installation an error bar with the reason; the buttons stay.
+- **Nothing is installed without approval.** Opening the dialog asks GitHub at most once in 5 minutes, and only while
+  this copy checks by itself.
+- **After the update** the app is back in the notification area, and a notification says "BetterClipboard was updated to
+  0.2.7" (or "The update to 0.2.7 was not installed" with the reason).
+- **Settings › Updates** (a section before *Third party*): the switch *Check for updates automatically*
+  (`AppSettings.CheckForUpdates`, on by default), a status line (`UpdateText.SettingsStatus`), *Check now*, and a button
+  that opens the same dialog ("Update to 0.2.7…" with the accent style, or "Release notes…").
+- **The installer:** `-NoUpdateCheck` (installs with the check off, through `BetterClipboard.exe --set-update-check off`),
+  `-Package <zip>` (an offline install), and a closing note that names the check, both ways to switch it off and the
+  privacy section.
+- **The panel's minimum width** is 396 DIPs (360 before): the header has a fifth button (§2.23).
+
+**Who updates how** (`UpdateInstallKind`; `Core/Updates/InstalledCopy`, `Windows/Updates/InstalledCopyLocator`).
+
+| Copy | How it is recognized | Checks by itself | Installs by itself |
+|---|---|---|---|
+| Installed by `install.ps1` | The Installed-apps entry's `InstallLocation`, or `installer.json`'s `installDir`, names the exe's folder | Yes | Yes |
+| Extracted by hand | Neither record names its folder | Yes | No: *Download page*, *Copy install command*, *Later* |
+| Chocolatey | Its folder ends `\lib\betterclipboard\tools\app` (checked first) | No | No: *Copy command* (`choco upgrade betterclipboard`), *Later* |
+
+- **Why a copy extracted by hand never replaces itself:** an update renames the whole folder aside and deletes it. That
+  is safe only for a folder the installer made. The zip ships `install.ps1` next to the exe, so that file proves nothing;
+  the installer's own records do.
+- **An isolated instance** (`BETTERCLIPBOARD_DATA_DIR`) never checks by itself, so tests and dev runs do not use up the
+  user's 60 requests an hour at GitHub. It is judged by its own `installer.json` alone, never by the Installed-apps
+  entry: started from the installed folder, it would otherwise replace that folder under the regular instance, which
+  the installer could then only end by force.
+
+**The check** (`Core/Updates`: `UpdateService`, `UpdateClient`, `GitHubReleases`, `UpdateCatalog`, `SemanticVersion`).
+- **The request:** `GET https://api.github.com/repos/Nucs/BetterClipboard/releases?per_page=30`. Anonymous;
+  `User-Agent: BetterClipboard/<version>`; `Accept: application/vnd.github+json`; no cookies; the system proxy; at most 5
+  redirects; 30 s per request; an answer over 8 MB is refused.
+- **The schedule:** a first tick 60 s after start, then one tick an hour; a check runs when the last success is older
+  than 24 h. A failed check is tried again after 1, 2, 4 … hours (at most 24), and never before a rate limit's reset.
+- **Log levels:** no connection, a rate limit and a server error are logged at Info, because they are everyday events
+  and WRN/ERR lines stay a health signal. An answer that is not a release list, and a failed installation, are warnings.
+- **The cache:** the answer and its entity tag are kept in `updates\releases.json` and `releases-state.json`. A restart
+  shows a known update at once, and an unchanged list costs one "304 Not Modified". *Check now* sends no entity tag.
+- **What is offered:** the newest stable release above the running version (SemVer 2.0 precedence:
+  `0.2.6-dev.52539eb` < `0.2.6`). Drafts, prereleases and tags that are not `vX.Y.Z` are never offered. The release must
+  hold the zip for this PC (`BetterClipboard-<version>-win-<x64|arm64>.zip`, by the OS's architecture) and
+  `SHA256SUMS.txt`.
+- **Which notes are shown** (`UpdateCatalog.SelectChangelog`): every release newer than the running one, newest first, at
+  most 10; else the running release's own notes; else the latest release's.
+- **State:** one immutable `UpdateSnapshot`, replaced as a whole. `Changed` is raised on the thread that made the change
+  (up to ten times a second during a download); `AppController` forwards it to the UI thread as `UpdateStatusChanged`.
+
+**The trust chain of an approved update.**
+1. The package and the checksum list must lie under `https://github.com/Nucs/BetterClipboard/releases/download/`
+   (`UpdateSource.IsTrustedDownload`). Redirects from there are followed (GitHub's file servers).
+2. `SHA256SUMS.txt` must list the package. When GitHub's API gives a digest for it (`assets[].digest`, computed at
+   upload), the two must agree.
+3. The download goes to `updates\<zip>.part`, is hashed while it streams, and is moved into place only when complete. A
+   hash that differs deletes the file. A complete package of the offered version from an earlier attempt is hashed and
+   used again; packages of other versions are deleted when an installation starts.
+4. The installer script comes out of that verified zip (the `install.ps1` at its root, at most 2 MB, written under a
+   fixed name into `updates\`): never from the installed copy, never from the network.
+5. The script checks the zip against `-PackageSha256` once more before it uses it.
+- **Not covered:** a GitHub account that is taken over and publishes a release with matching checksums. An Authenticode
+  check of the package's `BetterClipboard.exe` would cover it once releases are signed (§3.3, §6).
+
+**The installer contract** (`install.ps1`, `Windows/Updates/ScriptUpdateInstaller`). A running program cannot replace
+its own folder, so another process must. The app runs the **new release's own** installer:
+
+```text
+%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass
+    -File <updates\install.ps1> -Update -Package <zip> -PackageSha256 <hash> -InstallDir <folder>
+    -ResultPath <updates\result.json> -LogPath <logs\betterclipboard-update.log>
+```
+
+- **This command line is a contract** with every released version. A later `install.ps1` must keep accepting it. A later
+  app may add arguments only when every package it can update to accepts them.
+  [`tools/release/test-update.ps1`](tools/release/test-update.ps1) runs it against the packaged zip, in CI and in the
+  release job before publishing.
+- **How it is started:** `UseShellExecute = false`, no window, the temp folder as working folder (never the install
+  folder, which is renamed), and nothing redirected: the app closes while the script runs, and a pipe to a closed process
+  would end the script. `PSModulePath` is removed from its environment: an app that was started from PowerShell 7
+  inherits that shell's module path, with which Windows PowerShell cannot load its own modules.
+- **`-Update` changes one copy and nothing else.** It closes the programs that run from `-InstallDir` (`--exit`, then
+  by force after 20 s), swaps the folder by renames (a failed swap puts the old folder back and starts the app again),
+  refreshes the version in the Installed-apps entry and in `installer.json` **only when they name that folder**, writes
+  the result file, and starts the app again when it was running. No shortcut, Run value, PATH or Explorer change, and no
+  Explorer restart. Options that set an install up (`-Hotkey`, `-AddToPath`, …) are refused with it.
+- **The restart is direct** (`Start-AppAsBefore`): the app gets the rights and the environment of the app that asked,
+  and starts in the background. Not through Explorer, which gives a process its own environment: in the first test, an
+  isolated instance came back as the regular instance. `PSModulePath` is removed for the app too, through .NET (a cmdlet
+  of a module that is not loaded yet could not be found without that variable).
+- **The result file** (`version`, `ok`, `error`, `finishedUtc`) is written before the app is started again. The app reads
+  it once at its next start (`UpdateService.TakeLastResult`, before `Start`, which empties `updates\` except the cache)
+  and shows the notification.
+- **The log** is a PowerShell transcript (`-LogPath`). Its name matches the app log's pattern, so the 14-day cleanup
+  removes it. The log of an earlier run is deleted before the installer starts, so a failure never points at the log of
+  the last success.
+- **How the app reads a failure:** an installer that ends while the app still runs gave up before the swap. The message
+  is the result file's error; else it names the log; else (no log: the script never ran its first line, which is what a
+  policy that blocks scripts looks like) it says where to get the new version.
+- **Footgun:** an execution policy set by Group Policy overrides `-ExecutionPolicy Bypass`. The update then fails with
+  that last message. `irm … | iex` still works on such a PC, because it runs no script file.
+- **Footgun:** the installers of 0.2.5 and older have no `-Update` and fail on it (exit code 1). No released app can ask
+  them: the first version with the updater is 0.2.6, and it only offers newer releases.
+
+**`-Package`** installs a release zip from disk. The version comes from the file name (or `-Version`). An ARM64 zip is
+refused on an x64 PC. The zip is verified against `-PackageSha256`, else against a `SHA256SUMS.txt` next to it; with
+neither, it is installed with a warning that states its hash.
+
+**The dialog** (`App/Views`: `UpdateView.xaml(.cs)`, `UpdateDialog.cs`, `MarkdownRenderer.cs`,
+`ClipboardFlyout.Update.cs`; `App/AppController.Updates.cs`).
+- **One view, two owners.** `UpdateView` only shows a snapshot and raises events. `UpdateDialog` puts it in a flyout
+  and turns the events into controller calls. The panel and Settings each own one.
+- **The button's own flyout** (`Button.Flyout`), so a second click closes it. A `Click` handler that called `ShowAt`
+  would open it again at once: the click that dismisses the bubble also reaches the button.
+- **Its own window** (`ShouldConstrainToRootBounds = false`): the panel can be 396 × 320 DIPs, no room for release notes.
+- **Placement** (`Core/Presentation/UpdateDialogLayout`, pure, tested): under the button when that side has 440 DIPs or
+  is the larger one, else over it; never taller than the room there (300 to 600 DIPs). The notes scroll, so a shorter
+  bubble only shows fewer lines. Decided in the flyout's `Opening` event from `Flyout.Target`. Left to itself, WinUI
+  moved a bubble that did not fit to the left of its button and up to the top of the screen (seen on a 900-px screen).
+- **Popup accounting:** the bubble is counted in `openPopups` from `Opening`, not `Opened`: its window can take the
+  activation first, and a panel that is deactivated with no popup counted conceals itself. When the bubble closes, the
+  panel waits 80 ms and conceals itself unless its own window is in front (`ForegroundHelper.IsForeground`). A link
+  conceals the panel directly (`LeavingForBrowser`): an always-on-top panel must not stay in front of the browser.
+- **Release notes** are Markdown. `Core/Presentation/Markdown` parses what release notes use: paragraphs, headings,
+  nested and task lists, fenced code, tables, rules, quotes, bold, italic, code, strikethrough, links, bare URLs and
+  entities. It never throws, and its work is bounded (200,000 characters, 12 levels of nesting). `MarkdownRenderer`
+  draws each block with plain text controls; HTML is shown as the text it is.
+- **Links** are http and https only (the parser drops others, and `AppController.OpenWebLink` checks again). A
+  `Hyperlink` gets no `NavigateUri`: the host opens the link, after the panel got out of the way.
+- **The notes are redrawn only when their text changed** (`UpdateView.SameNotes`). A download reports progress ten times a
+  second, and a check that confirms the list would otherwise throw the reader back to the top.
+- **Theme:** the notes' brushes are styles in `UpdateView.xaml`, applied from code, so they resolve in the flyout's own
+  theme (§4).
+
+**Facts found on the way** **[verified]**:
+- **GitHub's answer** for this repository: 6 releases, 77.5 KB, in 880 ms; with the entity tag, "not modified" in
+  100 ms. `assets[].digest` is `sha256:<hex>` and equals the `SHA256SUMS.txt` line. The app's client downloaded the
+  74.3 MB zip of 0.2.5 through GitHub's redirect in 4.0 s, with 29 progress reports and the right hash.
+- **Tray notifications are not kept** in Windows 11's notification center. A screenshot must come within about 5 s.
+- **`ScrollViewer.ChangeView` on a scroller that is not on screen yet is dropped.** The notes kept their last position
+  until the reset moved from the flyout's `Opening` to its `Opened` event.
+- **`Start-Transcript` works in a `CreateNoWindow` PowerShell.** It also logs every caught terminating error: 20 lines
+  for the 20 rename attempts of a locked folder.
+- **Timing in the test VM** (4 cores, no GPU): Windows PowerShell needed about 11 s from process start to the script's
+  first line, and the script about 10 s to hash and extract the 71 MB zip. The app closed 11 to 21 s after the download
+  was verified, and the new version started 7 s later.
+- **SignPath's terms on privacy** (read 2026-10-09): software that transfers data to systems the user did not specify
+  must describe that in a privacy policy, display the policy during installation, and offer an installation option to
+  disable it. Hence the README's *Privacy* section, the installer's closing note and `-NoUpdateCheck` (§3.3).
+
+**Test and dev.**
+- `BETTERCLIPBOARD_UPDATE_FEED=<url>` names a stand-in feed: https anywhere, http on this PC only, and every download
+  must have the feed's scheme, host and port. **Only an isolated instance honors it**, so a variable in the user's
+  environment can never redirect the installed app's updates (the log says when it is ignored).
+- An isolated instance updates a scratch copy when its own data folder has an `installer.json` whose `installDir` is
+  that copy's folder.
+- **Never test an update on the user's installed copy.** `tools/release/test-update.ps1` is the safe test on this PC:
+  it works in scratch folders and proves that nothing else changed.
+- Scratch tools (session 3103c128's scratchpad): `vm/feed-server.ps1` (an `HttpListener` feed with a request log and a
+  throttle), `vm/make_feed.py` and `vm/make_variants.py` (feed folders from packages), `probe/github_probe.cs` (the
+  app's client against the real GitHub).
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- **The regular instance against a real newer release** cannot be run before a release above the running version
+  exists. Every part of that path ran: the real API and a real download (the probe), and the installer on a real install
+  folder (the VM, through an isolated instance with a stand-in feed).
+- ARM64: built by the release job, never run. A standard user, and UAC on: not run for the update (the VM's user is an
+  elevated administrator).
+- No delta updates (71 MB each time), no silent or automatic installation, no update at exit.
+- No Authenticode check of the package: releases are unsigned (§3.3).
+- The README's photos show the header without the update button (§3.4).
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 1,153 tests (1,150 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 1,434 tests (1,431 run; opt-in tests + 1 explicit measurement skipped)
+pwsh tools/release/test-update.ps1 -Version X.Y.Z -PackageDirectory artifacts/release   # install.ps1's update mode
+                                                               # against a package; scratch folders only (§2.29)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -2810,15 +3023,16 @@ Snipping tab (2026-10-01), with a copy of the dev build:
 - **Release:** push an **annotated** tag `vX.Y.Z` whose message is the release notes (`git tag -a vX.Y.Z -F
   notes.md`) → [`.github/workflows/release.yml`](.github/workflows/release.yml):
   1. builds the notes first ("Release notes from the tag": the tag's message plus a "Code signing policy" footer, §3.3);
-  2. tests and packages;
+  2. tests and packages, then updates to the x64 zip once with the app's own command line
+     (`tools/release/test-update.ps1`, §2.29);
   3. builds and tests the Chocolatey package (stable tags only, §3.2);
   4. `gh release create --notes-file` with the zips, the `.7z` archives, `SHA256SUMS.txt`, `install.ps1` and
      `betterclipboard.X.Y.Z.nupkg`;
   5. `choco push` (with the `CHOCOLATEY_API_KEY` secret; without it only a warning).
 
   Tags with a pre-release suffix (`-rc.1`) become pre-releases and skip Chocolatey. CI
-  ([`ci.yml`](.github/workflows/ci.yml)) builds, tests and packages x64 on every push/PR, and installs, upgrades and
-  uninstalls an x64 Chocolatey package.
+  ([`ci.yml`](.github/workflows/ci.yml)) builds, tests and packages x64 on every push/PR, runs the installer's update
+  mode against that zip, and installs, upgrades and uninstalls an x64 Chocolatey package.
   - **Lesson (2026-10-02): v0.1.0–v0.2.3 were all published with the wrong notes.** Each shows its tagged commit's
     message ("Version 0.2.3"), although the tags on GitHub are annotated with the real notes.
     - Cause: `actions/checkout@v5` fetches a pushed tag by its commit (`+<sha>:refs/tags/<tag>`), so the runner's tag is
@@ -2867,6 +3081,13 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   shortcuts in the settings, whichever of them are released. Registry keys are created only when missing
   (`Confirm-RegistryKey`): up to 0.2.5, `New-Item -Path $RunKeyPath -Force` emptied the user's Run key on every install
   (§2.25, §4).
+  - **Since 2026-10-09 (§2.29):**
+    - `-Package <zip>` installs a release zip from disk, verified against `-PackageSha256`, else against a
+      `SHA256SUMS.txt` next to it;
+    - `-NoUpdateCheck` installs with the automatic update check off (`BetterClipboard.exe --set-update-check off`,
+      needs ≥ 0.2.6), and the closing note names the check, both ways to switch it off and the privacy section;
+    - `-Update` is the app's own update mode: one copy and nothing else. Its command line is a contract (§4);
+    - `-ResultPath` and `-LogPath` report a run that has no window.
   - **A Chocolatey copy** (`lib\betterclipboard\tools\app`, §3.2) is respected:
     - install warns about it and leaves a startup entry that starts it;
     - `-Uninstall` keeps a startup entry that starts that copy; its own entry or a stale one goes, or, while that copy
@@ -3174,9 +3395,17 @@ the alternatives, what was verified, and the sources.
   - only SQLite3MC, SQLitePCLRaw and, from 0.2.5, ZstdSharp are unsigned, which the terms allow for upstream OSS;
   - the Windows App SDK and the Windows SDK projection (Microsoft's license terms) are argued as GPLv3 System
     Libraries.
-- **No network code:** `src/` has no HTTP client, sockets or WebView. Links open only on a click. So SignPath's
-  standard sentence is true: "This program will not transfer any information to other networked systems unless
-  specifically requested by the user or the person installing or operating it".
+- **Network code: one HTTP client, since 2026-10-09** (§2.29). `Core/Updates/UpdateClient` asks GitHub for the
+  release list once a day and downloads an update the user approved. There are still no sockets, no WebView and no
+  telemetry, and links open only on a click.
+  - SignPath's standard sentence ("This program will not transfer any information to other networked systems
+    unless specifically requested by the user or the person installing or operating it") is therefore true only
+    apart from the update check, and the README says it that way.
+  - Their terms ask three things of software that transfers data to systems the user did not specify. All three
+    are in place: the README's *Privacy* section describes the check and links GitHub's privacy statement; the
+    installer shows a note about it, with that link, when it finishes; and `-NoUpdateCheck` installs with it off
+    (*Settings › Updates* switches it later).
+  - Until 2026-10-09 `src/` had no HTTP client at all, and the sentence stood alone.
 
 **Changed for it** (this commit):
 - README › *Privacy*: the sentence, plus a table of every local source with its default and switch. The Claude Code
@@ -3255,6 +3484,10 @@ content). "Current" was v0.2.5: `main` had no app change after it (docs only).
 **Retake `settings.png` when the Shortcut section changes.** It shows 0.2.5's single shortcut; work on several
 shortcuts was in progress on 2026-10-03.
 
+**Outdated since 2026-10-09:** the panel's header has a fifth button, the update button (§2.29). `panel.png` and
+`prompts.png` show four. Retake both the same way, and add a photo of the update dialog under its highlighted
+button (an isolated instance with a stand-in feed shows it without a real release, §2.29).
+
 ---
 
 ## 4. Conventions (must follow)
@@ -3298,7 +3531,8 @@ shortcuts was in progress on 2026-10-03.
   (checked by rendering): Document E8A5 (a file pick), Search E721 (Settings card, *Show in Everything*),
   OpenFile E8E5 (*Open*), Hide ED1A (an eye with a slash: *Hide until opened again*), and for Settings › Third
   party (checked by rendering): Puzzle EA86 (*Works with*), Library E8F1 (*Built with*), and for the image overlays
-  (§2.24, checked by rendering): RedEye E7B3 (the eye that opens the image viewer), Cancel E711 (the viewer's close button).
+  (§2.24, checked by rendering): RedEye E7B3 (the eye that opens the image viewer), Cancel E711 (the viewer's close button), and for updates
+  (§2.29, checked by rendering): Sync E895 (two arrows in a circle: the update button and the Settings card).
   Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
   on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did, and on 2026-10-01 nine of
   them in the pick menu (the editing tool turned `\uXXXX` written in an edit into the raw character), and five more
@@ -3579,6 +3813,46 @@ shortcuts was in progress on 2026-10-03.
 - **Editing repository files from Python: bytes, or `newline=''`.** `Path.write_text` on Windows writes CRLF; on
   2026-10-03 it turned all of CLAUDE.md into CRLF (caught by `file`, put back before committing). The repository's files
   are LF in the working tree.
+- **`install.ps1 -Update …` is a contract with every released app** (§2.29). The update button of an installed version
+  runs the *new* release's `install.ps1` with `-Update -Package -PackageSha256 -InstallDir -ResultPath -LogPath`.
+  - Never rename or remove one of these parameters, and never add a mandatory one: an app that is already installed
+    cannot pass it.
+  - Keep `-Update` to one copy: its install folder, the records that name that folder, and the programs that run from
+    it. No shortcut, Run value, PATH or Explorer change.
+  - The result file's members (`version`, `ok`, `error`, `finishedUtc`) belong to the contract: the old app reads them.
+  - [`tools/release/test-update.ps1`](tools/release/test-update.ps1) runs the command line against the packaged zip in CI
+    and in the release job. It is safe on this PC too (scratch folders; it proves that nothing else changed).
+- **Never test an update on the user's installed copy,** and never give the regular instance another feed. Use an
+  isolated instance with `BETTERCLIPBOARD_UPDATE_FEED` and an `installer.json` of its own for a scratch copy, or a
+  claude-desktops Windows desktop (§2.29).
+- **Everything the app sends over the network is named in the README's *Privacy* section,** which is the privacy policy
+  that code signing asks for (§3.3): what is requested, from whom, what the request shows, and how to switch it off. A
+  new request (telemetry, a crash report, a second update source) needs its paragraph there, a Settings switch, an
+  installer option and a line in the installer's closing note before it ships. Log everyday network failures at Info.
+- **A flyout that leaves the panel's window** (`ShouldConstrainToRootBounds = false`, §2.29):
+  - Count it in `openPopups` from its `Opening` event, not `Opened`: its window can take the activation first, and a
+    panel that is deactivated with no popup counted conceals itself.
+  - When it closes while another window is in front, conceal the panel: no deactivation will do it any more.
+  - WinUI moves a flyout that does not fit on its side to any side that takes it whole. When it must stay at its
+    button, choose the side and limit its height yourself (`UpdateDialogLayout`).
+  - Make it the button's own `Flyout`. A `Click` handler that calls `ShowAt` opens it again at once: the click that
+    dismisses the bubble also reaches the button.
+- **`ScrollViewer.ChangeView` on a scroller that is not on screen yet is dropped,** without an error. Reset a flyout's
+  scroll position in its `Opened` event, not in `Opening`.
+- **A program started through Explorer gets Explorer's environment,** not the caller's: `BETTERCLIPBOARD_DATA_DIR` and
+  the other overrides are lost. That is right for a fresh install from an elevated prompt (`Start-AppUnelevated`) and
+  wrong wherever an instance must come back as itself (`Start-AppAsBefore`, §2.29).
+- **Tray notifications last about 5 s and are not kept** in Windows 11's notification center. To see one in a test
+  desktop, wait for the log line that precedes it and take the screenshot at once.
+- **claude-desktops Windows desktops, lessons of the update work (2026-10-09):**
+  - Files copied into the persist folder before a `reset_desktop` are on `Z:` afterwards; so was a new top-level folder
+    copied in while the desktop ran. Helper scripts written with `write_file` are gone after a reset: keep a copy.
+  - Take the coordinates of a tray-menu item from a screenshot of the open menu. Two clicks 100 px left of the menu
+    dismissed it, and looked like a product bug.
+  - The first Win+V after a start can take close to a second there when the desktop is busy (912 ms once, right after
+    an update; 47–86 ms in 16 quiet runs). A click sent sooner goes to the window below.
+  - Comparing two builds' timings: alternate them, and swap which one goes first halfway. The second build of each
+    pair was 10–15 ms slower whichever build it was.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -3588,6 +3862,12 @@ shortcuts was in progress on 2026-10-03.
 
 | Feature | How | Result |
 |---|---|---|
+| **Update system** (§2.29, 2026-10-09), end to end on a claude-desktops Windows 11 VM ("bc-update": Windows 11 Pro 25H2 26200, 1600×900 at 100 %, an administrator with UAC off, no GPU). Self-contained packages `0.2.6` and `0.2.7` built from the working tree; a stand-in feed on 127.0.0.1 (an `HttpListener` script with a request log and a throttle). Three passes, the desktop reset before the second and the third; the third ran the final build. (1) `install.ps1 -Package <0.2.6 zip> -NoLaunch`: verified against the `SHA256SUMS.txt` next to it, installed, Win+V released, the closing note about the update check with the privacy link; a seeded Run-key neighbor kept. (2) An isolated instance from the installed folder (its own data folder with a copy of `installer.json`, and `BETTERCLIPBOARD_UPDATE_FEED`): "installed by the installer (it can update itself); automatic check on"; the automatic check ran 62–64 s after the app started, 60 s after the update service did (`User-Agent: BetterClipboard/0.2.6`), and found 0.2.7; the update button had the accent fill and the name "Update available: BetterClipboard 0.2.7". (3) The dialog opened under its button: at full height with the panel in the upper half of the screen, shortened to about 500 DIPs, down to just above the taskbar, with the panel in the lower half. *Update and restart* / *Later* / *Skip this version*, then "What is new" with every kind of block drawn (headings, nested bullets, numbered items, a code block, a quote, a table, task boxes, a rule, links). (4) *Update and restart*: "13.8 of 71.1 MB", "37.1 of 71.1 MB" with the ring in the header button; "Installing…"; the app exited 11–22 s after the package was verified, and 0.2.7 started 7–15 s later as the same isolated instance (its parent: the installer's PowerShell), with the notification "BetterClipboard was updated to 0.2.7". Product version, Installed-apps `DisplayVersion` and the instance's `installer.json`: 0.2.7; `updates\` held only the cache; the transcript ended "BetterClipboard was updated to 0.2.7."; 0 WRN/ERR; a copy made before the update was still in the history. (5) Afterwards: "BetterClipboard is up to date", "What is new in this version", "0.2.7 · 9 Oct 2026". (6) Settings › Updates: the status line, "Update to 0.2.8…" as the accent button and the dialog under it; *Cancel* during a download ("cancelled before anything was installed", the partial file gone); *Skip this version* (button plain, `SkippedUpdateVersion` 0.2.8) and *Stop skipping this version*. (7) Failures: a package whose installer has no update mode (the real 0.2.5 zip offered as 0.2.8): the app kept running and showed "The installer ended before it could start (code 1) …" in an error bar, and the log of the earlier update was gone; a checksum the package does not have: "The download does not match the release's checksum, so it was deleted …"; the install folder held open by another process: 20 rename attempts, the old folder back, 0.2.7 started again in the background, and the notification "The update to 0.2.9 was not installed" ("… then update again."); another version offered after a failure: the old failure text gone. (8) The tray menu's *Update to 0.2.8…* opened the panel with the dialog. (9) A copy without the installer's record: *Download page* / *Copy install command* / *Later*; the command was on the clipboard and was not recorded as a copy. A copy in a `…\lib\betterclipboard\tools\app` folder: no request until *Check now*, then *Copy command*. (10) Requests: one per check; none when the dialog opened within 5 minutes of the last check; after 5 minutes, and across a restart, a conditional request (`If-None-Match`) answered 304; `--set-update-check off` while the app runs: exit 3 | `desktop_call` (keys, clicks, UIA, screenshots, `run_command`); recordings `bc-update-flow-1.mp4`, `-final.mp4` and `-pass3.mp4` in the desktop's persist folder; scratch `vm/feed-server.ps1`, `make_feed.py`, `make_variants.py` (session 3103c128) | ✅ after nine fixes the passes found: the bubble moved away from its button (now `UpdateDialogLayout`), the notes' scroll position not reset, uneven task boxes, a warning at exit ("Closing the update dialog failed"), the isolated instance coming back as the regular one (the restart went through Explorer), a failure pointing at the log of an earlier update, a failed installation's text under a newer offer, leftover packages of other versions, and "run the installer again" in an update's failure text. Not run: a standard user, UAC on, ARM64 |
+| The regular instance against the real GitHub (the same VM, first pass; 0.2.6 installed with `-Package … -NoUpdateCheck`): settings `CheckForUpdates: false`; log "Automatic update check switched off from the command line", then "automatic check off". Settings › Updates › *Check now*: "BetterClipboard is up to date. Version 0.2.6, newer than the latest release (0.2.5). Checked just now." The dialog: "The latest release", "0.2.5 · 3 Oct 2026" and the real release notes. *View on GitHub* opened the release page in Edge, and the panel got out of the way. Esc closed the dialog and the search box took the keys again; a click on another app closed the dialog and the panel; a second click on the button closed the dialog. Before the install, six refusals (`-Update` with `-AddToPath`, `-PackageSha256` without `-Package`, a wrong hash, `-Update` without an installed copy, a missing package, a malformed hash): exit 1 each, nothing installed, no staging folder | the same desktop | ✅ An offer to the regular instance needs a release above the running version: none exists yet (§6) |
+| The update button does not slow the summon (same VM, quiet): the unchanged head (`92639ea`) and the final build, each as an isolated instance from its own folder, 8 alternating runs each with the order swapped halfway. The first summon after the warm-up, from the app's log ("Panel on screen N ms"): 53–86 ms (mean 66) without the button, 47–82 ms (mean 67) with it. The warm-up: 340–1,281 ms (median 403) without, 296–632 ms (median 369) with. The second build of each pair was 10–15 ms slower whichever build it was | scratch `summon-compare.ps1` in the desktop (`--background`, 16 s, `--show-flyout`, `--exit`, the log lines) | ✅ no difference. One first summon right after an update took 912 ms on the busy desktop |
+| The app's update client against the real GitHub, on this PC: the release list (6 releases, 77.5 KB) in 880 ms; again with its entity tag: "not modified" in 100 ms; for a copy "running 0.2.3" the offer is 0.2.5 with the x64 zip (74,280,969 bytes) and GitHub's digest; the checksum list (402 characters) lists the package and agrees with the digest; the download through GitHub's redirect: 4.0 s, 29 progress reports, SHA-256 equal to the list, no partial file left | scratch `probe/github_probe.cs` (file-based, `#:project` Core) | ✅ |
+| `tools/release/test-update.ps1` on this PC, against the final packages: 17 of 17 checks in PowerShell 7.5.8 (the 0.2.7 package) and in Windows PowerShell 5.1 (the 0.2.6 package), and in both shells on an earlier 0.2.7 package. A wrong checksum and an option that does not go with `-Update` are refused with the copy untouched and the failure in the result file; the real command line replaces the folder as a whole, reports success with the version, moves `installer.json`'s version and keeps its other values, writes the log, leaves no staging folder and starts nothing. The user's Run values, Installed-apps entry, `DisabledHotkeys`, PATH and running app were unchanged | the script; wired into `ci.yml` and `release.yml` | ✅ locally. On GitHub it first runs after a push |
+| Update system, unit tests: 281 new. Core 265: `SemanticVersionTests` 31, `GitHubReleasesTests` 10, `UpdateCatalogTests` 11, `Sha256SumsTests` 14, `UpdateSourceTests` 21, `InstalledCopyTests` 20, `UpdateSettingsTests` 11, `UpdateTextTests` 8, `UpdateDialogLayoutTests` 10, `MarkdownTests` 80, `UpdateClientTests` 21, `UpdateServiceTests` 28 (a manual clock, a fake HTTP handler, a recording installer). Windows 16: `UpdateInstallerTests` (a scratch registry key; small zips; a stand-in `install.ps1` run by the real Windows PowerShell from a folder named with a space, a quote, an ampersand, percent signs and a non-ASCII letter). The full suite: 1,434 = 1,431 passed + 3 opt-in skipped | `dotnet test --solution`; each new class with the test executables; a `--no-incremental` rebuild | ✅ 0 doc warnings, no analyzer warning in the new files. One earlier full run had `QuickSuccessiveCopies_AreAllCaptured` fail (24 of 25 copies read, 1 superseded, under load); it also failed 1 of 3 runs alone at that moment and passed in the later full runs: a load-dependent timing test this change does not touch |
 | **Getting around the panel** (§2.28, 2026-10-09), live on a claude-desktops Windows 11 VM ("bc-nav": 1600×900 at 100 %, no GPU; self-contained builds `0.2.6-dev.nav1` and `nav2` from a private worktree; 17 BC-TEST items through `bclip put` and a PNG in the Screenshots folder; three groups made with **+** and filled by drag and drop). **Remembered tab:** Right ×2 → Text, Esc, Win+V → Text, `"LastTab": "Text"`; the last tab (Cmd) → Esc, Win+V → Cmd with the strip at its end ("‹" shown); after a restart, before the warm-up (Win+V 1.5–1.7 s after the start: 481, 514, 540 ms with Cmd, 767 ms with Pwsh) and after it (52 and 86 ms); "Cmd tab" switched off in the file → the summon starts in All and `LastTab` stays "Cmd"; switched on in Settings while the panel was hidden → the next summon is in Cmd. **Left / Right:** from the last tab Right → All, from All Left → Cmd; with "fox" typed they move the caret ("foZx" after Left, Left, Right, Z); after Down they switch tabs with the search kept; nine key-downs without a key-up from Text stop at Cmd; with a tab focused (after a click) the focus moves along. **Groups:** Up on the top row → Ideas (the lowest) shown, ring on its icon, footer "↑ ↓ groups · → back to the list · ↵ paste"; Up → Home → Work → the logo (16 items, ring on the logo) and stays; Down → Work; Right → the tab's own footer, Down selects row 1; from Work's view Up, Up → Ideas again; four key-downs of Up from row 1 stop at row 0; with the column closed Up does nothing; typing "33" in the column searches the group and ends the walk, Enter pastes "#3366FF" into Notepad. **Hover:** the panel opened under a mouse resting where row 3 appears → row 0 stays selected; Down ×7 scrolls rows under it → the keyboard's row stays; a 2-px nudge → nothing; a 14-px move inside the row → that row; another row → that row; a wheel turn → the row now under the cursor; "number 0" typed with the mouse over row 1 → row 0 selected, Enter pastes it; a card menu closed with Esc → its card stays selected until the mouse moves; over tabs and group icons → nothing changes; the image peek still opens on rest and closes on a move; five drags of cards onto group icons still work. **Exit** with the panel open in the Cmd tab: no error (nav1 logged one, see §2.28) | claude-desktops MCP tools (`press_keys`, `move_mouse`, `scroll`, `drag`, `click`, screenshots), `state.ps1` / `restart-summon.ps1` / `toggle.ps1` (UI Automation and `keybd_event` inside the desktop; session 805f9263's scratchpad, `qa/`) | ✅ after two fixes found here: the exit-time reload error, and a closing menu handing the selection to the row under the mouse. The wheel was turned with the mouse already live; "the wheel alone hands over" is covered by the unit test only. Not on real hardware (§2.28 "Not built / open") |
 | Getting around the panel, unit tests: `PanelNavigationTests` (51 cases: the circle both ways, held keys at the ends, no selection, no tabs; 15 cases of Left / Right between tabs, text and groups; list moves and clamps; the walk into the column only for a new Up on the top row; the column's ends; extreme values), `PointerSelectionGateTests` (10: the spot, the threshold on both axes, every suspend, an unknown spot, the wheel, extremes), `LastTabSettingsTests` (19: default, by name in the file, lenient reading, every filter round-trips, an unknown name does not quarantine the file), `GroupSelectionTests.Only` (1) | Core test exe `-class`; `dotnet test --solution` and a `--no-incremental` rebuild in the worktree | ✅ 81 new; full suite 1,153: 1,150 passed, 3 opt-in skipped, 0 failed; 0 doc warnings (117 warnings as before: xUnit analyzers and CS0108) |
 | **This PC, 2026-10-09, later** ("install on this machine"): `0.2.6-dev.52539eb` (x64, from a worktree at `52539eb`: the instant summon `4d62d35` and its docs on top of the installed `b28e63f`) installed over the running `0.2.6-dev.b28e63f` with `tools/release/install-local.ps1` (Windows PowerShell 5.1, env stripped, Windows paths, `-NoLaunch`): the full suite first, 1,072 = 1,069 passed + 3 skipped, 0 failed; package 96 s (zip 71.0 MB, only CS0108); install 12 s, SHA-256 OK, graceful close ("Exiting."), "Win+V was already released from Explorer", no Explorer restart. Started through Explorer (`--background`, parent explorer.exe, 75 variables, `CLAUDECODE`/`MSYSTEM` absent). Run value, shortcut, `DisabledHotkeys` `V` unchanged; Installed apps and `installer.json` `0.2.6-dev.52539eb`; the exe `0.2.6-dev.52539eb+52539eb…`; the other Run value (IDMan) kept. Log after "starting": 0 WRN/ERR, "Panel prepared for the first Win+V in 501 ms" | install-local + session 7f3c8c3f's `launch_background.ps1`, `install_state.ps1`, `env_names.py` | ✅ (no UI checks on the user's screen) |
@@ -3729,8 +4009,22 @@ shortcuts was in progress on 2026-10-03.
 - Code signing through the SignPath Foundation (§3.3, [`docs/code-signing.md`](docs/code-signing.md)). The
   repository is prepared; the application waits for reputation: posts and directory listings first, judged by
   GitHub's own numbers; Chocolatey later. After acceptance: the signing step in `release.yml`.
-- winget manifest, in-app update check against GitHub releases. An update check would make the README's
-  no-network privacy sentence untrue: it must then name the check and offer a switch (§3.3).
+- winget manifest. (The in-app update check against GitHub releases is built: §2.29. The README names it and both
+  switches, §3.3.)
+- Updates (§2.29), next steps:
+  - **The first release after 0.2.6 is the first real run of the regular instance.** Watch it on a test desktop
+    (install 0.2.6 with the README's command, wait for the highlighted button, update) before announcing it.
+  - Retake the README photos: the header has a fifth button, and the update dialog deserves a photo (§3.4).
+  - Run the update as a standard user and with UAC on, and on ARM64.
+  - Once releases are signed (§3.3): check the Authenticode signer of the package's `BetterClipboard.exe` before
+    its installer runs, so that matching checksums on a taken-over GitHub account are not enough.
+  - A faster installer: Windows PowerShell's start and `Expand-Archive` take about 20 s in a VM. `tar` (in Windows
+    since 1803) or .NET's `ZipFile` would cut the extraction.
+  - Smaller downloads: the release's `.7z` is 43 MB against the zip's 71, but the installer has no 7-Zip.
+  - The dialog: selectable release notes (to copy a command out of them), and an Info line in `bclip status` when
+    an update waits.
+  - A Group Policy that blocks script files stops the update (§2.29). Running the script's text instead of the
+    file (as `irm | iex` does) would pass, at the price of quoting every argument into a command string.
 - Chocolatey package: built and wired into CI and the release (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)).
   Open:
   - the user's steps: the community.chocolatey.org account and the `CHOCOLATEY_API_KEY` secret; then the first push

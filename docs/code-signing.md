@@ -37,7 +37,7 @@ draft.
 | **Documented**: the functionality is described on the download page | The README is both home page and download page. The release pages show their release notes (corrected 2026-10-02; the second note below the table) | ✅ |
 | **Sign your own project, your own binaries only** | Six files (§4), all built from this repository. Nothing of another maker's is ever signed | ✅ |
 | **No hacking tools** | The keyboard hook only watches for the panel's shortcut and swallows that one key ([CLAUDE.md](../CLAUDE.md) §2.4). It records nothing | ✅ |
-| **Respect privacy**: a transfer of user data needs a privacy policy, shown at install, with an opt-out | Nothing is transferred. README › [Privacy](../README.md#privacy) lists every local source, its default and its switch | ✅ |
+| **Respect privacy**: a transfer of user data needs a privacy policy, shown at install, with an opt-out | One request leaves the PC by itself since 2026-10-09: the daily update check (GitHub's public release list; the request carries no user data, only the app's version). All three demands are met for it: README › [Privacy](../README.md#privacy) describes it and links GitHub's privacy statement, the installer shows a note about it with that link when it finishes, and `-NoUpdateCheck` installs with it off (*Settings › Updates* switches it later). The same section lists every local source, its default and its switch | ✅ |
 | **Announce system changes** | `install.ps1` documents its Start menu shortcut, startup entry and Installed-apps entry (`-NoStartup`, `-NoShortcut`). Releasing Win+V (`DisabledHotkeys` plus an Explorer restart) is opt-in, and Settings warns about it | ✅ |
 | **Provide uninstallation** | Installed apps, `install.ps1 -Uninstall`, `choco uninstall` | ✅ |
 | **MFA** "for both SignPath and source code repository access" | GitHub: on (confirmed by the user, 2026-10-02). SignPath: turn it on when invited | ✅ GitHub; SignPath at onboarding |
@@ -97,7 +97,7 @@ The live form at [signpath.org/apply](https://signpath.org/apply) is a HubSpot f
 | Repository URL `*` | `https://github.com/Nucs/BetterClipboard` | "must be the same URL as you're using in your CI system. It will be verified for every build" |
 | Homepage URL `*` | `https://github.com/Nucs/BetterClipboard` | the repository is allowed if it introduces the project to users (the README does) |
 | Download URL | `https://github.com/Nucs/BetterClipboard/releases` | "This page must provide signing information according to SignPath Foundation Terms of Use" |
-| Privacy Policy URL | `https://github.com/Nucs/BetterClipboard#privacy` | required only when the program transfers user data (it does not) |
+| Privacy Policy URL | `https://github.com/Nucs/BetterClipboard#privacy` | required when the program transfers user data. The update check sends none, but it is a request the user did not make, so the URL is given and the section describes it |
 | Wikipedia URL | — | |
 | Tagline `*` | `Persistent, searchable, encrypted clipboard history for Windows that takes over Win+V` | shown as "Name – Tagline" |
 | Description `*` | the paragraph below | one paragraph that "must not change when new (major) versions are released" |
@@ -197,7 +197,9 @@ only true once the certificate is granted, so the section changes twice:
 3. **Once granted:** lead with "Free code signing provided by [SignPath.io](https://about.signpath.io), certificate
    by [SignPath Foundation](https://signpath.org)". Name the first signed release, and drop "Not signed yet".
 
-The roles, the list of signed files and the privacy sentence stay the same in all three.
+The roles, the list of signed files and the privacy paragraph stay the same in all three. Since 2026-10-09 that
+paragraph is no longer SignPath's bare sentence: it links the README's *Privacy* section, names the update check and
+its two switches, and gives the sentence for everything apart from the check.
 
 ## 4. After acceptance: signing in the release
 
@@ -294,6 +296,11 @@ Run gh without `GH_TOKEN`/`GITHUB_TOKEN` in this shell: those tokens are invalid
 - **The network:** a search of `src/` found no HTTP client, socket or WebView use. A link opens in the browser only
   when the user asks: the link card's *Open link* (`Launcher.LaunchUriAsync`), Settings' third-party links
   (`NavigateUri`).
+  - **Changed 2026-10-09:** the update system ([CLAUDE.md](../CLAUDE.md) §2.29) added one HTTP client,
+    `Core/Updates/UpdateClient`. It requests GitHub's release list once a day (anonymous; `User-Agent:
+    BetterClipboard/<version>`; no cookies), and the package and its checksum list after the user approves an update.
+    Downloads are accepted only from this repository's release downloads. There is still no socket, WebView or
+    telemetry code. Re-run the search before applying: every other request would need its paragraph in the README.
 - **The release-notes step:**
   - its script, taken from `release.yml`, ran in a scratch clone whose tag was forced lightweight, as checkout@v5
     leaves it. The tag came back annotated, and the notes were v0.2.3's annotation plus the footer, with "—", "…" and

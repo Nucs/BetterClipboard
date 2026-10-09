@@ -87,12 +87,39 @@ public static class ForegroundHelper
         return IsForeground(hwnd);
     }
 
-    /// <summary>Whether <paramref name="hwnd"/> (or its root owner) is the foreground window.</summary>
+    /// <summary>
+    /// Whether <paramref name="hwnd"/> is the foreground window, or owns it: a popup window of <paramref name="hwnd"/>
+    /// (a menu, a flyout that leaves the window's bounds) counts as the window itself, so "the user is still here" does
+    /// not turn false while one of its own popups has the keyboard.
+    /// </summary>
     /// <param name="hwnd">Window.</param>
     /// <returns><see langword="true"/> when foreground.</returns>
-    private static bool IsForeground(nint hwnd)
+    public static bool IsForeground(nint hwnd)
     {
         nint foreground = GetForegroundWindow();
         return foreground == hwnd || (foreground != 0 && GetAncestor(foreground, GA_ROOTOWNER) == hwnd);
+    }
+
+    /// <summary>
+    /// Whether a window of another process is in front: the user really is somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// The cautious question to ask before closing something because "the user left". It is <see langword="false"/>
+    /// while the keyboard is in any window of this process — a popup included, whoever owns it, which
+    /// <see cref="IsForeground"/> gets right only for popups owned by the window asked about — and also in the moments
+    /// during a switch in which Windows has no foreground window at all, so a transition is never taken for leaving.
+    /// </remarks>
+    /// <returns><see langword="true"/> only when a foreground window exists and belongs to another process.</returns>
+    public static bool IsAnotherProcessInForeground()
+    {
+        nint foreground = GetForegroundWindow();
+        if (foreground == 0)
+        {
+            return false;
+        }
+
+        // The thread id is not needed; the call's out value is.
+        _ = GetWindowThreadProcessId(foreground, out uint processId);
+        return processId != 0 && processId != (uint)Environment.ProcessId;
     }
 }

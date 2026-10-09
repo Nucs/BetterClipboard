@@ -43,6 +43,15 @@ public sealed partial class SettingsWindow : Window
     private bool closed;
 
     /// <summary>
+    /// The update dialog of Settings › Updates (the same dialog as the panel's update button opens): the flyout of the
+    /// card's second button.
+    /// </summary>
+    private readonly UpdateDialog updateDialog;
+
+    /// <summary>Whether that button has the accent style right now (an update waits); kept so it is restyled only on a change.</summary>
+    private bool updateDialogButtonAccent;
+
+    /// <summary>
     /// Creates the window (not yet shown; call <see cref="Present"/>).
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -71,10 +80,17 @@ public sealed partial class SettingsWindow : Window
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
         controller.PromptsStatusChanged += OnPromptsStatusChanged;
         controller.ForgottenChanged += OnForgottenChanged;
+        controller.UpdateStatusChanged += OnUpdateStatusChanged;
         controller.Settings.Changed += OnSettingsChanged;
         Closed += OnClosed;
         Activated += OnActivated;
         BuildHotkeyPresetsMenu();
+
+        // The update dialog opens under its button (over it when there is no room below), left edges aligned: the card's
+        // buttons sit at the card's left.
+        updateDialog = new UpdateDialog(controller, hwnd, alignRight: false);
+        UpdateDialogButton.Flyout = updateDialog.Flyout;
+        ApplyUpdateDialogButton();
     }
 
     /// <summary>View model bound by the XAML.</summary>
@@ -91,6 +107,10 @@ public sealed partial class SettingsWindow : Window
         ViewModel.RefreshRunHistoryStatus();
         ViewModel.RefreshShellHistoryStatus();
         ViewModel.RefreshPromptsStatus();
+
+        // "Checked 5 min ago" is worded when read: say it as of now, not as of the last change.
+        ViewModel.RefreshUpdateStatus();
+        ApplyUpdateDialogButton();
 
         // Also refreshes the stats line, which counts the forgotten items.
         _ = ViewModel.RefreshForgottenAsync();
@@ -128,8 +148,12 @@ public sealed partial class SettingsWindow : Window
         controller.ShellHistoryStatusChanged -= OnShellHistoryStatusChanged;
         controller.PromptsStatusChanged -= OnPromptsStatusChanged;
         controller.ForgottenChanged -= OnForgottenChanged;
+        controller.UpdateStatusChanged -= OnUpdateStatusChanged;
         controller.Settings.Changed -= OnSettingsChanged;
         Activated -= OnActivated;
+
+        // Closing the dialog also ends its own subscription to the update status.
+        updateDialog.Hide();
 
         // The recorder's hook must never outlive the box it records for.
         closed = true;
@@ -342,6 +366,37 @@ public sealed partial class SettingsWindow : Window
             Core.Diagnostics.AppLog.Warn($"Deleting the stored {name} prompts failed: {ex.Message}");
         }
     }
+
+    /// <summary>
+    /// A check started or ended, an update was found, a download moved on, or the update settings changed: refresh the
+    /// Updates card. (The open update dialog follows the same event by itself.)
+    /// </summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Event data.</param>
+    private void OnUpdateStatusChanged(object? sender, EventArgs e)
+    {
+        ViewModel.RefreshUpdateStatus();
+        ApplyUpdateDialogButton();
+    }
+
+    /// <summary>
+    /// Makes the button that opens the update dialog the accent button while an update waits, and a plain one otherwise.
+    /// A whole style, so its colors resolve in the window's own theme.
+    /// </summary>
+    private void ApplyUpdateDialogButton()
+    {
+        bool accent = ViewModel.IsUpdateWaiting;
+        if (accent != updateDialogButtonAccent || UpdateDialogButton.Style is null)
+        {
+            updateDialogButtonAccent = accent;
+            UpdateDialogButton.Style = (Style)Application.Current.Resources[accent ? "AccentButtonStyle" : "DefaultButtonStyle"];
+        }
+    }
+
+    /// <summary>"Check now" on the Updates card: asks GitHub once, whatever the automatic switch says.</summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Event data.</param>
+    private void CheckForUpdates_Click(object sender, RoutedEventArgs e) => _ = ViewModel.CheckForUpdatesNowAsync();
 
     /// <summary>The bclip pipe started, stopped or failed: refresh its card.</summary>
     /// <param name="sender">Controller.</param>

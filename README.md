@@ -58,7 +58,8 @@ you send to Claude Code and Codex.
 - **Reads every copy at once.** Copies 2 ms apart or more are all kept. A program that copies faster than that
   overwrites its own copies before any app, Win+V included, can read them: BetterClipboard keeps the last one and
   counts the rest (*Settings › Capture reliability*).
-- **Private.** It never connects anywhere on its own: no telemetry, no update check, no account ([Privacy](#privacy)).
+- **Private.** No telemetry and no account. The one thing it asks a server by itself is GitHub's public list of its
+  releases, once a day, to tell you about updates; a switch turns that off ([Privacy](#privacy)).
   - **Encrypted at rest:** the whole history (ChaCha20-Poly1305), with a key that only your account on this PC can
     unseal ([How it works](#how-it-works)). Win+V encrypts only its pins.
   - **Private copies stay out:** copies that apps mark as private are never recorded, and 46 password managers and
@@ -70,6 +71,10 @@ you send to Claude Code and Codex.
   is off by default ([Command line](#command-line-for-scripts-and-ai-agents)).
 - **One line to install.** Per user, no admin rights, SHA-256 checked, Windows 10 (2004 or newer) and Windows 11, x64
   and ARM64, nothing else to install. Uninstalling keeps your history unless you ask ([Install](#install)).
+- **Updates when you approve them.** The update button in the panel's header, left of Pause, is highlighted when a
+  newer release is on GitHub. A click shows the decision — *Update and restart* or *Later* — with the release notes
+  below it. Only then is the update downloaded, checked against the release's SHA-256 and installed in place:
+  BetterClipboard restarts by itself, and your history is kept ([Updates](#updates)).
 - **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (text
   cursor, mouse or screen center), and a page that credits every app it works with and every component it ships, with
   their official links.
@@ -88,8 +93,12 @@ your architecture, **verifies its SHA-256**, installs per user into `%LOCALAPPDA
 (no admin rights), adds a Start menu shortcut, starts BetterClipboard with Windows and registers it under
 *Settings › Apps › Installed apps*. It also **takes over Win+V**: Explorer stops registering it and restarts once (the
 taskbar blinks, and open folder windows close). See [Taking over Win+V](#taking-over-winv). Running it again updates in
-place; your history is never touched. It runs from any folder, also one you cannot write to, and leaves your PowerShell
-in that folder when it is done.
+place, and so does the app's own update button ([Updates](#updates)); your history is never touched. It runs from any
+folder, also one you cannot write to, and leaves your PowerShell in that folder when it is done.
+
+Once a day, the installed app asks GitHub whether a newer release exists. Nothing about you, your PC or your clipboard
+is sent, and nothing is installed without your approval ([Privacy](#privacy)). `-NoUpdateCheck` installs with that
+check off.
 
 Options (pass them through a script block):
 
@@ -103,7 +112,9 @@ Options (pass them through a script block):
 | `-Hotkey A, B, …` | The shortcuts that open BetterClipboard, e.g. `-Hotkey Win+Alt+V, Ctrl+Alt+F9`. Win+V comes first unless `-NoTakeOverWinV` is given. Each one is taken over the same way as Win+V (see [Taking over Win+V](#taking-over-winv)). |
 | `-TakeOverWinV` | The default. Kept for older command lines; if your shortcuts no longer include Win+V, it adds Win+V back. |
 | `-AddToPath` | Put the install folder on your user PATH so terminals can run `bclip` (see [Command line](#command-line-for-scripts-and-ai-agents)). |
+| `-NoUpdateCheck` | Install with the automatic update check off: BetterClipboard then never asks GitHub by itself. *Settings › Updates* has *Check now* and the switch to turn it on again. |
 | `-Version 0.1.0` | Install a specific release instead of the latest. |
+| `-Package <zip>` | Install from a release zip on disk instead of downloading one (an offline install). Put the release's `SHA256SUMS.txt` next to the zip, or give `-PackageSha256 <hash>`, and it is verified first. |
 | `-InstallDir <path>` | Install somewhere else. |
 | `-NoStartup` / `-NoShortcut` / `-NoLaunch` | Skip starting with Windows / the Start menu shortcut / launching after install. |
 | `-Uninstall [-RemoveData]` | Remove the app (history is kept unless `-RemoveData`). |
@@ -112,6 +123,31 @@ Prefer doing it by hand? Download the zip for your architecture and `SHA256SUMS.
 check the hash (`Get-FileHash .\BetterClipboard-*.zip`), extract anywhere and run `BetterClipboard.exe`.
 Releases are not code-signed yet, so Windows may say *Windows protected your PC* for a copy downloaded this
 way: check the hash, then *More info › Run anyway*. See [Code signing policy](#code-signing-policy).
+
+## Updates
+
+BetterClipboard updates itself from its [GitHub releases](https://github.com/Nucs/BetterClipboard/releases), and only
+when you say so.
+
+- **The update button** is in the panel's header, left of Pause. It looks like its neighbors while you have the latest
+  version. When a newer release exists, it is filled with your accent color, and the tray icon's menu gets
+  *Update to x.y.z…*.
+- **A click opens the update dialog:** the decision on top — *Update and restart*, *Later* or *Skip this version* —
+  and the release notes below it. While you are up to date, it shows what is new in your version, and *Check now*.
+- **Nothing is installed without your approval.** *Update and restart* downloads the release for your PC from GitHub
+  and compares its SHA-256 with the release's `SHA256SUMS.txt` and with GitHub's own digest. Then the installer from
+  that release replaces the app's files: BetterClipboard closes and starts again by itself, in the background. Your
+  history, settings and shortcuts stay as they are, and a notification says how it went.
+- **If an update fails,** the installed version stays in place and keeps running, and the dialog or a notification
+  says why. A download that does not match its checksum is deleted. An install folder that another program holds
+  open is left as it was.
+- **The check:** once a day (the first time, a minute after it starts), BetterClipboard asks GitHub for the public
+  list of this project's releases. The request names only the app's version: nothing about you, your PC or your
+  clipboard is sent ([Privacy](#privacy)). *Settings › Updates* switches the check off, and so does installing with
+  `-NoUpdateCheck`. *Check now* asks once, whatever the switch says.
+- **Skip this version** ends the highlight for that release. The next release highlights the button again.
+- **A copy you extracted by hand** does not replace itself: an update replaces the whole folder, and that is only
+  safe for a folder the installer made. Its dialog has the download page and the install command instead.
 
 ## Use
 
@@ -139,6 +175,7 @@ Press **Win+V**. The panel appears at once by your text cursor, in the tab you u
 | Drag an edge | Resize the panel. It opens at that size from then on. |
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
+| The update button, left of Pause | Open the update dialog: the release notes, and *Update and restart* when a newer version exists (the button is highlighted then; see [Updates](#updates)) |
 
 Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match.
 
@@ -159,6 +196,7 @@ The tray icon opens the panel and Settings:
   remembers — including its pinned items.
 - **Integrations:** one switch for each tab of another app (see [Tabs for other apps](#tabs-for-other-apps)).
 - **App:** start with Windows, theme, the command line, the data folder.
+- **Updates:** the switch for the daily check, *Check now*, and the update dialog ([Updates](#updates)).
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
 
@@ -533,9 +571,18 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   this Windows installation, signed in as you. It protects the data at rest — stolen disks, backups,
   other accounts — but, like every DPAPI-based app, not against malware already running as you.
   A history that can no longer be decrypted (e.g. after reinstalling Windows) is set aside, never deleted.
+- **Updates.** The check reads GitHub's release list and keeps a copy with its entity tag, so an unchanged list
+  costs one "not modified" answer a day. A failed check is tried again after 1, 2, 4 … hours, and never before a
+  rate limit ends. An approved update is downloaded only from this repository's release downloads, and its
+  SHA-256 must equal both the release's `SHA256SUMS.txt` and the digest GitHub computed at upload. A running
+  program cannot replace its own folder, so the app takes `install.ps1` out of the verified package and runs it
+  with Windows PowerShell, without a window: it checks the package once more, asks BetterClipboard to close
+  (queued copies are saved first), swaps the folder by renames — a failed swap puts the old folder back — and starts
+  the app again. It writes its outcome to a file, which the app reads at its next start to tell you how it went.
+  Only the install folder is touched.
 
 Data lives in `%LOCALAPPDATA%\BetterClipboard` (`stores\<id>\history.db` + `history.key`, `settings.json`,
-`logs\`). Logs never contain clipboard content.
+`logs\`, `updates\`). Logs never contain clipboard content.
 
 The research behind all this — how Win+V is built (service `cbdhsvc`, the `TextInputHost` panel,
 Explorer's hotkey), why it forgets, its on-disk format for pins, and the measurements quoted above — is
@@ -543,11 +590,28 @@ in [CLAUDE.md](CLAUDE.md).
 
 ## Privacy
 
-**This program will not transfer any information to other networked systems unless specifically requested by
-the user or the person installing or operating it.** BetterClipboard has no telemetry, no update check and no
-account, and it never connects anywhere on its own. It uses the network only when you ask it to: the installer
-downloads the release from GitHub, *Open link* opens a link in your browser, and the links in *Settings › Third
-party* open their sites.
+**BetterClipboard sends nothing about you, your PC or your clipboard to anyone.** It has no telemetry and no account.
+It uses the network in these cases only:
+
+- **The update check, the one request it makes by itself.** Once a day (the first time, a minute after it starts), it
+  asks GitHub for the public list of this project's releases
+  (`https://api.github.com/repos/Nucs/BetterClipboard/releases`), so that the update button can tell you about a
+  newer version.
+  - **What is sent:** a plain web request without an account, a cookie or an identifier. Like any web request, it
+    shows GitHub your network address, and it names the app and its version (`BetterClipboard/0.2.6`). Nothing
+    else: no clipboard content, no file names, no settings. GitHub's
+    [privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement)
+    covers what GitHub does with requests.
+  - **How to switch it off:** *Settings › Updates › Check for updates automatically*, or install with
+    `-NoUpdateCheck`: the installer says so when it finishes. Off means no request at all until you press
+    *Check now*.
+  - **Who never checks by itself:** a copy that a package manager updates.
+- **When you ask for it:** *Check now* asks GitHub for the release list. *Update and restart* downloads the release
+  and its checksum list from GitHub. The installer downloads the release from GitHub. *Open link*, the links in release
+  notes and the links in *Settings › Third party* open in your browser.
+
+Apart from the update check, **this program will not transfer any information to other networked systems unless
+specifically requested by the user or the person installing or operating it.**
 
 What it keeps stays on your PC, in the encrypted history described in [How it works](#how-it-works). Besides the
 clipboard, it reads a few other places on your PC, each behind its own switch in Settings:
@@ -624,9 +688,11 @@ The rules signed releases follow:
   - Approvers: [Eli Belash (@Nucs)](https://github.com/Nucs)
 
   Changes from anyone else arrive as pull requests, and a committer reviews them before they are merged.
-- **Privacy policy:** this program will not transfer any information to other networked systems unless
-  specifically requested by the user or the person installing or operating it. [Privacy](#privacy) lists what it
-  reads and keeps on your PC.
+- **Privacy policy:** [Privacy](#privacy). In short: once a day the program asks GitHub for the public list of its
+  releases, which sends nothing about the user and can be switched off in Settings or at install time
+  (`-NoUpdateCheck`). Apart from that, this program will not transfer any information to other networked systems
+  unless specifically requested by the user or the person installing or operating it. The same section lists what
+  the program reads and keeps on your PC.
 
 ## License
 

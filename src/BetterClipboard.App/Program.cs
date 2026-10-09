@@ -15,12 +15,14 @@ public static class Program
     /// <param name="args">
     /// Command line: <c>--background</c> starts without showing a window (used by "start with Windows");
     /// <c>--show-flyout</c> / <c>--exit</c> drive an already-running instance;
-    /// <c>--read-console-history &lt;pid&gt;</c> is the Cmd tab's helper, and <c>--set-hotkeys [--validate] SHORTCUT...</c>
-    /// the installer's way to pick the shortcuts (see remarks).
+    /// <c>--read-console-history &lt;pid&gt;</c> is the Cmd tab's helper, <c>--set-hotkeys [--validate] SHORTCUT...</c>
+    /// the installer's way to pick the shortcuts, and <c>--set-update-check on|off</c> its way to install with the
+    /// automatic update check off (see remarks).
     /// </param>
     /// <returns>
-    /// Process exit code (0; the helper's own codes for <c>--read-console-history</c>, and
-    /// <see cref="BetterClipboard.Windows.Input.HotkeySetupCommand"/>'s for <c>--set-hotkeys</c>).
+    /// Process exit code (0; the helper's own codes for <c>--read-console-history</c>,
+    /// <see cref="BetterClipboard.Windows.Input.HotkeySetupCommand"/>'s for <c>--set-hotkeys</c>, and
+    /// <see cref="Core.Updates.UpdateSetupCommand"/>'s for <c>--set-update-check</c>).
     /// </returns>
     /// <remarks>
     /// <para>
@@ -33,6 +35,10 @@ public static class Program
     /// <c>--set-hotkeys</c> runs before the lock too: it must answer while the installer has the app closed, and it must
     /// never hand the request to a running instance as a plain launch would (that opens Settings). It refuses to save
     /// while that instance runs (<see cref="BetterClipboard.Windows.Input.HotkeySetupCommand"/>).
+    /// </para>
+    /// <para>
+    /// <c>--set-update-check</c> runs before the lock for the same reasons (<see cref="Core.Updates.UpdateSetupCommand"/>):
+    /// the installer switches the check off while the app is closed, so that not even a first request is made.
     /// </para>
     /// </remarks>
     [STAThread]
@@ -49,6 +55,11 @@ public static class Program
         if (BetterClipboard.Windows.Input.HotkeySetupCommand.Matches(args))
         {
             return SetHotkeys(args);
+        }
+
+        if (Core.Updates.UpdateSetupCommand.Matches(args))
+        {
+            return SetUpdateCheck(args);
         }
 
         var options = StartupOptions.Parse(args);
@@ -115,6 +126,33 @@ public static class Program
             {
                 Core.Diagnostics.AppLog.Shutdown();
             }
+        }
+    }
+
+    /// <summary>
+    /// Runs <c>--set-update-check on|off</c> against this data folder (the same <c>BETTERCLIPBOARD_DATA_DIR</c> resolution
+    /// as the app) and writes its answer to the standard output the caller redirected.
+    /// </summary>
+    /// <param name="args">The process's arguments, starting with <c>--set-update-check</c>.</param>
+    /// <returns>The command's exit code (<see cref="Core.Updates.UpdateSetupCommand"/>).</returns>
+    /// <remarks>
+    /// The log is opened because the command saves a setting, and a change of what the app requests from the network
+    /// belongs in the log. Output is UTF-8 without a byte order mark and with LF line ends, like <c>--set-hotkeys</c>:
+    /// PowerShell 5.1 and 7 both read that from a redirected stream without a stray first character.
+    /// </remarks>
+    private static int SetUpdateCheck(string[] args)
+    {
+        var paths = Core.AppPaths.ResolveDefault();
+        Core.Diagnostics.AppLog.Initialize(paths.LogDirectory);
+        try
+        {
+            using var stream = Console.OpenStandardOutput();
+            using var output = new StreamWriter(stream, new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false)) { AutoFlush = true, NewLine = "\n" };
+            return Core.Updates.UpdateSetupCommand.Run(args, output, paths.SettingsPath, () => SingleInstance.IsRunning(paths.InstanceName));
+        }
+        finally
+        {
+            Core.Diagnostics.AppLog.Shutdown();
         }
     }
 }

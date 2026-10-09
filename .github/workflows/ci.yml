@@ -37,6 +37,12 @@ jobs:
         shell: pwsh
         run: tools/release/package.ps1 -Version 0.0.0-ci -Architectures x64 -OutputDirectory artifacts/ci
 
+      # install.ps1's update mode, run with the command line the app's update button uses, in scratch folders
+      # (tools/release/test-update.ps1): every installed BetterClipboard depends on later installers accepting it.
+      - name: Update mode of the installer (x64)
+        shell: pwsh
+        run: tools/release/test-update.ps1 -Version 0.0.0-ci -Architecture x64 -PackageDirectory artifacts/ci
+
       # The Chocolatey package built from that x64 smoke test, installed, upgraded and uninstalled for real on this
       # disposable runner (tools/release/test-chocolatey.ps1), so a packaging regression shows before a release.
       - name: Chocolatey package smoke test (x64)
