@@ -7,6 +7,7 @@ using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Updates;
 using BetterClipboard.Windows.Input;
 using BetterClipboard.Windows.Updates;
+using Microsoft.UI.Dispatching;
 
 namespace BetterClipboard.App;
 
@@ -49,6 +50,13 @@ public sealed partial class AppController
 
     /// <summary>Where releases come from: GitHub, or a stand-in feed for an isolated test instance.</summary>
     private UpdateSource updateSource = UpdateSource.GitHub;
+
+    /// <summary>
+    /// When <see cref="NoteUpdateReminderShown"/> last started a new week in this session, or <see langword="null"/>.
+    /// The settings get the same time a moment later (a queued write); until then, and if that write fails, this is what
+    /// keeps the reminder from showing twice. UI thread only.
+    /// </summary>
+    private DateTimeOffset? updateReminderNoted;
 
     /// <summary>
     /// Raised on the UI thread when anything about updates changed: a check started or ended, an update was found, a
@@ -223,6 +231,66 @@ public sealed partial class AppController
         {
             AppLog.Error("Saving the skipped update failed.", ex);
         }
+    }
+
+    /// <summary>
+    /// Whether the panel should show its update reminder now: an update waits that the user did not skip, this copy
+    /// checks for updates by itself, and the last reminder is a week old or there never was one
+    /// (<see cref="UpdateReminder.IsDue"/>). Cheap: it reads two snapshots. UI thread only.
+    /// </summary>
+    public bool IsUpdateReminderDue =>
+        !exiting && UpdateReminder.IsDue(UpdateStatus, updateReminderNoted ?? Settings.Current.UpdateReminderShownUtc, DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// Notes that the user has just been told about the offered update — the panel's reminder was on screen long enough
+    /// to be read, or they opened the update dialog — so the next reminder is a week away. Does nothing while no reminder
+    /// is wanted (nothing is offered, the version is skipped, this copy does not check by itself): there is no week to
+    /// start then, and the settings file is left alone. UI thread only.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The settings file is written at low priority on the UI thread, not inside this call: the callers are in the middle
+    /// of showing something (a tooltip while the user may be typing, a dialog that is opening), and a file write has no
+    /// place there. <see cref="IsUpdateReminderDue"/> answers from the new time at once (<see cref="updateReminderNoted"/>).
+    /// </para>
+    /// <para>
+    /// A failed write is logged and costs one extra reminder after the next start: this session does not remind again.
+    /// </para>
+    /// </remarks>
+    /// <param name="byReminder">
+    /// <see langword="true"/> when the reminder itself was shown, which is logged (once a week at most; the line names the
+    /// offered version and nothing else); <see langword="false"/> when the user opened the update dialog.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> when a new week started; <see langword="false"/> when no reminder is wanted, so nothing
+    /// changed (the update dialog then asks once more when it closes, in case an offer arrived meanwhile).
+    /// </returns>
+    public bool NoteUpdateReminderShown(bool byReminder)
+    {
+        if (exiting || !UpdateReminder.IsWanted(UpdateStatus))
+        {
+            return false;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        updateReminderNoted = now;
+        if (byReminder && UpdateStatus?.Offer is { } offer)
+        {
+            AppLog.Info($"Update reminder shown at the update button (BetterClipboard {offer.Release.Version} waits); the next one is due in {UpdateReminder.Interval.TotalDays:0} days.");
+        }
+
+        ui.TryEnqueue(DispatcherQueuePriority.Low, () =>
+        {
+            try
+            {
+                Settings.Update(s => s with { UpdateReminderShownUtc = now });
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Warn($"Saving the time of the update reminder failed: {ex.Message}");
+            }
+        });
+        return true;
     }
 
     /// <summary>

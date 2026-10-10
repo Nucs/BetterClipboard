@@ -72,9 +72,10 @@ you send to Claude Code and Codex.
 - **One line to install.** Per user, no admin rights, SHA-256 checked, Windows 10 (2004 or newer) and Windows 11, x64
   and ARM64, nothing else to install. Uninstalling keeps your history unless you ask ([Install](#install)).
 - **Updates when you approve them.** The update button in the panel's header, left of Pause, is highlighted when a
-  newer release is on GitHub. A click shows the decision — *Update and restart* or *Later* — with the release notes
-  below it. Only then is the update downloaded, checked against the release's SHA-256 and installed in place:
-  BetterClipboard restarts by itself, and your history is kept ([Updates](#updates)).
+  newer release is on GitHub, and once a week its tooltip says so by itself for a few seconds. A click shows the
+  decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
+  checked against the release's SHA-256 and installed in place: BetterClipboard restarts by itself, and your history
+  is kept ([Updates](#updates)).
 - **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (text
   cursor, mouse or screen center), and a page that credits every app it works with and every component it ships, with
   their official links.
@@ -136,6 +137,12 @@ when you say so.
 - **The update button** is in the panel's header, left of Pause. It looks like its neighbors while you have the latest
   version. When a newer release exists, it is filled with your accent color, and the tray icon's menu gets
   *Update to x.y.z…*.
+- **A reminder once a week.** While a newer release waits, the button's tooltip — *Update available: BetterClipboard
+  x.y.z* — opens by itself for a few seconds when you open the panel, at most once in seven days. It opens above the
+  panel, where it covers nothing (beside the button when the panel is at the top of the screen), and it closes by
+  itself: there is nothing to dismiss, and typing goes on as usual. A click on it opens the update dialog. Opening
+  that dialog counts as a reminder too, so *Later* means a week. There is no reminder while the automatic check is
+  off.
 - **A click opens the update dialog:** the decision on top — *Update and restart*, *Later* or *Skip this version* —
   and the release notes below it. While you are up to date, it shows what is new in your version, and *Check now*.
 - **Nothing is installed without your approval.** *Update and restart* downloads the release for your PC from GitHub
@@ -149,7 +156,8 @@ when you say so.
   list of this project's releases. The request names only the app's version: nothing about you, your PC or your
   clipboard is sent ([Privacy](#privacy)). *Settings › Updates* switches the check off, and so does installing with
   `-NoUpdateCheck`. *Check now* asks once, whatever the switch says.
-- **Skip this version** ends the highlight for that release. The next release highlights the button again.
+- **Skip this version** ends the highlight and the weekly reminder for that release. The next release brings both
+  back.
 - **A copy you extracted by hand** does not replace itself: an update replaces the whole folder, and that is only
   safe for a folder the installer made. Its dialog has the download page and the install command instead.
 

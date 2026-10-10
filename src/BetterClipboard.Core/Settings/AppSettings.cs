@@ -445,6 +445,25 @@ public sealed record AppSettings
     public string SkippedUpdateVersion { get; init; } = string.Empty;
 
     /// <summary>
+    /// When the user was last reminded of an update that waits: the tooltip that opens by itself at the panel's update
+    /// button was on screen, or they opened the update dialog while an update was offered. <see langword="null"/> for
+    /// never.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It only spaces the reminders (<see cref="Updates.UpdateReminder"/>: at most one in seven days). It is not a
+    /// switch, and the reminder has none of its own: it follows <see cref="CheckForUpdates"/>, and
+    /// <see cref="SkippedUpdateVersion"/> silences it for one version.
+    /// </para>
+    /// <para>
+    /// Footguns: a time in the future (written while the clock was wrong) would postpone the reminder, so the reader
+    /// takes one more than a day ahead for "never". An older version that saves the settings file drops this member; the
+    /// next newer version then reminds once more, at most a week early.
+    /// </para>
+    /// </remarks>
+    public DateTimeOffset? UpdateReminderShownUtc { get; init; }
+
+    /// <summary>
     /// Returns a copy whose shortcuts are <paramref name="hotkeys"/>: the first becomes <see cref="OpenHotkey"/>, the rest
     /// <see cref="ExtraOpenHotkeys"/>. Use it instead of setting the two members apart, which can leave the main shortcut
     /// duplicated among the extras.
@@ -621,6 +640,10 @@ public sealed record AppSettings
 
             // Free text from the file: kept short, compared as a version by the updater (anything else skips nothing).
             SkippedUpdateVersion = (SkippedUpdateVersion ?? string.Empty).Trim() is { Length: <= 64 } skipped ? skipped : string.Empty,
+
+            // One spelling in the file whatever offset a hand edit used. Whether the time makes sense is the reader's
+            // question (UpdateReminder.IsDue): this method has no clock.
+            UpdateReminderShownUtc = UpdateReminderShownUtc?.ToUniversalTime(),
             Placement = Enum.IsDefined(Placement) ? Placement : FlyoutPlacement.NearCaret,
             Theme = Enum.IsDefined(Theme) ? Theme : AppTheme.System,
         };

@@ -180,6 +180,9 @@ public sealed partial class ClipboardFlyout : Window
 
         // The update button left of Pause, and the dialog it opens: ClipboardFlyout.Update.cs.
         InitializeUpdateButton();
+
+        // A click on a tooltip must not cost the panel its keyboard: ClipboardFlyout.ToolTipKeyboard.cs.
+        InitializeToolTipKeyboardGuard();
         ViewModel.PropertyChanged += (_, e) =>
         {
             // Any route to another view (icon click with or without Ctrl/Shift, the icon menu, reset on show, a deleted
@@ -384,6 +387,10 @@ public sealed partial class ClipboardFlyout : Window
             // Nor may the update dialog: a summon starts with the panel alone (the tray's "Update…" opens it again below).
             CloseUpdateDialog();
 
+            // Nor the weekly update reminder of a panel that is summoned again while it shows: the panel is about to
+            // move, and a tooltip stays where it opened (it is asked for again at the end of this summon).
+            CancelUpdateReminder();
+
             // A popup count that no open popup accounts for is stale (a Closed that never came). Left alone it
             // would mute the whole key model (IsPopupKey) and keep deactivation from hiding the panel.
             if (openPopups > 0 && Root.XamlRoot is { } xamlRoot && VisualTreeHelper.GetOpenPopupsForXamlRoot(xamlRoot).Count == 0)
@@ -471,6 +478,11 @@ public sealed partial class ClipboardFlyout : Window
 
             // The tray menu's "Update…" summons the panel for its update dialog: open it now that the panel is on screen.
             OpenPendingUpdateDialog();
+
+            // Once a week, while an update waits, the update button says so by itself for a few seconds
+            // (ClipboardFlyout.UpdateReminder.cs). Asked last, after everything a summon owes the user: the reminder must
+            // never be on the way of the panel appearing or of its list.
+            ScheduleUpdateReminder();
         }
         catch (Exception ex)
         {
@@ -512,6 +524,7 @@ public sealed partial class ClipboardFlyout : Window
         closingForExit = true;
         CloseImageOverlays();
         DisposeUpdateButton();
+        DisposeToolTipKeyboardGuard();
         sizeHook?.Dispose();
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;

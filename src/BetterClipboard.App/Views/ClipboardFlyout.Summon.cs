@@ -92,6 +92,10 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
+        // The weekly update reminder is a tooltip, a window of its own: it must not stay on screen without its panel
+        // (ClipboardFlyout.UpdateReminder.cs). Every way the panel goes away passes here, so this is the one place.
+        CancelUpdateReminder();
+
         presented = false;
         if (cloaking)
         {

@@ -29,6 +29,11 @@ namespace BetterClipboard.App.Views;
 /// An update is downloaded only by its "Update and restart" button.
 /// </para>
 /// <para>
+/// <b>Opening it counts as a reminder.</b> While an update is offered, whoever sees this dialog has been told about it,
+/// so the panel's weekly update reminder starts a new week (<see cref="AppController.NoteUpdateReminderShown"/>): "Later"
+/// then means "in a week", not "at the next Win+V".
+/// </para>
+/// <para>
 /// It listens to the controller's update status only while it is open, so a closed dialog costs nothing during a
 /// download's ten progress reports a second, and an owner that goes away (the Settings window) leaves no handler behind.
 /// </para>
@@ -44,6 +49,12 @@ internal sealed class UpdateDialog
 
     /// <summary>Whether <see cref="OnStatusChanged"/> is subscribed (the flyout is open or opening).</summary>
     private bool listening;
+
+    /// <summary>
+    /// Whether this opening of the dialog already started a new week for the panel's update reminder
+    /// (<see cref="AppController.NoteUpdateReminderShown"/>), so its closing does not write the settings a second time.
+    /// </summary>
+    private bool reminderNoted;
 
     /// <summary>
     /// Creates the dialog; nothing is shown or requested until it opens.
@@ -162,6 +173,11 @@ internal sealed class UpdateDialog
 
         RenderCurrent();
 
+        // Whoever opens this dialog while an update is offered has been told about it now: the panel's weekly reminder
+        // (ClipboardFlyout.UpdateReminder.cs) starts a new week, so "Later" means "remind me in a week", not "at the next
+        // Win+V". The call does nothing when no reminder is wanted, and writes the settings later, at low priority.
+        reminderNoted = controller.NoteUpdateReminderShown(byReminder: false);
+
         // Never throws; its result arrives through UpdateStatusChanged.
         _ = controller.RefreshUpdatesForDialogAsync();
     }
@@ -183,6 +199,13 @@ internal sealed class UpdateDialog
         {
             listening = false;
             controller.UpdateStatusChanged -= OnStatusChanged;
+        }
+
+        // An offer that arrived while the dialog was open (opening it asks GitHub again) was seen here too: the week
+        // starts now if it did not start at the opening.
+        if (!reminderNoted)
+        {
+            controller.NoteUpdateReminderShown(byReminder: false);
         }
 
         Closed?.Invoke(this, EventArgs.Empty);

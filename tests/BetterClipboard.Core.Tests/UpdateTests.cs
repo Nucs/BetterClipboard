@@ -1014,3 +1014,215 @@ public sealed class UpdateDialogLayoutTests
         Assert.True(UpdateDialogLayout.MarginDip > 0);
     }
 }
+
+/// <summary>
+/// Tests for <see cref="UpdateReminder"/> and its setting: when the update button's tooltip opens by itself, how often,
+/// and where.
+/// </summary>
+public sealed class UpdateReminderTests
+{
+    /// <summary>A fixed "now".</summary>
+    private static readonly DateTimeOffset Now = new(2026, 10, 12, 9, 30, 0, TimeSpan.Zero);
+
+    /// <summary>A copy running 0.2.6 that checks by itself and is offered 0.2.7: the state that calls for reminders.</summary>
+    /// <returns>The snapshot.</returns>
+    private static UpdateSnapshot Offered()
+    {
+        var release = UpdateTestData.Release("0.2.7");
+        return new UpdateSnapshot
+        {
+            CurrentVersion = UpdateTestData.Version("0.2.6"),
+            InstallKind = UpdateInstallKind.Installer,
+            AutomaticChecks = true,
+            LastChecked = Now.AddHours(-1),
+            Latest = release,
+            Offer = new UpdateOffer(release, release.FindAsset("BetterClipboard-0.2.7-win-x64.zip")!, release.FindAsset(UpdateCatalog.ChecksumsFileName)!),
+        };
+    }
+
+    /// <summary>An offered update that was never reminded of is due at once.</summary>
+    [Fact]
+    public void FirstReminder_IsDueAtOnce()
+    {
+        Assert.True(UpdateReminder.IsWanted(Offered()));
+        Assert.True(UpdateReminder.IsDue(Offered(), lastShown: null, Now));
+    }
+
+    /// <summary>The next reminder comes a week after the last one, to the second, and stays due after that.</summary>
+    /// <param name="hoursAgo">How long ago the last reminder was.</param>
+    /// <param name="due">Whether a reminder is due.</param>
+    [Theory]
+    [InlineData(0, false)]
+    [InlineData(1, false)]
+    [InlineData(24 * 6, false)]
+    [InlineData((24 * 7) - 1, false)]
+    [InlineData(24 * 7, true)]
+    [InlineData(24 * 8, true)]
+    [InlineData(24 * 400, true)]
+    public void OnceAWeek(int hoursAgo, bool due)
+    {
+        Assert.Equal(due, UpdateReminder.IsDue(Offered(), Now.AddHours(-hoursAgo), Now));
+    }
+
+    /// <summary>The boundary itself: one second short of a week is not due, a week is.</summary>
+    [Fact]
+    public void TheWeekIsExact()
+    {
+        Assert.Equal(TimeSpan.FromDays(7), UpdateReminder.Interval);
+        Assert.False(UpdateReminder.IsDue(Offered(), Now - UpdateReminder.Interval + TimeSpan.FromSeconds(1), Now));
+        Assert.True(UpdateReminder.IsDue(Offered(), Now - UpdateReminder.Interval, Now));
+    }
+
+    /// <summary>
+    /// A remembered time a little ahead of the clock (a clock set back by minutes) is believed, so a correction does not
+    /// show the reminder twice; one far ahead cannot be right and counts as never, or it would silence reminders for good.
+    /// </summary>
+    [Fact]
+    public void ATimeInTheFuture_IsBelievedOnlyWithinADay()
+    {
+        Assert.False(UpdateReminder.IsDue(Offered(), Now.AddMinutes(5), Now));
+        Assert.False(UpdateReminder.IsDue(Offered(), Now + UpdateReminder.ClockSlack, Now));
+        Assert.True(UpdateReminder.IsDue(Offered(), Now + UpdateReminder.ClockSlack + TimeSpan.FromSeconds(1), Now));
+        Assert.True(UpdateReminder.IsDue(Offered(), Now.AddYears(3), Now));
+        Assert.True(UpdateReminder.ClockSlack < UpdateReminder.Interval);
+    }
+
+    /// <summary>The time may be written with any offset: the instant counts, not its spelling.</summary>
+    [Fact]
+    public void TheOffsetOfTheRememberedTime_DoesNotMatter()
+    {
+        var sixDaysAgo = Now.AddDays(-6).ToOffset(TimeSpan.FromHours(11));
+        var eightDaysAgo = Now.AddDays(-8).ToOffset(TimeSpan.FromHours(-9));
+        Assert.False(UpdateReminder.IsDue(Offered(), sixDaysAgo, Now));
+        Assert.True(UpdateReminder.IsDue(Offered(), eightDaysAgo, Now.ToOffset(TimeSpan.FromHours(3))));
+    }
+
+    /// <summary>
+    /// No reminder, however old the last one, when there is nothing to remind of or the user decided against it: no
+    /// update system, no offer, a skipped version, a copy that does not check by itself, an update on its way.
+    /// </summary>
+    [Fact]
+    public void NotWanted_IsNeverDue()
+    {
+        var offered = Offered();
+        UpdateSnapshot?[] silent =
+        [
+            null,
+            offered with { Offer = null },
+            offered with { IsSkipped = true },
+            offered with { AutomaticChecks = false },
+            offered with { AutomaticChecks = false, InstallKind = UpdateInstallKind.Chocolatey },
+            offered with { Phase = UpdatePhase.Downloading },
+            offered with { Phase = UpdatePhase.Verifying },
+            offered with { Phase = UpdatePhase.Installing },
+        ];
+
+        foreach (var snapshot in silent)
+        {
+            Assert.False(UpdateReminder.IsWanted(snapshot));
+            Assert.False(UpdateReminder.IsDue(snapshot, lastShown: null, Now));
+            Assert.False(UpdateReminder.IsDue(snapshot, Now.AddDays(-30), Now));
+        }
+    }
+
+    /// <summary>
+    /// A check that runs while the update is offered changes nothing (the offer is still there), and a copy that is sent
+    /// to the download page is reminded like one that updates itself.
+    /// </summary>
+    [Fact]
+    public void StillWanted_WhileCheckingAndForAPortableCopy()
+    {
+        Assert.True(UpdateReminder.IsDue(Offered() with { Phase = UpdatePhase.Checking }, lastShown: null, Now));
+        Assert.True(UpdateReminder.IsDue(Offered() with { InstallKind = UpdateInstallKind.Portable }, Now.AddDays(-7), Now));
+        Assert.True(UpdateReminder.IsDue(Offered() with { CheckProblem = new UpdateProblem(UpdateFailure.Network, "The server could not be reached.") }, lastShown: null, Now));
+    }
+
+    /// <summary>The reminder is exactly as wanted as the button is highlighted, except for copies that do not check by themselves.</summary>
+    [Fact]
+    public void FollowsTheHighlight_ExceptWithoutAutomaticChecks()
+    {
+        var offered = Offered();
+        Assert.True(offered.WantsAttention);
+        Assert.True(UpdateReminder.IsWanted(offered));
+
+        var quiet = offered with { AutomaticChecks = false };
+        Assert.True(quiet.WantsAttention);
+        Assert.False(UpdateReminder.IsWanted(quiet));
+
+        var skipped = offered with { IsSkipped = true };
+        Assert.False(skipped.WantsAttention);
+        Assert.False(UpdateReminder.IsWanted(skipped));
+    }
+
+    /// <summary>Over the window when there is room for a tooltip there; beside the button otherwise, also for a measure that is not a number.</summary>
+    /// <param name="roomAbove">The free height over the window in DIPs.</param>
+    /// <param name="above">Whether the reminder opens over the window.</param>
+    [Theory]
+    [InlineData(300, true)]
+    [InlineData(56, true)]
+    [InlineData(55.9, false)]
+    [InlineData(0, false)]
+    [InlineData(-200, false)]
+    [InlineData(double.NaN, false)]
+    [InlineData(double.PositiveInfinity, true)]
+    [InlineData(double.NegativeInfinity, false)]
+    public void FitsAbove_NeedsRoomForATooltip(double roomAbove, bool above)
+    {
+        Assert.Equal(above, UpdateReminder.FitsAbove(roomAbove));
+        Assert.Equal(56, UpdateReminder.RoomAboveDip);
+    }
+
+    /// <summary>The time of the last reminder is unset by default, survives a save and a load, and is kept as UTC.</summary>
+    [Fact]
+    public void Setting_DefaultsToNever_AndRoundTripsAsUtc()
+    {
+        Assert.Null(new AppSettings().Normalize().UpdateReminderShownUtc);
+
+        using var temp = TestData.NewTempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+        var store = new SettingsStore(path);
+        store.Load();
+        var shown = new DateTimeOffset(2026, 10, 12, 14, 5, 6, 789, TimeSpan.FromHours(3));
+        store.Update(s => s with { UpdateReminderShownUtc = shown });
+
+        var reloaded = new SettingsStore(path).Load();
+        Assert.Equal(shown, reloaded.UpdateReminderShownUtc);
+        Assert.Equal(TimeSpan.Zero, reloaded.UpdateReminderShownUtc!.Value.Offset);
+        Assert.Contains("\"UpdateReminderShownUtc\": \"2026-10-12T11:05:06.789+00:00\"", File.ReadAllText(path), StringComparison.Ordinal);
+
+        store.Update(s => s with { UpdateReminderShownUtc = null });
+        Assert.Null(new SettingsStore(path).Load().UpdateReminderShownUtc);
+    }
+
+    /// <summary>
+    /// A settings file from before the reminder, and one that says "never" in so many words, load as never; the other
+    /// settings in the file are kept.
+    /// </summary>
+    /// <param name="content">The settings file.</param>
+    [Theory]
+    [InlineData("{ \"OpenHotkey\": \"Win+V\", \"MaxItems\": 500 }")]
+    [InlineData("{ \"MaxItems\": 500, \"UpdateReminderShownUtc\": null }")]
+    public void Setting_FromBeforeTheReminder_IsNever(string content)
+    {
+        using var temp = TestData.NewTempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, content);
+        var loaded = new SettingsStore(path).Load();
+        Assert.Null(loaded.UpdateReminderShownUtc);
+        Assert.Equal(500, loaded.MaxItems);
+        Assert.True(UpdateReminder.IsDue(Offered(), loaded.UpdateReminderShownUtc, Now));
+    }
+
+    /// <summary>A time written by hand with another offset is read as the same instant.</summary>
+    [Fact]
+    public void Setting_ReadsAHandWrittenTime()
+    {
+        using var temp = TestData.NewTempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, "{ \"UpdateReminderShownUtc\": \"2026-10-04T12:30:00+03:00\" }");
+        var loaded = new SettingsStore(path).Load();
+        Assert.Equal(new DateTimeOffset(2026, 10, 4, 9, 30, 0, TimeSpan.Zero), loaded.UpdateReminderShownUtc);
+        Assert.True(UpdateReminder.IsDue(Offered(), loaded.UpdateReminderShownUtc, Now));
+        Assert.False(UpdateReminder.IsDue(Offered(), loaded.UpdateReminderShownUtc, Now.AddDays(-2)));
+    }
+}

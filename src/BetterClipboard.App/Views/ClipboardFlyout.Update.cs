@@ -16,7 +16,8 @@ namespace BetterClipboard.App.Views;
 /// <b>The button</b> is always there and says the state of updates by its look: like its neighbors while there is
 /// nothing to do, filled with the accent color while an update waits that the user did not skip, and a small ring while
 /// an approved update downloads or is installed. Its tooltip and accessible name say the same in words
-/// (<see cref="UpdateText.ButtonTip"/>). It is hidden only when the update system did not start.
+/// (<see cref="UpdateText.ButtonTip"/>). It is hidden only when the update system did not start. Once a week, while an
+/// update waits, that tooltip opens by itself for a few seconds after a summon (ClipboardFlyout.UpdateReminder.cs).
 /// </para>
 /// <para>
 /// <b>The dialog</b> (<see cref="UpdateDialog"/>) is the button's flyout: the decision buttons on top, the release notes
@@ -111,16 +112,20 @@ public sealed partial class ClipboardFlyout
         // As the button's own flyout, a click opens it and a second click closes it (a Click handler calling ShowAt would
         // reopen it at once: the click that light-dismisses the bubble also reaches the button).
         UpdateButton.Flyout = updateDialog.Flyout;
+
+        // The tooltip as an object, so the weekly reminder can open it from code (ClipboardFlyout.UpdateReminder.cs).
+        InitializeUpdateToolTip();
         controller.UpdateStatusChanged += OnUpdateStatusChanged;
         Activated += OnActivatedDuringUpdateDialog;
         ApplyUpdateButton();
     }
 
-    /// <summary>Stops following the update status and closes the dialog (the window is closing for good).</summary>
+    /// <summary>Stops following the update status and closes the dialog and the reminder (the window is closing for good).</summary>
     private void DisposeUpdateButton()
     {
         controller.UpdateStatusChanged -= OnUpdateStatusChanged;
         Activated -= OnActivatedDuringUpdateDialog;
+        DisposeUpdateReminder();
         updateDialog?.Hide();
     }
 
@@ -184,8 +189,25 @@ public sealed partial class ClipboardFlyout
         if (tip != updateButtonTip)
         {
             updateButtonTip = tip;
-            ToolTipService.SetToolTip(UpdateButton, tip);
+
+            // The words go into the tooltip the button already owns: setting a new one would close a tooltip that is
+            // open (the weekly reminder, or the mouse resting on the button during a download's progress).
+            if (updateToolTip is { } owned)
+            {
+                owned.Content = tip;
+            }
+            else
+            {
+                ToolTipService.SetToolTip(UpdateButton, tip);
+            }
+
             AutomationProperties.SetName(UpdateButton, tip);
+        }
+
+        // A reminder that waits or shows is about an update the user can take. Approved, skipped or gone: it ends.
+        if (updateReminderStage != UpdateReminderStage.None && !UpdateReminder.IsWanted(snapshot))
+        {
+            CancelUpdateReminder();
         }
     }
 
@@ -202,6 +224,10 @@ public sealed partial class ClipboardFlyout
             updateDialogCounted = true;
             openPopups++;
         }
+
+        // The dialog says everything the reminder says, and more: a reminder that waits or shows gives way to it. (The
+        // dialog itself starts the reminder's new week, UpdateDialog.OnOpening.)
+        CancelUpdateReminder();
     }
 
     /// <summary>
