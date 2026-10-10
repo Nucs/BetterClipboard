@@ -299,10 +299,11 @@ Collect the things you reuse — snippets, addresses, links for a project — in
 - **Open several:** `Ctrl+click` more icons to show their groups together, or `Shift+click` for a run of icons.
   They merge into one list in the usual order, with each item once, and the search and the tabs work on it.
   Without a keyboard: right-click an icon › *Add to view*.
-- **With the keyboard:** press `↑` on the top item. A ring appears on the icon of the group you have open. When no
-  group is open, the top group opens and gets the ring. `↑` and `↓` now step through the groups, and each step opens
-  its group. `↑` from the first group shows your whole history again (the logo). `→` goes back to the items; so does
-  typing, or moving the mouse over an item. `Enter` pastes the selected item.
+- **With the keyboard:** press `↑` on the top item. A ring appears on the icon of what you have open: the group, or
+  the logo when no group is open (your whole history). Nothing else changes yet. `↑` and `↓` now step through the
+  column, and each step opens what it lands on: `↓` from the logo opens the first group, and `↑` from the first group
+  shows your whole history again. `→` goes back to the items; so does typing, or moving the mouse over an item.
+  `Enter` pastes the selected item.
 - **Several groups with the keyboard:** while more than one group is open, `↑` on the top item puts the ring on the
   first of them, and `↑` and `↓` then move only the ring: your merged list stays. Press `Space` or `Enter` to add the
   group under the ring to the list, or to take it out. On the logo, they show your whole history. The footer shows

@@ -73,8 +73,8 @@ namespace BetterClipboard.App.Views;
 /// <para>
 /// <b>Getting around</b> (ClipboardFlyout.Navigation.cs). A summon opens in the tab the user last chose
 /// (<see cref="AppSettings.LastTab"/>). Up and Down move through the rows, Left and Right through the tabs in a circle, and
-/// Up from the top row walks into the groups column, onto the first group shown (the top group when none is), where Up
-/// and Down then step through the groups until Right goes back to the list. Each step shows its group — unless several
+/// Up from the top row walks into the groups column, onto the first group shown (the clipboard icon when none is), where
+/// Up and Down then step through the groups until Right goes back to the list. Each step shows its group — unless several
 /// groups are merged: then the keys only move a ring, and Space or Enter adds the group under it to the view or takes it
 /// out. The mouse selects the row it is over, once it really moved.
 /// </para>

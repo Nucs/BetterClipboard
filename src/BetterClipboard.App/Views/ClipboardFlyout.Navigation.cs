@@ -39,9 +39,10 @@ namespace BetterClipboard.App.Views;
 /// </para>
 /// <para>
 /// <b>Two ways to walk the groups column</b> (<see cref="GroupWalkMode"/>, decided when the keys walk in and kept for
-/// that walk). The keys land on the first group the list shows, or on the top group when it shows none. With no group or
-/// one group shown, the view follows them: every step shows the group it lands on alone, Up from the first group shows
-/// the whole history again (the clipboard icon), and Enter, Ctrl+P and Del still act on the selected card. With several
+/// that walk). The keys land on what the column highlights — the first group the list shows, or the clipboard icon when
+/// it shows none — so walking in changes nothing that is shown. With no group or one group shown, the view then follows
+/// the keys: every step shows the group it lands on alone, Up from the first group shows the whole history again (the
+/// clipboard icon), and Enter, Ctrl+P and Del still act on the selected card. With several
 /// groups merged into the list, the keys only move the ring — a step that showed its group alone would throw the merged
 /// view away — and Space or Enter adds the group under the ring to the view or takes it out
 /// (<see cref="PickGroupAtCursor"/>); Ctrl+P, Del, Shift+Enter and Ctrl+Enter still act on the selected card.
@@ -505,13 +506,14 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Up was pressed on the top row: the keys walk into the groups column, onto the first group the list shows — or
-    /// onto the top group, which is then shown, when it shows none (<see cref="PanelNavigation.EnterGroups"/>). From here
-    /// Up and Down move through the groups (<see cref="MoveGroupCursor"/>) until Right, the mouse over a row, typing, or
-    /// a click on an icon ends the walk (<see cref="LeaveGroupsNavigation"/>).
+    /// Up was pressed on the top row: the keys walk into the groups column, onto the icon it highlights — the first group
+    /// the list shows, or the clipboard icon when it shows none (<see cref="PanelNavigation.EnterGroups"/>). Nothing that
+    /// is shown changes: only the ring appears, and the footer says what the keys do now. From here Up and Down move
+    /// through the groups (<see cref="MoveGroupCursor"/>) until Right, the mouse over a row, typing, or a click on an icon
+    /// ends the walk (<see cref="LeaveGroupsNavigation"/>).
     /// </summary>
     /// <remarks>
-    /// With several groups merged into the list, nothing that is shown changes here or at any later step: the walk only
+    /// With several groups merged into the list, nothing that is shown changes at any later step either: the walk only
     /// picks (<see cref="GroupWalkMode.Pick"/>), and the merged view stays until Space or Enter changes it
     /// (<see cref="PickGroupAtCursor"/>).
     /// </remarks>
@@ -535,7 +537,9 @@ public sealed partial class ClipboardFlyout
         SuspendPointerSelection();
         if (entry.Mode == GroupWalkMode.Show)
         {
-            // Changes nothing when that group alone is shown already; with no group shown, the top group opens.
+            // The keys landed on what the list shows (one group, or the whole history on the clipboard icon), so this
+            // changes nothing. It is still asked for: a walk that shows derives the keys' place from the group shown, and
+            // a selection that names a group the column no longer has would put that place elsewhere than the entry did.
             ShowGroupAt(entry.Position);
         }
         else
@@ -543,8 +547,7 @@ public sealed partial class ClipboardFlyout
             BringGroupIconIntoView(entry.Position);
         }
 
-        // Also when nothing that is shown changed (the keys landed on the one group shown, or the walk only picks): no
-        // change event moves the ring then.
+        // Walking in changes nothing that is shown, so no change event draws the ring: the icons are restyled here.
         UpdateGroupSelectionVisuals();
     }
 

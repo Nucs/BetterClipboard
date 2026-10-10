@@ -175,25 +175,26 @@ public sealed class PanelNavigationTests
     /// </summary>
     public static TheoryData<long[], int, GroupWalkMode> EntryCases => new()
     {
-        { [], 1, GroupWalkMode.Show },             // nothing shown: the top group, not the lowest
-        { [10], 1, GroupWalkMode.Show },
+        { [], 0, GroupWalkMode.Show },             // nothing shown: the clipboard icon (the whole history), not a group
+        { [10], 1, GroupWalkMode.Show },           // the first group only when it is the one shown
         { [20], 2, GroupWalkMode.Show },           // the group shown, wherever it is in the column
         { [30], 3, GroupWalkMode.Show },
         { [20, 30], 2, GroupWalkMode.Pick },       // several: the first of them, and the view stays
         { [30, 20], 2, GroupWalkMode.Pick },       // "first" is the column's order, not the list's
         { [10, 30], 1, GroupWalkMode.Pick },
         { [10, 20, 30], 1, GroupWalkMode.Pick },
-        { [99], 1, GroupWalkMode.Show },           // only a deleted group "shown": as if none were
+        { [99], 0, GroupWalkMode.Show },           // only a deleted group "shown": as if none were
         { [99, 30], 3, GroupWalkMode.Show },       // one real group: a walk that shows, on that group
         { [99, 30, 20], 2, GroupWalkMode.Pick },
         { [20, 20], 2, GroupWalkMode.Show },       // the same group twice is one group
     };
 
     /// <summary>
-    /// The keys walk into the column on the first group the list shows — the topmost one of several, whatever order the
-    /// shown ids come in — and on the top group when it shows none. One group shown or none: the walk shows every group
-    /// it steps on. Several: it only picks. Ids that are no longer in the column do not count, neither as "the first" nor
-    /// towards "several"; an id given twice counts once.
+    /// The keys walk into the column on what it highlights: the first group the list shows — the topmost one of
+    /// several, whatever order the shown ids come in — and the clipboard icon when it shows none. Never on a group that
+    /// is not shown: with nothing shown, the first group is one step down from where the keys land. One group shown or
+    /// none: the walk shows every group it steps on. Several: it only picks. Ids that are no longer in the column do not
+    /// count, neither as "the first" nor towards "several"; an id given twice counts once.
     /// </summary>
     /// <param name="shown">The ids of the groups shown.</param>
     /// <param name="position">The position the keys must land on (0 the clipboard icon, 1.. the groups).</param>
@@ -207,20 +208,21 @@ public sealed class PanelNavigationTests
 
     /// <summary>
     /// A column without groups has only the clipboard icon to land on (the panel does not walk into one, the answer is
-    /// defined anyway); one group alone is both the top group and the only one that can be shown; null lists are refused.
+    /// defined anyway); a column of one group answers like any other — the clipboard icon while that group is not shown,
+    /// the group while it is; null lists are refused.
     /// </summary>
     [Fact]
     public void EnterGroups_ColumnsWithoutGroupsOrWithOne_AndNulls()
     {
         Assert.Equal(new GroupsEntry(0, GroupWalkMode.Show), PanelNavigation.EnterGroups([], []));
         Assert.Equal(new GroupsEntry(0, GroupWalkMode.Show), PanelNavigation.EnterGroups([], [10, 20]));
-        Assert.Equal(new GroupsEntry(1, GroupWalkMode.Show), PanelNavigation.EnterGroups([10], []));
+        Assert.Equal(new GroupsEntry(0, GroupWalkMode.Show), PanelNavigation.EnterGroups([10], []));
         Assert.Equal(new GroupsEntry(1, GroupWalkMode.Show), PanelNavigation.EnterGroups([10], [10]));
 
         // The selection's own list is what the panel passes: in column order, read-only.
         var merged = GroupSelection.None.Click(Column, 30, ctrl: true, shift: false).Click(Column, 20, ctrl: true, shift: false);
         Assert.Equal(new GroupsEntry(2, GroupWalkMode.Pick), PanelNavigation.EnterGroups(Column, merged.Ids));
-        Assert.Equal(new GroupsEntry(1, GroupWalkMode.Show), PanelNavigation.EnterGroups(Column, GroupSelection.None.Ids));
+        Assert.Equal(new GroupsEntry(0, GroupWalkMode.Show), PanelNavigation.EnterGroups(Column, GroupSelection.None.Ids));
 
         Assert.Throws<ArgumentNullException>(() => PanelNavigation.EnterGroups(null!, []));
         Assert.Throws<ArgumentNullException>(() => PanelNavigation.EnterGroups(Column, null!));
@@ -233,9 +235,9 @@ public sealed class PanelNavigationTests
     [Fact]
     public void Groups_MoveByPosition_AndStopAtBothEnds()
     {
-        // With nothing shown the keys land on the top group: Up from there is the clipboard icon, and there it stays.
+        // With nothing shown the keys land on the clipboard icon, the top of the column: Up from there stays there.
         int position = PanelNavigation.EnterGroups(Column, []).Position;
-        Assert.Equal(1, position);
+        Assert.Equal(0, position);
         int[] up = [0, 0];
         foreach (int expected in up)
         {
@@ -243,7 +245,8 @@ public sealed class PanelNavigationTests
             Assert.Equal(expected, position);
         }
 
-        // Down to the lowest group, and there it stays too (it never returns to the list by itself).
+        // Down: the first group is the first step, then on to the lowest group, where it stays too (it never returns to
+        // the list by itself).
         int[] down = [1, 2, 3, 3];
         foreach (int expected in down)
         {

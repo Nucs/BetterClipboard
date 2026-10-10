@@ -247,16 +247,22 @@ public static class PanelNavigation
 
     /// <summary>
     /// Where the arrow keys land when they walk from the top of the list into the groups column, and how they treat the
-    /// column from there. They land on the first group the list shows — the topmost one of several — and on the top
-    /// group when it shows none. With several groups shown the walk only picks (<see cref="GroupWalkMode.Pick"/>);
-    /// otherwise it shows every group it steps on (<see cref="GroupWalkMode.Show"/>).
+    /// column from there. They land on what the column highlights: the first group the list shows — the topmost one of
+    /// several — and the clipboard icon when it shows none (the whole history). With several groups shown the walk
+    /// only picks (<see cref="GroupWalkMode.Pick"/>); otherwise it shows every group it steps on
+    /// (<see cref="GroupWalkMode.Show"/>).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Why the first group shown.</b> The keys continue from what the list shows: the ring appears on an icon that is
-    /// highlighted already, and nothing else on screen changes. Until 2026-10-10 the keys always landed on the lowest
-    /// group and showed it alone, which replaced whatever was shown — one group or a merged view — with the last group
-    /// of the column the moment Up was pressed.
+    /// <b>Walking in never changes what is shown.</b> The keys continue from what the list shows: the ring appears on an
+    /// icon that is highlighted already, and nothing else on screen changes. Only the next step does something. Until
+    /// 2026-10-10 the keys always landed on the lowest group and showed it alone, which replaced whatever was shown —
+    /// the whole history, one group or a merged view — with the last group of the column the moment Up was pressed.
+    /// </para>
+    /// <para>
+    /// <b>No group shown means the clipboard icon, not the first group.</b> Footgun for whoever reads "the top of the
+    /// column" as its first group, as the first version of this rule did: the icon on top of the column is the clipboard
+    /// icon, which stands for the whole history, and that is what the list shows then. The first group is one step down.
     /// </para>
     /// <para>
     /// <b>The mode holds for the whole walk.</b> It is decided here and not asked again at every key: a walk that picks
@@ -272,8 +278,9 @@ public static class PanelNavigation
     /// <param name="column">The ids of the groups column, top to bottom.</param>
     /// <param name="shown">The ids of the groups the list shows, in any order; empty for the whole history.</param>
     /// <returns>
-    /// The position to land on and the mode of the walk. For a column without groups: the clipboard icon (0), showing —
-    /// the panel does not walk into such a column, the answer is defined anyway.
+    /// The position to land on and the mode of the walk: the clipboard icon (0), showing, when the list shows no group
+    /// of the column; otherwise the position of the topmost shown group (1 and up), showing for one group and picking
+    /// for several.
     /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="column"/> or <paramref name="shown"/> is <see langword="null"/>.</exception>
     public static GroupsEntry EnterGroups(IReadOnlyList<long> column, IReadOnlyList<long> shown)
@@ -299,8 +306,8 @@ public static class PanelNavigation
 
         if (count == 0)
         {
-            // Nothing shown that the column still has: the top group (the clipboard icon when there is none).
-            return new GroupsEntry(column.Count > 0 ? 1 : 0, GroupWalkMode.Show);
+            // Nothing shown that the column still has: the list shows the whole history, which is the clipboard icon's.
+            return new GroupsEntry(0, GroupWalkMode.Show);
         }
 
         return new GroupsEntry(first, count > 1 ? GroupWalkMode.Pick : GroupWalkMode.Show);
