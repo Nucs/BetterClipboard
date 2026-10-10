@@ -6,8 +6,9 @@ namespace BetterClipboard.Core.Tests;
 
 /// <summary>
 /// Tests for the panel's arrow-key rules (<see cref="PanelNavigation"/>): Left and Right through the tabs in a circle, Up
-/// and Down through the rows, Up from the top row into the groups column and Up and Down inside it, and when Left and
-/// Right belong to the search box's text instead.
+/// and Down through the rows, Up from the top row into the groups column — where the keys land there, and whether their
+/// steps show groups or only move — Up and Down inside it, when Space and Enter pick a group, and when Left and Right
+/// belong to the search box's text instead.
 /// </summary>
 public sealed class PanelNavigationTests
 {
@@ -164,27 +165,85 @@ public sealed class PanelNavigationTests
         Assert.Equal(new ListMove(-1, false), PanelNavigation.MoveInList(-1, 0, 1, isRepeat: false, groupsReachable: true));
     }
 
+    /// <summary>A groups column, top to bottom (ids deliberately not 1, 2, 3: positions and ids must not be confused).</summary>
+    private static readonly long[] Column = [10, 20, 30];
+
     /// <summary>
-    /// The keys walk into the column on its lowest group and move through it by position — 0 is the clipboard icon (the
-    /// whole history), then the groups from the top — stopping at both ends: only Right leaves the column.
+    /// The cases of <see cref="EnterGroups_LandsOnTheFirstGroupShown_OrTheTopGroup"/>, against <see cref="Column"/>: the
+    /// ids of the groups shown, the position the keys must land on (0 the clipboard icon, 1 and up the groups), and how
+    /// the walk must treat the column.
+    /// </summary>
+    public static TheoryData<long[], int, GroupWalkMode> EntryCases => new()
+    {
+        { [], 1, GroupWalkMode.Show },             // nothing shown: the top group, not the lowest
+        { [10], 1, GroupWalkMode.Show },
+        { [20], 2, GroupWalkMode.Show },           // the group shown, wherever it is in the column
+        { [30], 3, GroupWalkMode.Show },
+        { [20, 30], 2, GroupWalkMode.Pick },       // several: the first of them, and the view stays
+        { [30, 20], 2, GroupWalkMode.Pick },       // "first" is the column's order, not the list's
+        { [10, 30], 1, GroupWalkMode.Pick },
+        { [10, 20, 30], 1, GroupWalkMode.Pick },
+        { [99], 1, GroupWalkMode.Show },           // only a deleted group "shown": as if none were
+        { [99, 30], 3, GroupWalkMode.Show },       // one real group: a walk that shows, on that group
+        { [99, 30, 20], 2, GroupWalkMode.Pick },
+        { [20, 20], 2, GroupWalkMode.Show },       // the same group twice is one group
+    };
+
+    /// <summary>
+    /// The keys walk into the column on the first group the list shows — the topmost one of several, whatever order the
+    /// shown ids come in — and on the top group when it shows none. One group shown or none: the walk shows every group
+    /// it steps on. Several: it only picks. Ids that are no longer in the column do not count, neither as "the first" nor
+    /// towards "several"; an id given twice counts once.
+    /// </summary>
+    /// <param name="shown">The ids of the groups shown.</param>
+    /// <param name="position">The position the keys must land on (0 the clipboard icon, 1.. the groups).</param>
+    /// <param name="mode">How the walk must treat the column.</param>
+    [Theory]
+    [MemberData(nameof(EntryCases))]
+    public void EnterGroups_LandsOnTheFirstGroupShown_OrTheTopGroup(long[] shown, int position, GroupWalkMode mode)
+    {
+        Assert.Equal(new GroupsEntry(position, mode), PanelNavigation.EnterGroups(Column, shown));
+    }
+
+    /// <summary>
+    /// A column without groups has only the clipboard icon to land on (the panel does not walk into one, the answer is
+    /// defined anyway); one group alone is both the top group and the only one that can be shown; null lists are refused.
     /// </summary>
     [Fact]
-    public void Groups_EnterAtTheLowest_AndStopAtBothEnds()
+    public void EnterGroups_ColumnsWithoutGroupsOrWithOne_AndNulls()
     {
-        Assert.Equal(3, PanelNavigation.EnterGroups(3));
-        Assert.Equal(0, PanelNavigation.EnterGroups(0));
-        Assert.Equal(0, PanelNavigation.EnterGroups(-2));
+        Assert.Equal(new GroupsEntry(0, GroupWalkMode.Show), PanelNavigation.EnterGroups([], []));
+        Assert.Equal(new GroupsEntry(0, GroupWalkMode.Show), PanelNavigation.EnterGroups([], [10, 20]));
+        Assert.Equal(new GroupsEntry(1, GroupWalkMode.Show), PanelNavigation.EnterGroups([10], []));
+        Assert.Equal(new GroupsEntry(1, GroupWalkMode.Show), PanelNavigation.EnterGroups([10], [10]));
 
-        // Up from the lowest of three groups: the two above, the clipboard icon, and there it stays.
-        int[] up = [2, 1, 0, 0];
-        int position = PanelNavigation.EnterGroups(3);
+        // The selection's own list is what the panel passes: in column order, read-only.
+        var merged = GroupSelection.None.Click(Column, 30, ctrl: true, shift: false).Click(Column, 20, ctrl: true, shift: false);
+        Assert.Equal(new GroupsEntry(2, GroupWalkMode.Pick), PanelNavigation.EnterGroups(Column, merged.Ids));
+        Assert.Equal(new GroupsEntry(1, GroupWalkMode.Show), PanelNavigation.EnterGroups(Column, GroupSelection.None.Ids));
+
+        Assert.Throws<ArgumentNullException>(() => PanelNavigation.EnterGroups(null!, []));
+        Assert.Throws<ArgumentNullException>(() => PanelNavigation.EnterGroups(Column, null!));
+    }
+
+    /// <summary>
+    /// The keys move through the column by position — 0 is the clipboard icon (the whole history), then the groups from
+    /// the top — stopping at both ends: only Right leaves the column.
+    /// </summary>
+    [Fact]
+    public void Groups_MoveByPosition_AndStopAtBothEnds()
+    {
+        // With nothing shown the keys land on the top group: Up from there is the clipboard icon, and there it stays.
+        int position = PanelNavigation.EnterGroups(Column, []).Position;
+        Assert.Equal(1, position);
+        int[] up = [0, 0];
         foreach (int expected in up)
         {
             position = PanelNavigation.MoveInGroups(position, 3, -1);
             Assert.Equal(expected, position);
         }
 
-        // Down again to the lowest group, and there it stays too (it never returns to the list by itself).
+        // Down to the lowest group, and there it stays too (it never returns to the list by itself).
         int[] down = [1, 2, 3, 3];
         foreach (int expected in down)
         {
@@ -192,9 +251,117 @@ public sealed class PanelNavigationTests
             Assert.Equal(expected, position);
         }
 
+        // And up again from the lowest of three groups: the two above, the clipboard icon.
+        int[] back = [2, 1, 0];
+        foreach (int expected in back)
+        {
+            position = PanelNavigation.MoveInGroups(position, 3, -1);
+            Assert.Equal(expected, position);
+        }
+
         Assert.Equal(4, PanelNavigation.MoveInGroups(9, 12, -PanelNavigation.PageStep));
         Assert.Equal(12, PanelNavigation.MoveInGroups(9, 12, PanelNavigation.PageStep));
         Assert.Equal(0, PanelNavigation.MoveInGroups(2, 12, -PanelNavigation.PageStep));
+    }
+
+    /// <summary>
+    /// The cases of <see cref="PickKey_PicksOnlyInAWalkThatPicks"/>, in the order of
+    /// <see cref="PanelNavigation.PickKey"/>'s parameters — Enter (or Space), in the groups column, the walk's mode,
+    /// Ctrl, Shift, Alt or Win, a repeat — followed by what the key must do.
+    /// </summary>
+    public static TheoryData<bool, bool, GroupWalkMode, bool, bool, bool, bool, GroupPickAction> PickKeyCases => new()
+    {
+        { false, true, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.Pick },        // Space
+        { true, true, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.Pick },         // Enter
+        { false, true, GroupWalkMode.Pick, true, false, false, false, GroupPickAction.Pick },         // Ctrl+Space, Explorer's key
+        { false, true, GroupWalkMode.Pick, false, true, false, false, GroupPickAction.Pick },         // Shift+Space
+        { false, true, GroupWalkMode.Pick, true, true, false, false, GroupPickAction.Pick },
+        { true, true, GroupWalkMode.Pick, true, false, false, false, GroupPickAction.NotHandled },    // Ctrl+Enter runs
+        { true, true, GroupWalkMode.Pick, false, true, false, false, GroupPickAction.NotHandled },    // Shift+Enter pastes plain text
+        { true, true, GroupWalkMode.Pick, true, true, false, false, GroupPickAction.NotHandled },     // Ctrl+Shift+Enter: as administrator
+        { false, true, GroupWalkMode.Pick, false, false, true, false, GroupPickAction.NotHandled },   // Alt+Space, Win+Space
+        { true, true, GroupWalkMode.Pick, false, false, true, false, GroupPickAction.NotHandled },
+        { false, true, GroupWalkMode.Pick, true, false, true, false, GroupPickAction.NotHandled },    // AltGr is Ctrl+Alt
+        { false, true, GroupWalkMode.Pick, false, false, false, true, GroupPickAction.Swallow },      // held Space
+        { true, true, GroupWalkMode.Pick, false, false, false, true, GroupPickAction.Swallow },       // held Enter
+        { false, true, GroupWalkMode.Pick, true, false, false, true, GroupPickAction.Swallow },
+        { true, true, GroupWalkMode.Pick, false, true, false, true, GroupPickAction.NotHandled },     // a held chord is still the chord
+        { false, true, GroupWalkMode.Pick, false, false, true, true, GroupPickAction.NotHandled },
+        { false, true, GroupWalkMode.Show, false, false, false, false, GroupPickAction.NotHandled },  // a walk that shows: Space is typed
+        { true, true, GroupWalkMode.Show, false, false, false, false, GroupPickAction.NotHandled },   // … and Enter pastes
+        { true, true, GroupWalkMode.Show, false, false, false, true, GroupPickAction.NotHandled },
+        { false, false, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.NotHandled }, // on the rows the mode means nothing
+        { true, false, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.NotHandled },
+        { true, false, GroupWalkMode.Show, false, false, false, true, GroupPickAction.NotHandled },
+    };
+
+    /// <summary>
+    /// Space and Enter pick only during a walk that picks. There, Space picks with or without Ctrl and Shift, Enter only
+    /// when pressed alone (its chords stay "run" and "paste as plain text"), and neither with Alt or the Windows key. A
+    /// key that repeats because it is held down is taken, but picks nothing more. Everywhere else both keys keep their
+    /// meaning: on the rows, and in a walk that shows, where Enter pastes and Space is typed.
+    /// </summary>
+    /// <param name="enter">Enter (<see langword="true"/>) or Space.</param>
+    /// <param name="inGroups">The keys walk the groups column.</param>
+    /// <param name="mode">How the walk treats the column.</param>
+    /// <param name="ctrl">Ctrl is held.</param>
+    /// <param name="shift">Shift is held.</param>
+    /// <param name="altOrWin">Alt or the Windows key is held.</param>
+    /// <param name="isRepeat">The key repeats because it is held down.</param>
+    /// <param name="expected">What the key does.</param>
+    [Theory]
+    [MemberData(nameof(PickKeyCases))]
+    public void PickKey_PicksOnlyInAWalkThatPicks(
+        bool enter, bool inGroups, GroupWalkMode mode, bool ctrl, bool shift, bool altOrWin, bool isRepeat, GroupPickAction expected)
+    {
+        Assert.Equal(expected, PanelNavigation.PickKey(enter, inGroups, mode, ctrl, shift, altOrWin, isRepeat));
+    }
+
+    /// <summary>
+    /// A whole walk that picks, as the panel runs it: the keys land on the first of two merged groups and move without
+    /// changing what is shown; a pick adds the group they are on, a pick on a shown group takes it out, and the walk goes
+    /// on picking when one group or none is left — the mode was decided when the keys walked in. The next walk decides
+    /// anew: with one group shown it shows every step.
+    /// </summary>
+    [Fact]
+    public void PickWalk_KeepsTheMergedViewUntilAPickChangesIt()
+    {
+        var shown = GroupSelection.None.Click(Column, 10, ctrl: true, shift: false).Click(Column, 30, ctrl: true, shift: false);
+        var entry = PanelNavigation.EnterGroups(Column, shown.Ids);
+        Assert.Equal(new GroupsEntry(1, GroupWalkMode.Pick), entry);
+
+        // Down: onto the group between the two shown. Nothing but the position changed.
+        int position = PanelNavigation.MoveInGroups(entry.Position, Column.Length, 1);
+        Assert.Equal(2, position);
+        Assert.Equal([10L, 30L], shown.Ids);
+
+        // Space there: the group joins the merged view (a Ctrl+click from the keyboard).
+        shown = shown.Toggle(Column, Column[position - 1]);
+        Assert.Equal([10L, 20L, 30L], shown.Ids);
+
+        // Up and Space: the first group leaves; Down, Down and Space: the last one too. One group is left.
+        position = PanelNavigation.MoveInGroups(position, Column.Length, -1);
+        shown = shown.Toggle(Column, Column[position - 1]);
+        position = PanelNavigation.MoveInGroups(position, Column.Length, 2);
+        shown = shown.Toggle(Column, Column[position - 1]);
+        Assert.Equal([20L], shown.Ids);
+        Assert.Equal(3, position);
+
+        // The walk still picks (its mode is the entry's), so the group the keys are on can be added again at once.
+        Assert.Equal(
+            GroupPickAction.Pick,
+            PanelNavigation.PickKey(enter: false, inGroups: true, entry.Mode, ctrl: false, shift: false, altOrWin: false, isRepeat: false));
+        shown = shown.Toggle(Column, Column[position - 1]);
+        Assert.Equal([20L, 30L], shown.Ids);
+
+        // Taking both out is the whole history; the keys are still in the column, and a pick shows a group again.
+        shown = shown.Toggle(Column, 30).Toggle(Column, 20);
+        Assert.Same(GroupSelection.None, shown);
+        shown = shown.Toggle(Column, Column[position - 1]);
+        Assert.Equal([30L], shown.Ids);
+
+        // A new walk from here: one group shown, so the keys land on it and every step shows its group.
+        Assert.Equal(new GroupsEntry(3, GroupWalkMode.Show), PanelNavigation.EnterGroups(Column, shown.Ids));
     }
 
     /// <summary>

@@ -34,10 +34,17 @@ namespace BetterClipboard.App.Views;
 /// every key is routed here from <see cref="Root_PreviewKeyDown"/>. Up and Down move through the rows. Left and Right
 /// select the previous and the next tab, wrapping around at both ends — unless the search text is being edited, when they
 /// move its caret as in any text box. A new press of Up on the top row walks into the groups column (when it is open and
-/// has groups): the lowest group is shown, further presses of Up show the groups above it and finally the whole history
-/// again (the clipboard icon), and Right — or the mouse over a row — goes back to the list. While the keys are in the
-/// column, the icon they are on wears a ring and the footer says how to get back; Enter, Ctrl+P and Del still act on the
-/// selected card.
+/// has groups), and Right — or the mouse over a row — goes back to the list. While the keys are in the column, the icon
+/// they are on wears a ring and the footer says what the keys do and how to get back.
+/// </para>
+/// <para>
+/// <b>Two ways to walk the groups column</b> (<see cref="GroupWalkMode"/>, decided when the keys walk in and kept for
+/// that walk). The keys land on the first group the list shows, or on the top group when it shows none. With no group or
+/// one group shown, the view follows them: every step shows the group it lands on alone, Up from the first group shows
+/// the whole history again (the clipboard icon), and Enter, Ctrl+P and Del still act on the selected card. With several
+/// groups merged into the list, the keys only move the ring — a step that showed its group alone would throw the merged
+/// view away — and Space or Enter adds the group under the ring to the view or takes it out
+/// (<see cref="PickGroupAtCursor"/>); Ctrl+P, Del, Shift+Enter and Ctrl+Enter still act on the selected card.
 /// </para>
 /// <para>
 /// <b>The mouse selects the row it is over</b> — once it really moved (<see cref="PointerSelectionGate"/>): rows also come
@@ -87,16 +94,34 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Whether Up and Down walk the groups column instead of the rows (<see cref="EnterGroupsNavigation"/> to
-    /// <see cref="LeaveGroupsNavigation"/>). Where the keys are in the column is not stored: it is the group shown
-    /// (<see cref="GroupCursorPosition"/>), so the two can never disagree.
+    /// <see cref="LeaveGroupsNavigation"/>). How they treat the column is <see cref="groupWalkMode"/>; where they are in
+    /// it is <see cref="GroupCursorPosition"/>.
     /// </summary>
     private bool groupsNavigation;
 
     /// <summary>
-    /// Set while the arrow keys themselves change the group shown (<see cref="ShowGroupAt"/>): any other change of the
-    /// groups shown ends their walk (<see cref="EndGroupsNavigationUnlessMoving"/>).
+    /// How the keys treat the groups column during the walk in progress: every step shows the group it lands on, or the
+    /// keys only move and Space or Enter picks. <see cref="PanelNavigation.EnterGroups"/> decides it when the keys walk
+    /// in, and it holds until <see cref="LeaveGroupsNavigation"/>, whatever the picks leave shown.
+    /// <see cref="GroupWalkMode.Show"/> while the keys are on the rows.
     /// </summary>
-    private bool movingGroupCursor;
+    private GroupWalkMode groupWalkMode;
+
+    /// <summary>
+    /// The group the keys are on during a walk that picks (<see cref="GroupWalkMode.Pick"/>), or <see langword="null"/>
+    /// for the clipboard icon. Stored, because in such a walk the icon the keys are on need not be one of those shown.
+    /// By id, not by position: a column reloaded under the keys (a group created, renamed or deleted from an icon's menu)
+    /// shifts positions, and the ring must stay on its group. A walk that shows does not use it: there the keys always
+    /// stand on the group shown, and deriving the position from that group means the two can never disagree.
+    /// </summary>
+    private long? pickCursorGroupId;
+
+    /// <summary>
+    /// Set while the keys themselves change the groups shown — a step of a walk that shows (<see cref="ShowGroupAt"/>),
+    /// a pick (<see cref="PickGroupAtCursor"/>): any other change of the groups shown ends their walk
+    /// (<see cref="EndGroupsNavigationUnlessOwnChange"/>).
+    /// </summary>
+    private bool keysChangingGroups;
 
     /// <summary>Decides whether the mouse may select the row it is over (it must have really moved since the keyboard or a reload set the selection).</summary>
     private readonly PointerSelectionGate pointerGate = new();
@@ -425,19 +450,39 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Where the arrow keys are in the groups column, as <see cref="PanelNavigation"/> counts positions: 0 for the clipboard
-    /// icon (the regular view), 1 and up for the groups in column order. Derived from the groups shown — the keys always
-    /// stand on the group they show — so it needs no state of its own; of several merged groups it is the lowest.
+    /// icon (the regular view), 1 and up for the groups in column order. In a walk that shows it is derived from the group
+    /// shown — the keys always stand on the group they show — so it needs no state of its own. In a walk that picks it is
+    /// where <see cref="pickCursorGroupId"/> is in the column now.
     /// </summary>
-    /// <returns>The position; 0 also when the group shown is no longer in the column.</returns>
+    /// <returns>
+    /// The position; 0 also when the group the keys were on is no longer in the column (deleted under them): the ring
+    /// then shows on the clipboard icon, and the next key acts from there.
+    /// </returns>
     private int GroupCursorPosition()
     {
-        var shown = ViewModel.GroupSelection.Ids;
-        if (shown.Count == 0)
+        long id;
+        if (groupWalkMode == GroupWalkMode.Pick)
         {
-            return 0;
+            if (pickCursorGroupId is not { } picked)
+            {
+                return 0;
+            }
+
+            id = picked;
+        }
+        else
+        {
+            var shown = ViewModel.GroupSelection.Ids;
+            if (shown.Count == 0)
+            {
+                return 0;
+            }
+
+            // A walk that shows never has more than one group shown; the lowest of several is only a defined answer for
+            // a merged view that some other change left behind before it ended the walk.
+            id = shown[^1];
         }
 
-        long id = shown[^1];
         var groups = ViewModel.Groups;
         for (int i = 0; i < groups.Count; i++)
         {
@@ -450,35 +495,84 @@ public sealed partial class ClipboardFlyout
         return 0;
     }
 
+    /// <summary>The id of the group at a position of the groups column.</summary>
+    /// <param name="position">The position (see <see cref="GroupCursorPosition"/>).</param>
+    /// <returns>The group's id; <see langword="null"/> for the clipboard icon (0) and for a position outside the column.</returns>
+    private long? GroupIdAt(int position)
+    {
+        var groups = ViewModel.Groups;
+        return position >= 1 && position <= groups.Count ? groups[position - 1].Id : null;
+    }
+
     /// <summary>
-    /// Up was pressed on the top row: the keys walk into the groups column. The lowest group is shown and wears the ring;
-    /// from here Up and Down move through the groups (<see cref="MoveGroupCursor"/>) until Right, the mouse over a row,
-    /// typing, or a click on an icon ends the walk (<see cref="LeaveGroupsNavigation"/>).
+    /// Up was pressed on the top row: the keys walk into the groups column, onto the first group the list shows — or
+    /// onto the top group, which is then shown, when it shows none (<see cref="PanelNavigation.EnterGroups"/>). From here
+    /// Up and Down move through the groups (<see cref="MoveGroupCursor"/>) until Right, the mouse over a row, typing, or
+    /// a click on an icon ends the walk (<see cref="LeaveGroupsNavigation"/>).
     /// </summary>
+    /// <remarks>
+    /// With several groups merged into the list, nothing that is shown changes here or at any later step: the walk only
+    /// picks (<see cref="GroupWalkMode.Pick"/>), and the merged view stays until Space or Enter changes it
+    /// (<see cref="PickGroupAtCursor"/>).
+    /// </remarks>
     private void EnterGroupsNavigation()
     {
+        var groups = ViewModel.Groups;
+        var column = new long[groups.Count];
+        for (int i = 0; i < column.Length; i++)
+        {
+            column[i] = groups[i].Id;
+        }
+
+        var entry = PanelNavigation.EnterGroups(column, ViewModel.GroupSelection.Ids);
         groupsNavigation = true;
-        ViewModel.SetGroupsNavigation(true);
+        groupWalkMode = entry.Mode;
+        pickCursorGroupId = GroupIdAt(entry.Position);
+        ViewModel.SetGroupsNavigation(entry.Mode);
 
-        // The list is about to show another group's cards under a mouse that may lie on it.
+        // The keyboard steers now: a mouse that lies on the list must not take the selection back, and with it end the
+        // walk, on a "pointer entered" that WinUI replays after the picture changed (the ring, another group's cards).
         SuspendPointerSelection();
-        ShowGroupAt(PanelNavigation.EnterGroups(ViewModel.Groups.Count));
+        if (entry.Mode == GroupWalkMode.Show)
+        {
+            // Changes nothing when that group alone is shown already; with no group shown, the top group opens.
+            ShowGroupAt(entry.Position);
+        }
+        else
+        {
+            BringGroupIconIntoView(entry.Position);
+        }
 
-        // Also when the lowest group was the one shown already: no change event moves the ring then.
+        // Also when nothing that is shown changed (the keys landed on the one group shown, or the walk only picks): no
+        // change event moves the ring then.
         UpdateGroupSelectionVisuals();
     }
 
-    /// <summary>Up, Down or a page key while the keys are in the groups column: shows the group (or the whole history) they land on.</summary>
+    /// <summary>
+    /// Up, Down or a page key while the keys are in the groups column. In a walk that shows: shows the group (or the whole
+    /// history) they land on. In a walk that picks: moves only the ring there, and leaves the groups shown alone.
+    /// </summary>
     /// <param name="delta">Positions to move: negative is up, towards the clipboard icon.</param>
     private void MoveGroupCursor(int delta)
     {
         int current = GroupCursorPosition();
         int next = PanelNavigation.MoveInGroups(current, ViewModel.Groups.Count, delta);
-        if (next != current)
+        if (next == current)
         {
-            SuspendPointerSelection();
-            ShowGroupAt(next);
+            return;
         }
+
+        SuspendPointerSelection();
+        if (groupWalkMode == GroupWalkMode.Pick)
+        {
+            // No change event comes for a ring that moves by itself: the icons are restyled here.
+            pickCursorGroupId = GroupIdAt(next);
+            BringGroupIconIntoView(next);
+            UpdateGroupSelectionVisuals();
+            return;
+        }
+
+        ShowGroupAt(next);
     }
 
     /// <summary>
@@ -492,7 +586,7 @@ public sealed partial class ClipboardFlyout
         bool regularView = position <= 0 || position > groups.Count;
 
         // Flagged, so the change event of this selection does not end the walk it belongs to.
-        movingGroupCursor = true;
+        keysChangingGroups = true;
         try
         {
             if (regularView)
@@ -506,19 +600,91 @@ public sealed partial class ClipboardFlyout
         }
         finally
         {
-            movingGroupCursor = false;
+            keysChangingGroups = false;
         }
 
-        // The buttons are in column order, like the groups (RebuildGroupButtons); the clipboard icon is always in view.
-        if (!regularView && position - 1 < GroupButtons.Children.Count)
+        BringGroupIconIntoView(position);
+    }
+
+    /// <summary>
+    /// Scrolls the icon at a position of the groups column into view, for a column that is longer than the panel is
+    /// high. The clipboard icon (0) is in the header and always in view.
+    /// </summary>
+    /// <param name="position">The position (see <see cref="GroupCursorPosition"/>); 0 and positions outside the column are ignored.</param>
+    private void BringGroupIconIntoView(int position)
+    {
+        // The buttons are in column order, like the groups (RebuildGroupButtons).
+        if (position >= 1 && position <= ViewModel.Groups.Count && position - 1 < GroupButtons.Children.Count)
         {
             GroupButtons.Children[position - 1].StartBringIntoView();
         }
     }
 
     /// <summary>
+    /// Space or Enter: picks the group the arrow keys are on, when they walk the groups column to pick
+    /// (<see cref="PanelNavigation.PickKey"/> decides; the key state is the caller's, read when the key arrived).
+    /// </summary>
+    /// <param name="enter"><see langword="true"/> for Enter, <see langword="false"/> for Space.</param>
+    /// <param name="ctrl">Whether Ctrl is held.</param>
+    /// <param name="shift">Whether Shift is held.</param>
+    /// <param name="altOrWin">Whether Alt or the Windows key is held.</param>
+    /// <param name="isRepeat">Whether the key repeats because it is held down (taken then, but nothing is picked again).</param>
+    /// <returns>
+    /// <see langword="true"/> when the key belongs to the groups (the caller marks it handled, so no space is typed and
+    /// nothing is pasted); <see langword="false"/> to leave the key its usual meaning.
+    /// </returns>
+    private bool PickGroupByKey(bool enter, bool ctrl, bool shift, bool altOrWin, bool isRepeat)
+    {
+        switch (PanelNavigation.PickKey(enter, groupsNavigation, groupWalkMode, ctrl, shift, altOrWin, isRepeat))
+        {
+            case GroupPickAction.Pick:
+                PickGroupAtCursor();
+                return true;
+            case GroupPickAction.Swallow:
+                return true; // a held key: taken, so it neither types nor pastes, and picked once only
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>
+    /// A pick during a walk that picks: adds the group the keys are on to the groups shown, or takes it out when it is
+    /// one of them — a Ctrl+click on its icon, from the keyboard. On the clipboard icon: back to the whole history, like
+    /// a click on it.
+    /// </summary>
+    /// <remarks>
+    /// The walk goes on, in the same mode, whatever the pick leaves shown — one group, or none — so the next group can be
+    /// picked at once. The ring stays where it is: only the icon's highlight says whether its group is shown now.
+    /// </remarks>
+    private void PickGroupAtCursor()
+    {
+        long? id = GroupIdAt(GroupCursorPosition());
+
+        // The list is about to show other cards under a mouse that may lie on it.
+        SuspendPointerSelection();
+
+        // Flagged, so the change event of this selection does not end the walk it belongs to.
+        keysChangingGroups = true;
+        try
+        {
+            if (id is { } group)
+            {
+                ViewModel.ToggleGroupInView(group);
+            }
+            else
+            {
+                ViewModel.ShowAllHistory();
+            }
+        }
+        finally
+        {
+            keysChangingGroups = false;
+        }
+    }
+
+    /// <summary>
     /// Ends the arrow keys' walk through the groups column: Up and Down move through the rows again, the ring goes, and
-    /// the footer shows the tab's own key hints. The group shown stays shown. No-op when the keys are not in the column.
+    /// the footer shows the tab's own key hints. The groups shown stay shown. No-op when the keys are not in the column.
     /// </summary>
     private void LeaveGroupsNavigation()
     {
@@ -528,17 +694,22 @@ public sealed partial class ClipboardFlyout
         }
 
         groupsNavigation = false;
-        ViewModel.SetGroupsNavigation(false);
+
+        // Back to the values of "not walking", so nothing of this walk decides anything in the next one.
+        groupWalkMode = GroupWalkMode.Show;
+        pickCursorGroupId = null;
+        ViewModel.SetGroupsNavigation(null);
         UpdateGroupSelectionVisuals();
     }
 
     /// <summary>
-    /// The groups shown changed: unless the arrow keys made the change themselves, their walk through the column ends — a
-    /// click on an icon, the icon menu, a deleted group or the reset for a summon decided what is shown.
+    /// The groups shown changed: unless the keys made the change themselves (a step of a walk that shows, a pick), their
+    /// walk through the column ends — a click on an icon, the icon menu, a deleted group or the reset for a summon decided
+    /// what is shown.
     /// </summary>
-    private void EndGroupsNavigationUnlessMoving()
+    private void EndGroupsNavigationUnlessOwnChange()
     {
-        if (!movingGroupCursor)
+        if (!keysChangingGroups)
         {
             LeaveGroupsNavigation();
         }

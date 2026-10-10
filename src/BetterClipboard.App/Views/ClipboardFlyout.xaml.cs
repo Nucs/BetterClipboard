@@ -73,8 +73,10 @@ namespace BetterClipboard.App.Views;
 /// <para>
 /// <b>Getting around</b> (ClipboardFlyout.Navigation.cs). A summon opens in the tab the user last chose
 /// (<see cref="AppSettings.LastTab"/>). Up and Down move through the rows, Left and Right through the tabs in a circle, and
-/// Up from the top row walks into the groups column, where Up and Down then step through the groups until Right goes
-/// back to the list. The mouse selects the row it is over, once it really moved.
+/// Up from the top row walks into the groups column, onto the first group shown (the top group when none is), where Up
+/// and Down then step through the groups until Right goes back to the list. Each step shows its group — unless several
+/// groups are merged: then the keys only move a ring, and Space or Enter adds the group under it to the view or takes it
+/// out. The mouse selects the row it is over, once it really moved.
 /// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
@@ -113,6 +115,20 @@ public sealed partial class ClipboardFlyout : Window
     /// words, for screen readers and for UI tests checking which groups a click selected.
     /// </summary>
     private const string ShownItemStatus = "Shown";
+
+    /// <summary>
+    /// The UI Automation item status of the icon the arrow keys are on while they walk the groups column (the logo
+    /// included), when the list does not show its group: the ring in words. The keyboard focus itself stays in the search
+    /// box, so no focus event says where the keys are.
+    /// </summary>
+    private const string KeyboardItemStatus = "Arrow keys here";
+
+    /// <summary>
+    /// The item status of a group icon that is both: the list shows its group (<see cref="ShownItemStatus"/>) and the
+    /// arrow keys are on it (<see cref="KeyboardItemStatus"/>). It starts with "Shown", so a reader that only looks for
+    /// that word still finds every shown group.
+    /// </summary>
+    private const string ShownAndKeyboardItemStatus = "Shown, arrow keys here";
 
     /// <summary>Segoe Fluent Icons "Play" (E768): the card menu's Run — the Run dialog has no glyph of its own.</summary>
     private const string RunGlyph = "\uE768";
@@ -189,9 +205,9 @@ public sealed partial class ClipboardFlyout : Window
             // group) must move the highlights.
             if (e.PropertyName == nameof(FlyoutViewModel.GroupSelection))
             {
-                // A change the arrow keys did not make themselves ends their walk through the column: the icon they
-                // were on may no longer be the one shown.
-                EndGroupsNavigationUnlessMoving();
+                // A change the keys did not make themselves (a step, a pick) ends their walk through the column: the
+                // icon they were on may no longer be the one shown.
+                EndGroupsNavigationUnlessOwnChange();
                 UpdateGroupSelectionVisuals();
             }
 
@@ -655,8 +671,9 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>
     /// Keyboard model: Up and Down move through the rows (Up from the top row walks into the groups column), Left and
     /// Right through the tabs in a circle, Enter pastes, Esc closes, Ctrl+P pins, Del deletes, Ctrl+1..9 quick-paste,
-    /// Alt+C / Alt+W / Alt+E toggle the search box's match case / whole word / regular expression. The arrow keys' rules
-    /// are <see cref="PanelNavigation"/>'s (ClipboardFlyout.Navigation.cs acts on them).
+    /// Alt+C / Alt+W / Alt+E toggle the search box's match case / whole word / regular expression. While the arrow keys
+    /// pick groups for a merged view, Space and a plain Enter add the group they are on to it or take it out instead. The
+    /// keys' rules are <see cref="PanelNavigation"/>'s (ClipboardFlyout.Navigation.cs acts on them).
     /// </summary>
     /// <param name="sender">Root grid.</param>
     /// <param name="e">Key data.</param>
@@ -712,7 +729,23 @@ public sealed partial class ClipboardFlyout : Window
 
                 break;
             case VirtualKey.Enter:
-                _ = PasteBestMatchAsync(ctrl, shift);
+                // While the arrow keys pick groups for a merged view, a plain Enter adds the group they are on to it or
+                // takes it out (ClipboardFlyout.Navigation.cs). Everywhere else, and with Ctrl or Shift, it pastes or runs.
+                if (!PickGroupByKey(enter: true, ctrl, shift, IsAltOrWindowsKeyDown(), repeat))
+                {
+                    _ = PasteBestMatchAsync(ctrl, shift);
+                }
+
+                break;
+            case VirtualKey.Space:
+                // The same pick, from Space. Marked handled below, it is not typed into the search box — which would
+                // also end the walk, since typing does. Everywhere else Space is the search box's: a space is typed.
+                if (!PickGroupByKey(enter: false, ctrl, shift, IsAltOrWindowsKeyDown(), repeat))
+                {
+                    NoteKeyLeftToText(e);
+                    return;
+                }
+
                 break;
             case VirtualKey.Escape when drag is { IsMoving: true } moving:
                 // Mid-drag, Esc cancels the move like it does for a title-bar drag — and only that; the
@@ -1928,7 +1961,8 @@ public sealed partial class ClipboardFlyout : Window
     /// Highlights the regular-view logo or every group icon shown (one, or several merged), only while the column is
     /// open, and tells screen readers which icons are shown (their item status), since they cannot see the highlight.
     /// While the arrow keys walk the column, the icon they are on also gets its ring
-    /// (<see cref="GroupCursorPosition"/>).
+    /// (<see cref="GroupCursorPosition"/>) — on an icon that is shown or, while the keys only pick, on one that is not —
+    /// and its item status says so (<see cref="GroupItemStatus"/>).
     /// </summary>
     private void UpdateGroupSelectionVisuals()
     {
@@ -1943,24 +1977,48 @@ public sealed partial class ClipboardFlyout : Window
             position++;
             bool shown = button.Tag is long id && selection.Contains(id);
             button.Style = GroupStyle(selected: shown, keyboard: position == cursor);
-            AutomationProperties.SetItemStatus(button, shown ? ShownItemStatus : string.Empty);
+            AutomationProperties.SetItemStatus(button, GroupItemStatus(shown, keyboard: position == cursor));
         }
 
         // Style resets Width: set it again right after, the logo's width depends on the column state.
         LogoButton.Style = GroupStyle(selected: groupsPaneOpen && selection.IsEmpty, keyboard: cursor == 0);
         LogoButton.Width = groupsPaneOpen ? LogoOpenDip : LogoClosedDip;
         LogoButton.Height = 32;
+
+        // The logo is no group, so it is never "Shown" (its status was always empty): only the keys' place is said.
+        AutomationProperties.SetItemStatus(LogoButton, GroupItemStatus(shown: false, keyboard: cursor == 0));
     }
 
+    /// <summary>
+    /// The UI Automation item status of an icon of the groups column: the highlight and the ring in words, for screen
+    /// readers and for UI tests, which can see neither.
+    /// </summary>
+    /// <param name="shown">Whether the list shows the icon's group.</param>
+    /// <param name="keyboard">Whether the arrow keys are on the icon.</param>
+    /// <returns>
+    /// <see cref="ShownItemStatus"/>, <see cref="KeyboardItemStatus"/>, <see cref="ShownAndKeyboardItemStatus"/>, or an
+    /// empty text. An icon the keys are not on reads exactly as it did before the keys could walk the column: "Shown"
+    /// or empty.
+    /// </returns>
+    private static string GroupItemStatus(bool shown, bool keyboard) =>
+        shown && keyboard ? ShownAndKeyboardItemStatus
+        : shown ? ShownItemStatus
+        : keyboard ? KeyboardItemStatus
+        : string.Empty;
+
     /// <summary>The group-icon style for a state (see App.xaml: whole styles, so brushes follow the flyout's theme).</summary>
-    /// <param name="selected">Selected look.</param>
+    /// <param name="selected">Selected look: the list shows the icon's group (for the logo: the whole history).</param>
     /// <param name="keyboard">
-    /// The arrow keys are on this icon (they walk the groups column): the selected look with a ring, whatever
-    /// <paramref name="selected"/> says — the icon the keys are on is always the one shown.
+    /// The arrow keys are on this icon (they walk the groups column): a ring around the look <paramref name="selected"/>
+    /// asks for. In a walk that shows, the icon the keys are on is always the one shown; in a walk that only picks, it
+    /// may be one that is not, and the plain look under the ring is what says so.
     /// </param>
     /// <returns>The style.</returns>
     private static Style GroupStyle(bool selected, bool keyboard = false) =>
-        (Style)Application.Current.Resources[keyboard ? "GroupButtonKeyboardStyle" : selected ? "GroupButtonSelectedStyle" : "GroupButtonStyle"];
+        (Style)Application.Current.Resources[
+            keyboard ? (selected ? "GroupButtonKeyboardStyle" : "GroupButtonKeyboardUnselectedStyle")
+            : selected ? "GroupButtonSelectedStyle"
+            : "GroupButtonStyle"];
 
     /// <summary>Shows or clears the drop highlight of a group icon.</summary>
     /// <param name="button">The icon.</param>
@@ -2526,6 +2584,15 @@ public sealed partial class ClipboardFlyout : Window
     /// <returns><see langword="true"/> when down.</returns>
     private static bool IsKeyDown(VirtualKey key) =>
         InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+    /// <summary>
+    /// Whether Alt or a Windows key is down on the UI thread: a key pressed with one of them is Windows' or another
+    /// program's shortcut (the window menu, the input language, a launcher), and AltGr arrives as Ctrl+Alt — so such a
+    /// key is never a pick of a group (<see cref="PickGroupByKey"/>).
+    /// </summary>
+    /// <returns><see langword="true"/> when Alt, the left or the right Windows key is down.</returns>
+    private static bool IsAltOrWindowsKeyDown() =>
+        IsKeyDown(VirtualKey.Menu) || IsKeyDown(VirtualKey.LeftWindows) || IsKeyDown(VirtualKey.RightWindows);
 
     /// <summary>x:Bind helper: paused chip visibility.</summary>
     /// <param name="paused">Paused state.</param>

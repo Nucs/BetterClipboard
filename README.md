@@ -53,8 +53,8 @@ you send to Claude Code and Codex.
   and drag an edge to resize it: it opens at that size from then on. Tabs that don't fit scroll sideways with the ‹ ›
   arrows, the mouse wheel or a drag. The mouse selects the item it is over.
 - **Pins and groups.** Pin what you reuse. Make groups with your own icons, drag cards onto them, and show one group or
-  several at once (`Ctrl+click`, `Shift+click`). Pinned and grouped items outlive every limit, and *Clear* keeps them
-  ([Groups](#groups)).
+  several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group you reach with the arrow keys). Pinned and grouped
+  items outlive every limit, and *Clear* keeps them ([Groups](#groups)).
 - **Reads every copy at once.** Copies 2 ms apart or more are all kept. A program that copies faster than that
   overwrites its own copies before any app, Win+V included, can read them: BetterClipboard keeps the last one and
   counts the rest (*Settings › Capture reliability*).
@@ -171,6 +171,7 @@ Press **Win+V**. The panel appears at once by your text cursor, in the tab you u
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
 | `Alt+C` / `Alt+W` / `Alt+E` | Toggle the search box's **Aa** (match case), **W** (whole word) and **.\*** (regular expression) — or click them. They stay as you leave them. |
 | `↑` `↓` `PgUp` `PgDn` | Move the selection. With the groups column open, press `↑` on the top item to step into the groups (see [Groups](#groups)). |
+| `Space` / `Enter` in the groups column | Only while several groups are open and the arrow keys are in the groups column: add the group under the ring to the list, or take it out (see [Groups](#groups)). Everywhere else, `Space` is typed and `Enter` pastes. |
 | `←` `→` | Previous / next tab, in a circle: `←` on the first tab goes to the last tab, `→` on the last tab to the first. While you edit search text, they move its caret instead; after `↑` or `↓` they switch tabs again. A held key stops at the first or last tab. |
 | Mouse over an item | Select it. Tabs and group icons are only selected by a click. |
 | `Enter` / click | Paste into the app you came from |
@@ -298,9 +299,15 @@ Collect the things you reuse — snippets, addresses, links for a project — in
 - **Open several:** `Ctrl+click` more icons to show their groups together, or `Shift+click` for a run of icons.
   They merge into one list in the usual order, with each item once, and the search and the tabs work on it.
   Without a keyboard: right-click an icon › *Add to view*.
-- **With the keyboard:** press `↑` on the top item. The lowest group opens, and its icon gets a ring. `↑` and `↓` now
-  step through the groups, and `↑` from the first group shows your whole history again (the logo). `→` goes back to
-  the items; so does typing, or moving the mouse over an item. `Enter` pastes the selected item at any time.
+- **With the keyboard:** press `↑` on the top item. A ring appears on the icon of the group you have open. When no
+  group is open, the top group opens and gets the ring. `↑` and `↓` now step through the groups, and each step opens
+  its group. `↑` from the first group shows your whole history again (the logo). `→` goes back to the items; so does
+  typing, or moving the mouse over an item. `Enter` pastes the selected item.
+- **Several groups with the keyboard:** while more than one group is open, `↑` on the top item puts the ring on the
+  first of them, and `↑` and `↓` then move only the ring: your merged list stays. Press `Space` or `Enter` to add the
+  group under the ring to the list, or to take it out. On the logo, they show your whole history. The footer shows
+  these keys. `→` goes back to the items, where `Enter` pastes again. `Shift+Enter` pastes the selected item as plain
+  text at any time.
 - **Take things out:** right-click a card → *Remove from …*, or use *Groups* in the same menu. Right-click
   a group's icon to rename it, change its icon or delete it. Deleting a group never deletes its items.
 

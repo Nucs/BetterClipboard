@@ -140,8 +140,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>
     /// The footer's key hints for the current tab (<see cref="DefaultKeyHint"/>, or <see cref="RunKeyHint"/> in the
-    /// Run tab, where Ctrl+Enter runs the selected command) — or <see cref="GroupsKeyHint"/> while the arrow keys walk
-    /// the groups column (<see cref="SetGroupsNavigation"/>).
+    /// Run tab, where Ctrl+Enter runs the selected command) — or, while the arrow keys walk the groups column
+    /// (<see cref="SetGroupsNavigation"/>), <see cref="GroupsKeyHint"/> or <see cref="GroupsPickKeyHint"/>.
     /// </summary>
     [ObservableProperty]
     public partial string KeyHint { get; set; } = DefaultKeyHint;
@@ -153,13 +153,32 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public const string RunKeyHint = "↵ paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin";
 
     /// <summary>
-    /// The key hints while the arrow keys walk the groups column (Up from the top row went there): how to move on, and —
-    /// above all — how to get back, since Up and Down no longer move through the rows. Enter still pastes the selected card.
+    /// The key hints while the arrow keys walk the groups column and every step shows the group it lands on
+    /// (<see cref="GroupWalkMode.Show"/>; Up from the top row went there): how to move on, and — above all — how to get
+    /// back, since Up and Down no longer move through the rows. Enter still pastes the selected card.
     /// </summary>
     public const string GroupsKeyHint = "↑ ↓ groups · → back to the list · ↵ paste";
 
-    /// <summary>Whether the arrow keys walk the groups column (set by <see cref="SetGroupsNavigation"/>): the footer then shows <see cref="GroupsKeyHint"/>.</summary>
-    private bool groupsNavigation;
+    /// <summary>
+    /// The key hints while the arrow keys walk the groups column and only pick (<see cref="GroupWalkMode.Pick"/>: several
+    /// groups were merged when they walked in): here Enter does not paste and Space is not typed, which nothing else on
+    /// screen says.
+    /// </summary>
+    /// <remarks>
+    /// Short, and in the order of what the reader needs: what Space and Enter do here, the way back, and last the arrow
+    /// keys, which got the reader here. The footer shares its line with the count of the merged view ("3 in Work + Home
+    /// + Ideas"), which is long exactly in this mode, and trims the end of a hint that does not fit. At the default
+    /// panel width about 41 characters are left next to that count: a first wording, in <see cref="GroupsKeyHint"/>'s
+    /// order with "→ back to the list" last, lost the way back ("→ back to t…", seen on screen 2026-10-10).
+    /// </remarks>
+    public const string GroupsPickKeyHint = "Space/↵ add or remove · → back · ↑ ↓ groups";
+
+    /// <summary>
+    /// How the arrow keys walk the groups column right now (set by <see cref="SetGroupsNavigation"/>), or
+    /// <see langword="null"/> while they are on the rows: the footer shows <see cref="GroupsKeyHint"/> or
+    /// <see cref="GroupsPickKeyHint"/> for a walk, the tab's own hints otherwise.
+    /// </summary>
+    private GroupWalkMode? groupsWalk;
 
     /// <summary>Whether capture is paused (header toggle).</summary>
     [ObservableProperty]
@@ -176,7 +195,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// </summary>
     /// <remarks>
     /// Changed through <see cref="ClickGroup"/> (plain, Ctrl and Shift clicks on the icons), <see cref="ToggleGroupInView"/>
-    /// (the icon menu), <see cref="ShowAllHistory"/> and <see cref="RemoveGroupFromView"/>; a reloaded column drops
+    /// (the icon menu, and Space or Enter while the arrow keys pick groups), <see cref="ShowOnlyGroup"/> (the arrow keys
+    /// stepping through the column), <see cref="ShowAllHistory"/> and <see cref="RemoveGroupFromView"/>; a reloaded column drops
     /// deleted groups (<see cref="LoadGroupsAsync"/>). A new selection of the same groups (only its Shift anchor moved)
     /// raises <see cref="ObservableObject.PropertyChanged"/> but does not reload
     /// (<see cref="OnGroupSelectionChanged(GroupSelection, GroupSelection)"/>).
@@ -272,7 +292,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>
     /// Adds a group to the groups shown, or takes it out — a Ctrl+click for the icon menu's "Add to view" / "Remove from
-    /// view" (touch, pen and screen readers have no Ctrl+click).
+    /// view" (touch, pen and screen readers have no Ctrl+click), and for Space or Enter while the arrow keys pick groups
+    /// in the column (<see cref="GroupWalkMode.Pick"/>).
     /// </summary>
     /// <param name="groupId">The group.</param>
     public void ToggleGroupInView(long groupId) => GroupSelection = GroupSelection.Toggle(GroupColumn(), groupId);
@@ -289,13 +310,17 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public void ShowOnlyGroup(long groupId) => GroupSelection = GroupSelection.Only(GroupColumn(), groupId);
 
     /// <summary>
-    /// Tells the footer whether the arrow keys walk the groups column: its key hints then say how to move on and how to
-    /// get back (<see cref="GroupsKeyHint"/>), and return to the tab's own hints afterwards.
+    /// Tells the footer whether the arrow keys walk the groups column, and how: its key hints then say how to move on,
+    /// what Space and Enter do, and how to get back (<see cref="GroupsKeyHint"/> or <see cref="GroupsPickKeyHint"/>), and
+    /// return to the tab's own hints afterwards.
     /// </summary>
-    /// <param name="active">Whether Up and Down move through the groups instead of the rows.</param>
-    public void SetGroupsNavigation(bool active)
+    /// <param name="walk">
+    /// How Up and Down treat the groups column (see <see cref="GroupWalkMode"/>), or <see langword="null"/> when they move
+    /// through the rows.
+    /// </param>
+    public void SetGroupsNavigation(GroupWalkMode? walk)
     {
-        groupsNavigation = active;
+        groupsWalk = walk;
         KeyHint = CurrentKeyHint();
     }
 
@@ -749,15 +774,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The footer's key hints for the state the panel is in: the groups column's while the arrow keys walk it, otherwise
-    /// the current tab's.
+    /// The footer's key hints for the state the panel is in: the groups column's while the arrow keys walk it (one text
+    /// per way of walking it), otherwise the current tab's.
     /// </summary>
     /// <returns>One of the key hint texts.</returns>
     private string CurrentKeyHint()
     {
-        if (groupsNavigation)
+        if (groupsWalk is { } walk)
         {
-            return GroupsKeyHint;
+            return walk == GroupWalkMode.Pick ? GroupsPickKeyHint : GroupsKeyHint;
         }
 
         // The Run tab is where Ctrl+Enter runs a command (it works on any card with a run time, but only the

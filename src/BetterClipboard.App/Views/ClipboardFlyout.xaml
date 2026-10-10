@@ -211,6 +211,8 @@
         <!--
             Groups column: the user's group icons, "+" at the bottom. Cards dropped on an icon join that group. A click
             shows one group; Ctrl+click and Shift+click show several, merged into one list (code-behind: ClickGroup).
+            The arrow keys reach the column too (Up from the list's top row), and while several groups are merged, Space
+            or Enter adds the group they are on to the list or takes it out (ClipboardFlyout.Navigation.cs).
         -->
         <Grid
             x:Name="GroupsPane"

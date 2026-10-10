@@ -69,6 +69,17 @@
             </Style>
 
             <!--
+                The same ring on a group icon the list does not show. While several groups are merged into the list, the
+                arrow keys only move through the column (a step that showed its group alone would throw the merged view
+                away), so the icon they are on is not always one of those shown: the plain look says "not shown", the ring
+                says "Space or Enter acts here". Also the clipboard icon while groups are shown and the keys are on it.
+            -->
+            <Style x:Key="GroupButtonKeyboardUnselectedStyle" TargetType="Button" BasedOn="{StaticResource GroupButtonStyle}">
+                <Setter Property="BorderBrush" Value="{ThemeResource AccentFillColorDefaultBrush}" />
+                <Setter Property="BorderThickness" Value="2" />
+            </Style>
+
+            <!--
                 The "<" / ">" arrows of the panel's tab carousel (ClipboardFlyout's TabStrip): WinUI TabView's scroll buttons
                 in look and timing — subtle fills from the theme, secondary glyph, a first repeat after a short hold
                 (Delay) and then a steady walk (Interval) — with a chevron instead of TabView's solid caret, read as "<" and
