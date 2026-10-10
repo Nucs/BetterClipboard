@@ -505,17 +505,53 @@ function Stop-InstalledApp([string] $Exe) {
     return ($apps.Count -gt 0)
 }
 
+function Test-ProcessRuns([System.Diagnostics.Process] $Process) {
+    <#
+    .SYNOPSIS
+        Whether a process is still running, also when this script may not open it.
+    .DESCRIPTION
+        HasExited needs a handle to the process. For a process this script cannot open, PowerShell hands back
+        nothing instead of an answer, and "-not nothing" reads as "still running" for ever. Two kinds of process
+        cannot be opened: one that runs with more rights (as administrator, while the installer does not), and a
+        process object that Windows keeps after a crash (the error-reporting copy of a crashed program can stay
+        until the user signs out; it has no threads, and it can be neither asked to exit nor stopped).
+        The process list needs no handle: a process that ended is not in it, and one that only left its object
+        behind has no threads.
+    .PARAMETER Process
+        The process, as Get-Process returned it earlier.
+    .OUTPUTS
+        System.Boolean. $false also for a process id that another program got meanwhile.
+    #>
+    $now = Get-Process -Id $Process.Id -ErrorAction SilentlyContinue
+    if (-not $now -or $now.ProcessName -ne $Process.ProcessName) {
+        return $false
+    }
+
+    # Not @($now.Threads).Count: for a property PowerShell could not read, that would count the $null as one.
+    $threads = $now.Threads
+    return ($null -ne $threads -and $threads.Count -gt 0)
+}
+
 function Stop-RunningApp([string] $PreferredExe) {
     <#
     .SYNOPSIS
         Closes every BetterClipboard of this session (gracefully with --exit, forcibly after 15 s) and says whether one ran.
+    .DESCRIPTION
+        Only processes that really run count (Test-ProcessRuns). Until 2026-10-10 a leftover process object of a
+        crashed BetterClipboard made every install fail here, after the running app had already been closed:
+        the object never "exits", so the wait took the whole 15 s, and stopping it raised "Access is denied",
+        which ended the script with the app closed and nothing installed.
+        A copy that cannot be stopped (it runs as administrator) is not fatal either: when it runs from the install
+        folder, the swap that follows fails, puts the previous version back and says why; when it runs from another
+        folder, it does not stand in the way.
     .PARAMETER PreferredExe
         The exe to send --exit with; any copy works, since the running instance listens on a session-wide event.
     .OUTPUTS
         $true when an instance was running (so a failed update can start the previous version again), else $false.
     #>
     $session = (Get-Process -Id $PID).SessionId
-    $running = @(Get-Process -Name $AppName -ErrorAction SilentlyContinue | Where-Object { $_.SessionId -eq $session })
+    $running = @(Get-Process -Name $AppName -ErrorAction SilentlyContinue |
+            Where-Object { $_.SessionId -eq $session -and (Test-ProcessRuns $_) })
     if ($running.Count -eq 0) {
         return $false
     }
@@ -528,15 +564,20 @@ function Stop-RunningApp([string] $PreferredExe) {
     }
 
     $deadline = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $deadline -and @($running | Where-Object { -not $_.HasExited }).Count -gt 0) {
+    while ((Get-Date) -lt $deadline -and @($running | Where-Object { Test-ProcessRuns $_ }).Count -gt 0) {
         Start-Sleep -Milliseconds 250
-        $running | ForEach-Object { $_.Refresh() }
     }
 
-    $stuck = @($running | Where-Object { -not $_.HasExited })
-    if ($stuck.Count -gt 0) {
-        Write-Warning 'BetterClipboard did not exit within 15 s; stopping it.'
-        $stuck | Stop-Process -Force
+    foreach ($process in @($running | Where-Object { Test-ProcessRuns $_ })) {
+        Write-Warning "BetterClipboard (process $($process.Id)) did not exit within 15 s; stopping it."
+        try {
+            Stop-Process -Id $process.Id -Force -ErrorAction Stop
+        }
+        catch {
+            # The script stops at errors, and this one must not end it: the app is already closed, so ending here
+            # would leave the user without a running BetterClipboard and without the new version.
+            Write-Warning "It could not be stopped ($($_.Exception.Message)). If it runs as administrator, close it there."
+        }
     }
 
     return $true
