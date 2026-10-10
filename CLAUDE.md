@@ -2877,8 +2877,9 @@ neither, it is installed with a warning that states its hash.
   environment can never redirect the installed app's updates (the log says when it is ignored).
 - An isolated instance updates a scratch copy when its own data folder has an `installer.json` whose `installDir` is
   that copy's folder.
-- **Never test an update on the user's installed copy.** `tools/release/test-update.ps1` is the safe test on this PC:
-  it works in scratch folders and proves that nothing else changed.
+- **Never test an update on the user's installed copy, unless the user asks for exactly that** (2026-10-10; the
+  procedure and its guards are in §4). `tools/release/test-update.ps1` is the safe test on this PC: it works in
+  scratch folders and proves that nothing else changed.
 - Scratch tools (session 3103c128's scratchpad): `vm/feed-server.ps1` (an `HttpListener` feed with a request log and a
   throttle), `vm/make_feed.py` and `vm/make_variants.py` (feed folders from packages), `probe/github_probe.cs` (the
   app's client against the real GitHub).
@@ -2886,14 +2887,17 @@ neither, it is installed with a warning that states its hash.
 **Verified:** see §5.
 
 **Limits / not built:**
-- **The regular instance against a real newer release:** run up to the installer on 2026-10-09, with a build labelled
-  0.2.3 on a test desktop (§3.4, §5). The real feed offered the real 0.2.5, the download and the checksum check ran,
-  and the app handed over to that release's installer. That installer has no update mode (only releases from 0.2.6
-  on have it), so it ended with code 1 and the app kept running, as designed. The whole path with a real release
-  needs the first release after 0.2.6 (§6). The installer's half ran on a real install folder (the VM, through an
-  isolated instance with a stand-in feed).
-- ARM64: built by the release job, never run. A standard user, and UAC on: not run for the update (the VM's user is an
-  elevated administrator).
+- **The regular instance against a real newer release:** done on 2026-10-10 on the owner's own install, with the
+  real 0.2.6 and 0.2.7 (§5): four updates from four ways of installing, each 11 to 12 s from the click to the
+  running new version, plus *Later*, *Skip this version*, *Cancel* and an install folder that was in use. (Before
+  those releases existed, a build labelled 0.2.3 ran the path up to the installer of the real 0.2.5 on a test
+  desktop, 2026-10-09.)
+- ARM64: built by the release job, never run. A standard user account: not run (the owner's PC is an administrator
+  account with UAC on; the app, the installer and the updater ran there without elevation). A copy that runs as
+  administrator: only on the VMs, where UAC is off.
+- **After a failed installation, the reason is easy to miss.** The restarted app reports it in a notification
+  (Windows shows one for about 5 s; whether it stays in the notification center was not checked) and in the log;
+  Settings and the dialog then show the plain offer again (§6).
 - No delta updates (71 MB each time), no silent or automatic installation, no update at exit.
 - No Authenticode check of the package: releases are unsigned (§3.3).
 - The README's update photo shows a build labelled 0.2.3 that is offered the real 0.2.5 (§3.4): retake it with the
@@ -3102,6 +3106,11 @@ Snipping tab (2026-10-01), with a copy of the dev build:
       needs ≥ 0.2.6), and the closing note names the check, both ways to switch it off and the privacy section;
     - `-Update` is the app's own update mode: one copy and nothing else. Its command line is a contract (§4);
     - `-ResultPath` and `-LogPath` report a run that has no window.
+  - **Since 2026-10-10 (`b14a76c`):** `Stop-RunningApp` counts only processes that really run (`Test-ProcessRuns`:
+    in the process list, same name, at least one thread) and warns instead of failing when one cannot be stopped.
+    Before, the leftover process object of a crashed BetterClipboard, or a copy running as administrator, ended a
+    full install with "Cannot stop process … Access is denied" after the running app had been closed (§4, §5).
+    The update mode was never affected: it matches processes by their program's path.
   - **A Chocolatey copy** (`lib\betterclipboard\tools\app`, §3.2) is respected:
     - install warns about it and leaves a startup entry that starts it;
     - `-Uninstall` keeps a startup entry that starts that copy; its own entry or a stale one goes, or, while that copy
@@ -3868,7 +3877,51 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     and in the release job. It is safe on this PC too (scratch folders; it proves that nothing else changed).
 - **Never test an update on the user's installed copy,** and never give the regular instance another feed. Use an
   isolated instance with `BETTERCLIPBOARD_UPDATE_FEED` and an `installer.json` of its own for a scratch copy, or a
-  claude-desktops Windows desktop (§2.29).
+  claude-desktops Windows desktop (§2.29). **The one exception is the user asking for exactly that** ("manual QA my
+  installation on this machine", 2026-10-10). Then, on a PC that the user works and plays on:
+  - **One short sequence per on-screen step, never a window left open between two tool calls.** On 2026-10-10 an
+    update dialog that stayed open while the next command was prepared took the keyboard from the user's browser for
+    about 20 s. A sequence (session 3103c128's `qa/scenario.py`) waits until a desk program is in front (a terminal,
+    an editor, a browser; nothing that covers its whole monitor, never a game) and keyboard and mouse have rested
+    about 10 s, opens the window, does its steps through UI Automation (Invoke and Toggle: no mouse, no typing), stops
+    when a key or a mouse button goes down or the foreground leaves the app, and closes what it opened. The
+    sequences on the installed app took 5 to 17 s each.
+  - **`GetLastInputInfo` cannot tell the user from the app during a sequence:** BetterClipboard sends itself an empty
+    mouse input when it brings a window to the front (`ForegroundHelper.Activate`), which resets that clock. Watch
+    `GetAsyncKeyState` and the foreground window instead; use the idle clock only for the guard before the sequence.
+  - **Only the update controls are read.** The panel's cards are the user's copies: find controls by automation id,
+    capture the dialog's own window (`PrintWindow`; a flyout is a window of its own) and of the panel only its header.
+    Never press *Copy command* or *Copy install command* there: Windows' own clipboard history is on.
+  - **At most one isolated copy at a time.** Each one reads the clipboard at every change. With four running, one
+    real copy was not captured ("Clipboard stayed locked (held by window …); change #1529 not captured" in the
+    installed app's log).
+  - **A test copy's notification looks like the real app's.** "BetterClipboard was updated to 0.2.7" came from an
+    isolated copy, and the user opened their own update dialog seconds later. Say what will appear before such a
+    run, or keep it to a test desktop.
+  - **The full installer:** `-NoLaunch`, then start the app through Explorer with `--background` (memory "Install on
+    this machine"). Take a content-free snapshot before and after (`qa/state.ps1`: versions, records, the Run key's
+    names, Explorer's processes, hashes of PATH and settings) and restore every setting a case changed
+    (`CheckForUpdates` after `-NoUpdateCheck`, the install folder after `-InstallDir`).
+  - **UI Automation facts for this app:** the panel and Settings share class and title, and both have a caption
+    style; the panel is the one without `WS_MINIMIZEBOX`. A cloaked panel has no content in the automation tree, and
+    the content appears a moment after the uncloak: look for a control for up to 2 s. A WinUI `ScrollViewer` reports
+    the rectangle of its whole content, so scroll with `ScrollPattern.SetScrollPercent` and judge by the control's own
+    rectangle against the window's. In the update dialog *Cancel* is the second button (`SecondaryButton`), not the
+    first.
+- **A WinUI 3 app cannot run on a second desktop of the window station** (`CreateDesktop` + `STARTUPINFO.lpDesktop`, to
+  keep test windows off the user's screen). BetterClipboard crashed 3 of 3 times, 3 to 4 s after its start: a stowed
+  exception (0xC000027B) in `CoreMessagingXP.dll`, E_NOTIMPL from combase. Do not try it again. One crash left the
+  error-reporting clone of the process behind: a process object with the program's name, no threads, which can be
+  neither opened nor stopped and goes only when the user signs out. It kept the copy's files and its store's `-shm`
+  file locked (the next start of that copy failed with "disk I/O error"), and it broke the installer (next bullet).
+  The three crash dumps (41 MB each, `%LOCALAPPDATA%\CrashDumps`) were deleted: a dump holds what the copy had read.
+- **A process list can hold a BetterClipboard that does not run.** For such an object, and for a copy that runs as
+  administrator while the script does not, PowerShell returns nothing for `HasExited` (so `-not $_.HasExited` is true
+  for ever) and `Stop-Process` fails with "Access is denied", a terminating error under `$ErrorActionPreference =
+  'Stop'`. Count a process as running only while the list shows it with at least one thread (`install.ps1`'s
+  `Test-ProcessRuns`), and never let "could not stop it" end a script that has already closed the user's app.
+- **An edit and the command that needs it do not go into one batch of tool calls:** they run at the same time, and
+  the command reads the file from before the edit (2026-10-10: a "fixed" script ran unfixed).
 - **Everything the app sends over the network is named in the README's *Privacy* section,** which is the privacy policy
   that code signing asks for (§3.3): what is requested, from whom, what the request shows, and how to switch it off. A
   new request (telemetry, a crash report, a second update source) needs its paragraph there, a Settings switch, an
@@ -3918,6 +3971,9 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **Update QA on the owner's own install** (2026-10-10, "manual QA my installation on this machine in various installation ways … all scenarios and edge cases"; Windows 11 Pro N 26200, an administrator account with UAC on, the app, the installer and the updater at medium integrity, Defender's real-time protection on, 100 % scaling, two monitors). The app was driven through UI Automation in short guarded sequences (§4); the real GitHub releases 0.2.6 and 0.2.7. **Four real updates 0.2.6 → 0.2.7, from four ways of installing:** (1) as installed by `irm \| iex`: the panel's update button → dialog → *Update and restart*; (2) after `install.ps1 -Version 0.2.6`: the panel again; (3) after `install.ps1 -Package <zip> -InstallDir <a folder named "BetterClipboard QA é">`: Settings › Updates › *Update to 0.2.7…*, with an isolated copy running, which was not touched; (4) after `install.ps1 -Version 0.2.6 -NoUpdateCheck`: the panel, with the switch off (the offer came from the cached list, no request was made, and the switch stayed off across the update). **Each time:** download 3.0–3.8 s (74,482,994 bytes), "Update package verified", the app closed 4.4–5.7 s later (the installer checks and unpacks the package first), the new process started 1.0–1.6 s after the old one ended, Win+V was registered again 3–4 s after "Exiting.", "The update to 0.2.7 was installed.", 11–12 s from the click to the running 0.2.7. **After each:** the folder equals the release zip file by file (476 files, none missing, extra or changed), no staging folder next to it, `updates\` holds only the cached list, `result.json` consumed; Installed apps, `installer.json` and the exe say 0.2.7; unchanged: the Run key (BetterClipboard and IDMan), the shortcut's target, `DisabledHotkeys` (`V`), the 42 values of `Explorer\Advanced`, both Explorer processes (never restarted), the user PATH (hash), `settings.json` (hash), the store (202,375,168 bytes, same key file), 0 WRN/ERR after the start. **Decisions** on the reinstalled 0.2.6, in one sequence: the button is lit right after the reinstall (from the cached list); *Later* closes the dialog and leaves it lit; *Skip this version* closes it and the button says "… (you skipped it)"; the dialog then offers *Stop skipping this version*, which lights it again. **Cancel** at 4 of 71 MB: "cancelled before anything was installed", the dialog back at the offer without an error, no partial file, the same process. **The install folder in use** (another process with its current directory there): the app closed, the installer tried for 10 s, put the folder back (equal to the 0.2.6 zip, nothing left over), started 0.2.6 again (Win+V back 11.7 s after "Exiting."), and the app logged and notified "The update to 0.2.7 was not installed: The install folder … stayed in use by another program for 10 s … Close programs that use that folder …, then update again."; the retry after the folder was free worked. **Up to date afterwards:** the button "BetterClipboard 0.2.7 is up to date", the dialog "Version 0.2.7 is the latest release. Checked just now." with *Check now* / *Close* and "What is new in this version". At the end the copy is 0.2.7 in the default folder with the switch on, as before the test, and the test's custom folder is removed | session 3103c128's scratchpad `qa/`: `scenario.py` + `bcui.py` (guarded UI Automation, `PrintWindow` captures of the dialog's own window and of the panel's header only), `state.ps1` + `statediff.py` (content-free snapshots), `cmpzip.py` (folder against release zip), `watch_update.py` (timeline from the log and the process list), `launch_background.ps1` (start through Explorer) | ✅ the update works on a real install. ⚠️ Side effects of the test on the owner's PC, all reported: an update dialog of a test copy took the keyboard from the browser for about 20 s (it was left open between two tool calls); a test copy's panel stayed on top for about 30 s; a notification "BetterClipboard was updated to 0.2.7" came from a test copy; one real copy was not captured while four instances read the clipboard ("Clipboard stayed locked … change #1529 not captured"); a crashed test copy left a process object behind until sign-out (next rows). Not run: the tray menu's *Update to …*, a standard user account, an elevated copy, ARM64 |
+| **Update QA with isolated copies on the same PC** (no change to the installed app; each copy in its own folder with its own data folder, capture paused, every source of the user's data off). (1) **Rehearsal:** an installer-kind copy of the real 0.2.6 with the real 0.2.7 package from a stand-in feed: 9 s from the click to the running 0.2.7, 1.0 s without a process, the folder equal to the 0.2.7 zip. (2) **The automatic check, nine cases, no window** (the copy starts in the background and checks 60 s later; the feed's request log and the app's log are the evidence): a good list (one request, `User-Agent: BetterClipboard/0.2.6`, "0.2.7 is available"); a fresh cache (no request); a 25-hour-old cache (one request with `If-None-Match`, answered 304); error 500, a rate limit ("Try again after 1:42 PM"), text that is not the list, an empty list ("latest release unknown"), a connection closed without an answer (four connection attempts, then "could not be reached"), no answer for 40 s ("did not answer in time" after about 30 s). The copy kept running and exited cleanly every time. (3) **Four faults after *Update and restart*:** no `SHA256SUMS.txt` (404), a checksum list that disagrees with the release's digest ("the update cannot be trusted", no package request), a download cut at 20 of 74 MB, a download of the right length with other bytes ("does not match … so it was deleted"); each left the copy running with the dialog back at the offer and nothing in `updates\` but the cached list. (4) **`tools/release/test-update.ps1`** with the real 0.2.7 zip in Windows PowerShell 5.1: 17 of 17. (5) **Chocolatey, the released packages in a private root** (not elevated): `choco install` 0.2.6, the copy's log "a Chocolatey install (Chocolatey updates it); automatic check off" and no request, `choco upgrade` to 0.2.7 closed the running copy and replaced it, still classified as Chocolatey, `choco uninstall /KeepWinVReleased`; the user's shortcut, Run key, `DisabledHotkeys` and running app unchanged: 23 of 24 (the 24th was the clipboard warning above, not an update matter). (6) A copy extracted by hand: "not installed by the installer (updates come from the download page); automatic check off" | `qa/iso.py` (isolated copies with the environment Explorer would give them), `qa/feed.py` (stand-in feed with faults set through a control file), `qa/net_checks.py`, `qa/choco_qa.ps1` | ✅ Not read on screen here: the dialogs of the hand-extracted and the Chocolatey copy (read on the VM, §5 below); a download that the app's exit interrupts |
+| **Installer: a BetterClipboard that cannot be stopped** (found and fixed 2026-10-10, `b14a76c`, §3.1). With the leftover process object of a crashed test copy on the PC (no threads, cannot be opened): `HasExited` is empty for it in Windows PowerShell 5.1 and PowerShell 7, so the old `Stop-RunningApp` waited its whole 15 s, and `Stop-Process` on it throws "Access is denied" under `$ErrorActionPreference = 'Stop'`: a full install would have ended after it had closed the running app. After the fix: `Test-ProcessRuns` says True for the installed app (69 threads) and False for the leftover object in both PowerShell versions, and three real installs on this PC (`-Version`, `-Package -InstallDir`, `-Version -NoUpdateCheck`) each finished in 11–16 s with exit code 0 | `qa/test_processruns.ps1` (the function taken out of the script's syntax tree), the three installs of the first row | ✅ Not run: the 18-scenario harness (it hides every BetterClipboard process, so this code does not run in it); a copy that runs as administrator next to a non-elevated installer. Not on GitHub yet: `irm \| iex` has the old lines until `main` is pushed |
 | **v0.2.6 and v0.2.7 released; 0.2.6 installed on this PC** (2026-10-10, "release a new version and install on this machine, the release a new version with no binary diff … the agent of update system will test updating our user install"). **v0.2.6**: bump `24821a4` on `68b85bc` (everything since v0.2.5, the update system `7d7df8d` included); the full suite on that commit 1,434 = 1,431 + 3 skipped; the push range (18 commits) scanned (no secrets, no email; the four new PNGs looked at: demo data only); CI 38031322511 green (1,430 + 4 skipped on the runner, update mode, Chocolatey 28/28); tag object `ed3db9a`; release run 38031633000 green; published 06:44:10Z. **Installed** with the README's `irm \| iex` (Windows PowerShell 5.1, env stripped, `-NoLaunch`; raw `install.ps1` checked byte-equal to `main` first): 22 s, the x64 zip's SHA-256 `edad3806…` OK, graceful close of `0.2.6-dev.52539eb`, "Win+V was already released from Explorer"; started through Explorer (pid 78644, 76 variables, no `CLAUDECODE`/`MSYSTEM`); the exe `0.2.6+24821a4…`; Installed apps and `installer.json` 0.2.6; Run value and shortcut unchanged, IDMan kept, `DisabledHotkeys` `V`; log 0 WRN/ERR, "Updates: this copy is installed by the installer (it can update itself); automatic check on.", and at 06:47:05Z "Update check: up to date (running 0.2.6, latest release 0.2.6)". **v0.2.7**: bump `11a2d4d`, whose only change from v0.2.6 is the `<Version>` line; CI 38032267416 failed on attempt 1 (two timing tests, §6) and passed on attempt 2; tag object `5a6dad3`; release run 38032773704 failed on attempt 1 (a third timing test; nothing published) and passed on attempt 2; published 07:05:56Z, Latest. Both pages: the tag's notes + footer, no mojibake, every `SHA256SUMS.txt` line equal to GitHub's digest; `install.ps1` byte-identical in both. 0.2.7 was **not** installed here: the installed 0.2.6 is left for the update system's agent | `gh`, `install_state.ps1`, `env_names.py`, scratch `verify_release.py` | ✅ released; the update from 0.2.6 to 0.2.7 is the update agent's test |
 | **README photos retaken** (§3.4, 2026-10-09): a claude-desktops Windows 11 desktop ("bc-photos", 2560×1440 at 150 %, dark theme) with a package of `7d7df8d` labelled 0.2.3, installed with `install.ps1 -Package` (SHA-256 OK, Win+V released, 29 s). Demo data from `tools/readme/demo-data.ps1` (7 Claude Code and 2 Codex prompts imported in 0.4 s), then copies from Notepad, Windows Explorer, Microsoft Edge and Snipping Tool (a 1426×500 snip), a pin, and three groups by drag and drop (5 cards in groups). Captured: the hero (All tab, groups column, five header buttons), the Claude tab (reached with Left twice; "6 prompts (7 sent)"), the top of Settings (the shortcut list; the chips "7 items · 3.3 MB · 1 pinned · 5 in groups"), and the update dialog under its highlighted button. The three window photos kept their sizes (692×947, 626×947, 1388×1307); `update.png` is 960×1033, composed from two screen captures by the new `tools/readme/compose-shot.py`, with 32 px of wallpaper on every side. The desktop was deleted with its persist folder | claude-desktops MCP tools (UIA, keys, mouse, drag), in-desktop PowerShell (`capture-window.ps1`, the new `capture-screen.ps1`), Pillow on this PC | ✅ four photos. Found on the way: a second selection bar after leaving a prompt or shell tab (two rows below) |
 | **The regular instance against the real GitHub, with an offer** (the same desktop; the build is labelled 0.2.3, so the real feed's 0.2.5 is newer). Started with the check off (`--set-update-check off`; the installer gates `-NoUpdateCheck` on ≥ 0.2.6): "automatic check off", a plain update button, no request. Settings › Updates: the switch on, then *Check now*: "BetterClipboard 0.2.5 is available. You have 0.2.3. Released Sat 8:44 AM. …", the accent button "Update to 0.2.5…", and the panel's update button filled. The dialog: the title, *Update and restart* / *Later* / *Skip this version*, then "What is new" with the real release notes (a code block, bold and italic text, a link, nested bullets). *Update and restart*: "Downloading BetterClipboard 0.2.5… 35.5 of 70.8 MB" with the ring in the header. The log: approved (74,280,969 bytes); 5 s later "Update package verified: its SHA-256 matches the release's checksum list"; "Starting the installer for 0.2.5"; 4 s later the warning "Update to 0.2.5 failed (Installer): The installer ended before it could start (code 1) …", the same text in the dialog's error bar, and the app still running under its process id. The 0.2.5 release's `install.ps1` has no update mode, so Windows PowerShell refused the arguments before the script ran. After a restart of the app, the button was filled again without a request (the cached list) | screenshots, the app's log, a listing of `updates\` | ✅ the offer, a real download, the checksum check and the hand-over, with a real release. Still open: a release whose installer has update mode (the first one after 0.2.6, §6) |
@@ -4076,13 +4132,33 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   GitHub's own numbers; Chocolatey later. After acceptance: the signing step in `release.yml`.
 - winget manifest. (The in-app update check against GitHub releases is built: §2.29. The README names it and both
   switches, §3.3.)
+- Found during the update QA on the owner's PC (2026-10-10), outside the update system:
+  - **A panel opened by `--show-flyout` that does not get the foreground stays on the screen.** While the user
+    types in another app, Windows refuses the activation; the panel then never hears a deactivation, which is
+    what conceals it (seen for about 30 s with a test copy, always on top). Conceal it when it is not the
+    foreground window a moment after it was shown. Not seen with Win+V: Windows lets the program that receives a
+    hotkey take the foreground.
+  - **Startup fails when another process still holds the store's `-shm` file** ("Startup failed. SQLite Error 10:
+    'disk I/O error'", seen with a crashed copy's leftover process object): retry for a moment, then say what
+    holds the history instead of ending silently.
+  - **Several instances read the clipboard at once.** With four running, one copy was missed by all of them
+    ("Clipboard stayed locked"). A paused or isolated instance could stay away from the clipboard.
 - Updates (§2.29), next steps:
-  - **The first release after 0.2.6 is the first whole run with a real release.** Watch it on a test desktop
-    (install 0.2.6 with the README's command, wait for the highlighted button, update) before announcing it. The
-    offer, the download, the checksum check and the hand-over ran with the real 0.2.5 on 2026-10-09 (a build labelled
-    0.2.3, §5); the installer's half ran only with stand-in releases.
-  - Retake `docs/images/update.png` then: it shows a build labelled 0.2.3 that is offered 0.2.5 (§3.4).
-  - Run the update as a standard user and with UAC on, and on ARM64.
+  - ~~The first whole run with a real release~~: done 2026-10-10 on the owner's own install, 0.2.6 → 0.2.7, four
+    times (§5).
+  - Retake `docs/images/update.png` with the real pair: it shows a build labelled 0.2.3 that is offered 0.2.5
+    (§3.4). On a test desktop: `install.ps1 -Version 0.2.6`, then *Settings › Updates › Check now*.
+  - Run the update with a standard user account, with a copy that runs as administrator, and on ARM64.
+  - **Keep the reason of a failed installation visible after the restart.** Today it is in a notification (shown
+    for about 5 s) and in the log; Settings and the dialog show the plain offer again (seen after the
+    folder-in-use case). Carry the installer's result into the first snapshot, and drop it at the next attempt.
+  - Network failures show .NET's own words in brackets ("The response ended prematurely, with at least
+    54482994 additional bytes expected. (ResponseEnded)"): word them for people.
+  - The dialog opens with the keyboard focus on *Update and restart* (a stray Enter approves): decide whether
+    *Later* is the better first focus.
+  - An isolated instance shows *Check for updates automatically* as on while it never checks by itself (only
+    tests see it).
+  - The tray menu's *Update to …* was read on the VM only; the photo desktops could cover it too.
   - Once releases are signed (§3.3): check the Authenticode signer of the package's `BetterClipboard.exe` before
     its installer runs, so that matching checksums on a taken-over GitHub account are not enough.
   - A faster installer: Windows PowerShell's start and `Expand-Archive` take about 20 s in a VM. `tar` (in Windows
