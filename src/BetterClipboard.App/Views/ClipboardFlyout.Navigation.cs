@@ -41,11 +41,13 @@ namespace BetterClipboard.App.Views;
 /// <b>Two ways to walk the groups column</b> (<see cref="GroupWalkMode"/>, decided when the keys walk in and kept for
 /// that walk). The keys land on what the column highlights — the first group the list shows, or the clipboard icon when
 /// it shows none — so walking in changes nothing that is shown. With no group or one group shown, the view then follows
-/// the keys: every step shows the group it lands on alone, Up from the first group shows the whole history again (the
-/// clipboard icon), and Enter, Ctrl+P and Del still act on the selected card. With several
+/// the keys: every step shows the group it lands on alone, and Up from the first group shows the whole history again (the
+/// clipboard icon). Space or Enter keeps the group the keys are on and goes back to the tabs and the rows
+/// (<see cref="SelectGroupAndLeave"/>), and so does a new press of Down on the lowest group. With several
 /// groups merged into the list, the keys only move the ring — a step that showed its group alone would throw the merged
 /// view away — and Space or Enter adds the group under the ring to the view or takes it out
-/// (<see cref="PickGroupAtCursor"/>); Ctrl+P, Del, Shift+Enter and Ctrl+Enter still act on the selected card.
+/// (<see cref="PickGroupAtCursor"/>); there Down stops on the lowest group, and Right is the way back. In both walks
+/// Ctrl+P, Del, Shift+Enter and Ctrl+Enter still act on the selected card, and a plain Enter never pastes.
 /// </para>
 /// <para>
 /// <b>The mouse selects the row it is over</b> — once it really moved (<see cref="PointerSelectionGate"/>): rows also come
@@ -123,6 +125,14 @@ public sealed partial class ClipboardFlyout
     /// (<see cref="EndGroupsNavigationUnlessOwnChange"/>).
     /// </summary>
     private bool keysChangingGroups;
+
+    /// <summary>
+    /// The key (Space or Enter) whose last press the groups took — a pick, or "keep this group and go back" — or
+    /// <see langword="null"/>. While that key stays down, its repeats are the groups' too and do nothing
+    /// (<see cref="PickGroupByKey"/>): the press may have ended the walk, and a repeat of Enter that fell through would
+    /// paste the selected card, a repeat of Space would type into the search box. A new press of either key decides anew.
+    /// </summary>
+    private VirtualKey? groupKeyHeld;
 
     /// <summary>Decides whether the mouse may select the row it is over (it must have really moved since the keyboard or a reload set the selection).</summary>
     private readonly PointerSelectionGate pointerGate = new();
@@ -306,16 +316,19 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Up, Down, Page Up or Page Down: moves the selection through the rows, walks from the top row into the groups column
-    /// (a new press of Up only), or — while the keys are in that column — moves through the groups.
+    /// (a new press of Up only), or — while the keys are in that column — moves through the groups, and out of it again
+    /// at its lower end (a new press of Down on the lowest group, unless the keys pick groups there).
     /// </summary>
     /// <param name="delta">Rows (or groups) to move: negative is up.</param>
-    /// <param name="isRepeat">Whether the key repeats because it is held down (a held Up stops at the top row).</param>
+    /// <param name="isRepeat">
+    /// Whether the key repeats because it is held down: a held Up stops at the top row, and a held Down on the lowest group.
+    /// </param>
     private void MoveVertical(int delta, bool isRepeat)
     {
         arrowNavigating = true;
         if (groupsNavigation)
         {
-            MoveGroupCursor(delta);
+            MoveGroupCursor(delta, isRepeat);
             return;
         }
 
@@ -553,13 +566,24 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Up, Down or a page key while the keys are in the groups column. In a walk that shows: shows the group (or the whole
-    /// history) they land on. In a walk that picks: moves only the ring there, and leaves the groups shown alone.
+    /// history) they land on, and a new press of Down on the lowest group goes back to the list with that group. In a walk
+    /// that picks: moves only the ring there, and leaves the groups shown alone (<see cref="PanelNavigation.StepInGroups"/>).
     /// </summary>
     /// <param name="delta">Positions to move: negative is up, towards the clipboard icon.</param>
-    private void MoveGroupCursor(int delta)
+    /// <param name="isRepeat">Whether the key repeats because it is held down (a held Down stops on the lowest group).</param>
+    private void MoveGroupCursor(int delta, bool isRepeat)
     {
         int current = GroupCursorPosition();
-        int next = PanelNavigation.MoveInGroups(current, ViewModel.Groups.Count, delta);
+        var move = PanelNavigation.StepInGroups(current, ViewModel.Groups.Count, delta, groupWalkMode, isRepeat);
+        if (move.LeavesGroups)
+        {
+            // The lower end of the column is the way back to the list. The group stays shown: the step that landed on it
+            // showed it, and its first card is the selected one.
+            LeaveGroupsNavigation();
+            return;
+        }
+
+        int next = move.Position;
         if (next == current)
         {
             return;
@@ -624,30 +648,58 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Space or Enter: picks the group the arrow keys are on, when they walk the groups column to pick
-    /// (<see cref="PanelNavigation.PickKey"/> decides; the key state is the caller's, read when the key arrived).
+    /// Space or Enter: acts on the group the arrow keys are on while they walk the groups column — a pick in a walk that
+    /// picks, "keep this group and go back" in a walk that shows (<see cref="PanelNavigation.PickKey"/> decides; the key
+    /// state is the caller's, read when the key arrived).
     /// </summary>
     /// <param name="enter"><see langword="true"/> for Enter, <see langword="false"/> for Space.</param>
     /// <param name="ctrl">Whether Ctrl is held.</param>
     /// <param name="shift">Whether Shift is held.</param>
     /// <param name="altOrWin">Whether Alt or the Windows key is held.</param>
-    /// <param name="isRepeat">Whether the key repeats because it is held down (taken then, but nothing is picked again).</param>
+    /// <param name="isRepeat">Whether the key repeats because it is held down (taken then, but nothing is done again).</param>
     /// <returns>
     /// <see langword="true"/> when the key belongs to the groups (the caller marks it handled, so no space is typed and
     /// nothing is pasted); <see langword="false"/> to leave the key its usual meaning.
     /// </returns>
     private bool PickGroupByKey(bool enter, bool ctrl, bool shift, bool altOrWin, bool isRepeat)
     {
-        switch (PanelNavigation.PickKey(enter, groupsNavigation, groupWalkMode, ctrl, shift, altOrWin, isRepeat))
+        var key = enter ? VirtualKey.Enter : VirtualKey.Space;
+
+        // A repeat of the press the groups took last: theirs as well, also after that press ended the walk.
+        bool repeatsGroupKey = isRepeat && groupKeyHeld == key;
+        switch (PanelNavigation.PickKey(enter, groupsNavigation, groupWalkMode, ctrl, shift, altOrWin, isRepeat, repeatsGroupKey))
         {
             case GroupPickAction.Pick:
+                groupKeyHeld = key;
                 PickGroupAtCursor();
                 return true;
+            case GroupPickAction.SelectAndLeave:
+                groupKeyHeld = key;
+                SelectGroupAndLeave();
+                return true;
             case GroupPickAction.Swallow:
-                return true; // a held key: taken, so it neither types nor pastes, and picked once only
+                return true; // a held key: taken, so it neither types nor pastes, and nothing is done twice
             default:
+                // Not the groups' key: a press of it that they took earlier is over (it was released since, or this is
+                // another key), so its memory must not swallow a later, unrelated repeat.
+                groupKeyHeld = null;
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Space or Enter during a walk that shows: the keys go back to the tabs and the rows, with the group they are on.
+    /// Nothing that is shown changes: every step of such a walk showed the group it landed on, so the group under the
+    /// keys is the one shown already (on the clipboard icon: the whole history), and its first card is the selected one.
+    /// </summary>
+    /// <remarks>
+    /// The same end as Right, on the keys a hand rests on after choosing. Left and Right switch tabs at once afterwards,
+    /// also over search text: the keys still steer the panel (<see cref="arrowNavigating"/>).
+    /// </remarks>
+    private void SelectGroupAndLeave()
+    {
+        arrowNavigating = true;
+        LeaveGroupsNavigation();
     }
 
     /// <summary>

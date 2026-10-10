@@ -74,9 +74,10 @@ namespace BetterClipboard.App.Views;
 /// <b>Getting around</b> (ClipboardFlyout.Navigation.cs). A summon opens in the tab the user last chose
 /// (<see cref="AppSettings.LastTab"/>). Up and Down move through the rows, Left and Right through the tabs in a circle, and
 /// Up from the top row walks into the groups column, onto the first group shown (the clipboard icon when none is), where
-/// Up and Down then step through the groups until Right goes back to the list. Each step shows its group — unless several
-/// groups are merged: then the keys only move a ring, and Space or Enter adds the group under it to the view or takes it
-/// out. The mouse selects the row it is over, once it really moved.
+/// Up and Down then step through the groups until Right goes back to the list. Each step shows its group, and Space,
+/// Enter or Down on the lowest group go back to the list with it — unless several groups are merged: then the keys only
+/// move a ring, and Space or Enter adds the group under it to the view or takes it out. The mouse selects the row it is
+/// over, once it really moved.
 /// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
@@ -672,8 +673,9 @@ public sealed partial class ClipboardFlyout : Window
     /// Keyboard model: Up and Down move through the rows (Up from the top row walks into the groups column), Left and
     /// Right through the tabs in a circle, Enter pastes, Esc closes, Ctrl+P pins, Del deletes, Ctrl+1..9 quick-paste,
     /// Alt+C / Alt+W / Alt+E toggle the search box's match case / whole word / regular expression. While the arrow keys
-    /// pick groups for a merged view, Space and a plain Enter add the group they are on to it or take it out instead. The
-    /// keys' rules are <see cref="PanelNavigation"/>'s (ClipboardFlyout.Navigation.cs acts on them).
+    /// walk the groups column, Space and a plain Enter act on the group they are on instead: they keep it and go back to
+    /// the list, or — while several groups are merged — add it to the view or take it out. The keys' rules are
+    /// <see cref="PanelNavigation"/>'s (ClipboardFlyout.Navigation.cs acts on them).
     /// </summary>
     /// <param name="sender">Root grid.</param>
     /// <param name="e">Key data.</param>
@@ -729,8 +731,10 @@ public sealed partial class ClipboardFlyout : Window
 
                 break;
             case VirtualKey.Enter:
-                // While the arrow keys pick groups for a merged view, a plain Enter adds the group they are on to it or
-                // takes it out (ClipboardFlyout.Navigation.cs). Everywhere else, and with Ctrl or Shift, it pastes or runs.
+                // While the arrow keys walk the groups column, a plain Enter is the groups': it keeps the group the keys
+                // are on and goes back to the list, or — while several groups are merged — adds that group to the view or
+                // takes it out (ClipboardFlyout.Navigation.cs). So are the repeats of such a press while the key stays
+                // down. Everywhere else, and with Ctrl or Shift, Enter pastes or runs.
                 if (!PickGroupByKey(enter: true, ctrl, shift, IsAltOrWindowsKeyDown(), repeat))
                 {
                     _ = PasteBestMatchAsync(ctrl, shift);
@@ -738,8 +742,8 @@ public sealed partial class ClipboardFlyout : Window
 
                 break;
             case VirtualKey.Space:
-                // The same pick, from Space. Marked handled below, it is not typed into the search box — which would
-                // also end the walk, since typing does. Everywhere else Space is the search box's: a space is typed.
+                // The same from Space. Marked handled below, it is not typed into the search box. Everywhere else Space is
+                // the search box's: a space is typed.
                 if (!PickGroupByKey(enter: false, ctrl, shift, IsAltOrWindowsKeyDown(), repeat))
                 {
                     NoteKeyLeftToText(e);

@@ -171,7 +171,7 @@ Press **Win+V**. The panel appears at once by your text cursor, in the tab you u
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
 | `Alt+C` / `Alt+W` / `Alt+E` | Toggle the search box's **Aa** (match case), **W** (whole word) and **.\*** (regular expression) — or click them. They stay as you leave them. |
 | `↑` `↓` `PgUp` `PgDn` | Move the selection. With the groups column open, press `↑` on the top item to step into the groups (see [Groups](#groups)). |
-| `Space` / `Enter` in the groups column | Only while several groups are open and the arrow keys are in the groups column: add the group under the ring to the list, or take it out (see [Groups](#groups)). Everywhere else, `Space` is typed and `Enter` pastes. |
+| `Space` / `Enter` in the groups column | While the arrow keys are in the groups column: keep the group under the ring and go back to the items. While several groups are open: add the group under the ring to the list, or take it out (see [Groups](#groups)). Everywhere else, `Space` is typed and `Enter` pastes. |
 | `←` `→` | Previous / next tab, in a circle: `←` on the first tab goes to the last tab, `→` on the last tab to the first. While you edit search text, they move its caret instead; after `↑` or `↓` they switch tabs again. A held key stops at the first or last tab. |
 | Mouse over an item | Select it. Tabs and group icons are only selected by a click. |
 | `Enter` / click | Paste into the app you came from |
@@ -302,13 +302,14 @@ Collect the things you reuse — snippets, addresses, links for a project — in
 - **With the keyboard:** press `↑` on the top item. A ring appears on the icon of what you have open: the group, or
   the logo when no group is open (your whole history). Nothing else changes yet. `↑` and `↓` now step through the
   column, and each step opens what it lands on: `↓` from the logo opens the first group, and `↑` from the first group
-  shows your whole history again. `→` goes back to the items; so does typing, or moving the mouse over an item.
-  `Enter` pastes the selected item.
+  shows your whole history again. To go back to the items with the group you are on, press `Enter`, `Space` or `→`,
+  or press `↓` on the last group. Typing, or moving the mouse over an item, goes back too. `Enter` then pastes the
+  selected item.
 - **Several groups with the keyboard:** while more than one group is open, `↑` on the top item puts the ring on the
-  first of them, and `↑` and `↓` then move only the ring: your merged list stays. Press `Space` or `Enter` to add the
-  group under the ring to the list, or to take it out. On the logo, they show your whole history. The footer shows
-  these keys. `→` goes back to the items, where `Enter` pastes again. `Shift+Enter` pastes the selected item as plain
-  text at any time.
+  first of them, and `↑` and `↓` then move only the ring: your merged list stays, and `↓` stops on the last group.
+  Press `Space` or `Enter` to add the group under the ring to the list, or to take it out. On the logo, they show
+  your whole history. The footer shows these keys. `→` goes back to the items, where `Enter` pastes again.
+  `Shift+Enter` pastes the selected item as plain text at any time, also while the ring is in the groups column.
 - **Take things out:** right-click a card → *Remove from …*, or use *Groups* in the same menu. Right-click
   a group's icon to rename it, change its icon or delete it. Deleting a group never deletes its items.
 

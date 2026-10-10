@@ -155,9 +155,14 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <summary>
     /// The key hints while the arrow keys walk the groups column and every step shows the group it lands on
     /// (<see cref="GroupWalkMode.Show"/>; Up from the top row went there): how to move on, and — above all — how to get
-    /// back, since Up and Down no longer move through the rows. Enter still pastes the selected card.
+    /// back, since Up and Down no longer move through the rows.
     /// </summary>
-    public const string GroupsKeyHint = "↑ ↓ groups · → back to the list · ↵ paste";
+    /// <remarks>
+    /// Enter is named as a way back, not as "paste": since 2026-10-10 a plain Enter in the column keeps the group and
+    /// goes back to the list, and only the next Enter pastes. Space does the same, and so does Down on the lowest group;
+    /// the hint names the two keys that are easiest to find.
+    /// </remarks>
+    public const string GroupsKeyHint = "↑ ↓ groups · ↵ or → back to the list";
 
     /// <summary>
     /// The key hints while the arrow keys walk the groups column and only pick (<see cref="GroupWalkMode.Pick"/>: several

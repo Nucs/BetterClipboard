@@ -47,7 +47,10 @@ public enum GroupWalkMode
 {
     /// <summary>
     /// The view follows the keys: every step shows the group it lands on, alone — or the whole history on the clipboard
-    /// icon. The walk while no group or one group is shown: there is no merged view a step could throw away.
+    /// icon. The walk while no group or one group is shown: there is no merged view a step could throw away. Because the
+    /// group the keys are on is always the one shown, Space or Enter has nothing to add here: it keeps that group and ends
+    /// the walk (<see cref="PanelNavigation.PickKey"/>), and so does Down on the lowest group
+    /// (<see cref="PanelNavigation.StepInGroups"/>).
     /// </summary>
     Show = 0,
 
@@ -71,6 +74,20 @@ public enum GroupWalkMode
 public readonly record struct GroupsEntry(int Position, GroupWalkMode Mode);
 
 /// <summary>
+/// Where an Up, Down, Page Up or Page Down key takes the arrow keys while they walk the groups column
+/// (<see cref="PanelNavigation.StepInGroups"/>).
+/// </summary>
+/// <param name="Position">
+/// The position to stand on, as <see cref="PanelNavigation"/> counts them; the position the keys are on already when the
+/// key meets an end of the column or leaves it.
+/// </param>
+/// <param name="LeavesGroups">
+/// Whether the key ends the walk instead of moving: the keys go back to the tabs and the rows, and the groups shown stay
+/// shown.
+/// </param>
+public readonly record struct GroupsMove(int Position, bool LeavesGroups);
+
+/// <summary>
 /// What a Space or Enter key does with the group the arrow keys are on (<see cref="PanelNavigation.PickKey"/>).
 /// </summary>
 public enum GroupPickAction
@@ -82,17 +99,26 @@ public enum GroupPickAction
     NotHandled = 0,
 
     /// <summary>
-    /// Add the group the keys are on to the groups shown, or take it out when it is one of them — what a Ctrl+click on
-    /// its icon does. On the clipboard icon: back to the whole history, like a click on it.
+    /// In a walk that picks: add the group the keys are on to the groups shown, or take it out when it is one of them —
+    /// what a Ctrl+click on its icon does. On the clipboard icon: back to the whole history, like a click on it. The walk
+    /// goes on.
     /// </summary>
     Pick = 1,
 
     /// <summary>
-    /// A repeat of a pick key that is held down. The key is taken — nothing is typed and nothing is pasted — but the pick
-    /// is not repeated: it would add the group and take it out again, reloading the list each time, for as long as the
-    /// key is held.
+    /// A repeat of a Space or Enter that is held down, when its first press was the groups' or the keys are in the column.
+    /// The key is taken — nothing is typed and nothing is pasted — and nothing is done again. A pick that repeated would
+    /// add the group and take it out again, reloading the list each time; an Enter that ended the walk and then repeated
+    /// would paste the selected card.
     /// </summary>
     Swallow = 2,
+
+    /// <summary>
+    /// In a walk that shows: keep the group the keys are on and end the walk, so that the keys are back on the tabs and
+    /// the rows. Nothing that is shown changes — every step of such a walk showed the group it landed on, so the group
+    /// under the keys is the one shown already (on the clipboard icon: the whole history).
+    /// </summary>
+    SelectAndLeave = 3,
 }
 
 /// <summary>
@@ -121,6 +147,13 @@ public enum GroupPickAction
 /// group or one group is shown, the view follows the keys: every step shows the group it lands on. While several groups
 /// are merged into the list, the keys only move, and Space or Enter adds the group they are on to the merged view or takes
 /// it out (<see cref="PickKey"/>) — a step that showed its group alone would throw the merged view away.
+/// </para>
+/// <para>
+/// <b>The ways out of the column.</b> Right ends either walk (<see cref="HorizontalArrow"/>). A walk that shows has two
+/// more, because in it the keys have nothing left to decide once they stand on the wanted group: Space or Enter keeps
+/// that group and goes back (<see cref="PickKey"/>), and so does a new press of Down on the lowest group
+/// (<see cref="StepInGroups"/>) — the column is walked downwards, and its end is the way back to the list. A walk that
+/// picks keeps both keys for its own work: Space and Enter pick, and Down stops on the lowest group.
 /// </para>
 /// </remarks>
 public static class PanelNavigation
@@ -314,23 +347,32 @@ public static class PanelNavigation
     }
 
     /// <summary>
-    /// Decides whether a Space or Enter key picks the group the arrow keys are on instead of keeping its meaning in the
-    /// panel. It does only during a walk that picks (<see cref="GroupWalkMode.Pick"/>), where it is the one way the keys
-    /// change which groups are shown.
+    /// Decides whether a Space or Enter key acts on the group the arrow keys are on instead of keeping its meaning in the
+    /// panel. It does while the keys walk the groups column: in a walk that picks it adds that group to the groups shown
+    /// or takes it out (<see cref="GroupPickAction.Pick"/>), and in a walk that shows it keeps that group and ends the
+    /// walk (<see cref="GroupPickAction.SelectAndLeave"/>).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Enter picks only when pressed alone.</b> With Ctrl or Shift it is the panel's "run" and "paste as plain text";
-    /// those keep working on the selected card during the walk, as Ctrl+P and Del do.
+    /// <b>Enter acts only when pressed alone.</b> With Ctrl or Shift it is the panel's "run" and "paste as plain text";
+    /// those keep working on the selected card during the walk, as Ctrl+P and Del do. Footgun: a plain Enter does not
+    /// paste while the keys are in the column, in either kind of walk — it goes back to the list first (or picks), and
+    /// the next Enter pastes.
     /// </para>
     /// <para>
-    /// <b>Space picks with or without Ctrl and Shift</b> (Ctrl+Space is Explorer's key for the same thing, and neither
-    /// chord means anything else in the search box). Footgun: this takes Space away from the search box for the length
-    /// of the walk — a second search word needs a letter first (typing ends the walk) or Right.
+    /// <b>Space acts with or without Ctrl and Shift</b> (Ctrl+Space is Explorer's key for a pick, and neither chord
+    /// means anything else in the search box). Footgun: this takes Space away from the search box for the length of the
+    /// walk — a second search word needs a letter first (typing ends the walk) or Right.
     /// </para>
     /// <para>
     /// With Alt or the Windows key, both keys are Windows' or another program's shortcut (the window menu, the input
-    /// language, a launcher), and AltGr arrives as Ctrl+Alt: never a pick.
+    /// language, a launcher), and AltGr arrives as Ctrl+Alt: never the groups' key.
+    /// </para>
+    /// <para>
+    /// <b>A held key acts once.</b> The repeats of a press that the groups took are swallowed wherever the keys are by
+    /// then (<paramref name="repeatsGroupKey"/>): the press may have ended the walk, and a repeat that fell through
+    /// would paste the selected card (Enter) or type spaces (Space). A repeat that arrives during a walk is swallowed as
+    /// well, whoever took its first press: nobody pressed it for the groups.
     /// </para>
     /// </remarks>
     /// <param name="enter"><see langword="true"/> for Enter, <see langword="false"/> for Space.</param>
@@ -339,21 +381,78 @@ public static class PanelNavigation
     /// <param name="ctrl">Whether Ctrl is held.</param>
     /// <param name="shift">Whether Shift is held.</param>
     /// <param name="altOrWin">Whether Alt or the Windows key is held.</param>
-    /// <param name="isRepeat">Whether the key repeats because it is held down (a repeat is taken, but picks nothing).</param>
+    /// <param name="isRepeat">Whether the key repeats because it is held down (a repeat never acts).</param>
+    /// <param name="repeatsGroupKey">
+    /// Whether this key-down repeats a press of the same key that this method answered with
+    /// <see cref="GroupPickAction.Pick"/> or <see cref="GroupPickAction.SelectAndLeave"/> (the caller remembers that
+    /// press); only looked at for a repeat.
+    /// </param>
     /// <returns>What the key does; <see cref="GroupPickAction.NotHandled"/> leaves it its usual meaning.</returns>
-    public static GroupPickAction PickKey(bool enter, bool inGroups, GroupWalkMode mode, bool ctrl, bool shift, bool altOrWin, bool isRepeat)
+    public static GroupPickAction PickKey(
+        bool enter, bool inGroups, GroupWalkMode mode, bool ctrl, bool shift, bool altOrWin, bool isRepeat, bool repeatsGroupKey)
     {
-        if (!inGroups || mode != GroupWalkMode.Pick || altOrWin || (enter && (ctrl || shift)))
+        // First, and whatever else is true by now: the walk may be over, and modifiers may have been pressed since.
+        if (isRepeat && repeatsGroupKey)
+        {
+            return GroupPickAction.Swallow;
+        }
+
+        if (!inGroups || altOrWin || (enter && (ctrl || shift)))
         {
             return GroupPickAction.NotHandled;
         }
 
-        return isRepeat ? GroupPickAction.Swallow : GroupPickAction.Pick;
+        if (isRepeat)
+        {
+            return GroupPickAction.Swallow;
+        }
+
+        return mode == GroupWalkMode.Pick ? GroupPickAction.Pick : GroupPickAction.SelectAndLeave;
     }
 
     /// <summary>
-    /// Where an Up, Down, Page Up or Page Down key takes the position in the groups column. It stops at both ends: at the
-    /// clipboard icon on top and at the lowest group — only Right (or the mouse) leaves the column.
+    /// Where an Up, Down, Page Up or Page Down key takes the arrow keys in the groups column: to another position, or —
+    /// for a new press of Down on the lowest group, in a walk that shows — out of the column, back to the tabs and the
+    /// rows.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why Down on the lowest group leaves.</b> The column is walked downwards from the clipboard icon, and until
+    /// 2026-10-10 its lower end was a dead end: only Right led back. In a walk that shows, the group the keys are on is
+    /// shown already, so there is nothing left to do at the end but go back with it.
+    /// </para>
+    /// <para>
+    /// <b>Only a new press, only Down, only a walk that shows.</b> A held Down stops on the lowest group, like every held
+    /// key at an edge (see the class remarks): holding it to reach the last group must not run on into the list. A page
+    /// key never leaves, as Page Up never enters. A walk that picks keeps Down inside the column: there the keys are
+    /// busy choosing groups, and the way out is Right.
+    /// </para>
+    /// </remarks>
+    /// <param name="position">The position now (see the class remarks); values outside the column are clamped first.</param>
+    /// <param name="groupCount">How many groups the column holds.</param>
+    /// <param name="delta">Positions to move: -1 for Up, 1 for Down, ±<see cref="PageStep"/> for the page keys.</param>
+    /// <param name="mode">How this walk treats the column.</param>
+    /// <param name="isRepeat">Whether the key repeats because it is held down (a repeat never leaves the column).</param>
+    /// <returns>
+    /// The position to stand on (<see cref="MoveInGroups"/>), or the way out. A column without groups has no lowest
+    /// group to leave from: the keys stay on the clipboard icon.
+    /// </returns>
+    public static GroupsMove StepInGroups(int position, int groupCount, int delta, GroupWalkMode mode, bool isRepeat)
+    {
+        int last = Math.Max(0, groupCount);
+        int current = Math.Clamp(position, 0, last);
+        if (mode == GroupWalkMode.Show && delta == 1 && !isRepeat && last > 0 && current == last)
+        {
+            return new GroupsMove(current, true);
+        }
+
+        return new GroupsMove(MoveInGroups(position, groupCount, delta), false);
+    }
+
+    /// <summary>
+    /// Where an Up, Down, Page Up or Page Down key takes the position in the groups column: the arithmetic of a move,
+    /// which stops at both ends — at the clipboard icon on top and at the lowest group. Whether a key leaves the column
+    /// at its lower end instead of stopping there is <see cref="StepInGroups"/>'s to say; the panel asks that method.
     /// </summary>
     /// <param name="position">The position now (see the class remarks); values outside the column are clamped first.</param>
     /// <param name="groupCount">How many groups the column holds.</param>

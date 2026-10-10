@@ -229,8 +229,9 @@ public sealed class PanelNavigationTests
     }
 
     /// <summary>
-    /// The keys move through the column by position — 0 is the clipboard icon (the whole history), then the groups from
-    /// the top — stopping at both ends: only Right leaves the column.
+    /// The arithmetic of a move through the column, by position — 0 is the clipboard icon (the whole history), then the
+    /// groups from the top — stops at both ends. Whether Down leaves the column at its lower end instead is
+    /// <see cref="PanelNavigation.StepInGroups"/>'s rule, tested below.
     /// </summary>
     [Fact]
     public void Groups_MoveByPosition_AndStopAtBothEnds()
@@ -245,8 +246,7 @@ public sealed class PanelNavigationTests
             Assert.Equal(expected, position);
         }
 
-        // Down: the first group is the first step, then on to the lowest group, where it stays too (it never returns to
-        // the list by itself).
+        // Down: the first group is the first step, then on to the lowest group, where the arithmetic stops.
         int[] down = [1, 2, 3, 3];
         foreach (int expected in down)
         {
@@ -268,41 +268,106 @@ public sealed class PanelNavigationTests
     }
 
     /// <summary>
-    /// The cases of <see cref="PickKey_PicksOnlyInAWalkThatPicks"/>, in the order of
-    /// <see cref="PanelNavigation.PickKey"/>'s parameters — Enter (or Space), in the groups column, the walk's mode,
-    /// Ctrl, Shift, Alt or Win, a repeat — followed by what the key must do.
+    /// The cases of <see cref="StepInGroups_LeavesOnlyFromTheLowestGroupOfAWalkThatShows"/>: the position before the key,
+    /// the groups in the column, the key's movement, the walk's mode and whether the key repeats, followed by the
+    /// position to stand on and whether the key leaves the column.
     /// </summary>
-    public static TheoryData<bool, bool, GroupWalkMode, bool, bool, bool, bool, GroupPickAction> PickKeyCases => new()
+    public static TheoryData<int, int, int, GroupWalkMode, bool, int, bool> StepCases => new()
     {
-        { false, true, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.Pick },        // Space
-        { true, true, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.Pick },         // Enter
-        { false, true, GroupWalkMode.Pick, true, false, false, false, GroupPickAction.Pick },         // Ctrl+Space, Explorer's key
-        { false, true, GroupWalkMode.Pick, false, true, false, false, GroupPickAction.Pick },         // Shift+Space
-        { false, true, GroupWalkMode.Pick, true, true, false, false, GroupPickAction.Pick },
-        { true, true, GroupWalkMode.Pick, true, false, false, false, GroupPickAction.NotHandled },    // Ctrl+Enter runs
-        { true, true, GroupWalkMode.Pick, false, true, false, false, GroupPickAction.NotHandled },    // Shift+Enter pastes plain text
-        { true, true, GroupWalkMode.Pick, true, true, false, false, GroupPickAction.NotHandled },     // Ctrl+Shift+Enter: as administrator
-        { false, true, GroupWalkMode.Pick, false, false, true, false, GroupPickAction.NotHandled },   // Alt+Space, Win+Space
-        { true, true, GroupWalkMode.Pick, false, false, true, false, GroupPickAction.NotHandled },
-        { false, true, GroupWalkMode.Pick, true, false, true, false, GroupPickAction.NotHandled },    // AltGr is Ctrl+Alt
-        { false, true, GroupWalkMode.Pick, false, false, false, true, GroupPickAction.Swallow },      // held Space
-        { true, true, GroupWalkMode.Pick, false, false, false, true, GroupPickAction.Swallow },       // held Enter
-        { false, true, GroupWalkMode.Pick, true, false, false, true, GroupPickAction.Swallow },
-        { true, true, GroupWalkMode.Pick, false, true, false, true, GroupPickAction.NotHandled },     // a held chord is still the chord
-        { false, true, GroupWalkMode.Pick, false, false, true, true, GroupPickAction.NotHandled },
-        { false, true, GroupWalkMode.Show, false, false, false, false, GroupPickAction.NotHandled },  // a walk that shows: Space is typed
-        { true, true, GroupWalkMode.Show, false, false, false, false, GroupPickAction.NotHandled },   // … and Enter pastes
-        { true, true, GroupWalkMode.Show, false, false, false, true, GroupPickAction.NotHandled },
-        { false, false, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.NotHandled }, // on the rows the mode means nothing
-        { true, false, GroupWalkMode.Pick, false, false, false, false, GroupPickAction.NotHandled },
-        { true, false, GroupWalkMode.Show, false, false, false, true, GroupPickAction.NotHandled },
+        { 3, 3, 1, GroupWalkMode.Show, false, 3, true },                        // Down on the lowest group: the way back
+        { 3, 3, 1, GroupWalkMode.Show, true, 3, false },                        // a held Down stops there
+        { 3, 3, PanelNavigation.PageStep, GroupWalkMode.Show, false, 3, false }, // Page Down never leaves
+        { 2, 3, 1, GroupWalkMode.Show, false, 3, false },                       // onto the lowest group: a step, not the way out
+        { 1, 3, PanelNavigation.PageStep, GroupWalkMode.Show, false, 3, false }, // a page lands on it, and stays in
+        { 3, 3, -1, GroupWalkMode.Show, false, 2, false },
+        { 0, 3, 1, GroupWalkMode.Show, false, 1, false },                       // from the clipboard icon: the first group
+        { 0, 3, -1, GroupWalkMode.Show, false, 0, false },                      // Up on the clipboard icon stays
+        { 3, 3, 1, GroupWalkMode.Pick, false, 3, false },                       // a walk that picks keeps Down in the column
+        { 3, 3, 1, GroupWalkMode.Pick, true, 3, false },
+        { 2, 3, 1, GroupWalkMode.Pick, false, 3, false },
+        { 1, 1, 1, GroupWalkMode.Show, false, 1, true },                        // one group is the lowest one
+        { 0, 0, 1, GroupWalkMode.Show, false, 0, false },                       // no group: nothing to leave from
+        { 99, 3, 1, GroupWalkMode.Show, false, 3, true },                       // a position past the column counts as its end
+        { -4, 3, 1, GroupWalkMode.Show, false, 1, false },
+        { 2, 3, int.MaxValue, GroupWalkMode.Show, false, 3, false },
+        { 3, 3, int.MinValue, GroupWalkMode.Show, false, 0, false },
     };
 
     /// <summary>
-    /// Space and Enter pick only during a walk that picks. There, Space picks with or without Ctrl and Shift, Enter only
-    /// when pressed alone (its chords stay "run" and "paste as plain text"), and neither with Alt or the Windows key. A
-    /// key that repeats because it is held down is taken, but picks nothing more. Everywhere else both keys keep their
-    /// meaning: on the rows, and in a walk that shows, where Enter pastes and Space is typed.
+    /// A new press of Down on the lowest group of a walk that shows is the way out of the column. Nothing else is: a held
+    /// Down stops there, a page key lands there and stays, a step onto the lowest group is a step, a walk that picks keeps
+    /// Down inside, and a column without groups has no lowest group. Every other key moves as the arithmetic says.
+    /// </summary>
+    /// <param name="position">The position before the key.</param>
+    /// <param name="groupCount">Groups in the column.</param>
+    /// <param name="delta">The key's movement.</param>
+    /// <param name="mode">How the walk treats the column.</param>
+    /// <param name="isRepeat">The key repeats because it is held down.</param>
+    /// <param name="expectedPosition">The position to stand on.</param>
+    /// <param name="leaves">Whether the key leaves the column.</param>
+    [Theory]
+    [MemberData(nameof(StepCases))]
+    public void StepInGroups_LeavesOnlyFromTheLowestGroupOfAWalkThatShows(
+        int position, int groupCount, int delta, GroupWalkMode mode, bool isRepeat, int expectedPosition, bool leaves)
+    {
+        Assert.Equal(new GroupsMove(expectedPosition, leaves), PanelNavigation.StepInGroups(position, groupCount, delta, mode, isRepeat));
+    }
+
+    /// <summary>
+    /// The cases of <see cref="PickKey_ActsOnlyWhileTheKeysWalkTheGroups"/>, in the order of
+    /// <see cref="PanelNavigation.PickKey"/>'s parameters — Enter (or Space), in the groups column, the walk's mode,
+    /// Ctrl, Shift, Alt or Win, a repeat, a repeat of a press the groups took — followed by what the key must do.
+    /// </summary>
+    public static TheoryData<bool, bool, GroupWalkMode, bool, bool, bool, bool, bool, GroupPickAction> PickKeyCases => new()
+    {
+        // A walk that picks (several groups merged).
+        { false, true, GroupWalkMode.Pick, false, false, false, false, false, GroupPickAction.Pick },       // Space
+        { true, true, GroupWalkMode.Pick, false, false, false, false, false, GroupPickAction.Pick },        // Enter
+        { false, true, GroupWalkMode.Pick, true, false, false, false, false, GroupPickAction.Pick },        // Ctrl+Space, Explorer's key
+        { false, true, GroupWalkMode.Pick, false, true, false, false, false, GroupPickAction.Pick },        // Shift+Space
+        { false, true, GroupWalkMode.Pick, true, true, false, false, false, GroupPickAction.Pick },
+        { true, true, GroupWalkMode.Pick, true, false, false, false, false, GroupPickAction.NotHandled },   // Ctrl+Enter runs
+        { true, true, GroupWalkMode.Pick, false, true, false, false, false, GroupPickAction.NotHandled },   // Shift+Enter pastes plain text
+        { true, true, GroupWalkMode.Pick, true, true, false, false, false, GroupPickAction.NotHandled },    // Ctrl+Shift+Enter: as administrator
+        { false, true, GroupWalkMode.Pick, false, false, true, false, false, GroupPickAction.NotHandled },  // Alt+Space, Win+Space
+        { true, true, GroupWalkMode.Pick, false, false, true, false, false, GroupPickAction.NotHandled },
+        { false, true, GroupWalkMode.Pick, true, false, true, false, false, GroupPickAction.NotHandled },   // AltGr is Ctrl+Alt
+        { false, true, GroupWalkMode.Pick, false, false, false, true, true, GroupPickAction.Swallow },      // held Space: picked once
+        { true, true, GroupWalkMode.Pick, false, false, false, true, true, GroupPickAction.Swallow },       // held Enter
+        { false, true, GroupWalkMode.Pick, false, false, false, true, false, GroupPickAction.Swallow },     // held since before the walk
+        { true, true, GroupWalkMode.Pick, false, true, false, true, false, GroupPickAction.NotHandled },    // a held chord is still the chord
+
+        // A walk that shows (one group or none): keep the group, go back.
+        { false, true, GroupWalkMode.Show, false, false, false, false, false, GroupPickAction.SelectAndLeave }, // Space
+        { true, true, GroupWalkMode.Show, false, false, false, false, false, GroupPickAction.SelectAndLeave },  // Enter
+        { false, true, GroupWalkMode.Show, true, false, false, false, false, GroupPickAction.SelectAndLeave },  // Ctrl+Space
+        { false, true, GroupWalkMode.Show, false, true, false, false, false, GroupPickAction.SelectAndLeave },  // Shift+Space
+        { true, true, GroupWalkMode.Show, true, false, false, false, false, GroupPickAction.NotHandled },   // Ctrl+Enter still runs
+        { true, true, GroupWalkMode.Show, false, true, false, false, false, GroupPickAction.NotHandled },   // Shift+Enter still pastes plain text
+        { true, true, GroupWalkMode.Show, false, false, true, false, false, GroupPickAction.NotHandled },   // Alt+Enter
+        { false, true, GroupWalkMode.Show, false, false, true, false, false, GroupPickAction.NotHandled },  // Alt+Space, Win+Space
+        { true, true, GroupWalkMode.Show, false, false, false, true, false, GroupPickAction.Swallow },      // held since before the walk
+
+        // The walk is over (or never was): only the repeats of a press that the groups took are still theirs.
+        { true, false, GroupWalkMode.Show, false, false, false, true, true, GroupPickAction.Swallow },      // held Enter that went back: no paste
+        { false, false, GroupWalkMode.Show, false, false, false, true, true, GroupPickAction.Swallow },     // held Space that went back: nothing typed
+        { true, false, GroupWalkMode.Show, true, true, true, true, true, GroupPickAction.Swallow },         // … whatever was pressed meanwhile
+        { true, false, GroupWalkMode.Show, false, false, false, false, false, GroupPickAction.NotHandled }, // the next Enter pastes
+        { false, false, GroupWalkMode.Show, false, false, false, false, false, GroupPickAction.NotHandled }, // the next Space is typed
+        { true, false, GroupWalkMode.Show, false, false, false, true, false, GroupPickAction.NotHandled },  // a held Enter of the list's own
+        { false, false, GroupWalkMode.Show, false, false, false, true, false, GroupPickAction.NotHandled }, // spaces held into the search box
+        { false, false, GroupWalkMode.Pick, false, false, false, false, false, GroupPickAction.NotHandled }, // on the rows the mode means nothing
+        { true, false, GroupWalkMode.Pick, false, false, false, false, false, GroupPickAction.NotHandled },
+        { true, false, GroupWalkMode.Pick, false, false, false, false, true, GroupPickAction.NotHandled },  // "repeats" without a repeat is not looked at
+    };
+
+    /// <summary>
+    /// Space and Enter are the groups' keys only while the arrow keys walk the groups column. In a walk that picks they
+    /// pick; in a walk that shows they keep the group and go back. In both, Space acts with or without Ctrl and Shift,
+    /// Enter only when pressed alone (its chords stay "run" and "paste as plain text"), and neither with Alt or the
+    /// Windows key. A key that repeats because it is held down never acts: it is swallowed during a walk, and after a
+    /// walk when its first press was the groups' — the held Enter that went back must not paste. Everywhere else both
+    /// keys keep their meaning.
     /// </summary>
     /// <param name="enter">Enter (<see langword="true"/>) or Space.</param>
     /// <param name="inGroups">The keys walk the groups column.</param>
@@ -311,13 +376,66 @@ public sealed class PanelNavigationTests
     /// <param name="shift">Shift is held.</param>
     /// <param name="altOrWin">Alt or the Windows key is held.</param>
     /// <param name="isRepeat">The key repeats because it is held down.</param>
+    /// <param name="repeatsGroupKey">The key-down repeats a press that the groups took.</param>
     /// <param name="expected">What the key does.</param>
     [Theory]
     [MemberData(nameof(PickKeyCases))]
-    public void PickKey_PicksOnlyInAWalkThatPicks(
-        bool enter, bool inGroups, GroupWalkMode mode, bool ctrl, bool shift, bool altOrWin, bool isRepeat, GroupPickAction expected)
+    public void PickKey_ActsOnlyWhileTheKeysWalkTheGroups(
+        bool enter, bool inGroups, GroupWalkMode mode, bool ctrl, bool shift, bool altOrWin, bool isRepeat, bool repeatsGroupKey,
+        GroupPickAction expected)
     {
-        Assert.Equal(expected, PanelNavigation.PickKey(enter, inGroups, mode, ctrl, shift, altOrWin, isRepeat));
+        Assert.Equal(expected, PanelNavigation.PickKey(enter, inGroups, mode, ctrl, shift, altOrWin, isRepeat, repeatsGroupKey));
+    }
+
+    /// <summary>
+    /// A whole walk that shows, as the panel runs it: with nothing shown the keys land on the clipboard icon and change
+    /// nothing; each Down shows the next group alone; Down on the lowest group goes back to the list with that group
+    /// shown. On another walk, Enter goes back from the group the keys are on, the Enter that is still held does not
+    /// paste, and the next press of Enter is the list's again.
+    /// </summary>
+    [Fact]
+    public void ShowWalk_GoesBackWithTheGroupFromTheLowestGroupOrFromEnter()
+    {
+        var shown = GroupSelection.None;
+        var entry = PanelNavigation.EnterGroups(Column, shown.Ids);
+        Assert.Equal(new GroupsEntry(0, GroupWalkMode.Show), entry);
+
+        // Down, Down, Down: the three groups, each shown alone as the keys land on it.
+        int position = entry.Position;
+        foreach (long expected in Column)
+        {
+            var step = PanelNavigation.StepInGroups(position, Column.Length, 1, entry.Mode, isRepeat: false);
+            Assert.False(step.LeavesGroups);
+            position = step.Position;
+            shown = shown.Only(Column, Column[position - 1]);
+            Assert.Equal([expected], shown.Ids);
+        }
+
+        // Down once more, on the lowest group: back to the list. The group stays shown, the position does not move.
+        var last = PanelNavigation.StepInGroups(position, Column.Length, 1, entry.Mode, isRepeat: false);
+        Assert.Equal(new GroupsMove(3, true), last);
+        Assert.Equal([30L], shown.Ids);
+
+        // A new walk from the list: the keys land on the group shown. Up shows the group above, and Enter goes back with it.
+        entry = PanelNavigation.EnterGroups(Column, shown.Ids);
+        Assert.Equal(new GroupsEntry(3, GroupWalkMode.Show), entry);
+        position = PanelNavigation.StepInGroups(entry.Position, Column.Length, -1, entry.Mode, isRepeat: false).Position;
+        shown = shown.Only(Column, Column[position - 1]);
+        Assert.Equal(
+            GroupPickAction.SelectAndLeave,
+            PanelNavigation.PickKey(
+                enter: true, inGroups: true, entry.Mode, ctrl: false, shift: false, altOrWin: false, isRepeat: false, repeatsGroupKey: false));
+        Assert.Equal([20L], shown.Ids);
+
+        // The walk is over. The Enter that ended it is still down: its repeats do nothing. The next press pastes.
+        Assert.Equal(
+            GroupPickAction.Swallow,
+            PanelNavigation.PickKey(
+                enter: true, inGroups: false, GroupWalkMode.Show, ctrl: false, shift: false, altOrWin: false, isRepeat: true, repeatsGroupKey: true));
+        Assert.Equal(
+            GroupPickAction.NotHandled,
+            PanelNavigation.PickKey(
+                enter: true, inGroups: false, GroupWalkMode.Show, ctrl: false, shift: false, altOrWin: false, isRepeat: false, repeatsGroupKey: false));
     }
 
     /// <summary>
@@ -350,10 +468,13 @@ public sealed class PanelNavigationTests
         Assert.Equal([20L], shown.Ids);
         Assert.Equal(3, position);
 
-        // The walk still picks (its mode is the entry's), so the group the keys are on can be added again at once.
+        // The walk still picks (its mode is the entry's), so the group the keys are on can be added again at once — and
+        // Down on the lowest group, where the keys are, stays in the column.
         Assert.Equal(
             GroupPickAction.Pick,
-            PanelNavigation.PickKey(enter: false, inGroups: true, entry.Mode, ctrl: false, shift: false, altOrWin: false, isRepeat: false));
+            PanelNavigation.PickKey(
+                enter: false, inGroups: true, entry.Mode, ctrl: false, shift: false, altOrWin: false, isRepeat: false, repeatsGroupKey: false));
+        Assert.Equal(new GroupsMove(3, false), PanelNavigation.StepInGroups(position, Column.Length, 1, entry.Mode, isRepeat: false));
         shown = shown.Toggle(Column, Column[position - 1]);
         Assert.Equal([20L, 30L], shown.Ids);
 
