@@ -416,15 +416,42 @@ groups, sticky and never-delete clips, a `.dto` file).
 | Command line | Open/close/paste by id | `bclip`: list, search, grep, get, copy, put, wait, … |
 | Footprint at rest | ~5 MB private | ~107 MB private |
 | Network | LAN friends, port 23443 open by default (installed) | One daily update check (switchable); no listening port |
-| Ditto has, BetterClipboard does not | Special-paste transforms, multi-paste, per-clip and position hotkeys, copy buffers, sticky order, scripts, compare, clip editor, QR code, export/import files, backup/restore, themes, 30 languages | — |
+| Ditto has, BetterClipboard does not | See the list below | — |
+
+**What Ditto has and BetterClipboard does not** (checked against BetterClipboard's code on 2026-10-16):
+- **Paste keys per app:** BetterClipboard always sends Ctrl+V (`KeyboardInput.SendCtrlV`). Ditto takes a keystroke per
+  process (`PasteStrings`, e.g. `gvim.exe` = `"+gP`). Apps where Ctrl+V does something else (vim in a terminal, mintty,
+  PuTTY) need that.
+- **Special paste:** BetterClipboard has plain text and paths as text. Ditto also has case changes, trim, slugify,
+  CamelCase, line feeds added or removed, the time, a new GUID, ASCII only, images side by side.
+- **Several items at once:** the panel's list selects one card (`SelectionMode="Single"`). Ditto pastes a selection
+  joined by a separator.
+- **Editing an item** before pasting it.
+- **Export, import, backup:** BetterClipboard has none (its store is bound to the PC on purpose). Ditto has `.dto`
+  export/import and a database backup and restore.
+- **Hotkeys that paste without opening the panel:** BetterClipboard's Ctrl+1…9 work inside the panel only. Ditto has
+  global keys for the Nth newest item, a key per item, and a text-only paste key.
+- **Dragging a card into another app:** BetterClipboard's drag carries only its own ids, for its groups.
+- **A full view of a long text** (Ditto's F3); BetterClipboard previews images only.
+- **Manual order:** move up and down, sticky order. BetterClipboard has pinned-first only.
+- **Exclusion by regular expression** on the text (BetterClipboard: ignored apps, and Forget forever's exact matching).
+- **Copy buffers** (extra clipboards on hotkeys).
+- **Group extras:** nested groups, a hotkey per group, new copies going into the open group.
+- **Pasting into elevated windows by itself** (an elevated helper behind a UAC prompt); BetterClipboard leaves the item on
+  the clipboard and says "press Ctrl+V".
+- **Saving the current clipboard by hand,** also while paused.
+- **Smaller ones:** 30 languages (BetterClipboard is English only), 13 themes (BetterClipboard: system, light, dark), a
+  portable mode, comparing two items, QR codes, e-mail / web search / translate, ChaiScript scripts, sync to other PCs
+  on the LAN.
 
 **Ideas worth taking from Ditto** (a pick by usefulness to BetterClipboard's users, not a measure of demand):
-1. Special paste (case, trim, slug, line feeds, paste as plain text already exists) as a submenu.
-2. Paste several selected cards at once, joined by a separator.
-3. Hotkeys that paste the Nth newest item without opening the panel (Ditto's "positions").
-4. Export and import of selected items (a file another PC can open).
-5. Editing an item's text before pasting it.
-6. Exclusion rules by regular expression on the text (next to Forget forever's exact matching).
+1. Paste keys per app, at least Shift+Insert for terminals where Ctrl+V does something else.
+2. Special paste (case, trim, slug, line feeds; plain text already exists) as a submenu.
+3. Paste several selected cards at once, joined by a separator.
+4. Editing an item's text before pasting it.
+5. Export and import of selected items (a file another PC can open), and "Import from Ditto" (§8).
+6. Hotkeys that paste the Nth newest item without opening the panel (Ditto's "positions").
+7. Exclusion rules by regular expression on the text (next to Forget forever's exact matching).
 
 ## 10. How to reproduce
 
