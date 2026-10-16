@@ -44,9 +44,9 @@ Legend: **[verified]** = seen in the running 3.25.113 (or its files), **[source]
 - **Activity:** 1,583 commits, about 1,467 of them by Scott Brogden under four spellings of his name. There were 151
   commits in 2025 and 39 in 2026 so far: translations, themes, special-paste actions, a few fixes. **[source]**
 - **License:** GPL-3.0. The `LICENSE` file was added in 3.25.73 (PR #790). **[source]**
-- **Platforms:** an x64 and an ARM64 installer (Inno Setup, `MinVersion=6.1`, so Windows 7 and later), a portable zip,
-  the Microsoft Store (an appx), Chocolatey (three packages) and winget. 3.25 dropped the separate 32-bit downloads.
-  **[source]**, **[api]**
+- **Platforms:** one 64-bit installer (Inno Setup, `ArchitecturesAllowed=x64compatible`, so x64 and ARM64;
+  `MinVersion=6.1`; 3.25 offers no 32-bit download any more), a portable zip, the Microsoft Store (an appx),
+  Chocolatey (three packages) and winget. **[source]**, **[api]**
 - **Contents of 3.25.113** **[verified]**:
   - `Ditto.exe` (5.7 MB), `ICU_Loader.dll` (Unicode regular expressions), `Addins\DittoUtil.dll`;
   - the MSVC and MFC runtimes (`mfc140u`, `msvcp140`, `vcruntime140`, `vcruntime140_1`);
@@ -103,8 +103,9 @@ Ditto decides how it was installed from **marker files next to `Ditto.exe`** (`O
     **contains clip descriptions**: "Added clip to main table, Id: 1, … Desc: BC-TEST plain one" **[verified]**;
   - temp folders for drag and drop, received files, compares and edits.
 - **One instance per kind:** the mutex is `Ditto Is Now Running`. For portable, Store and Chocolatey copies the exe's
-  path is appended, with `\` turned into `_`. So a portable Ditto runs next to an installed one: both ran in the test,
-  and both captured **[verified]**.
+  path is appended, with `\` turned into `_`. So a portable Ditto runs next to an installed one: both ran at the same
+  time in the test **[verified]** (no copy was made while both ran). The second one's Ctrl+\` fails, and only its log
+  would say so (§5.3).
 - **Windows:** the main window class is `Ditto`; the popup list is `QPasteClass`, titled "Ditto" **[verified]**.
 
 ## 3. Capture
