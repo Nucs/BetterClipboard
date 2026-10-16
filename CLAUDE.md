@@ -220,6 +220,9 @@ Reproduction probes that produced the verified facts live in
 settings, a passive live watch, §2.18),
 [`probe_chocolatey.ps1`](tools/probes/probe_chocolatey.ps1) (Chocolatey's shims, ARM64 handling, upgrades and
 uninstalls, in a private Chocolatey root, §3.2),
+[`probe_startmenu.cs`](tools/probes/probe_startmenu.cs) (the Start menu: its host, its resident cloaked window, the
+taskbar's Start button, the launcher-visibility WNF states; `--watch` logs a Start open or close as it happens — both
+modes passive, §1.10),
 [`probe_agent_prompts.py`](tools/probes/probe_agent_prompts.py) (Claude Code's and Codex's prompt histories: formats,
 identities, whose prompts, rewrites — structure only, §2.21),
 [`probe_append_notify.cs`](tools/probes/probe_append_notify.cs) (what a folder watcher and the folder's listing see while
@@ -273,6 +276,114 @@ use it instead of Win+V's mechanism? Findings:
   `SetProcessWindowStation` → `CreateDesktop` → MTA threads call `SetThreadDesktop` before any other user32
   call (STA fails with `ERROR_BUSY`: COM's hidden window). The station has its own clipboard; the user's
   clipboard and Win+V history (RAM-only, unrecoverable) stay untouched.
+
+### 1.10 The Start menu: what the Start button is, what it opens, how that window appears (2026-10-16)
+
+User request (2026-10-16): "Learn how the windows start menu works (what the task bar start button opens, how the button
+opens and start menu that opens)". Research only; nothing was built. **[verified]** unless marked. How it was learned:
+- [`probe_startmenu.cs`](tools/probes/probe_startmenu.cs), passive: `--inventory` on this PC (26200.8875) and in a
+  claude-desktops Windows 11 Pro 25H2 desktop (26200.8037, 1920×1080, no GPU; deleted afterwards), and `--watch` in that
+  desktop while Start was opened and closed with the desktop's own input tools (Win, Ctrl+Esc, clicks on the button and
+  outside, Esc, typing): 10 opens, 10 closes.
+- Public symbol names from Microsoft's symbol server, read with the installed WinDbg's `cdb -z <binary>` (names, GUID
+  constants, vtable slots; no disassembly): Taskbar.dll, Taskbar.View.dll, StartMenu.dll, twinui.pcshell.dll,
+  explorer.exe, StartMenuExperienceHost.exe, StartDocked.dll, windowsudk.shellcommon.dll. Call chains taken from names
+  alone are marked **[inferred]**.
+- WinRT metadata: `C:\Windows\SystemApps\MicrosoftWindows.UndockedDevKit_cw5n1h2txyewy\windowsudk.winmd`. Also the
+  package manifest, module lists, COM/WinRT registrations.
+
+**The pieces.**
+
+| Piece | Where | What it is |
+|---|---|---|
+| Start button | explorer.exe: `Taskbar.View.dll` (in `MicrosoftWindows.Client.Core`, the Windows Feature Experience Pack) | A XAML `ExperienceToggleButton` in the taskbar's XAML island, the same class as Search, Task View and Widgets. UI Automation: name "Start", AutomationId `StartButton`, class `ToggleButton`, patterns Toggle and ScrollItem, **no Invoke**. A hidden legacy child window of class `Start` (Taskbar.dll's `CPearl`, "the pearl") sits under it at the same rectangle. |
+| Taskbar logic | explorer.exe: `Taskbar.dll` (System32) | `TaskbarModel`, `CPearl::ToggleStartAsync`, `TrayUI::OnLauncherVisibilityChange`, the right-click menu's items. |
+| Launcher | explorer.exe: `twinui.pcshell.dll` | `XamlLauncher` implements `IImmersiveLauncher` (ShowStartView, Toggle, Dismiss, IsVisible, Prelaunch, OnStartButtonPressed, OnHotkeyInvoke, LinkUIATrees). `CStartExperienceManager` drives the Start window (Show, Hide, Uncloak, PositionMenu, TakeKeyboardFocus, OnViewUncloaking, Prelaunch). |
+| Start host | `StartMenuExperienceHost.exe` (package `Microsoft.Windows.StartMenuExperienceHost` 10.0.26100.4768) | Runs as the package's `FullTrustApp` (`uap10:TrustLevel="mediumIL"`, `RuntimeBehavior="windowsApp"`): medium integrity, no AppContainer, started by an svchost.exe at sign-in. A thin UWP XAML app (C++/CX) that loads the Start UI. |
+| Start UI | `StartMenu.dll` (Feature Experience Pack, 2605.26001.300.0 here) and `StartDocked.dll` (host package) | The 2025 redesign: `StartHome`, `PinnedList`, `AllAppsControl`, `CategoryControl`, `StartMenuCompanion` (phone), `RecommendedReactNativeViewControl`. System XAML plus WinUI 2.9, and React Native for Windows 0.72 (package `MicrosoftWindows.Client.Photon`: `hermes.dll`, `Microsoft.ReactNative.dll`) for Recommended. Explorer loads `StartMenu.dll` too. |
+| Search box | `SearchHost.exe` (`MicrosoftWindows.Client.CBS`) | A CoreWindow of its own laid over the whole menu; it, not Start, gets the keyboard. |
+| Data | `StartTileData.dll`, `TileDataRepository.dll` (in both processes) | Pins in `%LOCALAPPDATA%\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState\start2.bin` (48 KB here). |
+
+**What a click on the button does.**
+1. **[inferred]** `LaunchListItemResources::OnExperienceToggleButtonClick` → `LaunchListItemViewModel::OnClick` (Taskbar.View.dll).
+2. **[inferred]** The view model asks for Start through `WindowsUdk.UI.Shell.ShellViewCoordinator`:
+   - created for `ShellView.Start` (2); the enum has 32 shell views (ActionCenter 0, Search 1, TaskView 3, Dashboard 4,
+     ControlCenter 6 … ClickToDo 30, GamingOverlay 31);
+   - `TryShowAsync(ShowShellViewOptions)`: InvokerWindowId, InvocationPoint, PreferredPlacement, InputDeviceKind,
+     Context, TelemetryId, AnimationProperties, TransferForegroundRights. Its owner answers with `ShowRequested` /
+     `DismissRequested` and reports back through `ReportVisibility`, which the button binds to (`IsShellViewVisible`);
+   - a cross-process object ("Bamo" principal, proxy and stub in windowsudk.shellcommon.dll). The class is in-process
+     with base trust, and its interfaces have proxies (`ShellCommonCommonProxyStub.dll`) [verified: registrations].
+3. **[inferred]** In explorer, `XamlLauncher::LauncherShowRequested` → `ShowStartView` → `CStartExperienceManager::Show`:
+   position (`PositionMenu`; `PearlRectMayHaveChanged` tracks the button), foreground, `Uncloak`, publish the visibility.
+4. The Start host's XAML plays the entrance animation on the uncloaked window.
+- The WNF data names the way in: show method 11 for the button, 1 for the Win key and Ctrl+Esc (below).
+- The button toggles: a second click closes Start (reason 6).
+
+**The Win key and Ctrl+Esc** both arrive as show method 1. Releasing Win opens Start only when no other key went down
+in between, the rule §2.4's mask key (VK 0xE8) relies on. No `HSHELL_TASKMAN` reached a window registered with
+`RegisterShellHookWindow` in 7 method-1 opens, though `HSHELL_WINDOWACTIVATED` did: the shell gets the key another
+way. `GetTaskmanWindow()` is the taskbar's `MSTaskSwWClass`.
+
+**The window that opens.**
+- `Windows.UI.Core.CoreWindow` "Start" of the Start host: `WS_POPUP | WS_VISIBLE | WS_CLIPSIBLINGS`,
+  `WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP`, z-band 6 (`ZBID_IMMERSIVE_MOGO`: above every desktop app, topmost ones
+  included), covering the primary monitor's whole work area (1920×1032 on both machines). The menu is drawn inside it,
+  centered or at the left as the taskbar is aligned.
+- **Resident, always WS_VISIBLE, cloaked by the shell while closed** (`DWMWA_CLOAKED` = 2). An open uncloaks it; no
+  window was created, shown or destroyed in 10 opens and closes. On this PC after a week of uptime: the same window,
+  cloaked, with the host's working set trimmed to 14 MB (114 MB earlier that day).
+- Not frozen: the Start host's threads were never suspended (sampled every 20 ms; also on this PC). ShellExperienceHost
+  (Notification Center) sat with all 40 threads suspended. Quick Settings is a Win32 `ControlCenterWindow` in
+  `ShellHost.exe`.
+- **EnumWindows does not list it**: "For Windows 8 and later, EnumWindows enumerates only top-level windows of desktop
+  apps" **[docs]**. `FindWindowEx(NULL, previous, NULL, NULL)` does, and `FindWindowEx(NULL, NULL,
+  "Windows.UI.Core.CoreWindow", "Start")` finds it at once. The probe's first version walked with EnumWindows and
+  reported "no Start window", which was wrong.
+- Search's window ("Search", band 6, 858×890: the menu's size plus a 12-px margin) is uncloaked with Start's, over the
+  whole menu, and takes the foreground. Start never takes the foreground itself.
+- Typing a letter dismisses Start (reason 8) and leaves Search's window up with the results.
+
+**Timing** (the GPU-less desktop; times between the watch's events).
+- Open: the shell gives Search the foreground first, then uncloaks Start 28–136 ms later (median ~65 ms; at the same
+  instant in the first open), and publishes the WNF within ±14 ms of the uncloak. From the key or click: about 55–210 ms
+  (5 measurable opens; GetLastInputInfo's time moves in 15.6-ms ticks).
+- Close: the WNF and Search's cloak come at once (±16 ms). Start's window is cloaked 100–387 ms later (median ~215 ms):
+  the exit animation plays on the still-uncloaked window, then the shell cloaks it.
+
+**WNF states**, named in twinui.pcshell.dll's public symbols and read with `NtQueryWnfStateData`:
+- `WNF_IMSN_LAUNCHERVISIBILITY` = `0x0F950324A3BC1035`: 4 bytes, `01000000` open, `00000000` closed.
+- `WNF_SHEL_START_VISIBILITY_CHANGED` = `0x0D83063EA3BCB035`: 32 bytes. Byte 0: 0 open, 1 closed. Byte 2: how; opens 1
+  (Win key, Ctrl+Esc) and 11 (button); closes 1 (Win key), 4 (Esc), 6 (button), 7 (a click outside), 8 (typing hands over
+  to Search). Byte 4: 3 in all 22 samples.
+- The change stamp counts publishes since boot (0 on a fresh boot). A subscription (`RtlSubscribeWnfStateChangeNotification`)
+  tells a process when Start opens or closes without any hook: what `--watch` does.
+
+**The launcher service** (GUID bytes and vtable read from the binaries' data; not called in this research).
+- Explorer's out-of-process COM server `CLSID_ImmersiveShell` {C2F03A33-21F5-47FA-B4BB-156362A2F239} → IServiceProvider
+  → `SID_ImmersiveLauncher` {6F86E01C-C649-4D61-BE23-F1322DDECA9D} → IID {D8D60399-A0F1-F987-5551-321FD1B49864}
+  (Taskbar.dll's `GUID_d8d60399_…`).
+- Vtable after IUnknown (from XamlLauncher's vftable): 3 ShowStartView, 4 and 5 Dismiss, 6 DismissSynchronouslyWithout-
+  Transition, 7 IsVisible, 8 OnStartButtonPressed, 9 SetForeground, 10 ConnectToMonitor, 11 GetMonitor,
+  12 OnFirstSignAnimationFinished, 13 Prelaunch.
+- Its proxy/stub is registered (`PCShellCommonProxyStub.dll`), so other processes can reach it. Community tools
+  (ExplorerPatcher) call ShowStartView with method 11, the number the WNF reports for the button.
+
+**Around the button.**
+- Right-click (and Win+X): the "power user" menu (Installed apps … Shut down or sign out, Desktop). It is a XAML context
+  menu of the taskbar (`ContextMenus::ShowStartButtonContextMenuAsync`, items from
+  `TaskbarModel::GetStartButtonMenuItemsAsync`) **[inferred]**; no Win32 `#32768` window appeared. It showed ~0.5 s
+  after the click (1 sample).
+- **[inferred]** The Start host also renders the taskbar's jump lists (`JumpViewUI`, `EnsureJumpViewIsLoaded`).
+- Settings: `HKCU\…\Explorer\Advanced` `TaskbarAl` (0 left; absent or 1 centered), `Start_*`, `StartMenuInit` (13 on
+  both machines); `HKCU\…\CurrentVersion\Start` (`Config`, `ShowRecentList`, `ShowFrequentList`, `VisiblePlaces`).
+
+**For BetterClipboard.**
+- The panel's instant summon (§2.27) is Start's own design: a resident window, always WS_VISIBLE, cloaked while closed.
+  Start's cloak comes from the shell (ours from the app), its window covers the work area in band 6 (a desktop app, our
+  topmost panel included, is never above it), and its keyboard lives in another process's window (Search).
+- Code that must see the shell's own windows (Start, Search, Notification Center) walks with `FindWindowEx`: EnumWindows
+  leaves them out (§4). BetterClipboard enumerates no windows today.
 
 ---
 
@@ -4083,6 +4194,16 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   hand the foreground on, show again without activation), and `IsOpen` is the `presented` flag — `AppWindow.IsVisible` is
   true all the time once the warm-up ran. New code that hides or shows the panel's window directly breaks the instant
   summon; new code that asks "is the panel up?" asks `IsOpen`.
+- **EnumWindows does not see the shell's own windows.** Since Windows 8 it lists only desktop apps' top-level windows
+  (its documentation), so Start, Search and Notification Center (immersive CoreWindows in z-bands above 1) are missing.
+  Walk with `FindWindowEx(NULL, previous, NULL, NULL)`, or look one up by class and title. Lesson (2026-10-16, §1.10): a
+  probe built on EnumWindows reported "Start has no window" on two machines; the window was there all along, cloaked.
+  Judging "is a window there?" from one enumeration API, without a second way to look, gave a confident wrong answer.
+- **A file-based C# probe with `UseWPF` compiles every `.xaml` under its folder as a WPF page**, subfolders included.
+  On 2026-10-16 a WinUI project folder in `tools/probes/` (`preview_lab/`) broke `probe_startmenu.cs` with MC3074 errors
+  about its `App.xaml`. Probes that need WPF only for UI Automation set `EnableDefaultPageItems=false` and
+  `EnableDefaultApplicationDefinition=false` (as `probe_startmenu.cs` does); a project folder belongs outside
+  `tools/probes/`. `probe_summon.cs` lacks the two properties.
 - **WinUI list controls animate every change by default.** ListView's `ItemContainerTransitions` (AddDelete, Content,
   Reorder, Entrance) play on every insert, remove and reload: after a summon they kept cards sliding in for ~0.3 s. Where
   a list must show at once, give it an empty `TransitionCollection`, and patch the collection (`CollectionPatch`) instead of
@@ -4407,6 +4528,7 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **Start menu research** (2026-10-16, §1.10; research only). `probe_startmenu.cs --inventory` on this PC (26200.8875) and in a claude-desktops Windows 11 desktop (26200.8037, 1920×1080, no GPU, deleted afterwards): the Start host runs as `FullTrustApp` at medium integrity (no AppContainer); its CoreWindow "Start" (band IMMERSIVE_MOGO, the whole work area, WS_VISIBLE) and Search's "Search" window exist on both machines and are cloaked by the shell while Start is closed; EnumWindows lists 0 windows of either process. `--watch` in the desktop while Start was opened and closed with its input tools (Win ×6, Ctrl+Esc ×1, the button ×3; Esc, Win, a second click, a click outside, typing): 10 opens, 10 closes, no Start window created or destroyed, the host's threads never suspended; open = Search takes the foreground, then Start is uncloaked 28–136 ms later (median ~65 ms) with the WNF within ±14 ms; close = WNF and Search's cloak at once, Start cloaked 100–387 ms later (median ~215 ms); `WNF_SHEL_START_VISIBILITY_CHANGED` byte 2 = 1 for Win and Ctrl+Esc, 11 for the button, and close reasons 1, 4, 6, 7, 8; no `HSHELL_TASKMAN` to a registered shell-hook window. Static: public symbol names of eight shell binaries (cdb -z), `windowsudk.winmd`, GUID bytes and XamlLauncher's vtable read from the binaries' data. The first inventory used EnumWindows and wrongly reported "no Start window" (§4) | the probe (passive modes only), the desktop's `press_keys` / `click` / `screenshot`, `cdb -z` with Microsoft's symbol server, a metadata dump (System.Reflection.Metadata), scratch `analyze_watch.py` (session 41bf36a9's scratchpad) | ✅ Not run: real hardware with a GPU (the user can run `--watch` there), Windows 10, a second monitor, `WM_SYSCOMMAND SC_TASKLIST`, the launcher service called directly |
 | **The README's `irm \| iex` install, fixed** (2026-10-16, §3.1). Before: in a claude-desktops Windows 11 desktop, `irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 \| iex` (Windows PowerShell 5.1) printed "The attribute cannot be added because variable PackageSha256 with value would no longer be valid" and installed nothing; a harmless copy of the param block reproduced it on this PC in 5.1.26100.8875 and 7.5.8 (and showed the `[scriptblock]::Create` form passing). After: the fixed `install.ps1`, piped into `Invoke-Expression` by a hidden PowerShell in that desktop, installed 0.2.8 over the running copy in 52 s ("Win+V was already released", the app started again); `-Package … -PackageSha256 nothex` was refused with "-PackageSha256 must be a SHA-256 checksum: 64 hexadecimal digits." before anything changed. `tools/release/test-iex.ps1`: FAIL on `HEAD`'s `install.ps1` and PASS on the fixed one, from pwsh 7.5.8 and from Windows PowerShell 5.1 (each checks both shells) On this PC, `-File install.ps1 -Update -Package <dummy> -PackageSha256 nothex -ResultPath …` (scratch folders, `BETTERCLIPBOARD_DATA_DIR` set): exit 1 and a result file with `ok: false` and that message; before, the binder refused it with no result file | desktop `run_command`; local `test-iex.ps1` against `git show HEAD:install.ps1` and the working tree | ✅ Not pushed: the README serves `main`'s `install.ps1`, so users get the fix only with a push. Not run: the full suite (no C# changed), `test-update.ps1` (it needs a package; the update mode's parameters are unchanged) |
 | **Ditto 3.25.113 learned and run** (2026-10-16, §2.32, `docs/ditto.md`). Installed silently in a claude-desktops Windows 11 Pro 25H2 desktop (26200.8037), plus the portable zip; BC-TEST copies only, through plain Win32 calls. Seen: the files and registry values of a first run; `TCP 0.0.0.0:23443` LISTENING and the Windows firewall prompt (installed copy only); Ctrl+\` taken (1409); a plain `Ditto.db` (UTF-16le, auto_vacuum full, journal delete, 13 indexes, 2 triggers) read correctly by `probe_ditto.py`; markers: only `Clipboard Viewer Ignore` honored, `ExcludeClipboardContentFromMonitorProcessing` and `CanIncludeInClipboardHistory = 0` copies stored; bursts of 10: 1 kept at 5/50 ms, 4 at 200 ms, 5 at 400/450 ms, 10 at ≥ 550 ms (two runs, with and without Ditto's log); a copy 343 ms after another never stored; the duplicate rule; a paste's clipboard formats; reading the database with `FileShare.ReadWrite` while Ditto runs. With BetterClipboard 0.2.8 next to it: 10 of 10 kept by BetterClipboard at 5 and 200 ms; Ditto's paste skipped by BetterClipboard ("Skipped a copy marked private by 'Ditto'"); BetterClipboard's paste stored by Ditto; both hotkeys worked; at rest Ditto 4.9 MB private / 47–109 ms CPU a minute, BetterClipboard 106.6 MB / 297–844 ms | `desktop_call` (`run_command`, `launch`, `press_keys`, `find_elements`, screenshots); session 46390d28's `ditto/vm/` scripts; `probe_ditto.py --db` and `--self-test` on this PC | ✅ The desktop was deleted with its persist folder. Not run: Ditto's elevated paste (UAC is off in those desktops), the friends network, a `.dto` export, Ditto's `master` build |
 | **v0.2.8 released** (2026-10-10, "We did some changes, make sure they are included in new release. release the new version."). The changes were `c0db2d1` and `03f5058` (the groups column's keys), made by another session after the bump `fe3367b`. Both are in the tag: v0.2.8 is on `ccde6fb`, the head of `main`, and only CLAUDE.md changed after `03f5058`. The push range `350d949..ccde6fb` (11 commits) was scanned first: 0 binary files, 0 secret-like lines in the diffs or the messages, no email address. `main` pushed; CI run 38070424994 green in ~3.5 min (1,526 = 1,522 passed + 4 skipped, the update mode, the Chocolatey smoke test). Tag `v0.2.8`: annotated, `--cleanup=whitespace`, message = the newest notes draft (`03f5058`'s, found with the anchored lookup), identical to the notes file (3,940 characters). Release run 38070699975 green at the first attempt (~5.5 min; 1,526 = 1,522 + 4 skipped); published 17:16:38Z, Latest. Assets: the zips (x64 71.1 MB `e7f8d58b…`, ARM64 68.7 MB `bcb3aeff…`), the two `.7z`, `betterclipboard.0.2.8.nupkg` (82.4 MB, attached only: no `CHOCOLATEY_API_KEY` secret), `install.ps1`, `SHA256SUMS.txt`. All four sums equal GitHub's digests; the body is the notes plus the code-signing footer, with no mojibake; the `install.ps1` asset equals the blob except for CRLF. Not reinstalled: the user's PC runs `0.2.8+03f5058` (the row below), which has the released app code. Since this push, `irm \| iex` from `main` has `b14a76c`'s `Stop-RunningApp` | `gh api …/releases/tags/v0.2.8`, `gh release download`, `gh run view --log`, scratch `verify_release.py` | ✅ |
@@ -4770,3 +4892,7 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     tests stay offline on purpose;
   - the full license texts in the release zip next to `THIRD-PARTY-NOTICES.md`, which links to them today (MIT and
     BSD-3-Clause ask for the notice text with binary copies).
+- Start menu research (§1.10), still open: timings on real hardware with a GPU (`probe_startmenu.cs --watch 60` while
+  opening and closing Start a few times; passive, safe on the user's PC); what `WM_SYSCOMMAND SC_TASKLIST` does on 25H2;
+  a second monitor (which monitor Start opens on, the window's rectangle there); Windows 10's Start (another host
+  layout).
