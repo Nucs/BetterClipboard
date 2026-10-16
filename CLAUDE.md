@@ -231,7 +231,14 @@ another process appends to a file, §2.21),
 letter typed right after Win+V goes; DWM's latency per way of revealing a window — injects keys, so it runs only inside a
 claude-desktops Windows desktop, §2.27),
 [`probe_ditto.py`](tools/probes/probe_ditto.py) (where Ditto keeps its settings and history, and what a `Ditto.db`
-holds — structure, counts, formats, never content; `--self-test` builds a BC-TEST database shaped like Ditto's, §2.32).
+holds — structure, counts, formats, never content; `--self-test` builds a BC-TEST database shaped like Ditto's, §2.32),
+[`probe_rich_formats.cs`](tools/probes/probe_rich_formats.cs) (what a copy from Word, Teams, LibreOffice or a browser
+holds: every format, its size and how long the app took to render it, and the structure of its HTML, RTF and metafiles —
+never content; `--watch` for live copies, `--save` keeps BC-TEST copies only, `--render-rtf` and `--render-emf` draw
+with Windows' RichEdit and GDI, §2.33),
+[`preview_lab`](tools/probes/preview_lab) (a WinUI 3 app: RTF in a read-only `RichEditBox`, HTML in a WebView2 with
+scripts off and every request blocked; times, memory, requests; it opens a window, so it runs only inside a
+claude-desktops Windows desktop, §2.33).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -3362,6 +3369,80 @@ because variable PackageSha256 with value would no longer be valid".
 - Since the push of 2026-10-10 (v0.2.6), the README's first command printed only that error. Its other form,
   `& ([scriptblock]::Create(…))`, kept working, and every test used `-File` or that form.
 
+### 2.33 Rich previews: Word, Teams, LibreOffice and web copies (research 2026-10-16; nothing built yet)
+
+User request (2026-10-16): "When someone copies from teams or microsoft word or open office or libre office or even
+html — The clipboard preview is not supporting a preview.. can we think about that and other types of clipboard data
+showing a preview or even potentially tooltip and opening the preview like an image now supports. Task: Discover." The
+full report is [`docs/rich-previews.md`](docs/rich-previews.md); this section keeps what the code and the decisions need.
+- Measured with the new [`probe_rich_formats.cs`](tools/probes/probe_rich_formats.cs) and
+  [`preview_lab`](tools/probes/preview_lab) in a claude-desktops Windows 11 desktop (LibreOffice 26.2.5.2, the owner's
+  build; Edge 155; BetterClipboard 0.2.8; BC-TEST documents only). The desktop was deleted afterwards.
+- Word, Teams, Outlook and Excel were not run (a license and an account do not belong in a test desktop): their facts
+  are **[docs]** or **[inferred]** until the owner runs the live check below.
+
+**Today** **[verified, 0.2.8]**:
+- A copy with HTML or RTF next to its text is a "Formatted text" card that shows only its plain text (4 lines, caption
+  "· formatted"). There is no peek and no viewer: the overlays of §2.24 exist for image cards only. HTML or RTF without
+  text reads "Formatted content", with an empty search text.
+- Stored: text, HTML, RTF, PNG, one DIB; never a metafile (a handle format). Calc's and Excel's picture of the range is
+  stored but never shown: image analysis runs for `Image` cards only.
+- Writer's copy was drawn in the code font: `CodeHeuristics.LooksLikeCode` counted its tab-indented list items and one
+  line ending in `;`.
+- A file copied from inside a .zip (`FileGroupDescriptorW` + `FileContents`, no path, no text) was not recorded at all.
+  Outlook attachments and phone (MTP) files arrive the same way **[inferred]**.
+
+**What the apps give.**
+- **LibreOffice Writer** **[verified]**: RTF (103 KB, all pictures inside as `\pngblip`); CF_HTML 1.0 whose pictures
+  are `file:` paths into LibreOffice's temp folder (gone when it exits); a plain HTML document; and **`Markdown`** (new in
+  26.2). No picture of the selection. Everything is rendered on request through OLE (the plain HTML took 118–173 ms).
+- **LibreOffice Calc** **[verified]**: 24 formats, among them a PNG and a DIB of the range (both stored by
+  BetterClipboard), an EMF+ dual EMF (rendered on request in 30 ms) and an SVG.
+- **Edge, i.e. Chromium** **[verified]**: CF_HTML 0.9 with `SourceURL`, every element's computed style inline (24
+  properties), `data:` pictures inline and every other picture as an absolute `http(s)` URL; text; `Chromium internal
+  source URL`. No RTF and no picture. New Teams is a WebView2 app, so its copies have the same shape; its pictures are
+  links that need the signed-in session **[inferred]**.
+- **Word and Outlook** **[docs]**: RTF with the pictures (`\shppict`, plus a `\nonshppict` WMF copy), HTML whose pictures
+  are `msohtmlclip1` temp files, an EMF of the selection on request. **Excel** **[docs]**: a bitmap (stored as a DIB), an
+  EMF, Biff, XML Spreadsheet, HTML, RTF, Csv. **VS Code** **[docs]**: HTML with the syntax colors, plus
+  `vscode-editor-data` naming the language.
+
+**Engines** **[verified]**:
+- **WinUI `RichEditBox`**, read-only, with RTF: LibreOffice's RTF with all its PNG pictures, the table, both lists,
+  colors, the highlight, the link and a color emoji. 103 KB: 855 ms the first time in a session, 11 ms after; 2 MB with 40
+  pictures: 92 ms, then 45 ms; +30–40 MB. Nothing to fetch.
+- **The classic RichEdit window** (`RICHEDIT50W`, what a thumbnail off the UI thread would use): pictures only with an
+  `IRichEditOleCallback`, and even then `\pngblip` is dropped (`\dibitmap` draws).
+- **WebView2** with scripts off and a `WebResourceRequested` filter on `*` that answers 403: Edge's copy exactly as the
+  page. 4 picture requests blocked, 0 reached the local server; the control run (requests allowed) let 4 through.
+  Start-up 3.4–18.8 s, first page 1.6–3.8 s, next 0.25–0.34 s (GPU-less VM); 5 processes, ~257 MB; `NavigateToString`
+  takes at most 2 MB **[docs]**.
+
+**Rules for any preview:** never fetch a copy's pictures (tracking pixels; Teams' links need the session), never run its
+scripts; show `data:` pictures and alt text only. Word's and LibreOffice's HTML pictures are temp files, so for office
+copies the RTF is the source that lasts.
+
+**Proposal, cheapest first** (the owner decides; docs §7):
+1. Show what is stored: a thumbnail and the §2.24 peek and viewer for `RichText` entries that carry a PNG or DIB
+   (spreadsheets); plain text from the HTML of HTML-only copies (preview, search, plain paste); no code font for a
+   formatted copy unless it is code; "· 3 pictures · table" in the caption.
+2. A peek for every card, a viewer for formatted copies: RTF in a read-only `RichEditBox`, prepared with the panel
+   (§2.27); HTML through an own HTML → XAML converter (like `MarkdownRenderer`, §2.29); WebView2 only in the viewer, on
+   request, with every request blocked; the full text for long text and code, shell thumbnails for files, a large swatch
+   for colors, the parts of a link.
+3. Capture more: virtual files (`FileGroupDescriptorW`), LibreOffice's `Markdown`, perhaps Word's and Excel's EMF for
+   small selections (its cost is unknown).
+
+**Live check on the owner's PC** (content-free): `dotnet run tools/probes/probe_rich_formats.cs -- --watch 180`, then
+copy from Word (a paragraph with a picture and a table), Teams (a message with an emoji and a picture), Excel (a range)
+and Outlook. Each copy is read 750 ms after its notification, so BetterClipboard reads it first. The probe prints
+formats, sizes, render times and structure, never content, and never writes to the clipboard.
+
+**Found on the way** (§4): richedit.h's structures are 4-byte packed; a WinUI 3 app needs an App.xaml for
+`XamlControlsResources` ("Cannot find a resource with the given key: AcrylicBackgroundFillColorDefaultBrush");
+LibreOffice's HTML import fetches remote pictures; a desktop's `run_command` with `Start-Process
+-RedirectStandardOutput` blocks the agent until the child exits.
+
 ---
 
 ## 3. Build · run · test
@@ -4036,7 +4117,9 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   Also avoid `using Windows.UI.Core;` in WinUI files (`WindowActivatedEventArgs` becomes ambiguous).
 - **P/Invoke:** `LibraryImport` only, blittable signatures (`[Out] char[]` needs runtime marshalling —
   use `char*` + `fixed`). Read `Marshal.GetLastPInvokeError()` before any other call. Never let exceptions
-  escape WndProc/hook callbacks (they are wrapped).
+  escape WndProc/hook callbacks (they are wrapped). Structures from richedit.h are 4-byte packed (`pshpack4.h`): declare
+  them with `Pack = 4`, or on x64 `EDITSTREAM`'s callback lands at the wrong offset and Control Flow Guard ends the
+  process (0xC0000409, no message; §2.33).
 - **XAML build errors cascade:** `WMC1509 No LocalAssembly…` + dozens of "Unknown type" errors mean a C#
   error broke the XAML pre-compile — fix the first `CS####` error, not the XAML.
 - **A window-level key model must skip keys typed into popups.** A `Flyout`/`MenuFlyout` popup is parented
@@ -4519,6 +4602,14 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   (`~/.claude/scripts/check-docs.py`) climbs from a method to its doc comment only over lines that end with `]`. A
   comment after `[InlineData(…)]` stops the climb, and the hook then reports "no /// doc comment" for a method that has
   one. Older theories have such comments: the hook checks only the lines that an edit touched.
+- **claude-desktops Windows desktops, lessons of the rich-preview research (2026-10-16, §2.33):**
+  - A long-lived helper started from `run_command` with `Start-Process -RedirectStandardOutput` inherits the agent's
+    pipes: the call does not return, and the desktop's later calls queued behind it for minutes. Start helpers with the
+    `launch` tool through `cmd.exe /c <exe> … > <log> 2>&1`, and read the log with `read_file`.
+  - LibreOffice's first start shows a welcome dialog, and Calc a tip of the day; both take the keyboard (Esc).
+  - The desktop's screenshot can show the Playwright-driven Edge page blank while the browser tool's own screenshot
+    shows it; keys sent to that Edge after a click into the page worked.
+  - A recursive `Copy-Item` of a folder tree into `Z:` failed with "Access … denied"; one zip copied there worked.
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -4528,6 +4619,7 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **Rich previews researched** (2026-10-16, §2.33, `docs/rich-previews.md`). In a claude-desktops Windows 11 Pro 25H2 desktop (26200, 4 cores, no GPU) with LibreOffice 26.2.5.2, Edge 155 and BetterClipboard 0.2.8 (installed from GitHub with the `[scriptblock]::Create` form), `probe_rich_formats.cs --watch --save` described four copies: Writer (14 formats; RTF 103 KB with 3 `\pngblip`; CF_HTML 1.0 with `file:` temp pictures; `Markdown`), Calc (24 formats incl. PNG 222×68, DIB, an EMF+ dual EMF, SVG), Edge (7 formats; CF_HTML 0.9, 40 KB, inline computed styles) and a file inside a .zip (`FileGroupDescriptorW` only). `bclip get --format formats`: Writer RTF + HTML + text, Calc PNG + DIB + HTML + text + RTF, Edge HTML + text; the .zip copy was not recorded. The panel: three "formatted" plain-text cards, Writer's in the code font. `preview_lab`: Writer's RTF in WinUI's `RichEditBox` with all 3 pictures (855 ms the first time, 11 ms the second; a 2 MB RTF with 40 pictures 92 / 45 ms); Edge's HTML in WebView2 with scripts off and every request blocked (start-up 18.8 / 6.2 / 3.4 s, first page 3.8 / 1.6 / 2.3 s, next 0.25–0.34 s; 5 processes, ~257 MB; 4 requests blocked and 0 at `serve.ps1`; the control run with `--network` let 4 through). On this PC: `--render-rtf` through the classic RichEdit window (pictures only with an OLE callback; `\pngblip` dropped, `\dibitmap` drawn) and `--census` on the saved payloads | desktop `run_command`, `launch`, `press_keys`, screenshots and browser tools; `bclip`; the probe's `--census` and `--render-rtf` on this PC | ✅ The desktop was deleted with its persist folder. Not run: Word, Teams, Outlook, Excel (the live check, §2.33), Firefox, the WinUI `RichEditBox` with Word's own RTF, nested tables, a real GPU |
 | **Start menu research** (2026-10-16, §1.10; research only). `probe_startmenu.cs --inventory` on this PC (26200.8875) and in a claude-desktops Windows 11 desktop (26200.8037, 1920×1080, no GPU, deleted afterwards): the Start host runs as `FullTrustApp` at medium integrity (no AppContainer); its CoreWindow "Start" (band IMMERSIVE_MOGO, the whole work area, WS_VISIBLE) and Search's "Search" window exist on both machines and are cloaked by the shell while Start is closed; EnumWindows lists 0 windows of either process. `--watch` in the desktop while Start was opened and closed with its input tools (Win ×6, Ctrl+Esc ×1, the button ×3; Esc, Win, a second click, a click outside, typing): 10 opens, 10 closes, no Start window created or destroyed, the host's threads never suspended; open = Search takes the foreground, then Start is uncloaked 28–136 ms later (median ~65 ms) with the WNF within ±14 ms; close = WNF and Search's cloak at once, Start cloaked 100–387 ms later (median ~215 ms); `WNF_SHEL_START_VISIBILITY_CHANGED` byte 2 = 1 for Win and Ctrl+Esc, 11 for the button, and close reasons 1, 4, 6, 7, 8; no `HSHELL_TASKMAN` to a registered shell-hook window. Static: public symbol names of eight shell binaries (cdb -z), `windowsudk.winmd`, GUID bytes and XamlLauncher's vtable read from the binaries' data. The first inventory used EnumWindows and wrongly reported "no Start window" (§4) | the probe (passive modes only), the desktop's `press_keys` / `click` / `screenshot`, `cdb -z` with Microsoft's symbol server, a metadata dump (System.Reflection.Metadata), scratch `analyze_watch.py` (session 41bf36a9's scratchpad) | ✅ Not run: real hardware with a GPU (the user can run `--watch` there), Windows 10, a second monitor, `WM_SYSCOMMAND SC_TASKLIST`, the launcher service called directly |
 | **The README's `irm \| iex` install, fixed** (2026-10-16, §3.1). Before: in a claude-desktops Windows 11 desktop, `irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 \| iex` (Windows PowerShell 5.1) printed "The attribute cannot be added because variable PackageSha256 with value would no longer be valid" and installed nothing; a harmless copy of the param block reproduced it on this PC in 5.1.26100.8875 and 7.5.8 (and showed the `[scriptblock]::Create` form passing). After: the fixed `install.ps1`, piped into `Invoke-Expression` by a hidden PowerShell in that desktop, installed 0.2.8 over the running copy in 52 s ("Win+V was already released", the app started again); `-Package … -PackageSha256 nothex` was refused with "-PackageSha256 must be a SHA-256 checksum: 64 hexadecimal digits." before anything changed. `tools/release/test-iex.ps1`: FAIL on `HEAD`'s `install.ps1` and PASS on the fixed one, from pwsh 7.5.8 and from Windows PowerShell 5.1 (each checks both shells) On this PC, `-File install.ps1 -Update -Package <dummy> -PackageSha256 nothex -ResultPath …` (scratch folders, `BETTERCLIPBOARD_DATA_DIR` set): exit 1 and a result file with `ok: false` and that message; before, the binder refused it with no result file | desktop `run_command`; local `test-iex.ps1` against `git show HEAD:install.ps1` and the working tree | ✅ Not pushed: the README serves `main`'s `install.ps1`, so users get the fix only with a push. Not run: the full suite (no C# changed), `test-update.ps1` (it needs a package; the update mode's parameters are unchanged) |
 | **Ditto 3.25.113 learned and run** (2026-10-16, §2.32, `docs/ditto.md`). Installed silently in a claude-desktops Windows 11 Pro 25H2 desktop (26200.8037), plus the portable zip; BC-TEST copies only, through plain Win32 calls. Seen: the files and registry values of a first run; `TCP 0.0.0.0:23443` LISTENING and the Windows firewall prompt (installed copy only); Ctrl+\` taken (1409); a plain `Ditto.db` (UTF-16le, auto_vacuum full, journal delete, 13 indexes, 2 triggers) read correctly by `probe_ditto.py`; markers: only `Clipboard Viewer Ignore` honored, `ExcludeClipboardContentFromMonitorProcessing` and `CanIncludeInClipboardHistory = 0` copies stored; bursts of 10: 1 kept at 5/50 ms, 4 at 200 ms, 5 at 400/450 ms, 10 at ≥ 550 ms (two runs, with and without Ditto's log); a copy 343 ms after another never stored; the duplicate rule; a paste's clipboard formats; reading the database with `FileShare.ReadWrite` while Ditto runs. With BetterClipboard 0.2.8 next to it: 10 of 10 kept by BetterClipboard at 5 and 200 ms; Ditto's paste skipped by BetterClipboard ("Skipped a copy marked private by 'Ditto'"); BetterClipboard's paste stored by Ditto; both hotkeys worked; at rest Ditto 4.9 MB private / 47–109 ms CPU a minute, BetterClipboard 106.6 MB / 297–844 ms | `desktop_call` (`run_command`, `launch`, `press_keys`, `find_elements`, screenshots); session 46390d28's `ditto/vm/` scripts; `probe_ditto.py --db` and `--self-test` on this PC | ✅ The desktop was deleted with its persist folder. Not run: Ditto's elevated paste (UAC is off in those desktops), the friends network, a `.dto` export, Ditto's `master` build |
@@ -4665,6 +4757,15 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     all three privacy markers honored, an encrypted history, Win+V;
   - ideas from Ditto worth building (doc §9): special paste, pasting several cards joined, hotkeys for the Nth newest
     item, export and import of selected items, editing an item before pasting, exclusion by regular expression.
+- **Rich previews** (§2.33, [`docs/rich-previews.md`](docs/rich-previews.md)), the owner's call on the plan:
+  - the live check on Word, Teams, Outlook and Excel (`probe_rich_formats.cs --watch`), to replace the **[docs]** and
+    **[inferred]** facts with measurements;
+  - step 1, small: a thumbnail and the image peek and viewer for formatted copies that carry a picture (spreadsheets),
+    plain text from HTML-only copies, no code font for formatted copies;
+  - step 2: a peek for every card and a viewer for formatted copies (RTF in `RichEditBox`, HTML through an own
+    converter, WebView2 only on request with every request blocked);
+  - step 3: virtual files (zip contents, Outlook attachments: not recorded at all today), LibreOffice's `Markdown`,
+    perhaps Office's EMF.
 - **Timing tests that fail on GitHub's runners** (seen 2026-10-10 on code identical to a green run; a re-run of the
   failed job passed each time): `WindowsScreenshotWatcherTests.Watch_NeverLocksTheWriterOut_AndWaitsForTheEnd`
   (`reopened > 20` within 900 ms), `PromptArchiveTests.Codex_HistoryLockedByAWriter_IsReadOnceUnlocked` (the locked

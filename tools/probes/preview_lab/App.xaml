@@ -1,0 +1,17 @@
+<!--
+  The lab's application: only the WinUI control styles. Without an App.xaml there is no XAML metadata provider, and
+  constructing XamlControlsResources in code fails ("Cannot find a resource with the given key:
+  AcrylicBackgroundFillColorDefaultBrush", measured 2026-10-16).
+-->
+<Application
+    x:Class="PreviewLab.LabApp"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
