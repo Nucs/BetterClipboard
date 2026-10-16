@@ -43,6 +43,12 @@ jobs:
         shell: pwsh
         run: tools/release/test-update.ps1 -Version 0.0.0-ci -Architecture x64 -PackageDirectory artifacts/ci
 
+      # The README's install command pipes install.ps1 into Invoke-Expression, which checks every validation attribute
+      # of its param block against an empty value (tools/release/test-iex.ps1): one [ValidatePattern] broke it in 0.2.6-0.2.8.
+      - name: Installer survives irm | iex
+        shell: pwsh
+        run: tools/release/test-iex.ps1
+
       # The Chocolatey package built from that x64 smoke test, installed, upgraded and uninstalled for real on this
       # disposable runner (tools/release/test-chocolatey.ps1), so a packaging regression shows before a release.
       - name: Chocolatey package smoke test (x64)

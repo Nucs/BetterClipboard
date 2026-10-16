@@ -189,7 +189,9 @@ dummy key so releasing Win doesn't open Start — the PowerToys Keyboard-Manager
 
 ### 1.8 Prior art (ideas only — **do not copy GPL code into this repo**)
 
-- [Ditto](https://github.com/sabrogden/Ditto) (C++/MFC, GPL-3.0) — classic, DB-backed, very configurable.
+- [Ditto](https://github.com/sabrogden/Ditto) (C++/MFC, GPL-3.0) — classic, DB-backed, very configurable. Studied in
+  depth on 2026-10-16 (source, wiki, and the 3.25.113 release running in a test desktop): §2.32 and
+  [`docs/ditto.md`](docs/ditto.md).
 - [CopyQ](https://github.com/hluk/CopyQ) (C++/Qt, GPL-3.0) — scripting, tabs, documents the ignore formats.
 - [PowerToys Advanced Paste](https://github.com/microsoft/PowerToys) (C#, MIT) — WinUI 3, uses the WinRT
   history API, owns `Win+Shift+V` here.
@@ -224,7 +226,9 @@ identities, whose prompts, rewrites — structure only, §2.21),
 another process appends to a file, §2.21),
 [`probe_summon.cs`](tools/probes/probe_summon.cs) (how fast the panel appears after Win+V, from screen pixels; where a
 letter typed right after Win+V goes; DWM's latency per way of revealing a window — injects keys, so it runs only inside a
-claude-desktops Windows desktop, §2.27).
+claude-desktops Windows desktop, §2.27),
+[`probe_ditto.py`](tools/probes/probe_ditto.py) (where Ditto keeps its settings and history, and what a `Ditto.db`
+holds — structure, counts, formats, never content; `--self-test` builds a BC-TEST database shaped like Ditto's, §2.32).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -284,7 +288,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29). The panel's weekly update reminder and its keyboard guard for clicked tooltips are §2.30. |
 | [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,189 tests, one class at a time — §4: the weekly update reminder (§2.30, 26 cases: once a week to the second, a clock that was wrong, who is never reminded, the room over the window, the setting); the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it (§2.31: onto the first group shown or the clipboard icon, as a walk that shows its groups or one that only picks, when Space and Enter pick or go back with the group, when Down leaves from the lowest group, and held keys acting once), one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
 | [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller) (337 tests). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`release/test-iex.ps1`](tools/release/test-iex.ps1) (checks that `install.ps1`'s param block survives the README's `irm \| iex` in 5.1 and 7 — CI runs it, §3.1), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2). |
 
@@ -3147,6 +3151,106 @@ that group and go back to focusing on the tabs row. multiselect remains same".
   into view by the same call as before); deleting the group under the ring (the ring then shows on the logo).
 - The README's photos do not show it.
 
+### 2.32 Ditto: the clipboard manager users come from (research 2026-10-16; nothing built yet)
+
+User requests (2026-10-16): "do we support anything with ditto?" (no: nothing in `src/` or `tests/`), then "Learn all
+about Ditto". The full report is [`docs/ditto.md`](docs/ditto.md); this section keeps what BetterClipboard's code and
+decisions need. How it was learned:
+- Source `sabrogden/Ditto` at `a80fd35` (2026-09-30) and its wiki at `6c3581c`, in `refs/Ditto`, `refs/Ditto.wiki`
+  (git-ignored, **GPL-3.0: read for interoperability, nothing copied**).
+- Release 3.25.113.0 (2025-09-27; SHA-256 equal to GitHub's digests; signed by SignPath Foundation), run in a
+  claude-desktops Windows 11 desktop with BC-TEST data only. The desktop was deleted afterwards.
+- Public numbers from GitHub, SourceForge and Chocolatey.
+
+**What it is.**
+- A C++/MFC clipboard manager by Scott Brogden, on SourceForge since 2003-06-24 and on GitHub since 2020.
+- Reach: 7,314 stars; 4.15 M SourceForge downloads; ~2.65 M GitHub release downloads; Chocolatey `ditto` 459 k
+  (+ `ditto.install` 112 k, `ditto.portable` 84 k); winget `Ditto.Ditto`; the Microsoft Store.
+- **No release for a year:** `master` is 70 commits past 3.25.113.
+
+**Facts BetterClipboard depends on** **[verified]** unless marked:
+- **Where the history is:** plain SQLite, **not encrypted**. `%APPDATA%\Ditto\Ditto.db` for the installed copy, next to
+  `Ditto.exe` for the portable one.
+  - The path is the setting `DBPath3`: `HKCU\Software\Ditto`, or `[Ditto]` in a UTF-16LE `Ditto.Settings` ini (relative
+    = the exe's folder). Environment variables are allowed.
+  - Marker files next to the exe pick the kind: `portable`, `chocolatey` (`%LOCALAPPDATA%\Ditto_ChocolateyApp`),
+    `WindowsApp` (the Store) **[source]**. The table is in the doc's §2.
+- **Schema:** `encoding = UTF-16le` (opened with `sqlite3_open16`), `auto_vacuum` full, `journal_mode` delete,
+  `user_version` 0.
+  - `Main` holds one row per clip or group:
+    - `lDate`: Unix seconds of the first copy;
+    - `mText`: the first 500 characters;
+    - `clipOrder`: a REAL counter that orders the list, not a time;
+    - `lastPasteDate`;
+    - `lParentID`: −1, or the group's `lID`;
+    - `bIsGroup`;
+    - `lDontAutoDelete`;
+    - `stickyClipOrder`: −2147483647 when not sticky;
+    - hotkeys, quick-paste text.
+  - `Data` holds one row per format: `strClipBoardFormat` + `ooData`, raw bytes.
+  - The format names are BetterClipboard's own (`ClipFormatNames`): `CF_UNICODETEXT`, `CF_DIB`, `CF_HDROP`,
+    `HTML Format`, `Rich Text Format`, `PNG`. Text also keeps the synthesized `CF_TEXT`.
+  - Deletes go through a `MainDeletes` trigger: data stays in the file until a pass when the PC has been idle 10 minutes
+    **[source]**.
+- **Reading it while Ditto runs:** a reader that shares write access works (`FileShare.ReadWrite`); `FileShare.Read`
+  fails with a sharing violation.
+- **Ditto drops copies by design.** Every notification restarts a 100 ms timer, and a copy within 500 ms of the last
+  saved one is dropped, logged only as "Clip copy to fast" (`SaveClipDelay`).
+  - Measured with 10 copies per gap: 1 kept at 5 and 50 ms; 4 at 200 ms; 5 at 400 and 450 ms (**the last one lost**);
+    10 at 550 ms and up.
+  - BetterClipboard, side by side on the same copies: 10 of 10 at 5 ms and at 200 ms.
+  - Two copies 343 ms apart: the second never reached Ditto.
+- **Privacy markers:** 3.25.113 honors only `Clipboard Viewer Ignore`.
+  - It **stored** copies marked `ExcludeClipboardContentFromMonitorProcessing` and `CanIncludeInClipboardHistory = 0`.
+  - `master` added both on 2025-12-05 (`b0533af`), unreleased. Until a release, password managers that set only those
+    markers end up in Ditto's plain database.
+- **Network:** the installed copy listens on **TCP 0.0.0.0:23443** from its first start, to receive clips from
+  "friends".
+  - Windows showed its firewall prompt at once ("Publisher: Unknown": the version resource has no CompanyName); Cancel
+    added inbound Block rules. The portable copy does not listen.
+  - Encryption: AES-256 with a shared password, default `LetMeIn` **[source]**.
+- **Pasting:** Ditto writes the clip through OLE **plus `Clipboard Viewer Ignore`**, re-activates the target and sends
+  Ctrl+V with `keybd_event`.
+  - After a Ditto paste the clipboard held `DataObject`, `CF_TEXT`, `CF_UNICODETEXT`, `Clipboard Viewer Ignore`,
+    `Ole Private Data`, `CF_LOCALE`, `CF_OEMTEXT`; the owner was Ditto.
+  - Into an elevated window it starts an elevated copy of itself with `runas` (a UAC prompt) **[source]**.
+- **Hotkeys:** `RegisterHotKey` only, default Ctrl+\`; it cannot get Win+V while Explorer holds it (its wiki suggests
+  AutoHotkey). A hotkey that is taken fails silently (a log line).
+- **No source app is stored,** and Windows' own clipboard history is not imported **[source]**.
+- **Footprint at rest** in the test desktop: Ditto 4.9 MB private and 47–109 ms CPU a minute; BetterClipboard 106.6 MB
+  and 297–844 ms (its panel is kept rendered for an instant Win+V, §2.27).
+
+**Next to BetterClipboard.**
+- Both record every normal copy; the two kept counting with 0 locked out.
+- Ditto's pastes are skipped by BetterClipboard: its log says "Skipped a copy marked private by 'Ditto'". The item is
+  in Ditto already.
+- BetterClipboard's pastes become new Ditto entries: it writes no ignore marker. Keep it that way; Win+V's history would
+  lose them too. An option at most.
+- Win+V and Ctrl+\` do not clash.
+
+**Proposed, not built:** "Import from Ditto", read-only, in Settings › Integrations. The doc's §8 has the locating
+order, the mapping and the rules:
+- sticky or never-delete clips become pinned;
+- groups become groups;
+- `CF_TEXT` next to `CF_UNICODETEXT` is dropped;
+- a new `ClipOrigin.Ditto` = 12 with the Windows import's semantics;
+- `.dto` exports too.
+
+**Tooling.**
+- [`tools/probes/probe_ditto.py`](tools/probes/probe_ditto.py) finds Ditto's databases, describes one (structure,
+  counts, formats, payload checks; never content) and has a `--self-test`. It read the test desktop's real databases
+  correctly.
+- The desktop scripts are in session 46390d28's scratchpad, `ditto/vm/`: BC-TEST copies through plain Win32 calls,
+  markers, bursts, a clipboard description that does not open the clipboard, a hotkey probe.
+
+**Found on the way: the README's install command was broken** (§3.1; fixed 2026-10-16, reaches users with a push). The
+`irm …/install.ps1 | iex` command failed in Windows PowerShell 5.1 and PowerShell 7 with "The attribute cannot be added
+because variable PackageSha256 with value would no longer be valid".
+- The cause: `[ValidatePattern]` on `-PackageSha256`, added in `7d7df8d` (2026-10-09). `| iex` checks it against the
+  empty value.
+- Since the push of 2026-10-10 (v0.2.6), the README's first command printed only that error. Its other form,
+  `& ([scriptblock]::Create(…))`, kept working, and every test used `-File` or that form.
+
 ---
 
 ## 3. Build · run · test
@@ -3156,6 +3260,8 @@ dotnet build BetterClipboard.sln                               # everything (App
 dotnet test --solution BetterClipboard.sln                     # 1,526 tests (1,523 run; opt-in tests + 1 explicit measurement skipped)
 pwsh tools/release/test-update.ps1 -Version X.Y.Z -PackageDirectory artifacts/release   # install.ps1's update mode
                                                                # against a package; scratch folders only (§2.29)
+pwsh tools/release/test-iex.ps1                                # install.ps1's param block survives `irm | iex`
+                                                               # (5.1 and 7; changes nothing, §3.1)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -3355,6 +3461,22 @@ Snipping tab (2026-10-01), with a copy of the dev build:
     Before, the leftover process object of a crashed BetterClipboard, or a copy running as administrator, ended a
     full install with "Cannot stop process … Access is denied" after the running app had been closed (§4, §5).
     The update mode was never affected: it matches processes by their program's path.
+  - **Since 2026-10-16: `irm | iex` works again.**
+    - **The bug:** from `7d7df8d` (2026-10-09; pushed with v0.2.6 on 2026-10-10) the param block had
+      `[ValidatePattern]` on `-PackageSha256`. `Invoke-Expression` does not bind parameters: it runs the param block as
+      variable declarations and checks each attribute against the empty value. So the README's first command,
+      `irm …/install.ps1 | iex`, printed "The attribute cannot be added because variable PackageSha256 with value
+      would no longer be valid" and did nothing, in Windows PowerShell 5.1 and PowerShell 7.
+    - **How it was found:** in the Ditto research's test desktop (§2.32). Nothing noticed it earlier: the README's
+      second form (`& ([scriptblock]::Create(…)) …`), `-File`, `install-local.ps1` and every test bind parameters
+      normally.
+    - **The fix:** the pattern is checked in the script body ("-PackageSha256 must be a SHA-256 checksum: 64
+      hexadecimal digits."), before anything is downloaded.
+    - **Verified:** in a test desktop, the fixed script piped into `Invoke-Expression` installed 0.2.8 over a running
+      copy in 52 s, and a malformed hash was refused with that message. Locally
+      [`tools/release/test-iex.ps1`](tools/release/test-iex.ps1) fails on the old `install.ps1` and passes on the
+      fixed one, in both shells. CI runs it on every push.
+    - **Users have it only after a push to `main`:** the README downloads `main`'s `install.ps1`.
   - **A Chocolatey copy** (`lib\betterclipboard\tools\app`, §3.2) is respected:
     - install warns about it and leaves a startup entry that starts it;
     - `-Uninstall` keeps a startup entry that starts that copy; its own entry or a stale one goes, or, while that copy
@@ -4122,6 +4244,18 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   - The result file's members (`version`, `ok`, `error`, `finishedUtc`) belong to the contract: the old app reads them.
   - [`tools/release/test-update.ps1`](tools/release/test-update.ps1) runs the command line against the packaged zip in CI
     and in the release job. It is safe on this PC too (scratch folders; it proves that nothing else changed).
+- **No validation attributes in `install.ps1`'s param block** (`[ValidatePattern]`, `[ValidateSet]`,
+  `[ValidateNotNullOrEmpty]`, `[ValidateScript]`, …). The README's `irm … | iex` runs the param block as variable
+  declarations and checks every attribute against the empty value, so one of them stops every install before its first
+  line. It did from 0.2.6 to 0.2.8 (§3.1). Check values in the script body;
+  [`tools/release/test-iex.ps1`](tools/release/test-iex.ps1) (CI) fails otherwise. `-File`, `install-local.ps1` and the
+  README's `[scriptblock]::Create` form bind parameters normally, so they never show this: test the `iex` form itself
+  after any change to the param block.
+- **`Start-Process -Wait` waits for the whole process tree** (Windows PowerShell 5.1 and PowerShell 7). Measured
+  2026-10-16: a child that started a 5-second `ping` and exited at once kept `-Wait` for 6.1–6.4 s, while
+  `-PassThru` + `WaitForExit()` returned after 0.4 s. An installer that starts its app (Ditto's, BetterClipboard's)
+  never "finishes" for `-Wait`: a claude-desktops `run_command` hung until its timeout, and the desktop agent answered
+  nothing else meanwhile. Wait for the installer process alone, or start apps with the agent's `launch`.
 - **Never test an update on the user's installed copy,** and never give the regular instance another feed. Use an
   isolated instance with `BETTERCLIPBOARD_UPDATE_FEED` and an `installer.json` of its own for a scratch copy, or a
   claude-desktops Windows desktop (§2.29). **The one exception is the user asking for exactly that** ("manual QA my
@@ -4273,6 +4407,8 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **The README's `irm \| iex` install, fixed** (2026-10-16, §3.1). Before: in a claude-desktops Windows 11 desktop, `irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 \| iex` (Windows PowerShell 5.1) printed "The attribute cannot be added because variable PackageSha256 with value would no longer be valid" and installed nothing; a harmless copy of the param block reproduced it on this PC in 5.1.26100.8875 and 7.5.8 (and showed the `[scriptblock]::Create` form passing). After: the fixed `install.ps1`, piped into `Invoke-Expression` by a hidden PowerShell in that desktop, installed 0.2.8 over the running copy in 52 s ("Win+V was already released", the app started again); `-Package … -PackageSha256 nothex` was refused with "-PackageSha256 must be a SHA-256 checksum: 64 hexadecimal digits." before anything changed. `tools/release/test-iex.ps1`: FAIL on `HEAD`'s `install.ps1` and PASS on the fixed one, from pwsh 7.5.8 and from Windows PowerShell 5.1 (each checks both shells) On this PC, `-File install.ps1 -Update -Package <dummy> -PackageSha256 nothex -ResultPath …` (scratch folders, `BETTERCLIPBOARD_DATA_DIR` set): exit 1 and a result file with `ok: false` and that message; before, the binder refused it with no result file | desktop `run_command`; local `test-iex.ps1` against `git show HEAD:install.ps1` and the working tree | ✅ Not pushed: the README serves `main`'s `install.ps1`, so users get the fix only with a push. Not run: the full suite (no C# changed), `test-update.ps1` (it needs a package; the update mode's parameters are unchanged) |
+| **Ditto 3.25.113 learned and run** (2026-10-16, §2.32, `docs/ditto.md`). Installed silently in a claude-desktops Windows 11 Pro 25H2 desktop (26200.8037), plus the portable zip; BC-TEST copies only, through plain Win32 calls. Seen: the files and registry values of a first run; `TCP 0.0.0.0:23443` LISTENING and the Windows firewall prompt (installed copy only); Ctrl+\` taken (1409); a plain `Ditto.db` (UTF-16le, auto_vacuum full, journal delete, 13 indexes, 2 triggers) read correctly by `probe_ditto.py`; markers: only `Clipboard Viewer Ignore` honored, `ExcludeClipboardContentFromMonitorProcessing` and `CanIncludeInClipboardHistory = 0` copies stored; bursts of 10: 1 kept at 5/50 ms, 4 at 200 ms, 5 at 400/450 ms, 10 at ≥ 550 ms (two runs, with and without Ditto's log); a copy 343 ms after another never stored; the duplicate rule; a paste's clipboard formats; reading the database with `FileShare.ReadWrite` while Ditto runs. With BetterClipboard 0.2.8 next to it: 10 of 10 kept by BetterClipboard at 5 and 200 ms; Ditto's paste skipped by BetterClipboard ("Skipped a copy marked private by 'Ditto'"); BetterClipboard's paste stored by Ditto; both hotkeys worked; at rest Ditto 4.9 MB private / 47–109 ms CPU a minute, BetterClipboard 106.6 MB / 297–844 ms | `desktop_call` (`run_command`, `launch`, `press_keys`, `find_elements`, screenshots); session 46390d28's `ditto/vm/` scripts; `probe_ditto.py --db` and `--self-test` on this PC | ✅ The desktop was deleted with its persist folder. Not run: Ditto's elevated paste (UAC is off in those desktops), the friends network, a `.dto` export, Ditto's `master` build |
 | **v0.2.8 released** (2026-10-10, "We did some changes, make sure they are included in new release. release the new version."). The changes were `c0db2d1` and `03f5058` (the groups column's keys), made by another session after the bump `fe3367b`. Both are in the tag: v0.2.8 is on `ccde6fb`, the head of `main`, and only CLAUDE.md changed after `03f5058`. The push range `350d949..ccde6fb` (11 commits) was scanned first: 0 binary files, 0 secret-like lines in the diffs or the messages, no email address. `main` pushed; CI run 38070424994 green in ~3.5 min (1,526 = 1,522 passed + 4 skipped, the update mode, the Chocolatey smoke test). Tag `v0.2.8`: annotated, `--cleanup=whitespace`, message = the newest notes draft (`03f5058`'s, found with the anchored lookup), identical to the notes file (3,940 characters). Release run 38070699975 green at the first attempt (~5.5 min; 1,526 = 1,522 + 4 skipped); published 17:16:38Z, Latest. Assets: the zips (x64 71.1 MB `e7f8d58b…`, ARM64 68.7 MB `bcb3aeff…`), the two `.7z`, `betterclipboard.0.2.8.nupkg` (82.4 MB, attached only: no `CHOCOLATEY_API_KEY` secret), `install.ps1`, `SHA256SUMS.txt`. All four sums equal GitHub's digests; the body is the notes plus the code-signing footer, with no mojibake; the `install.ps1` asset equals the blob except for CRLF. Not reinstalled: the user's PC runs `0.2.8+03f5058` (the row below), which has the released app code. Since this push, `irm \| iex` from `main` has `b14a76c`'s `Stop-RunningApp` | `gh api …/releases/tags/v0.2.8`, `gh release download`, `gh run view --log`, scratch `verify_release.py` | ✅ |
 | **0.2.8 installed on this PC a third time, from `03f5058`** (2026-10-10, the user's answer "Yes, reinstall" to the question asked before the change of the row below was written; §3.1's "move X.Y.Z to the latest changes" path). In a worktree at `03f5058`: the full suite 1,526 = 1,523 passed + 3 skipped, 0 failed; `package.ps1 -Version 0.2.8 -Architectures x64` (zip 71.2 MB, `.7z` 43.5 MB); `test-update.ps1 -Version 0.2.8` 17 of 17. `install-local.ps1` with that worktree's `install.ps1` (Windows PowerShell 5.1, env stripped, `-NoLaunch`, 17 s): SHA-256 OK (`79551c9c…`), the running `0.2.8+c0db2d1` closed gracefully ("Exiting."), "Win+V was already released from Explorer", the leftover process object (PID 97064, 0 threads) skipped. Started through Explorer with a temporary shortcut (`--background`): PID 69996, parent `explorer.exe`, 76 environment variables without `CLAUDECODE` and `MSYSTEM`. Afterwards: the exe 0.2.8.0 / `0.2.8+03f5058…`; Installed apps and `installer.json` 0.2.8; unchanged: the Run key's value names (BetterClipboard, IDMan) and command line, the Start menu shortcut, `DisabledHotkeys` (`V`), Explorer's 42 Advanced values, the user PATH (hash), the update settings, and the five Explorer processes (no restart). Log after "BetterClipboard 0.2.8 starting": 0 WRN/ERR; store opened (encrypted); "Win+V registered with RegisterHotKey"; automatic update check on; the panel prepared in 559 ms | as for the row "The corrected 0.2.8 installed on this PC" below | ✅ The PC runs the candidate with every change of §2.31. The keys were not driven on the user's screen: their live check is the row below. **Tag v0.2.8 on `03f5058` or a later commit.** Nothing is pushed or tagged |
 | **Groups column: Space, Enter and Down on the last group go back to the list** (2026-10-10, §2.31: "If not multi-select and user is on the last group existing and he presses down the move. If no multi-select and user uses enter/space then select that group and go back to focusing on the tabs row. multiselect remains same"; the user chose "Leave the groups" for the unfinished first sentence). On a third claude-desktops Windows 11 desktop (1600×900 at 100 %, deleted afterwards), a self-contained build of the tree (`0.2.8-dev.walk3`), with the same BC-TEST items and three groups with one card each, the same helpers, and the state read through UI Automation. **A walk that shows:** Up ×3, Down ×3 → the ring on Ideas, the last group, and the footer reads "↑ ↓ groups · ↵ or → back to the list"; Down → the walk ends, Ideas stays shown, the footer is the tab's again; Down again → the list. Held Down (7 key-downs from Work) → Home, Ideas, and it stops there, still in the walk. Up, then Enter → the walk ends with Home shown and the panel stays open (nothing pasted); Right → the next tab; Left, Enter → the card is pasted (the panel goes away, the clipboard holds it). Space → the walk ends with Work shown and the search box stays empty. Held Enter (6 key-downs) → the walk ends once and nothing is pasted; held Space (6) → the walk ends once and nothing is typed. On the logo, Enter → the walk ends with the whole history. Shift+Enter in the walk → pastes as plain text, as before. **A walk that picks, unchanged** (Ctrl+click: Work + Ideas): Down ×4 → the ring stops on the last group and the walk stays; Space → Ideas leaves; Enter → Ideas joins. The app's log: 0 WRN/ERR. Unit tests: `PanelNavigationTests` 117 cases (87 before): `StepInGroups` 17 cases, `PickKey` 34 cases with the walk that shows and the repeats after a walk, and one whole walk that shows. Core 1,189 of 1,189. The whole suite: 1,526 = 1,522 passed + 3 opt-in skipped + 1 failed (`QuickSuccessiveCopies_AreAllCaptured`, the timing test of §6, which this change does not touch). 0 doc warnings on a `--no-incremental` rebuild (117 warnings as before) | claude-desktops MCP tools; helpers in session 6c903e69's scratchpad, `vm/` (`step.ps1`, `holdkey.ps1`, `state.ps1`, …); the test executables; `dotnet build --no-incremental` | ✅ Not run: the dark theme, a column longer than the panel, real hardware |
@@ -4395,6 +4531,18 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 ## 6. Roadmap / known gaps
 
+- **Push the `irm | iex` fix** (2026-10-16, §3.1). Until `main` has it, the README's first install command fails for
+  everyone; the `[scriptblock]::Create` form works meanwhile. The installers inside the v0.2.6–v0.2.8 zips need no
+  release: the update button runs them with `-File`, which binds parameters normally.
+- **Ditto** (§2.32, [`docs/ditto.md`](docs/ditto.md)):
+  - "Import from Ditto…" in Settings › Integrations, read-only, as designed in the doc's §8: find the database
+    (registry, ini files, a running portable copy, or a chosen file / `.dto` export), stream it newest first through the
+    history worker in slices, map sticky and never-delete clips to pins and Ditto's groups to groups, `ClipOrigin.Ditto`
+    with the Windows import's rules, a summary of what has no equivalent (per-clip hotkeys, quick-paste text);
+  - the README could say what Ditto users gain: every copy kept (Ditto drops copies within 0.5 s of the last one),
+    all three privacy markers honored, an encrypted history, Win+V;
+  - ideas from Ditto worth building (doc §9): special paste, pasting several cards joined, hotkeys for the Nth newest
+    item, export and import of selected items, editing an item before pasting, exclusion by regular expression.
 - **Timing tests that fail on GitHub's runners** (seen 2026-10-10 on code identical to a green run; a re-run of the
   failed job passed each time): `WindowsScreenshotWatcherTests.Watch_NeverLocksTheWriterOut_AndWaitsForTheEnd`
   (`reopened > 20` within 900 ms), `PromptArchiveTests.Codex_HistoryLockedByAWriter_IsReadOnceUnlocked` (the locked

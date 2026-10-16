@@ -181,8 +181,10 @@ param(
     [Parameter(ParameterSetName = 'Install')]
     [string] $Package,
 
+    # No validation attributes in this block: `irm ... | iex` turns it into variable declarations and checks every
+    # attribute against the empty value, so one [ValidatePattern] stops the README's command before it starts
+    # (Windows PowerShell 5.1 and PowerShell 7). The hash is checked in the script body instead.
     [Parameter(ParameterSetName = 'Install')]
-    [ValidatePattern('^\s*[0-9a-fA-F]{64}\s*$')]
     [string] $PackageSha256,
 
     [Parameter(ParameterSetName = 'Install')]
@@ -1222,6 +1224,12 @@ function Install-BetterClipboard {
 
     if ($PackageSha256 -and -not $Package) {
         throw '-PackageSha256 is the checksum of a -Package; give the zip too.'
+    }
+
+    # Checked here rather than with [ValidatePattern] on the parameter, which breaks `irm ... | iex` (see the param
+    # block). A malformed value fails before anything is downloaded or changed, and an update reports it in -ResultPath.
+    if ($PackageSha256 -and $PackageSha256 -notmatch '^\s*[0-9a-fA-F]{64}\s*$') {
+        throw '-PackageSha256 must be a SHA-256 checksum: 64 hexadecimal digits.'
     }
 
     if ($Update) {
