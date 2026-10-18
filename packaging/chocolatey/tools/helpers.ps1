@@ -22,6 +22,16 @@ $BetterClipboardAppFolderName = 'app'
 $BetterClipboardRunKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 $BetterClipboardRunValue = 'BetterClipboard'
 
+# The "Start with Windows" entry for every user of the PC: the same value name in the PC's registry. It is read and
+# written in the 64-bit view whatever PowerShell runs the script (Open-BetterClipboardMachineKey), and it carries
+# --all-users-startup, so the app ends at once for a user who has an entry of their own or turned it off in its
+# Settings (src/BetterClipboard.Core/Startup/SignInStartup.cs). Only an administrator can write it.
+$BetterClipboardMachineRunSubKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+$BetterClipboardAllUsersSwitch = '--all-users-startup'
+
+# The Installed-apps entry install.ps1 -AllUsers writes for its copy for every user (64-bit view).
+$BetterClipboardMachineUninstallSubKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\BetterClipboard'
+
 $BetterClipboardShortcutName = 'BetterClipboard.lnk'
 
 # Written by before-modify (before an upgrade or an uninstall), read and deleted by the next install script: its
@@ -157,6 +167,160 @@ function Get-BetterClipboardRunTarget {
     }
 
     return ''
+}
+
+function Open-BetterClipboardMachineKey {
+    <#
+    .SYNOPSIS
+        Opens a key of the PC's registry (HKEY_LOCAL_MACHINE) in its 64-bit view, or returns $null when it is missing.
+    .DESCRIPTION
+        A 32-bit PowerShell (Chocolatey run with --x86, an RMM agent's) would read and write HKLM\SOFTWARE in its
+        redirected WOW6432Node copy, where the 64-bit app never looks; the 64-bit view is the same key for every caller.
+    .PARAMETER SubKey
+        Path under HKEY_LOCAL_MACHINE, e.g. SOFTWARE\Microsoft\Windows\CurrentVersion\Run.
+    .PARAMETER Writable
+        Open it for writing; with -Create, create it when missing (an existing key is opened as it is, never emptied).
+    .PARAMETER Create
+        Create the key when it does not exist (needs -Writable).
+    .OUTPUTS
+        Microsoft.Win32.RegistryKey - the caller disposes it - or $null.
+    .NOTES
+        Throws when the registry refuses the access (writing without administrator rights), which the caller reports.
+    #>
+    param([string] $SubKey, [switch] $Writable, [switch] $Create)
+    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        if ($Create) {
+            return $base.CreateSubKey($SubKey, $true)
+        }
+
+        return $base.OpenSubKey($SubKey, [bool] $Writable)
+    }
+    finally {
+        $base.Dispose()
+    }
+}
+
+function Get-BetterClipboardMachineRunTarget {
+    <#
+    .SYNOPSIS
+        Executable that the "Start with Windows" entry for every user starts, or '' without one.
+    .DESCRIPTION
+        The entry is '"<exe>" --background --all-users-startup'; the quoted path is returned.
+    .OUTPUTS
+        System.String.
+    .NOTES
+        Never throws: a key that cannot be read counts as no entry.
+    #>
+    try {
+        $key = Open-BetterClipboardMachineKey -SubKey $BetterClipboardMachineRunSubKey
+        if (-not $key) {
+            return ''
+        }
+
+        try {
+            $command = [string] $key.GetValue($BetterClipboardRunValue, '')
+        }
+        finally {
+            $key.Dispose()
+        }
+
+        if ($command -match '^\s*"([^"]+)"') {
+            return $Matches[1]
+        }
+    }
+    catch {
+        # Fall through: unreadable is treated as no entry.
+    }
+
+    return ''
+}
+
+function Set-BetterClipboardMachineRunEntry {
+    <#
+    .SYNOPSIS
+        Writes the "Start with Windows" entry for every user of the PC for an executable: '"<exe>" --background
+        --all-users-startup'.
+    .DESCRIPTION
+        Only this one value of the Run key is ever written: the key holds every other program's entry for every user.
+        The executable must lie in a folder every user may read (the package's lib folder does).
+    .PARAMETER Exe
+        Full path of BetterClipboard.exe.
+    .OUTPUTS
+        None.
+    .NOTES
+        Throws without administrator rights, which the caller reports.
+    #>
+    param([string] $Exe)
+    $key = Open-BetterClipboardMachineKey -SubKey $BetterClipboardMachineRunSubKey -Writable -Create
+    try {
+        $key.SetValue($BetterClipboardRunValue, "`"$Exe`" --background $BetterClipboardAllUsersSwitch", [Microsoft.Win32.RegistryValueKind]::String)
+    }
+    finally {
+        $key.Dispose()
+    }
+}
+
+function Remove-BetterClipboardMachineRunEntry {
+    <#
+    .SYNOPSIS
+        Removes the "Start with Windows" entry for every user of the PC; nothing else of the Run key.
+    .OUTPUTS
+        None.
+    .NOTES
+        Throws without administrator rights, which the caller reports. No key or no value is no error.
+    #>
+    $key = Open-BetterClipboardMachineKey -SubKey $BetterClipboardMachineRunSubKey -Writable
+    if (-not $key) {
+        return
+    }
+
+    try {
+        $key.DeleteValue($BetterClipboardRunValue, $false)
+    }
+    finally {
+        $key.Dispose()
+    }
+}
+
+function Get-BetterClipboardAllUsersInstall {
+    <#
+    .SYNOPSIS
+        Path of BetterClipboard.exe that install.ps1 -AllUsers installed for every user of the PC, or $null.
+    .DESCRIPTION
+        install.ps1 -AllUsers registers an Installed-apps entry under HKLM (64-bit view) whose InstallLocation names its
+        folder (default: Program Files\BetterClipboard). Like the package's copy it can be started by every user, so it
+        is the one the "Start with Windows" entry for every user is handed to when the package goes.
+    .OUTPUTS
+        System.String, or $null.
+    .NOTES
+        Never throws.
+    #>
+    try {
+        $key = Open-BetterClipboardMachineKey -SubKey $BetterClipboardMachineUninstallSubKey
+        if (-not $key) {
+            return $null
+        }
+
+        try {
+            $location = [string] $key.GetValue('InstallLocation', '')
+        }
+        finally {
+            $key.Dispose()
+        }
+
+        if ($location.Trim()) {
+            $exe = Join-Path $location.Trim() 'BetterClipboard.exe'
+            if (Test-Path -LiteralPath $exe) {
+                return $exe
+            }
+        }
+    }
+    catch {
+        # Fall through: unreadable is treated as not installed.
+    }
+
+    return $null
 }
 
 function Test-BetterClipboardOtherCopy {

@@ -23,6 +23,15 @@ public enum UpdateInstallKind
     /// updates itself nor checks by itself; the dialog names <c>choco upgrade betterclipboard</c>.
     /// </summary>
     Chocolatey = 2,
+
+    /// <summary>
+    /// Installed for every user of the PC by <c>install.ps1 -AllUsers</c> (by default into Program Files), which the
+    /// PC's Installed-apps entry records. Only an administrator may change its files, and the app runs as a user who may
+    /// not be one, so it neither replaces itself nor checks by itself, like a Chocolatey copy: the administrator who
+    /// installed it for everyone updates it, and the dialog gives the command for that
+    /// (<see cref="UpdateSource.AllUsersInstallCommand"/>, to run in PowerShell as administrator).
+    /// </summary>
+    AllUsers = 3,
 }
 
 /// <summary>
@@ -36,10 +45,16 @@ public enum UpdateInstallKind
 /// extracted by hand has <c>install.ps1</c> next to its exe too (the zip ships it), so that file proves nothing.
 /// </para>
 /// <para>
-/// <b>The two records:</b> the Installed-apps entry's <c>InstallLocation</c> (HKCU, written by <c>install.ps1</c>), and
-/// <c>installer.json</c> in the data directory (its <c>installDir</c>). Either one naming the running folder is enough:
-/// an isolated instance has its own data directory and so its own <c>installer.json</c>, which lets a test install and
-/// update a scratch copy without touching the registry.
+/// <b>The two records of a copy installed for one user:</b> the Installed-apps entry's <c>InstallLocation</c> (HKCU,
+/// written by <c>install.ps1</c>), and <c>installer.json</c> in the data directory (its <c>installDir</c>). Either one
+/// naming the running folder is enough: an isolated instance has its own data directory and so its own
+/// <c>installer.json</c>, which lets a test install and update a scratch copy without touching the registry.
+/// </para>
+/// <para>
+/// <b>A copy installed for every user</b> (<c>install.ps1 -AllUsers</c>) is recognized by the PC's Installed-apps entry
+/// (HKLM). It is checked before the per-user records, because the administrator who installed it may have an
+/// <c>installer.json</c> of their own that names the same folder: read first, that record would make the copy try to
+/// replace a Program Files folder it may not write.
 /// </para>
 /// </remarks>
 public static class InstalledCopy
@@ -59,18 +74,29 @@ public static class InstalledCopy
     /// <c>installDir</c> from this instance's <c>installer.json</c> (<see cref="ReadInstallerStateDirectory"/>), or
     /// <see langword="null"/> when there is none.
     /// </param>
+    /// <param name="machineInstallLocation">
+    /// <c>InstallLocation</c> of the PC's Installed-apps entry for BetterClipboard (written by <c>install.ps1 -AllUsers</c>),
+    /// or <see langword="null"/> when there is none or it was not read (an isolated instance).
+    /// </param>
     /// <returns>
     /// <see cref="UpdateInstallKind.Chocolatey"/> for a folder of Chocolatey's shape (checked first: its package may be
-    /// installed next to an installer copy); <see cref="UpdateInstallKind.Installer"/> when either record names
-    /// <paramref name="appDirectory"/>; otherwise <see cref="UpdateInstallKind.Portable"/>.
+    /// installed next to an installer copy); <see cref="UpdateInstallKind.AllUsers"/> when the PC's entry names
+    /// <paramref name="appDirectory"/>; <see cref="UpdateInstallKind.Installer"/> when either per-user record names it;
+    /// otherwise <see cref="UpdateInstallKind.Portable"/>.
     /// </returns>
     /// <exception cref="ArgumentException"><paramref name="appDirectory"/> is null or blank.</exception>
-    public static UpdateInstallKind Classify(string appDirectory, string? registeredInstallLocation, string? installerStateDirectory)
+    public static UpdateInstallKind Classify(string appDirectory, string? registeredInstallLocation, string? installerStateDirectory, string? machineInstallLocation = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(appDirectory);
         if (IsChocolateyFolder(appDirectory))
         {
             return UpdateInstallKind.Chocolatey;
+        }
+
+        // Before the per-user records: the installing administrator's own installer.json may name this folder too.
+        if (SameFolder(appDirectory, machineInstallLocation))
+        {
+            return UpdateInstallKind.AllUsers;
         }
 
         return SameFolder(appDirectory, registeredInstallLocation) || SameFolder(appDirectory, installerStateDirectory)

@@ -39,6 +39,7 @@
 ## Package parameters
 
 - `/NoStartup` - don't start BetterClipboard when you sign in
+- `/AllUsersStartup` - start it when any user of this PC signs in (chosen by itself when SYSTEM or another account installs the package)
 - `/NoShortcut` - no Start menu shortcut
 - `/NoLaunch` - don't start it after installing
 
@@ -53,7 +54,7 @@ When uninstalling:
 - Requires Windows 10 version 2004 (build 19041) or later, x64 or ARM64.
 - While BetterClipboard runs, Win+V opens it: the package does not restart Explorer, so the app intercepts Win+V with a keyboard hook. To take Win+V over from Windows fully (it then also works over windows running as administrator), release it from Explorer in Settings > Shortcut.
 - Installed to `%ChocolateyInstall%\lib\betterclipboard\tools\app`; `bclip` and `BetterClipboard` are on the PATH.
-- "Start with Windows" and the first launch are for the user who installs the package; other users turn it on in Settings. Nothing is set or started when the package is installed as SYSTEM.
+- "Start with Windows" is for the user who installs the package. Installed as SYSTEM (Intune, an RMM tool), by another account, or with `/AllUsersStartup`, it is for every user of the PC instead, and each user can turn it off for themselves in BetterClipboard's Settings. The first launch is only for the signed-in user who installs.
 - Upgrades close BetterClipboard first and start it again afterwards when it was running.
 - Your history stays in `%LOCALAPPDATA%\BetterClipboard`; uninstalling keeps it.
 - The package embeds the release's 7-Zip archives; `legal\VERIFICATION.txt` says how to check them.

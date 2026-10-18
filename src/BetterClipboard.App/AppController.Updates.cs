@@ -25,7 +25,8 @@ namespace BetterClipboard.App;
 /// <b>Which copy does what</b> (<see cref="UpdateInstallKind"/>): a copy installed by <c>install.ps1</c> checks by itself
 /// and can replace itself; one extracted by hand checks but is sent to the download page (an update swaps the whole
 /// folder, which is only safe for a folder the installer made); a Chocolatey copy does neither — its package manager
-/// owns its files. An isolated instance (<see cref="AppPaths.DataDirectoryVariable"/>) never checks by itself, so tests
+/// owns its files — and neither does a copy <c>install.ps1 -AllUsers</c> installed for every user, whose folder only an
+/// administrator may change (its dialog gives the command to run as administrator). An isolated instance (<see cref="AppPaths.DataDirectoryVariable"/>) never checks by itself, so tests
 /// and dev runs do not use up the user's request allowance at GitHub; only such an instance may be pointed at a stand-in
 /// feed (<see cref="UpdateSource.FeedVariable"/>), so a variable set in the user's environment cannot redirect the
 /// installed app's updates.
@@ -105,8 +106,9 @@ public sealed partial class AppController
                     InstallerLogPath = UpdateLogPath,
                     Settings = () => Settings.Current,
 
-                    // Chocolatey updates its own copy. An isolated instance stays silent unless a test gave it a feed.
-                    AllowAutomaticChecks = kind != UpdateInstallKind.Chocolatey && (paths.InstanceScope is null || updateSource.IsOverride),
+                    // Chocolatey updates its own copy, and an administrator the copy installed for every user (whose users
+                    // may not be able to install anything). An isolated instance stays silent unless a test gave it a feed.
+                    AllowAutomaticChecks = kind is not (UpdateInstallKind.Chocolatey or UpdateInstallKind.AllUsers) && (paths.InstanceScope is null || updateSource.IsOverride),
                     Installer = kind == UpdateInstallKind.Installer ? new ScriptUpdateInstaller() : null,
                 });
             service.Changed += (_, _) => ui.TryEnqueue(() => UpdateStatusChanged?.Invoke(this, EventArgs.Empty));
@@ -164,6 +166,7 @@ public sealed partial class AppController
     {
         UpdateInstallKind.Installer => "installed by the installer (it can update itself)",
         UpdateInstallKind.Chocolatey => "a Chocolatey install (Chocolatey updates it)",
+        UpdateInstallKind.AllUsers => "installed for every user of this PC (an administrator updates it)",
         _ => "not installed by the installer (updates come from the download page)",
     };
 

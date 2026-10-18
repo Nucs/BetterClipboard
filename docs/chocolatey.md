@@ -36,7 +36,9 @@ This page covers:
 - **What the package does:**
   - installs into `%ChocolateyInstall%\lib\betterclipboard\tools\app`;
   - puts `bclip` and `BetterClipboard` on the PATH;
-  - adds the Start menu shortcut and "Start with Windows" for the installing user;
+  - adds the Start menu shortcut and "Start with Windows" for the installing user, or, when SYSTEM or another account
+    installs it (or with `/AllUsersStartup`), "Start with Windows" for every user of the PC, which each user can turn
+    off for themselves (since 2026-10-18);
   - starts the app unelevated, closes it before upgrades and uninstalls, and restarts it after an upgrade;
   - on uninstall, gives back Win+V and every other Win+letter shortcut BetterClipboard opens with that was released
     from Explorer, and keeps the history.
@@ -51,7 +53,10 @@ This page covers:
     disposable runner. First run 2026-10-02 (CI run 37007600619, commit `543d2fd`): 22 of 22 checks;
   - on a disposable Windows 11 25H2 VM with Chocolatey 2.7.4 (2026-10-03), the package-only fix `0.2.5.20261003`:
     the same test, now 28 checks, all passed; installs as SYSTEM and by a second administrator on the signed-in user's
-    desktop; and the original v0.2.5 package, which fails the new "other startup entries kept" check (section 7).
+    desktop; and the original v0.2.5 package, which fails the new "other startup entries kept" check (section 7);
+  - on another such VM (2026-10-18), with "Start with Windows" for every user: 32 of 32 plain and 32 of 32 with
+    `/AllUsersStartup`, and an install as SYSTEM whose entry started the app at the next sign-in (section 7). CI runs
+    the test twice since then, once with `-AllUsersStartup`.
 - **To publish:**
   1. create the account;
   2. add the `CHOCOLATEY_API_KEY` secret;
@@ -247,13 +252,18 @@ and never end on one.
 - **SYSTEM** (Intune, RMM, Ansible): HKCU is SYSTEM's, and no Explorer of that user exists.
 - **The package tells these apart** by the owner of the session's `explorer.exe`:
   - the shortcut goes to every user's Start menu when elevated, else to the user's own;
-  - the Run value is written unless the install runs as SYSTEM or as someone other than the desktop's user;
+  - the Run value is the desktop user's own when they install; as SYSTEM, as someone other than the desktop's user,
+    or with `/AllUsersStartup`, it is the value for every user (`HKLM`, with `--all-users-startup`; since 2026-10-18,
+    on the owner's request "Support user way or machine way if not the user is installing"). Without a desktop at all
+    (a remote shell as a regular account) nothing tells whether the account is the one who uses the PC, so it stays
+    the account's own, as before;
   - the app is started only when the installing account owns the desktop.
 
   Verified on the VM of 2026-10-03 (section 7) for all three: the desktop user; SYSTEM through a scheduled task; and
   a second administrator started with `Start-Process -Credential` in the desktop user's session. The last two wrote
-  no Run value in any account's HKCU, started nothing, restarted no Explorer, and say so in Chocolatey's log ("Start
-  it from the Start menu.").
+  no Run value in any account's HKCU, started nothing, restarted no Explorer, and said so in Chocolatey's log ("Start
+  it from the Start menu."). Since 2026-10-18 they write the value for every user instead (verified as SYSTEM on the
+  VM of that day, section 7).
 
 ### 3.5 The verifier's Windows is older than ours **[verified]**
 
@@ -322,7 +332,12 @@ We are the vendor and the license is MIT, so the package embeds. The only obstac
 4. **Fresh install only** (an upgrade keeps the user's choices):
    - the Start menu shortcut, in every user's Start menu when elevated, otherwise the user's own (`/NoShortcut`
      skips it);
-   - the "Start with Windows" value, in the app's own format `"<exe>" --background` (`/NoStartup` skips it).
+   - the "Start with Windows" value, in the app's own format `"<exe>" --background` (`/NoStartup` skips it);
+   - instead, when someone other than the signed-in user installs (SYSTEM, another account's credentials on this
+     desktop) or `/AllUsersStartup` is given: the value **for every user** (since 2026-10-18), in `HKLM\…\Run`, 64-bit
+     view, `"<exe>" --background --all-users-startup`. It needs administrator rights (a warning without them). Each
+     user can turn it off for themselves in the app's Settings, and a user's own value takes precedence (the app
+     steps aside before its single-instance lock, CLAUDE.md §2.34). Before, such an install wrote nothing and warned.
 
    Neither is taken over when it already opens another existing copy, such as `install.ps1`'s.
 5. Starts the app (`/NoLaunch` skips it), through Explorer with a temporary shortcut, so it runs unelevated and
@@ -332,8 +347,8 @@ We are the vendor and the license is MIT, so the package embeds. The only obstac
 
    Not when the installing account does not own the desktop, and not when another copy already runs in the
    session (a start would only open that copy's window). The log then says whether the app starts at the next
-   sign-in: only when this account's "Start with Windows" value starts this copy. Before 2026-10-03 it always
-   promised the next sign-in, also after an install as SYSTEM, which writes no value.
+   sign-in: only when this account's "Start with Windows" value or the value for every user starts this copy.
+   Before 2026-10-03 it always promised the next sign-in, also after an install as SYSTEM, which then wrote no value.
 6. Warns when `install.ps1`'s copy is installed too.
 7. Ends with the shortcuts that open the app, read from its `settings.json` ("While it runs, Win+V opens it"; an
    `install.ps1` copy may have set others, such as Alt+Win+V).
@@ -347,7 +362,10 @@ An upgrade is recognized by `upgrade-state.txt`, with `ChocolateyPreviousPackage
 2. Removes the shortcut, from both Start menus, and the Run value, only where they point into the package. While
    `install.ps1`'s copy stays installed, the Run value is handed to that copy instead (since 2026-10-03): both copies
    share one history, one settings file and this one value, so the user's choice to start with Windows carries over.
-   Before, the copy that stayed no longer started at sign-in.
+   Before, the copy that stayed no longer started at sign-in. The value for every user goes the same way (since
+   2026-10-18): removed when it points into the package, or handed to `install.ps1`'s copy for every user
+   (`-AllUsers`, found by the PC's Installed-apps entry) while that one stays; a failure without administrator rights
+   is a warning.
 3. **Shortcuts released from Explorer** (`DisabledHotkeys`): gives back Win+V and every Win+letter or Win+digit
    shortcut in BetterClipboard's settings (`OpenHotkey`, and `ExtraOpenHotkeys` since 0.2.6) that the value lists,
    then restarts Explorer, like `install.ps1 -Uninstall`: without the app those shortcuts do nothing. Since
@@ -508,7 +526,9 @@ both cases (the user then finds it by Win+V or the tray icon). That keeps decisi
 
 1. **Embed, as Chocolatey suggests** (section 3.6), using LZMA2 archives, which keep both architectures within
    the documented limit.
-2. **Start with Windows by default** for the installing user; `/NoStartup` opts out.
+2. **Start with Windows by default** for the installing user; `/NoStartup` opts out. Since 2026-10-18: for every
+   user when someone else installs (SYSTEM, another account) or with `/AllUsersStartup`, each user able to turn it off
+   for themselves.
 3. **Start the app after install** (and restart it after an upgrade when it was running); `/NoLaunch` opts out.
 4. **Give Win+V back on uninstall**, restarting Explorer, unless `/KeepWinVReleased` is given or `install.ps1`'s
    copy remains. Since 2026-10-03 also the other Win+letter shortcuts in BetterClipboard's settings, as
@@ -547,6 +567,7 @@ both cases (the user then finds it by Win+V or the tray icon). That keeps decisi
 | **Second audit: `test-chocolatey.ps1` under PowerShell 7** (2026-10-03) | a second disposable VM (Windows 11 25H2, Chocolatey 2.7.4, PowerShell 7.6.6 from Microsoft's MSI: the community `powershell-core` package hung there), the package with the hand-over | 28 of 28, as in Windows PowerShell 5.1: CI's shell runs the new checks |
 | **Second audit: both install channels together** (2026-10-03) | same VM, Windows PowerShell 5.1, the repository's `install.ps1` (downloading v0.2.5 from GitHub) and the package, in both orders, with real Explorer restarts | 26 of 26. Order A: `install.ps1`, package, `install.ps1 -Uninstall`: "Start with Windows" became `"C:\ProgramData\chocolatey\lib\betterclipboard\tools\app\BetterClipboard.exe" --background`, Win+V stayed released; the package's uninstall then gave everything back. Order B: package, `install.ps1`, package uninstall: the entry became `install.ps1`'s copy and Win+V stayed; `install.ps1 -Uninstall` then gave everything back. The VM was deleted |
 | **Second audit: `install.ps1`'s uninstall in the harness** (2026-10-03) | session 7579fd35's installer harness, copied with a `-SeedRun` option (scratch registry and folders, process calls stubbed) | 10 runs in PowerShell 5.1 and 7: the hand-over (own entry, stale entry), an entry of the Chocolatey copy kept, no entry left alone, no Chocolatey copy = removed; the peer's s16-s18; a full install of the local 0.2.4 zip. The user's real Run value, Installed-apps entry, `DisabledHotkeys`, shortcut, PATH and PIDs unchanged in every run |
+| **"Start with Windows" for every user** (2026-10-18) | A package of the working tree (`0.2.9-allusers`, x64) on a disposable claude-desktops VM: Windows 11 Pro 25H2 (26200), Chocolatey 2.7.4, Windows PowerShell 5.1, elevated. `test-chocolatey.ps1 -ConfirmMachineChanges` once plain and once with `-AllUsersStartup` (both now also seed and check a BC-TEST neighbor in `HKLM\…\Run`); then `choco install` and `choco uninstall` as SYSTEM through a scheduled task, with a reboot between them | 32 of 32 as the desktop user (its own entry, none for every user) and 32 of 32 with `/AllUsersStartup` (the entry for every user with `--all-users-startup`, none of the installing account's own; the upgrade keeps it; the uninstall removes it; every other entry of the user and of the PC kept). As SYSTEM: the entry for every user written by itself, nothing in SYSTEM's own registry, nothing started, and the log says "BetterClipboard starts when any user of this PC signs in…" and "It starts at the next sign-in, or from the Start menu."; after the reboot the package's copy ran in the user's session with `--background --all-users-startup`; the uninstall as SYSTEM stopped it and removed the entry and the package folder. The VM was deleted |
 
 The probe's scenarios (Chocolatey CLI 2.3.0, not elevated):
 

@@ -101,6 +101,7 @@ public static class UpdateText
             {
                 UpdateInstallKind.Installer => $"{have} Updating downloads it from GitHub, checks it, and restarts BetterClipboard. Your history is kept.",
                 UpdateInstallKind.Chocolatey => $"{have} This copy was installed with Chocolatey, which updates it: {UpdateSource.ChocolateyCommand}",
+                UpdateInstallKind.AllUsers => $"{have} This copy is installed for every user of this PC, so an administrator updates it: copy the command and run it in PowerShell as administrator.",
                 _ => $"{have} This copy was not installed with the installer, so it does not replace itself. Get the new version from the download page, or install it with the command.",
             };
         }
@@ -226,7 +227,10 @@ public static class UpdateText
     /// <summary>Why this copy does not check by itself, and what does instead.</summary>
     /// <param name="kind">How the copy was installed.</param>
     /// <returns>One sentence.</returns>
-    private static string AutomaticChecksOff(UpdateInstallKind kind) => kind == UpdateInstallKind.Chocolatey
-        ? "Chocolatey updates this copy, so BetterClipboard does not check by itself."
-        : "Automatic checks are off: BetterClipboard asks GitHub only when you press Check now.";
+    private static string AutomaticChecksOff(UpdateInstallKind kind) => kind switch
+    {
+        UpdateInstallKind.Chocolatey => "Chocolatey updates this copy, so BetterClipboard does not check by itself.",
+        UpdateInstallKind.AllUsers => "This copy is installed for every user of this PC and an administrator updates it, so BetterClipboard does not check by itself. Check now still asks GitHub.",
+        _ => "Automatic checks are off: BetterClipboard asks GitHub only when you press Check now.",
+    };
 }

@@ -70,7 +70,9 @@ you send to Claude Code and Codex.
   byte, puts text on the clipboard, waits for your next copy and searches your archived prompts, with JSON output. It
   is off by default ([Command line](#command-line-for-scripts-and-ai-agents)).
 - **One line to install.** Per user, no admin rights, SHA-256 checked, Windows 10 (2004 or newer) and Windows 11, x64
-  and ARM64, nothing else to install. Uninstalling keeps your history unless you ask ([Install](#install)).
+  and ARM64, nothing else to install; it starts with Windows from then on. As administrator, or from Intune or an RMM
+  tool, it installs for every user of a PC instead, and each user can still turn the start at sign-in off for
+  themselves. Uninstalling keeps your history unless you ask ([Install](#install)).
 - **Updates when you approve them.** The update button in the panel's header, left of Pause, is highlighted when a
   newer release is on GitHub, and once a week its tooltip says so by itself for a few seconds. A click shows the
   decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
@@ -116,6 +118,7 @@ Options (pass them through a script block):
 | `-NoUpdateCheck` | Install with the automatic update check off: BetterClipboard then never asks GitHub by itself. *Settings › Updates* has *Check now* and the switch to turn it on again. |
 | `-Version 0.1.0` | Install a specific release instead of the latest. |
 | `-Package <zip>` | Install from a release zip on disk instead of downloading one (an offline install). Put the release's `SHA256SUMS.txt` next to the zip, or give `-PackageSha256 <hash>`, and it is verified first. |
+| `-AllUsers` | Install for every user of this PC (in PowerShell as administrator); see [For every user of a PC](#for-every-user-of-a-pc). |
 | `-InstallDir <path>` | Install somewhere else. |
 | `-NoStartup` / `-NoShortcut` / `-NoLaunch` | Skip starting with Windows / the Start menu shortcut / launching after install. |
 | `-Uninstall [-RemoveData]` | Remove the app (history is kept unless `-RemoveData`). |
@@ -124,6 +127,35 @@ Prefer doing it by hand? Download the zip for your architecture and `SHA256SUMS.
 check the hash (`Get-FileHash .\BetterClipboard-*.zip`), extract anywhere and run `BetterClipboard.exe`.
 Releases are not code-signed yet, so Windows may say *Windows protected your PC* for a copy downloaded this
 way: check the hash, then *More info › Run anyway*. See [Code signing policy](#code-signing-policy).
+
+### For every user of a PC
+
+In PowerShell as administrator:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AllUsers
+```
+
+- **What it sets up:** the app in `Program Files\BetterClipboard`, in a folder only administrators may change; a Start
+  menu shortcut, an *Installed apps* entry and "Start with Windows" for every user. Each user who signs in gets
+  BetterClipboard started, with their own encrypted history in their own profile.
+- **Each user decides for themselves:** turning off *Settings › App › Start with Windows* stops the start at sign-in
+  for that user only. A user's own "Start with Windows" entry, if they have one, takes precedence, so BetterClipboard
+  never starts twice.
+- **Picked by itself** when it is not the signed-in user who installs: when the installer runs as SYSTEM (Intune, an
+  RMM tool), or with an administrator's credentials on someone else's desktop. A copy in that account's own profile
+  would serve nobody who signs in at the PC.
+- **What stays per user:** Win+V and the other shortcuts. BetterClipboard takes Win+V over with its keyboard hook for
+  everyone, and each user can release it from Explorer in *Settings › Shortcut*. `-Hotkey` and `-NoTakeOverWinV`
+  apply only when the signed-in user installs. `-AddToPath` puts the folder on the PATH of every user.
+- **Updates:** this copy does not replace itself or check for updates by itself, because its users may not be
+  administrators. An administrator runs the same command again: run as administrator on a PC with a copy for every
+  user, the installer updates that copy. *Settings › Updates › Check now* still tells you whether there is a new
+  version, and the update dialog copies the command.
+
+The [Chocolatey package](packaging/chocolatey) follows the same rule for "Start with Windows". Installed by the
+signed-in user, the entry is theirs. Installed by SYSTEM or another account, or with `/AllUsersStartup`, it is for
+every user.
 
 ## Updates
 
@@ -160,6 +192,9 @@ when you say so.
   back.
 - **A copy you extracted by hand** does not replace itself: an update replaces the whole folder, and that is only
   safe for a folder the installer made. Its dialog has the download page and the install command instead.
+- **A copy installed for every user** neither replaces itself nor checks by itself: only an administrator may change
+  its folder. *Check now* still asks, and the dialog copies the command to run in PowerShell as administrator
+  ([For every user of a PC](#for-every-user-of-a-pc)).
 
 ## Use
 
@@ -208,7 +243,8 @@ The tray icon opens the panel and Settings:
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
   remembers — including its pinned items.
 - **Integrations:** one switch for each tab of another app (see [Tabs for other apps](#tabs-for-other-apps)).
-- **App:** start with Windows, theme, the command line, the data folder.
+- **App:** start with Windows (for you alone, also when BetterClipboard was installed for every user), theme, the
+  command line, the data folder.
 - **Updates:** the switch for the daily check, *Check now*, and the update dialog ([Updates](#updates)).
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
@@ -670,6 +706,15 @@ powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\BetterClipb
 Your history stays in `%LOCALAPPDATA%\BetterClipboard` unless you add `-RemoveData`. Win+V, and every other
 Win+ shortcut that BetterClipboard released from Explorer, goes back to Windows (add `-KeepWinVReleased` to keep them
 released).
+
+A copy for every user: the same entry in *Installed apps* (it asks for administrator rights), or in PowerShell as
+administrator:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "$env:ProgramFiles\BetterClipboard\install.ps1" -Uninstall -AllUsers
+```
+
+Each user's history stays in their own profile.
 
 ## Build from source
 

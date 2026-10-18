@@ -50,9 +50,20 @@ jobs:
         run: tools/release/test-iex.ps1
 
       # The Chocolatey package built from that x64 smoke test, installed, upgraded and uninstalled for real on this
-      # disposable runner (tools/release/test-chocolatey.ps1), so a packaging regression shows before a release.
+      # disposable runner (tools/release/test-chocolatey.ps1), so a packaging regression shows before a release. The
+      # second run asks for the "Start with Windows" entry for every user (/AllUsersStartup), which an install as SYSTEM
+      # or by another account writes by itself.
       - name: Chocolatey package smoke test (x64)
         shell: pwsh
         run: |
           tools/release/package-chocolatey.ps1 -Version 0.0.0-ci -Architectures x64 -ArtifactsDirectory artifacts/ci
           tools/release/test-chocolatey.ps1 -Version 0.0.0-ci -Architectures x64 -PackageDirectory artifacts/ci
+          # A script's "exit 1" only sets the exit code and lets the next line run: stop on it here.
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          tools/release/test-chocolatey.ps1 -Version 0.0.0-ci -Architectures x64 -PackageDirectory artifacts/ci -AllUsersStartup
+
+      # install.ps1's install for every user, for real on this disposable runner: with -AllUsers as the signed-in
+      # administrator, and as SYSTEM (a scheduled task), which must pick it by itself (tools/release/test-all-users.ps1).
+      - name: Installer for every user (x64)
+        shell: pwsh
+        run: tools/release/test-all-users.ps1 -Version 0.0.0-ci -Architecture x64 -PackageDirectory artifacts/ci

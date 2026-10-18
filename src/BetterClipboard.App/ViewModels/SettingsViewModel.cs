@@ -2,6 +2,7 @@ using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Integrations;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Settings;
+using BetterClipboard.Core.Startup;
 using BetterClipboard.Windows.Clipboard;
 using BetterClipboard.Windows.Input;
 using BetterClipboard.Windows.Integrations;
@@ -225,9 +226,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int ThemeIndex { get; set; }
 
-    /// <summary>Start with Windows (Run key; not stored in settings.json).</summary>
+    /// <summary>
+    /// Start with Windows: whether this copy starts when this user signs in (<see cref="SignInStartup.StartsThisCopy"/>),
+    /// from the user's own Run entry, or from the entry an installation for every user wrote unless this user turned it
+    /// off (<see cref="AppSettings.SkipAllUsersStartup"/>, the only part kept in settings.json).
+    /// </summary>
     [ObservableProperty]
     public partial bool LaunchAtStartup { get; set; }
+
+    /// <summary>
+    /// The Start with Windows card's description: what the switch does, and when an installation set BetterClipboard up
+    /// for every user of this PC, that turning it off changes it only for this user (<see cref="SignInStartup.Describe"/>).
+    /// </summary>
+    [ObservableProperty]
+    public partial string LaunchAtStartupDescription { get; set; } = "Start quietly in the notification area when you sign in.";
 
     /// <summary>See <see cref="AppSettings.EnableCommandLine"/> (off by default).</summary>
     [ObservableProperty]
@@ -369,7 +381,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             IgnoredAppsText = string.Join(Environment.NewLine, settings.IgnoredApps);
             PlacementIndex = (int)settings.Placement;
             ThemeIndex = (int)settings.Theme;
-            LaunchAtStartup = StartupRegistration.IsEnabled(AppController.ExecutablePath);
+            RefreshLaunchAtStartup(settings);
             EnableCommandLine = settings.EnableCommandLine;
             ImportShareXScreenshots = settings.ImportShareXScreenshots;
             ImportWindowsScreenshots = settings.ImportWindowsScreenshots;
@@ -1147,7 +1159,12 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Adds/removes the Run entry.</summary>
+    /// <summary>
+    /// Makes this copy start, or not, when this user signs in: writes or removes the user's own Run entry, clears an
+    /// "off" mark Windows' startup apps list keeps for it, and declines or accepts the entry for every user
+    /// (<see cref="SignInStartup.Plan"/>). Then shows what Windows holds now, so a write that failed does not leave the
+    /// switch saying something untrue.
+    /// </summary>
     /// <param name="value">New value.</param>
     partial void OnLaunchAtStartupChanged(bool value)
     {
@@ -1156,13 +1173,44 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        var exe = AppController.ExecutablePath;
+        var skipBefore = controller.Settings.Current.SkipAllUsersStartup;
         try
         {
-            StartupRegistration.SetEnabled(value, AppController.ExecutablePath);
+            var change = SignInStartup.Plan(value, StartupRegistration.ReadEntries(), exe, skipBefore);
+            StartupRegistration.Apply(change, exe);
+            if (change.SkipAllUsers != skipBefore)
+            {
+                Update(s => s with { SkipAllUsersStartup = change.SkipAllUsers });
+            }
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException)
+        catch (Exception ex) when (ex is UnauthorizedAccessException or System.Security.SecurityException or IOException)
         {
             AppLog.Warn($"Changing start-with-Windows failed: {ex.Message}");
         }
+
+        // As loading: the property set below must not run this handler again.
+        loading = true;
+        try
+        {
+            RefreshLaunchAtStartup(controller.Settings.Current);
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    /// <summary>
+    /// Reads what Windows holds for this user's sign-in start into the switch and its description.
+    /// </summary>
+    /// <param name="settings">The settings whose <see cref="AppSettings.SkipAllUsersStartup"/> counts.</param>
+    /// <remarks>Never throws: <see cref="StartupRegistration.ReadEntries()"/> takes an unreadable key for an empty one.</remarks>
+    private void RefreshLaunchAtStartup(AppSettings settings)
+    {
+        var exe = AppController.ExecutablePath;
+        var entries = StartupRegistration.ReadEntries();
+        LaunchAtStartup = SignInStartup.StartsThisCopy(entries, exe, settings.SkipAllUsersStartup);
+        LaunchAtStartupDescription = SignInStartup.Describe(entries, exe);
     }
 }

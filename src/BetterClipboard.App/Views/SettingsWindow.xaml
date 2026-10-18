@@ -655,7 +655,7 @@
                 <!--  App  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="App" />
                 <controls:SettingsCard
-                    Description="Start quietly in the notification area when you sign in."
+                    Description="{x:Bind ViewModel.LaunchAtStartupDescription, Mode=OneWay}"
                     Glyph="&#xE7E8;"
                     Header="Start with Windows">
                     <ToggleSwitch IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}" />

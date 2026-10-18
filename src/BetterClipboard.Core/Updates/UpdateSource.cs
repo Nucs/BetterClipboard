@@ -38,6 +38,13 @@ public sealed class UpdateSource
     /// <summary>The command that updates a copy installed with Chocolatey.</summary>
     public const string ChocolateyCommand = "choco upgrade betterclipboard";
 
+    /// <summary>
+    /// The command that installs or updates BetterClipboard for every user of the PC: the README's installer with
+    /// <c>-AllUsers</c>, in the script-block form that passes arguments (<c>irm … | iex</c> cannot). It must run in
+    /// PowerShell as administrator; run there, the installer also finds the existing copy for every user by itself.
+    /// </summary>
+    public const string AllUsersInstallCommand = "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/" + Repository + "/main/install.ps1))) -AllUsers";
+
     /// <summary>The start of every package download address on GitHub: this repository's release downloads.</summary>
     private const string GitHubDownloadPath = "/" + Repository + "/releases/download/";
 

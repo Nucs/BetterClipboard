@@ -13,7 +13,9 @@ public static class Program
     /// Starts BetterClipboard, or activates the already-running instance and exits.
     /// </summary>
     /// <param name="args">
-    /// Command line: <c>--background</c> starts without showing a window (used by "start with Windows");
+    /// Command line: <c>--background</c> starts without showing a window (used by "start with Windows"), and does
+    /// nothing when BetterClipboard already runs; <c>--all-users-startup</c> (with it, from the sign-in entry an
+    /// installation for every user wrote) first asks whether this user wants it (<see cref="ContinueFromAllUsersEntry"/>);
     /// <c>--show-flyout</c> / <c>--exit</c> drive an already-running instance;
     /// <c>--read-console-history &lt;pid&gt;</c> is the Cmd tab's helper, <c>--set-hotkeys [--validate] SHORTCUT...</c>
     /// the installer's way to pick the shortcuts, and <c>--set-update-check on|off</c> its way to install with the
@@ -63,6 +65,14 @@ public static class Program
         }
 
         var options = StartupOptions.Parse(args);
+
+        // Before the single-instance lock: a process that steps aside must never hold the lock the user's own sign-in
+        // start needs, or that start would find BetterClipboard "already running" and end too.
+        if (options.FromAllUsersEntry && !ContinueFromAllUsersEntry())
+        {
+            return 0;
+        }
+
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
         // Scoped by data directory: an isolated dev/test run (BETTERCLIPBOARD_DATA_DIR) gets its own lock and
@@ -70,6 +80,14 @@ public static class Program
         using var instance = SingleInstance.Acquire(Core.AppPaths.ResolveDefault().InstanceName);
         if (!instance.IsPrimary)
         {
+            if (options.Background && options.Command == InstanceCommand.Activate)
+            {
+                // A start into the tray that finds BetterClipboard running has nothing left to do. Signalled, it would
+                // open Settings in the running app: at every sign-in, whenever two entries start it (the user's and one
+                // for every user), and after an update or upgrade that finds another copy running.
+                return 0;
+            }
+
             // A second launch (Start menu, double click, script) drives the running app instead of
             // starting a twin that would fight over the clipboard listener and the Win+V hook.
             instance.Signal(options.Command);
@@ -92,6 +110,57 @@ public static class Program
         });
 
         return 0;
+    }
+
+    /// <summary>
+    /// Whether a process that the all-users sign-in entry started should become BetterClipboard for this user: not when
+    /// the user turned "Start with Windows" off in its Settings (<see cref="Core.Settings.AppSettings.SkipAllUsersStartup"/>),
+    /// and not when the user has an entry of their own, which starts BetterClipboard itself or was turned off in Windows'
+    /// startup apps list (<see cref="Core.Startup.SignInStartup.ShouldContinueFromAllUsersEntry"/>).
+    /// </summary>
+    /// <returns><see langword="true"/> to go on starting; <see langword="false"/> to end the process at once.</returns>
+    /// <remarks>
+    /// <para>
+    /// Runs before the single-instance lock, before COM and before any XAML, so stepping aside costs one short process at
+    /// sign-in. The settings are read without the store (<see cref="Core.Settings.SettingsStore.TryReadSnapshot"/>, which
+    /// never sets an unreadable file aside), and the decision is logged, content-free, so "it did not start" can be
+    /// explained afterwards.
+    /// </para>
+    /// <para>
+    /// It fails open: when the facts cannot be read, the process starts, as the entry asks. One BetterClipboard too many
+    /// costs a moment; none at all would cost the user's copies until they notice.
+    /// </para>
+    /// </remarks>
+    private static bool ContinueFromAllUsersEntry()
+    {
+        try
+        {
+            var paths = Core.AppPaths.ResolveDefault();
+            var settings = Core.Settings.SettingsStore.TryReadSnapshot(paths.SettingsPath);
+            bool skip = settings?.SkipAllUsersStartup ?? false;
+            if (Core.Startup.SignInStartup.ShouldContinueFromAllUsersEntry(BetterClipboard.Windows.Shell.StartupRegistration.ReadEntries(), skip))
+            {
+                return true;
+            }
+
+            Core.Diagnostics.AppLog.Initialize(paths.LogDirectory);
+            try
+            {
+                Core.Diagnostics.AppLog.Info(skip
+                    ? "Not started by the sign-in entry for every user: this user turned Start with Windows off in Settings."
+                    : "Not started by the sign-in entry for every user: this user's own entry starts BetterClipboard, or was turned off in Windows' startup apps.");
+            }
+            finally
+            {
+                Core.Diagnostics.AppLog.Shutdown();
+            }
+
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException or ArgumentException)
+        {
+            return true;
+        }
     }
 
     /// <summary>

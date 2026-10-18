@@ -277,6 +277,24 @@ public sealed record AppSettings
     public bool IsCapturePaused { get; init; }
 
     /// <summary>
+    /// This user turned "Start with Windows" off while an installation for every user of the PC starts BetterClipboard at
+    /// each sign-in (its all-users entry, <see cref="Startup.SignInStartup"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Windows keeps an all-users entry's on/off mark for the whole PC, and only an administrator may change it, so this
+    /// user's own "off" is kept here: a BetterClipboard that the all-users entry starts reads it before anything else and
+    /// ends at once. Settings › Start with Windows sets and clears it; nothing else does. Off by default: an installation
+    /// for every user starts BetterClipboard for each of them until they turn it off.
+    /// </para>
+    /// <para>
+    /// Footgun: an older version that saves the settings file drops this member, and the all-users entry then starts
+    /// BetterClipboard for this user again from the next sign-in on.
+    /// </para>
+    /// </remarks>
+    public bool SkipAllUsersStartup { get; init; }
+
+    /// <summary>
     /// Add every screenshot ShareX saves to history the moment the file is written (only when ShareX is
     /// installed; its tab in the panel appears either way).
     /// </summary>
@@ -428,8 +446,8 @@ public sealed record AppSettings
     /// </para>
     /// <para>
     /// Checking never installs anything: an update is downloaded only after the user approves it in the update dialog.
-    /// Copies that a package manager updates (Chocolatey) and isolated test instances never check by themselves,
-    /// whatever this says.
+    /// Copies that a package manager updates (Chocolatey), copies installed for every user of the PC (which only an
+    /// administrator may update) and isolated test instances never check by themselves, whatever this says.
     /// </para>
     /// </remarks>
     public bool CheckForUpdates { get; init; } = true;

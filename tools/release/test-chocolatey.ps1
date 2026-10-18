@@ -9,26 +9,29 @@
     disposable runner, before pushing it:
       1. install: exit code 0; the app extracted with the expected version; the embedded archives and install.ps1
          gone; shims for bclip and BetterClipboard only ("bclip --version" through its shim); the Start menu
-         shortcut; the "Start with Windows" entry (when this account is the one the package writes it for); every
-         other "Start with Windows" entry kept; Explorer's DisabledHotkeys untouched (the package takes nothing over).
+         shortcut; the "Start with Windows" entry - this user's own when the signed-in user installs, the one for
+         every user (HKLM, with --all-users-startup) when SYSTEM or another account installs or -AllUsersStartup is
+         given, and never both; every other "Start with Windows" entry of the user and of the PC kept; Explorer's
+         DisabledHotkeys untouched (the package takes nothing over).
       2. upgrade to the same archives repacked one version higher, with the app running (started with a scratch
          data folder when the install did not start it): exit code 0; the new version in place; the old process
          closed by before-modify, no lib-bkp left behind, no state file left.
       3. uninstall, after marking Win+V, Win+Q (named as a second shortcut in the settings) and Win+J (a letter of
          the user's own) as released from Explorer: exit code 0; the package folder, shims, shortcut, "Start with
-         Windows" entry and the Win+V and Win+Q releases gone; Win+J still released; every other "Start with
-         Windows" entry and every other Explorer setting kept; the history folder kept.
+         Windows" entry (the user's or the one for every user) and the Win+V and Win+Q releases gone; Win+J still
+         released; every other "Start with Windows" entry and every other Explorer setting kept; the history folder
+         kept.
     Whether the app could run at all depends on the session (a runner without a desktop may not keep a WinUI app
     alive): what follows from it is reported, the rest must hold.
 
     The "kept" checks need something to keep: "New-Item -Force" on an existing registry key empties it, which is how
     the package of v0.2.5 and the installers up to it erased other apps' startup entries, and a key with nothing else
-    in it cannot show that. So the test adds a BC-TEST value next to the package's in the Run key, and a BC-TEST
-    value and subkey in Explorer\Advanced, and removes them again at the end.
+    in it cannot show that. So the test adds a BC-TEST value next to the package's in this user's Run key and in the
+    PC's, and a BC-TEST value and subkey in Explorer\Advanced, and removes them again at the end.
 
-    It changes the machine: Chocolatey's lib and bin folders, every user's Start menu, this user's Run key and
-    Explorer settings (put back at the end), the settings file of this user's BetterClipboard (put back too), a
-    restart of Explorer. So it refuses to run unless the CI variable is "true" (GitHub sets it) or
+    It changes the machine: Chocolatey's lib and bin folders, every user's Start menu, this user's and the PC's Run
+    keys and this user's Explorer settings (put back at the end), the settings file of this user's BetterClipboard
+    (put back too), a restart of Explorer. So it refuses to run unless the CI variable is "true" (GitHub sets it) or
     -ConfirmMachineChanges is given - use a VM, never a machine someone works on.
 
 .PARAMETER Version
@@ -46,6 +49,10 @@
 
 .PARAMETER ConfirmMachineChanges
     Run outside CI anyway (a disposable VM).
+
+.PARAMETER AllUsersStartup
+    Install with the package parameter /AllUsersStartup: the "Start with Windows" entry must then be the one for every
+    user even though the signed-in user installs. CI runs the test once without and once with it.
 
 .EXAMPLE
     pwsh tools/release/test-chocolatey.ps1 -Version 1.2.3
@@ -68,7 +75,9 @@ param(
 
     [string] $PackageDirectory = 'artifacts/release',
 
-    [switch] $ConfirmMachineChanges
+    [switch] $ConfirmMachineChanges,
+
+    [switch] $AllUsersStartup
 )
 
 Set-StrictMode -Version 3.0
@@ -151,6 +160,20 @@ function Get-RunEntry {
     $run = Get-ItemProperty -Path $BetterClipboardRunKey -ErrorAction SilentlyContinue
     if ($run -and $run.PSObject.Properties[$BetterClipboardRunValue]) { return [string] $run.$BetterClipboardRunValue }
     return ''
+}
+
+function Get-MachineRunEntry {
+    <#
+    .SYNOPSIS
+        The "Start with Windows" command for every user of the PC for BetterClipboard, or '' without one.
+    .DESCRIPTION
+        Read in the 64-bit view through the package's own helper, the way the package writes it.
+    .OUTPUTS
+        System.String.
+    #>
+    $key = Open-BetterClipboardMachineKey -SubKey $BetterClipboardMachineRunSubKey
+    if (-not $key) { return '' }
+    try { return [string] $key.GetValue($BetterClipboardRunValue, '') } finally { $key.Dispose() }
 }
 
 function Get-KeyInventory([string] $Path) {
@@ -245,10 +268,13 @@ $exe = Join-Path $appDir 'BetterClipboard.exe'
 $bin = Join-Path $chocoRoot 'bin'
 $shortcut = Join-Path ([Environment]::GetFolderPath('CommonPrograms')) $BetterClipboardShortcutName
 $isDesktopUser = Test-BetterClipboardDesktopUser
-$expectRunEntry = -not $identity.IsSystem -and -not ((-not $isDesktopUser) -and (Get-BetterClipboardDesktopSid))
+# The package's rule: the entry for every user when someone else than the signed-in user installs, or on request.
+$expectForEveryUser = $AllUsersStartup -or $identity.IsSystem -or ((-not $isDesktopUser) -and [bool] (Get-BetterClipboardDesktopSid))
 New-Item -ItemType Directory -Path $work | Out-Null
 $advanced = $BetterClipboardExplorerAdvancedKey
 $scratchData = Join-Path $work 'data'
+# The PC's Run key through the registry provider: this test runs in a 64-bit PowerShell, which sees the 64-bit view.
+$machineRunKey = "HKLM:\$BetterClipboardMachineRunSubKey"
 
 # What the test seeds, so the finally block can put everything back (on a VM the test may run again).
 $neighborName = 'BC-TEST neighbor'
@@ -259,23 +285,26 @@ $settingsBefore = $null
 $settingsSeeded = $false
 
 try {
-    Write-Host "Testing $nupkg (desktop user: $isDesktopUser, SYSTEM: $($identity.IsSystem))"
+    Write-Host "Testing $nupkg (desktop user: $isDesktopUser, SYSTEM: $($identity.IsSystem), /AllUsersStartup: $([bool] $AllUsersStartup))"
 
     # 0. neighbors for the "kept" checks. A missing key is created; an existing one only ever gets a value added
-    # (never "New-Item -Force" on it: on an existing key that deletes everything in it). The Run value names a file
+    # (never "New-Item -Force" on it: on an existing key that deletes everything in it). The Run values name a file
     # that does not exist, so a later sign-in on this machine starts nothing.
-    foreach ($key in @($BetterClipboardRunKey, $advanced)) {
+    foreach ($key in @($BetterClipboardRunKey, $advanced, $machineRunKey)) {
         if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
     }
 
     Set-ItemProperty -Path $BetterClipboardRunKey -Name $neighborName -Value "`"$env:SystemRoot\System32\BC-TEST-neighbor-does-not-exist.exe`"" -Type String
+    Set-ItemProperty -Path $machineRunKey -Name $neighborName -Value "`"$env:SystemRoot\System32\BC-TEST-neighbor-does-not-exist.exe`"" -Type String
     Set-ItemProperty -Path $advanced -Name $neighborName -Value 1 -Type DWord
     if (-not (Test-Path -LiteralPath $neighborKey)) { New-Item -Path $neighborKey | Out-Null }
     $runBefore = Get-KeyInventory $BetterClipboardRunKey
+    $machineRunBefore = Get-KeyInventory $machineRunKey
     $advancedBefore = Get-KeyInventory $advanced
 
     # 1. install
-    $code = Invoke-Choco 'install' (@('install', 'betterclipboard', '--version', $PackageVersion, '--source', $packages) + $prerelease)
+    $parameters = if ($AllUsersStartup) { @('--params', "'/AllUsersStartup'") } else { @() }
+    $code = Invoke-Choco 'install' (@('install', 'betterclipboard', '--version', $PackageVersion, '--source', $packages) + $prerelease + $parameters)
     Add-Check 'install' 'choco install exit code 0' ($code -eq 0) "$code"
     $productVersion = if (Test-Path -LiteralPath $exe) { (Get-Item -LiteralPath $exe).VersionInfo.ProductVersion } else { '' }
     Add-Check 'install' 'app extracted with the package''s app version' ([bool] $productVersion -and $productVersion.StartsWith($Version)) $productVersion
@@ -287,15 +316,19 @@ try {
     $bclip = if (Test-Path -LiteralPath (Join-Path $bin 'bclip.exe')) { (& (Join-Path $bin 'bclip.exe') --version 2>&1 | Out-String).Trim() } else { '' }
     Add-Check 'install' 'bclip --version through its shim' ($bclip -eq "bclip $Version") $bclip
     Add-Check 'install' 'Start menu shortcut for every user' ((Get-BetterClipboardShortcutTarget $shortcut) -eq $exe) $shortcut
-    if ($expectRunEntry) {
-        Add-Check 'install' '"Start with Windows" entry' ((Get-RunEntry) -eq "`"$exe`" --background") (Get-RunEntry)
+    if ($expectForEveryUser) {
+        Add-Check 'install' '"Start with Windows" entry for every user' ((Get-MachineRunEntry) -eq "`"$exe`" --background $BetterClipboardAllUsersSwitch") (Get-MachineRunEntry)
+        Add-Check 'install' 'no "Start with Windows" entry of the installing account''s own' (-not (Get-RunEntry).Contains($exe)) (Get-RunEntry)
     }
     else {
-        Add-Check 'install' 'no "Start with Windows" entry for a foreign account' (-not (Get-RunEntry).Contains($exe))
+        Add-Check 'install' '"Start with Windows" entry' ((Get-RunEntry) -eq "`"$exe`" --background") (Get-RunEntry)
+        Add-Check 'install' 'no "Start with Windows" entry for every user' (-not (Get-MachineRunEntry).Contains($exe)) (Get-MachineRunEntry)
     }
 
     $lost = Get-MissingFromKey $runBefore $BetterClipboardRunKey @($BetterClipboardRunValue)
     Add-Check 'install' 'every other "Start with Windows" entry kept' (-not $lost) $(if ($lost) { "gone: $lost" } else { "$($runBefore.Values.Count) values before" })
+    $lost = Get-MissingFromKey $machineRunBefore $machineRunKey @($BetterClipboardRunValue)
+    Add-Check 'install' 'every other "Start with Windows" entry for every user kept' (-not $lost) $(if ($lost) { "gone: $lost" } else { "$($machineRunBefore.Values.Count) values before" })
     Add-Check 'install' 'Explorer''s DisabledHotkeys untouched' ((Get-BetterClipboardDisabledHotkeys) -ceq $originalHotkeys) "'$(Get-BetterClipboardDisabledHotkeys)'"
 
     $running = @(Get-BetterClipboardProcess -Exe $exe)
@@ -353,8 +386,11 @@ try {
     Add-Check 'uninstall' 'shims removed' (-not ($shims -contains 'bclip.exe') -and -not ($shims -contains 'BetterClipboard.exe'))
     Add-Check 'uninstall' 'Start menu shortcut removed' (-not (Test-Path -LiteralPath $shortcut))
     Add-Check 'uninstall' '"Start with Windows" entry removed' (-not (Get-RunEntry).Contains($exe))
+    Add-Check 'uninstall' '"Start with Windows" entry for every user removed' (-not (Get-MachineRunEntry).Contains($exe)) (Get-MachineRunEntry)
     $lost = Get-MissingFromKey $runBefore $BetterClipboardRunKey @($BetterClipboardRunValue)
     Add-Check 'uninstall' 'every other "Start with Windows" entry kept' (-not $lost) $(if ($lost) { "gone: $lost" } else { '' })
+    $lost = Get-MissingFromKey $machineRunBefore $machineRunKey @($BetterClipboardRunValue)
+    Add-Check 'uninstall' 'every other "Start with Windows" entry for every user kept' (-not $lost) $(if ($lost) { "gone: $lost" } else { '' })
     $lost = Get-MissingFromKey $advancedBefore $advanced @('DisabledHotkeys')
     Add-Check 'uninstall' 'every other Explorer setting kept' (-not $lost) $(if ($lost) { "gone: $lost" } else { "$($advancedBefore.Values.Count) values, $($advancedBefore.Subkeys.Count) subkeys before" })
     $afterHotkeys = Get-BetterClipboardDisabledHotkeys
@@ -373,6 +409,7 @@ finally {
     Get-BetterClipboardProcess -Exe $exe | Stop-Process -Force -ErrorAction SilentlyContinue
     Remove-Item Env:\BETTERCLIPBOARD_DATA_DIR -ErrorAction SilentlyContinue
     try { Remove-ItemProperty -Path $BetterClipboardRunKey -Name $neighborName -ErrorAction Stop } catch { Write-Host "cleanup: $($_.Exception.Message)" }
+    try { Remove-ItemProperty -Path $machineRunKey -Name $neighborName -ErrorAction Stop } catch { Write-Host "cleanup: $($_.Exception.Message)" }
     try { Remove-ItemProperty -Path $advanced -Name $neighborName -ErrorAction Stop } catch { Write-Host "cleanup: $($_.Exception.Message)" }
     # Only the BC-TEST subkey, never its parent: the name is checked, so a wrong path cannot reach Explorer\Advanced.
     if ((Split-Path -Leaf $neighborKey) -eq 'BC-TEST neighbor key' -and (Test-Path -LiteralPath $neighborKey)) {

@@ -12,6 +12,9 @@
       - this user's "Start with Windows" entry, if it points into this package: removed, or, while install.ps1's copy
         stays installed, handed to that copy (both share one history and one settings file, so the user's choice to
         start with Windows carries over);
+      - the "Start with Windows" entry for every user (written when SYSTEM or another account installed the package,
+        or with /AllUsersStartup), if it points into this package: removed, or, while install.ps1's copy for every
+        user stays installed, handed to that copy;
       - the shortcuts released from Explorer for BetterClipboard: Win+V and every Win+letter or Win+digit shortcut in
         its settings that Explorer's DisabledHotkeys lists (its Settings and install.ps1 release them there). Without
         the app they would do nothing at all, so they go back to Windows and Explorer restarts - unless
@@ -60,6 +63,24 @@ if ((Get-BetterClipboardRunTarget).StartsWith($appDir, [StringComparison]::Ordin
     }
     else {
         Remove-ItemProperty -Path $BetterClipboardRunKey -Name $BetterClipboardRunValue
+    }
+}
+
+# The entry for every user, by the same rule: install.ps1's copy for every user can be started by everyone, so it takes
+# the entry over; a copy of one user cannot (its folder is in that user's profile). A failure is reported, never fatal.
+if ((Get-BetterClipboardMachineRunTarget).StartsWith($appDir, [StringComparison]::OrdinalIgnoreCase)) {
+    $allUsersCopy = Get-BetterClipboardAllUsersInstall
+    try {
+        if ($allUsersCopy) {
+            Set-BetterClipboardMachineRunEntry -Exe $allUsersCopy
+            Write-Host "'Start with Windows' for every user now starts the copy of BetterClipboard at '$allUsersCopy'."
+        }
+        else {
+            Remove-BetterClipboardMachineRunEntry
+        }
+    }
+    catch {
+        Write-Warning "Could not change the 'Start with Windows' entry for every user (it needs administrator rights): $($_.Exception.Message)"
     }
 }
 

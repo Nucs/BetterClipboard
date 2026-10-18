@@ -66,7 +66,8 @@ public sealed partial class SettingsViewModel
 
         HasUpdateSystem = true;
         CanCheckForUpdates = snapshot.Phase == UpdatePhase.Idle;
-        CanToggleUpdateCheck = snapshot.InstallKind != UpdateInstallKind.Chocolatey;
+        // Copies that never check by themselves (UpdateText says why): the switch would change nothing.
+        CanToggleUpdateCheck = snapshot.InstallKind is not (UpdateInstallKind.Chocolatey or UpdateInstallKind.AllUsers);
         IsUpdateWaiting = snapshot.WantsAttention;
         UpdateActionText = snapshot.Offer is { } offer ? $"Update to {offer.Release.Version}…" : "Release notes…";
         UpdateStatus = UpdateText.SettingsStatus(snapshot, DateTimeOffset.Now);

@@ -3,7 +3,7 @@
     Installs, updates or uninstalls BetterClipboard from its official GitHub releases.
 
 .DESCRIPTION
-    Per-user install, no administrator rights needed:
+    By default a per-user install, no administrator rights needed (-AllUsers, below, installs for every user):
 
       1. Resolves the release (latest, or -Version) through the GitHub API and picks the zip for this
          machine's architecture (x64 or ARM64 - detected from the OS, not from this PowerShell's bitness).
@@ -22,6 +22,15 @@
 
     The installer works from your temp folder, so it runs from any folder - also one you cannot write to - and
     puts your PowerShell back in the folder it came from when it is done.
+
+    For every user of this PC (-AllUsers, in PowerShell as administrator): the app goes to Program Files, in a folder
+    only administrators may change; the Start menu shortcut, the Installed-apps entry and "Start with Windows" are for
+    every user. Each user who signs in gets BetterClipboard started (each can turn that off for themselves in its
+    Settings) and keeps their own encrypted history. The installer picks this by itself when it is not the signed-in
+    user who installs: when it runs as SYSTEM (Intune, an RMM agent), or with an administrator's credentials on
+    another user's desktop - a copy in that account's own profile would be of no use to anyone who signs in here. Run
+    as administrator on a PC that has a copy for every user, it updates that copy. Such a copy does not update or
+    check for updates by itself: an administrator runs the installer again.
 
     Your clipboard history lives in %LOCALAPPDATA%\BetterClipboard (encrypted, bound to this PC and
     your Windows account) and is never touched by install or update; -Uninstall keeps it unless
@@ -42,8 +51,16 @@
     Release to install: 'latest' (default) or a version such as 0.1.0 / v0.1.0.
 
 .PARAMETER InstallDir
-    Target folder. Default: %LOCALAPPDATA%\Programs\BetterClipboard. A relative path is relative to the folder
+    Target folder. Default: %LOCALAPPDATA%\Programs\BetterClipboard; for every user (-AllUsers) the folder of the copy
+    already installed for every user, else Program Files\BetterClipboard. A relative path is relative to the folder
     you run the installer from.
+
+.PARAMETER AllUsers
+    Install (or with -Uninstall, remove) the copy for every user of this PC instead of one for you. Needs PowerShell as
+    administrator. Picked by itself when the installer runs as SYSTEM or with an administrator's credentials on another
+    user's desktop, and when an administrator's run finds a copy for every user to update. The options that set one
+    person's things (-Hotkey, -TakeOverWinV, -NoTakeOverWinV) work only when the signed-in user installs; -AddToPath then
+    changes the PATH of every user, and -NoUpdateCheck has nothing to do: a copy for every user never checks by itself.
 
 .PARAMETER TakeOverWinV
     Kept for older command lines: taking over Win+V is what the installer does by default now. Given on an
@@ -110,7 +127,8 @@
     Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). While BetterClipboard's Chocolatey
     package stays installed, the startup entry starts that copy instead of being removed. Win+V - and every other
     Win+ shortcut BetterClipboard released from Explorer - is given back to Windows (use -KeepWinVReleased
-    to keep them released).
+    to keep them released). With -AllUsers it removes the copy for every user (Settings > Apps runs it that way), and
+    asks for administrator rights when it does not have them.
 
 .PARAMETER RemoveData
     With -Uninstall: also delete the history, settings and logs folder. Irreversible.
@@ -137,6 +155,11 @@
     Installs or updates, and makes bclip runnable by name.
 
 .EXAMPLE
+    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AllUsers
+
+    In PowerShell as administrator: installs or updates BetterClipboard for every user of this PC.
+
+.EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -Package .\BetterClipboard-0.2.6-win-x64.zip
 
     Installs from a release zip you downloaded (put SHA256SUMS.txt next to it and it is verified first).
@@ -151,7 +174,12 @@ param(
     [Parameter(ParameterSetName = 'Install')]
     [string] $Version = 'latest',
 
-    [string] $InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\BetterClipboard'),
+    # Empty means "the default of this run's scope" (one user, or every user), which is known only once the installer
+    # has looked at who runs it (Resolve-InstallScope); the app's updater always passes the folder.
+    [string] $InstallDir = '',
+
+    # In both parameter sets: it picks the copy an install sets up and the copy an uninstall removes.
+    [switch] $AllUsers,
 
     [Parameter(ParameterSetName = 'Install')]
     [switch] $TakeOverWinV,
@@ -221,7 +249,36 @@ $ExplorerAdvancedPath = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explore
 # HKCU subkey holding the user environment (the user PATH). A variable only so tests can point the PATH
 # helpers at a scratch key instead of the real PATH.
 $UserEnvironmentKey = 'Environment'
-$ShortcutPath = Join-Path ([Environment]::GetFolderPath('Programs')) "$AppName.lnk"
+# An account without a profile of its own - SYSTEM, under Intune or an RMM agent - has no Start menu folder:
+# GetFolderPath then answers '', and a Join-Path on it stopped every run as SYSTEM before its first step (found
+# 2026-10-18, the first test as SYSTEM). Such a run installs for every user (Resolve-InstallScope), whose shortcut goes
+# to every user's Start menu; '' here means "no shortcut of this account's own".
+$UserProgramsFolder = [Environment]::GetFolderPath('Programs')
+$ShortcutPath = if ($UserProgramsFolder) { Join-Path $UserProgramsFolder "$AppName.lnk" } else { '' }
+
+# The install for every user of the PC (-AllUsers). Its registry entries live in HKEY_LOCAL_MACHINE and are read and
+# written in the 64-bit view whatever PowerShell runs the installer (Open-MachineKey): a 32-bit one (an RMM agent's)
+# would otherwise use WOW6432Node copies that the 64-bit app never reads. The hive and the prefix are variables only
+# so tests can point every machine-wide key at a scratch key under HKEY_CURRENT_USER.
+$MachineHive = [Microsoft.Win32.RegistryHive]::LocalMachine
+$MachineKeyPrefix = ''
+$MachineRunSubKey = 'SOFTWARE\Microsoft\Windows\CurrentVersion\Run'
+$MachineUninstallSubKey = "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\$AppName"
+$MachineEnvironmentSubKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
+$CommonProgramsFolder = [Environment]::GetFolderPath('CommonPrograms')
+$AllUsersShortcutPath = if ($CommonProgramsFolder) { Join-Path $CommonProgramsFolder "$AppName.lnk" } else { '' }
+# What the entry for every user adds to the command: the app then steps aside for a user who has an entry of their own
+# or turned it off in its Settings (src/BetterClipboard.Core/Startup/SignInStartup.cs, which must agree).
+$AllUsersStartupSwitch = '--all-users-startup'
+
+# Who this run installs for, set by Resolve-InstallScope before anything else: every user of the PC, or the account
+# that runs it; whether that account is the one whose desktop this session shows (only then may the installer change
+# that person's own settings, release their shortcuts from Explorer or start the app); and why, for the messages.
+$script:ForAllUsers = $false
+$script:ForDesktopUser = $false
+$script:ScopeReason = ''
+# Whether -InstallDir was given, before the scope's default fills it in.
+$script:InstallDirGiven = [bool] $InstallDir
 
 # The first release whose BetterClipboard.exe knows --set-hotkeys, which -Hotkey and -NoTakeOverWinV need. Older
 # versions ignore unknown arguments and start normally (a plain start opens Settings), so they are never asked.
@@ -1057,6 +1114,513 @@ function Test-Elevated {
     return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+function Get-ProgramFilesFolder {
+    <#
+    .SYNOPSIS
+        The 64-bit Program Files folder, also from a 32-bit PowerShell, where $env:ProgramFiles names the x86 one.
+    .OUTPUTS
+        System.String.
+    #>
+    if ($env:ProgramW6432) { return $env:ProgramW6432 }
+    return $env:ProgramFiles
+}
+
+function Open-MachineKey {
+    <#
+    .SYNOPSIS
+        Opens a key of the PC's registry in its 64-bit view (under $MachineKeyPrefix of $MachineHive), or returns $null
+        when it does not exist.
+    .PARAMETER SubKey
+        Path under HKEY_LOCAL_MACHINE, e.g. SOFTWARE\Microsoft\Windows\CurrentVersion\Run.
+    .PARAMETER Writable
+        Open it for writing.
+    .PARAMETER Create
+        Create it when missing (implies -Writable). An existing key is opened as it is: CreateSubKey never empties a key,
+        unlike "New-Item -Force" (Confirm-RegistryKey).
+    .OUTPUTS
+        Microsoft.Win32.RegistryKey - the caller disposes it - or $null.
+    .NOTES
+        Throws when the registry refuses the access (a write without administrator rights); callers say what failed.
+    #>
+    param([string] $SubKey, [switch] $Writable, [switch] $Create)
+    $base = [Microsoft.Win32.RegistryKey]::OpenBaseKey($MachineHive, [Microsoft.Win32.RegistryView]::Registry64)
+    try {
+        $path = $MachineKeyPrefix + $SubKey
+        if ($Create) {
+            return $base.CreateSubKey($path, $true)
+        }
+
+        return $base.OpenSubKey($path, [bool] $Writable)
+    }
+    finally {
+        $base.Dispose()
+    }
+}
+
+function Get-MachineValue([string] $SubKey, [string] $Name) {
+    <#
+    .SYNOPSIS
+        A text value of the PC's registry (64-bit view), or '' when the key or value is missing or cannot be read.
+    .PARAMETER SubKey
+        Path under HKEY_LOCAL_MACHINE.
+    .PARAMETER Name
+        The value's name.
+    .OUTPUTS
+        System.String.
+    #>
+    try {
+        $key = Open-MachineKey -SubKey $SubKey
+        if (-not $key) { return '' }
+        try {
+            return [string] $key.GetValue($Name, '')
+        }
+        finally {
+            $key.Dispose()
+        }
+    }
+    catch {
+        return ''
+    }
+}
+
+function Get-MachineRunTarget {
+    <#
+    .SYNOPSIS
+        Executable that the "Start with Windows" entry for every user starts, or '' without one.
+    .DESCRIPTION
+        The entry is '"<exe>" --background --all-users-startup', written by this installer for a copy for every user and
+        by the Chocolatey package when someone other than the signed-in user installed it; the quoted path is returned.
+    .OUTPUTS
+        System.String.
+    #>
+    if ((Get-MachineValue $MachineRunSubKey $AppName) -match '^\s*"([^"]+)"') {
+        return $Matches[1]
+    }
+
+    return ''
+}
+
+function Set-MachineRunEntry([string] $Exe) {
+    <#
+    .SYNOPSIS
+        Writes the "Start with Windows" entry for every user of the PC: '"<exe>" --background --all-users-startup'.
+    .DESCRIPTION
+        Only this one value of the Run key is ever written: the key holds every other program's entry for every user.
+        Windows starts it, unelevated, for each user who signs in; the app ends at once for a user who has an entry of
+        their own or turned it off in its Settings.
+    .PARAMETER Exe
+        Full path of BetterClipboard.exe, in a folder every user may read.
+    .NOTES
+        Throws without administrator rights.
+    #>
+    $key = Open-MachineKey -SubKey $MachineRunSubKey -Create
+    try {
+        $key.SetValue($AppName, "`"$Exe`" --background $AllUsersStartupSwitch", [Microsoft.Win32.RegistryValueKind]::String)
+    }
+    finally {
+        $key.Dispose()
+    }
+}
+
+function Remove-MachineRunEntry {
+    <#
+    .SYNOPSIS
+        Removes the "Start with Windows" entry for every user, and nothing else of the Run key. No entry is no error.
+    .NOTES
+        Throws without administrator rights.
+    #>
+    $key = Open-MachineKey -SubKey $MachineRunSubKey -Writable
+    if (-not $key) { return }
+    try {
+        $key.DeleteValue($AppName, $false)
+    }
+    finally {
+        $key.Dispose()
+    }
+}
+
+function Get-AllUsersCopy {
+    <#
+    .SYNOPSIS
+        Folder of the copy installed for every user (the PC's Installed-apps entry names it), or $null without one.
+    .DESCRIPTION
+        Only a folder that still holds BetterClipboard.exe counts: an entry left behind by a copy deleted by hand
+        installs nothing anywhere.
+    .OUTPUTS
+        System.String, or $null.
+    #>
+    $location = (Get-MachineValue $MachineUninstallSubKey 'InstallLocation').Trim()
+    if ($location -and (Test-Path -LiteralPath (Join-Path $location $ExeName))) {
+        return $location
+    }
+
+    return $null
+}
+
+function Set-MachineUninstallEntry([hashtable] $Strings, [hashtable] $Numbers) {
+    <#
+    .SYNOPSIS
+        Writes the PC's Installed-apps entry for the copy for every user (Settings > Apps lists it for every user).
+    .PARAMETER Strings
+        Text values by name (DisplayName, InstallLocation, UninstallString, ...).
+    .PARAMETER Numbers
+        DWORD values by name (NoModify, EstimatedSize, ...).
+    .NOTES
+        Throws without administrator rights.
+    #>
+    $key = Open-MachineKey -SubKey $MachineUninstallSubKey -Create
+    try {
+        foreach ($name in $Strings.Keys) { $key.SetValue($name, [string] $Strings[$name], [Microsoft.Win32.RegistryValueKind]::String) }
+        foreach ($name in $Numbers.Keys) { $key.SetValue($name, [int] $Numbers[$name], [Microsoft.Win32.RegistryValueKind]::DWord) }
+    }
+    finally {
+        $key.Dispose()
+    }
+}
+
+function Remove-MachineUninstallEntry {
+    <#
+    .SYNOPSIS
+        Deletes the PC's Installed-apps entry for BetterClipboard. No entry is no error.
+    .NOTES
+        Throws without administrator rights.
+    #>
+    $parent = Open-MachineKey -SubKey (Split-Path -Parent $MachineUninstallSubKey) -Writable
+    if (-not $parent) { return }
+    try {
+        $parent.DeleteSubKeyTree((Split-Path -Leaf $MachineUninstallSubKey), $false)
+    }
+    finally {
+        $parent.Dispose()
+    }
+}
+
+function Get-DesktopUserSid {
+    <#
+    .SYNOPSIS
+        SID of the user whose desktop (Explorer) runs in this process's Windows session, or $null without one.
+    .DESCRIPTION
+        Tells apart who runs the installer: the signed-in user (often elevated through the UAC consent prompt: the SID
+        is theirs); an administrator whose credentials were typed in for a standard user (Explorer belongs to someone
+        else, and %LOCALAPPDATA% and HKCU here are the administrator's); SYSTEM or a remote shell (no Explorer in the
+        session). The Chocolatey package tells them apart the same way (Get-BetterClipboardDesktopSid).
+    .OUTPUTS
+        System.String (a SID such as S-1-5-21-...), or $null.
+    .NOTES
+        Never throws: an owner that cannot be read means "no desktop to act on".
+    #>
+    try {
+        $session = (Get-Process -Id $PID).SessionId
+        $shell = Get-CimInstance -ClassName Win32_Process -Filter "Name = 'explorer.exe' AND SessionId = $session" -ErrorAction Stop |
+            Select-Object -First 1
+        if (-not $shell) { return $null }
+        return [string] (Invoke-CimMethod -InputObject $shell -MethodName GetOwnerSid -ErrorAction Stop).Sid
+    }
+    catch {
+        return $null
+    }
+}
+
+function Resolve-InstallScope {
+    <#
+    .SYNOPSIS
+        Decides whether this run installs (or removes) the copy for every user of the PC or the copy of the account that
+        runs it, and whether that account is the signed-in user of this desktop: sets $script:ForAllUsers,
+        $script:ForDesktopUser and $script:ScopeReason.
+    .DESCRIPTION
+        For every user: with -AllUsers; as SYSTEM, which no one signs in as, so a copy in its profile would serve nobody;
+        with administrator rights on another user's desktop (their credentials typed in for a standard user), where a
+        copy in the administrator's profile would not serve the person at the PC either; and, for an install, when an
+        administrator's run finds a copy for every user and was not given another folder - re-running the install
+        command updates that copy instead of adding a second one. Otherwise for the account that runs it, as always:
+        also from a remote shell, where nothing tells whether that account is the one who uses the PC. -Update never
+        picks a scope by itself: the app's updater updates one known copy of one user.
+    #>
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $desktop = Get-DesktopUserSid
+    $script:ForDesktopUser = [bool] ($desktop -and $desktop -eq $identity.User.Value)
+    $foreignDesktop = [bool] ($desktop -and -not $script:ForDesktopUser)
+    $existing = if ($Uninstall -or $Update) { $null } else { Get-AllUsersCopy }
+
+    if ($AllUsers) {
+        $script:ForAllUsers = $true
+        $script:ScopeReason = '-AllUsers'
+    }
+    elseif ($Update) {
+        $script:ForAllUsers = $false
+    }
+    elseif ($identity.IsSystem) {
+        $script:ForAllUsers = $true
+        $script:ScopeReason = 'the installer runs as SYSTEM, which no one signs in as'
+    }
+    elseif ($foreignDesktop -and (Test-Elevated)) {
+        $script:ForAllUsers = $true
+        $script:ScopeReason = "the installer runs as $($identity.Name) on another user's desktop"
+    }
+    elseif ($existing -and (Test-Elevated) -and (-not $script:InstallDirGiven -or (Test-SamePath $InstallDir $existing))) {
+        $script:ForAllUsers = $true
+        $script:ScopeReason = "BetterClipboard is installed for every user of this PC in $existing, and that copy is updated"
+    }
+    else {
+        $script:ForAllUsers = $false
+    }
+}
+
+function Get-ShortcutTarget([string] $Path) {
+    <#
+    .SYNOPSIS
+        Target of a shortcut (.lnk), or '' when there is none or it cannot be read.
+    .DESCRIPTION
+        The Start menu shortcut for every user has the name the Chocolatey package uses for its own (it installs
+        elevated into the same folder), so its target is checked before it is replaced or removed.
+    .PARAMETER Path
+        The shortcut file.
+    .OUTPUTS
+        System.String.
+    #>
+    # Test-Path refuses an empty path outright (an account without a Start menu folder has no shortcut path).
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) { return '' }
+    try {
+        return [string] (New-Object -ComObject WScript.Shell).CreateShortcut($Path).TargetPath
+    }
+    catch {
+        return ''
+    }
+}
+
+function Test-OtherCopy([string] $Target, [string] $Folder) {
+    <#
+    .SYNOPSIS
+        Whether $Target names an existing BetterClipboard.exe outside $Folder: an entry or shortcut of another copy, which
+        this installer neither takes over nor removes.
+    .PARAMETER Target
+        The program an entry or shortcut starts ('' allowed).
+    .PARAMETER Folder
+        This copy's install folder.
+    .OUTPUTS
+        System.Boolean.
+    #>
+    if (-not $Target -or -not (Test-Path -LiteralPath $Target -PathType Leaf)) { return $false }
+    return -not (Test-SamePath (Split-Path -Parent $Target) $Folder)
+}
+
+function Set-AllUsersFolderSecurity([string] $Path) {
+    <#
+    .SYNOPSIS
+        Gives a folder of the copy for every user the rights Program Files gives its folders, whatever its parent grants.
+    .DESCRIPTION
+        Every user's sign-in starts BetterClipboard.exe from this folder. A folder ordinary users could write to (one
+        under C:\, whose subfolders give every signed-in user "Modify") would let any of them replace the program that
+        then runs as every other user: so the folder's inherited rights are replaced by Administrators and SYSTEM (full
+        control) and Users and app packages (read and run), inherited by everything extracted into it.
+    .PARAMETER Path
+        The folder (the staging folder, before the files are extracted into it).
+    .NOTES
+        Throws when the rights cannot be set; the install then stops before anything is replaced.
+    #>
+    $security = New-Object System.Security.AccessControl.DirectorySecurity
+    # Protected, without the parent's entries: none of them may reach the program everyone runs.
+    $security.SetAccessRuleProtection($true, $false)
+    $inherit = [System.Security.AccessControl.InheritanceFlags] 'ContainerInherit, ObjectInherit'
+    $propagation = [System.Security.AccessControl.PropagationFlags]::None
+    # SIDs rather than names, which Windows translates: Administrators, SYSTEM, Users, ALL APPLICATION PACKAGES.
+    foreach ($grant in @(@('S-1-5-32-544', 'FullControl'), @('S-1-5-18', 'FullControl'), @('S-1-5-32-545', 'ReadAndExecute'), @('S-1-15-2-1', 'ReadAndExecute'))) {
+        $sid = New-Object System.Security.Principal.SecurityIdentifier $grant[0]
+        $rule = New-Object System.Security.AccessControl.FileSystemAccessRule($sid, [System.Security.AccessControl.FileSystemRights] $grant[1], $inherit, $propagation, [System.Security.AccessControl.AccessControlType]::Allow)
+        $security.AddAccessRule($rule)
+    }
+
+    Set-Acl -LiteralPath $Path -AclObject $security
+}
+
+function Stop-AllUsersCopyElsewhere([string] $Folder) {
+    <#
+    .SYNOPSIS
+        Stops the BetterClipboard and bclip processes that run from $Folder in other users' sessions, and says how many.
+    .DESCRIPTION
+        A copy for every user may run in every signed-in user's session, and each one keeps the folder from being
+        replaced. The graceful --exit reaches only the instance of this session (Stop-RunningApp), so the others are
+        stopped; what they had queued but not saved is lost, which the message says. WMI gives the program's path of
+        every process to an administrator, where Get-Process would not for another account's process.
+    .PARAMETER Folder
+        The install folder.
+    .OUTPUTS
+        System.Int32 - the number of processes stopped.
+    #>
+    $session = (Get-Process -Id $PID).SessionId
+    $prefix = $Folder.TrimEnd('\', '/') + '\'
+    $others = @(Get-CimInstance -ClassName Win32_Process -Filter "Name = '$ExeName' OR Name = 'bclip.exe'" -ErrorAction SilentlyContinue |
+            Where-Object { $_.SessionId -ne $session -and $_.ExecutablePath -and ([string] $_.ExecutablePath).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) })
+    foreach ($process in $others) {
+        try {
+            Stop-Process -Id $process.ProcessId -Force -ErrorAction Stop
+        }
+        catch {
+            # Not fatal here: if it keeps the folder, the swap fails and puts the previous version back (Undo-FailedSwap).
+            Write-Warning "BetterClipboard (process $($process.ProcessId), session $($process.SessionId)) could not be stopped: $($_.Exception.Message)"
+        }
+    }
+
+    # Stop-Process returns before a process is gone, and its files stay locked until it is.
+    $deadline = (Get-Date).AddSeconds(5)
+    while ((Get-Date) -lt $deadline -and @($others | Where-Object { Get-Process -Id $_.ProcessId -ErrorAction SilentlyContinue }).Count -gt 0) {
+        Start-Sleep -Milliseconds 250
+    }
+
+    return $others.Count
+}
+
+# Machine PATH helpers: the same rules as the user PATH helpers below (raw REG_EXPAND_SZ, entries compared by what they
+# name), for the PATH every user gets - what -AddToPath changes for a copy for every user.
+
+function Get-MachinePathEntries {
+    <#
+    .SYNOPSIS
+        The folders on the PATH of every user, as written (variables not expanded).
+    .DESCRIPTION
+        Read raw: reading it expanded and writing it back would freeze every %SystemRoot%-style entry for good.
+    .OUTPUTS
+        System.String[] - PowerShell unrolls a returned array, so callers wrap the call in @().
+    .NOTES
+        Throws when the key cannot be read (it always can by any user); a missing key gives no entries.
+    #>
+    $key = Open-MachineKey -SubKey $MachineEnvironmentSubKey
+    if (-not $key) { return @() }
+    try {
+        $raw = [string] $key.GetValue('Path', '', [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
+    }
+    finally {
+        $key.Dispose()
+    }
+
+    return @($raw -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+}
+
+function Set-MachinePathEntries([string[]] $Entries) {
+    <#
+    .SYNOPSIS
+        Writes the PATH of every user (REG_EXPAND_SZ, like Windows' own) and tells running programs it changed.
+    .PARAMETER Entries
+        The folders, in order.
+    .NOTES
+        Throws without administrator rights.
+    #>
+    $key = Open-MachineKey -SubKey $MachineEnvironmentSubKey -Create
+    try {
+        $key.SetValue('Path', ($Entries -join ';'), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    }
+    finally {
+        $key.Dispose()
+    }
+
+    Send-EnvironmentChange
+}
+
+function Send-EnvironmentChange {
+    <#
+    .SYNOPSIS
+        Broadcasts WM_SETTINGCHANGE "Environment", so Explorer - and the terminals it starts - pick up a changed PATH now
+        rather than at the next sign-in. A hung window cannot stall the installer (SMTO_ABORTIFHUNG, 2 s).
+    #>
+    if (-not ('BetterClipboardInstaller.NativeMethods' -as [type])) {
+        Add-Type -Namespace BetterClipboardInstaller -Name NativeMethods -MemberDefinition '[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint msg, UIntPtr wParam, string lParam, uint flags, uint timeout, out UIntPtr result);'
+    }
+
+    $ignored = [UIntPtr]::Zero
+    [void] [BetterClipboardInstaller.NativeMethods]::SendMessageTimeout([IntPtr] 0xFFFF, 0x1A, [UIntPtr]::Zero, 'Environment', 2, 2000, [ref] $ignored)
+}
+
+function Test-InMachinePath([string] $Directory) {
+    <#
+    .SYNOPSIS
+        Whether the PATH of every user lists $Directory, in any spelling (variables, letter case, a trailing slash).
+    .PARAMETER Directory
+        The folder.
+    .OUTPUTS
+        System.Boolean.
+    #>
+    return @(@(Get-MachinePathEntries) | Where-Object { Test-SamePath $_ $Directory }).Count -gt 0
+}
+
+function Add-ToMachinePath([string] $Directory) {
+    <#
+    .SYNOPSIS
+        Appends $Directory to the PATH of every user, unless it is listed already: what -AddToPath does for a copy for
+        every user, so each user's terminals find bclip.
+    .PARAMETER Directory
+        The install folder.
+    .OUTPUTS
+        System.Boolean - whether it was added.
+    .NOTES
+        Throws without administrator rights.
+    #>
+    $entries = @(Get-MachinePathEntries)
+    if (@($entries | Where-Object { Test-SamePath $_ $Directory }).Count -gt 0) {
+        return $false
+    }
+
+    Set-MachinePathEntries ($entries + $Directory.TrimEnd('\', '/'))
+    return $true
+}
+
+function Remove-FromMachinePath([string] $Directory) {
+    <#
+    .SYNOPSIS
+        Takes every spelling of $Directory off the PATH of every user, leaving the other entries in their order.
+    .DESCRIPTION
+        Done by the uninstall of a copy for every user whoever added the folder: a PATH entry for a deleted folder would
+        leave every shell of every user probing a missing directory.
+    .PARAMETER Directory
+        The install folder.
+    .OUTPUTS
+        System.Boolean - whether anything was removed.
+    .NOTES
+        Throws without administrator rights.
+    #>
+    $entries = @(Get-MachinePathEntries)
+    $kept = @($entries | Where-Object { -not (Test-SamePath $_ $Directory) })
+    if ($kept.Count -eq $entries.Count) {
+        return $false
+    }
+
+    Set-MachinePathEntries $kept
+    return $true
+}
+
+function Invoke-ElevatedUninstall {
+    <#
+    .SYNOPSIS
+        Runs this very script again as administrator to remove the copy for every user, and waits for it.
+    .DESCRIPTION
+        Settings > Apps starts the uninstall command of the PC's entry with the user's normal rights, and removing a
+        Program Files folder and HKEY_LOCAL_MACHINE entries needs an administrator: Windows asks for consent (or for an
+        administrator's credentials) once. The same PowerShell (5.1 or 7) runs the elevated copy, with the same options.
+    .NOTES
+        Throws when the script is no file (irm | iex), when the user declines the prompt, or when the elevated run fails.
+    #>
+    if (-not $PSCommandPath) {
+        throw 'Removing BetterClipboard for every user needs an administrator: run PowerShell as administrator and try again.'
+    }
+
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Uninstall', '-AllUsers', '-InstallDir', "`"$InstallDir`"")
+    if ($RemoveData) { $arguments += '-RemoveData' }
+    if ($KeepWinVReleased) { $arguments += '-KeepWinVReleased' }
+    Write-Step 'Asking for administrator rights to remove BetterClipboard for every user'
+    try {
+        $process = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -Verb RunAs -PassThru
+    }
+    catch {
+        throw "BetterClipboard was not removed: Windows did not give the uninstall administrator rights ($($_.Exception.Message))."
+    }
+
+    # Windows PowerShell reports no exit code for a process whose handle was never taken while it ran.
+    $null = $process.Handle
+    $process.WaitForExit()
+    if ($process.ExitCode -ne 0) {
+        throw "The uninstall as administrator ended with exit code $($process.ExitCode); its window said why."
+    }
+}
+
 function Start-AppUnelevated([string] $Exe) {
     <#
     .SYNOPSIS
@@ -1181,6 +1745,13 @@ function Complete-Update([string] $Exe, [string] $Semver, [bool] $WasRunning) {
             Set-ItemProperty -Path $UninstallKeyPath -Name EstimatedSize -Value $sizeKb -Type DWord
         }
 
+        # The PC's entry of a copy for every user, when an administrator runs -Update on that folder by hand (the app's
+        # updater never does: such a copy does not replace itself).
+        if (Test-SamePath (Get-MachineValue $MachineUninstallSubKey 'InstallLocation') $InstallDir) {
+            $sizeKb = [int] ((Get-ChildItem -Path $InstallDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB)
+            Set-MachineUninstallEntry -Strings @{ DisplayVersion = $Semver } -Numbers @{ EstimatedSize = $sizeKb }
+        }
+
         $state = Read-InstallerState
         if ($state -and $state.PSObject.Properties['installDir'] -and (Test-SamePath ([string] $state.installDir) $InstallDir)) {
             # Every recorded value stays (the keys released from Explorer above all); only the version moves.
@@ -1208,9 +1779,30 @@ function Complete-Update([string] $Exe, [string] $Semver, [bool] $WasRunning) {
 }
 
 function Install-BetterClipboard {
-    # Not for an update: it runs with whatever rights the app has that asked for it, and changes nothing but that copy.
-    if ((Test-Elevated) -and -not $Update) {
-        Write-Warning 'Running elevated. BetterClipboard installs per user; a normal (non-admin) PowerShell is recommended.'
+    if ($script:ForAllUsers) {
+        # Every check about the scope before anything is downloaded or changed.
+        if (-not (Test-Elevated)) {
+            throw 'Installing BetterClipboard for every user of this PC (-AllUsers) needs an administrator: run PowerShell as administrator and try again.'
+        }
+
+        if ($Update) {
+            throw '-Update replaces the files of one copy as the app''s update button asks; it does not go with -AllUsers. To update the copy for every user, run the installer as administrator without -Update.'
+        }
+
+        # One person's settings and Explorer's shortcuts, which only the signed-in user's own run may change.
+        $personal = @()
+        if ($Hotkey) { $personal += '-Hotkey' }
+        if ($TakeOverWinV) { $personal += '-TakeOverWinV' }
+        if ($NoTakeOverWinV) { $personal += '-NoTakeOverWinV' }
+        if (-not $script:ForDesktopUser -and $personal.Count -gt 0) {
+            throw "$($personal -join ', ') set the shortcuts of the account that runs the installer, and this install for every user is not that account's own ($script:ScopeReason). Install without them; each user picks shortcuts in BetterClipboard's Settings > Shortcut."
+        }
+
+        Write-Step "Installing for every user of this PC ($script:ScopeReason)"
+    }
+    elseif ((Test-Elevated) -and -not $Update) {
+        # Not for an update: it runs with whatever rights the app has that asked for it, and changes nothing but that copy.
+        Write-Warning 'Running elevated. BetterClipboard installs per user; a normal (non-admin) PowerShell is recommended. To install it for every user of this PC instead, add -AllUsers.'
     }
 
     # Contradictions fail here, before anything is downloaded or changed.
@@ -1255,6 +1847,12 @@ function Install-BetterClipboard {
     # Not on an update: it replaces one known copy and registers nothing, so the other copy does not matter to it.
     if ($chocolateyCopy -and -not $Update) {
         Write-Warning "BetterClipboard is also installed with Chocolatey ($chocolateyCopy); 'choco upgrade betterclipboard' updates that copy. Both copies use the same history."
+    }
+
+    # A copy of one user next to the copy for every user works, but at this user's sign-in their own entry goes first.
+    $allUsersCopy = if ($script:ForAllUsers -or $Update) { $null } else { Get-AllUsersCopy }
+    if ($allUsersCopy) {
+        Write-Warning "BetterClipboard is also installed for every user of this PC ($allUsersCopy). This installs a second copy, just for you, which starts instead of that one when you sign in; both use your history. To update the copy for every user, run the installer in PowerShell as administrator."
     }
 
     $arch = Get-OsArchitecture
@@ -1366,6 +1964,12 @@ function Install-BetterClipboard {
             if (Test-Path $leftover) { Remove-Item $leftover -Recurse -Force }
         }
 
+        if ($script:ForAllUsers) {
+            # The rights first, so every extracted file inherits them: no ordinary user may replace what every user runs.
+            New-Item -ItemType Directory -Path $staging -Force | Out-Null
+            Set-AllUsersFolderSecurity $staging
+        }
+
         # -LiteralPath: a -Package path is the caller's, and "[" or "]" in it would otherwise be read as a wildcard.
         Expand-Archive -LiteralPath $zip -DestinationPath $staging -Force
         Get-ChildItem -Path $staging -Recurse -File | Unblock-File
@@ -1401,6 +2005,13 @@ function Install-BetterClipboard {
         # An update closes only what runs from the folder it replaces; an install closes every BetterClipboard of the
         # session, since it is about to register this copy as the one that runs.
         $wasRunning = if ($Update) { Stop-InstalledApp $exe } else { Stop-RunningApp $exe }
+        if ($script:ForAllUsers) {
+            # The copy for every user may run in other users' sessions too, and each of those keeps the folder in use.
+            $stoppedElsewhere = Stop-AllUsersCopyElsewhere $InstallDir
+            if ($stoppedElsewhere -gt 0) {
+                Write-Note "Closed BetterClipboard in other users' sessions ($stoppedElsewhere process(es)); it starts again at their next sign-in, or from the Start menu."
+            }
+        }
 
         Write-Step "Installing $tag to $InstallDir"
         # Swap via renames: if the new files cannot be moved in, the previous version is put back - and started again
@@ -1443,7 +2054,11 @@ function Install-BetterClipboard {
     # The automatic update check, switched off on request while the app is still closed (it is on by default).
     $comparableVersion = ConvertTo-ComparableVersion $semver
     $hasUpdateCheck = $null -ne $comparableVersion -and $comparableVersion -ge $UpdateCheckMinimumVersion
-    if ($NoUpdateCheck) {
+    if ($NoUpdateCheck -and $script:ForAllUsers) {
+        # The switch lives in each user's own settings; a copy for every user never uses it (UpdateInstallKind.AllUsers).
+        Write-Note 'A copy for every user never checks for updates by itself, so -NoUpdateCheck has nothing to switch off.'
+    }
+    elseif ($NoUpdateCheck) {
         if (-not $hasUpdateCheck) {
             Write-Note "BetterClipboard $semver has no automatic update check, so there is nothing to switch off."
         }
@@ -1458,7 +2073,30 @@ function Install-BetterClipboard {
         }
     }
 
-    if (-not $NoShortcut) {
+    if (-not $NoShortcut -and $script:ForAllUsers) {
+        # Every user's Start menu, where the Chocolatey package (installed elevated) keeps its shortcut under this name.
+        $shortcutTarget = Get-ShortcutTarget $AllUsersShortcutPath
+        if (-not $AllUsersShortcutPath) {
+            Write-Note 'Windows names no Start menu folder for every user here, so no shortcut was added.'
+        }
+        elseif (Test-OtherCopy $shortcutTarget $InstallDir) {
+            Write-Note "The Start menu shortcut for every user stays with the other copy of BetterClipboard ($shortcutTarget)."
+        }
+        else {
+            Write-Step 'Adding the Start menu shortcut for every user'
+            $shell = New-Object -ComObject WScript.Shell
+            $link = $shell.CreateShortcut($AllUsersShortcutPath)
+            $link.TargetPath = $exe
+            $link.WorkingDirectory = $InstallDir
+            $link.IconLocation = "$exe,0"
+            $link.Description = 'Persistent, searchable clipboard history (Win+V)'
+            $link.Save()
+        }
+    }
+    elseif (-not $NoShortcut -and -not $ShortcutPath) {
+        Write-Note 'This account has no Start menu folder of its own, so no shortcut was added (-AllUsers adds one for every user).'
+    }
+    elseif (-not $NoShortcut) {
         Write-Step 'Adding the Start menu shortcut'
         $shell = New-Object -ComObject WScript.Shell
         $link = $shell.CreateShortcut($ShortcutPath)
@@ -1469,7 +2107,19 @@ function Install-BetterClipboard {
         $link.Save()
     }
 
-    if (-not $NoStartup) {
+    if (-not $NoStartup -and $script:ForAllUsers) {
+        # The entry for every user. The one value is shared with the Chocolatey package's copy, which writes it when someone
+        # else than the signed-in user installs it: never taken over from that copy while it exists.
+        $machineTarget = Get-MachineRunTarget
+        if (Test-OtherCopy $machineTarget $InstallDir) {
+            Write-Note "Start with Windows for every user stays with the other copy of BetterClipboard ($machineTarget)."
+        }
+        else {
+            Write-Step 'Starting with Windows for every user (each user can turn it off in Settings > Start with Windows)'
+            Set-MachineRunEntry $exe
+        }
+    }
+    elseif (-not $NoStartup) {
         $startupTarget = Get-RunTarget
         if ($startupTarget -and $chocolateyCopy -and [string]::Equals($startupTarget, $chocolateyCopy, [StringComparison]::OrdinalIgnoreCase)) {
             # One value for both copies: taking it over would leave no copy starting once this one is uninstalled.
@@ -1484,29 +2134,55 @@ function Install-BetterClipboard {
         }
     }
 
-    Write-Step 'Registering in Settings > Apps > Installed apps'
-    $sizeKb = [int] ((Get-ChildItem -Path $InstallDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB)
-    Confirm-RegistryKey $UninstallKeyPath
-    $uninstallCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'install.ps1')`" -Uninstall -InstallDir `"$InstallDir`""
-    $values = @{
-        DisplayName          = $AppName
-        DisplayVersion       = $semver
-        Publisher            = 'BetterClipboard contributors'
-        DisplayIcon          = "$exe,0"
-        InstallLocation      = $InstallDir
-        UninstallString      = $uninstallCommand
-        QuietUninstallString = $uninstallCommand
-        URLInfoAbout         = "https://github.com/$Repository"
-        HelpLink             = "https://github.com/$Repository/issues"
+    if ($script:ForAllUsers) {
+        # The PC's entry, which every user sees; its uninstall command asks for administrator rights itself
+        # (Invoke-ElevatedUninstall), since Settings > Apps starts it with the user's normal ones.
+        Write-Step 'Registering in Settings > Apps > Installed apps, for every user'
+        $sizeKb = [int] ((Get-ChildItem -Path $InstallDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB)
+        $uninstallCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'install.ps1')`" -Uninstall -AllUsers -InstallDir `"$InstallDir`""
+        Set-MachineUninstallEntry -Strings @{
+            DisplayName          = $AppName
+            DisplayVersion       = $semver
+            Publisher            = 'BetterClipboard contributors'
+            DisplayIcon          = "$exe,0"
+            InstallLocation      = $InstallDir
+            UninstallString      = $uninstallCommand
+            QuietUninstallString = $uninstallCommand
+            URLInfoAbout         = "https://github.com/$Repository"
+            HelpLink             = "https://github.com/$Repository/issues"
+        } -Numbers @{ NoModify = 1; NoRepair = 1; EstimatedSize = $sizeKb }
     }
-    foreach ($name in $values.Keys) { Set-ItemProperty -Path $UninstallKeyPath -Name $name -Value $values[$name] -Type String }
-    Set-ItemProperty -Path $UninstallKeyPath -Name NoModify -Value 1 -Type DWord
-    Set-ItemProperty -Path $UninstallKeyPath -Name NoRepair -Value 1 -Type DWord
-    Set-ItemProperty -Path $UninstallKeyPath -Name EstimatedSize -Value $sizeKb -Type DWord
+    else {
+        Write-Step 'Registering in Settings > Apps > Installed apps'
+        $sizeKb = [int] ((Get-ChildItem -Path $InstallDir -Recurse -File | Measure-Object -Property Length -Sum).Sum / 1KB)
+        Confirm-RegistryKey $UninstallKeyPath
+        $uninstallCommand = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $InstallDir 'install.ps1')`" -Uninstall -InstallDir `"$InstallDir`""
+        $values = @{
+            DisplayName          = $AppName
+            DisplayVersion       = $semver
+            Publisher            = 'BetterClipboard contributors'
+            DisplayIcon          = "$exe,0"
+            InstallLocation      = $InstallDir
+            UninstallString      = $uninstallCommand
+            QuietUninstallString = $uninstallCommand
+            URLInfoAbout         = "https://github.com/$Repository"
+            HelpLink             = "https://github.com/$Repository/issues"
+        }
+        foreach ($name in $values.Keys) { Set-ItemProperty -Path $UninstallKeyPath -Name $name -Value $values[$name] -Type String }
+        Set-ItemProperty -Path $UninstallKeyPath -Name NoModify -Value 1 -Type DWord
+        Set-ItemProperty -Path $UninstallKeyPath -Name NoRepair -Value 1 -Type DWord
+        Set-ItemProperty -Path $UninstallKeyPath -Name EstimatedSize -Value $sizeKb -Type DWord
+    }
 
     if ($AddToPath) {
-        Write-Step 'Adding the install folder to your user PATH (for bclip, the command line)'
-        if (-not (Add-ToUserPath $InstallDir)) { Write-Note 'It was already on your PATH.' }
+        if ($script:ForAllUsers) {
+            Write-Step 'Adding the install folder to the PATH of every user (for bclip, the command line)'
+            if (-not (Add-ToMachinePath $InstallDir)) { Write-Note 'It was already on the PATH of every user.' }
+        }
+        else {
+            Write-Step 'Adding the install folder to your user PATH (for bclip, the command line)'
+            if (-not (Add-ToUserPath $InstallDir)) { Write-Note 'It was already on your PATH.' }
+        }
 
         # This window too: "irm ... | iex" runs the installer inside the caller's own PowerShell process,
         # which keeps the PATH it started with - without this, bclip would only work in new terminals.
@@ -1523,7 +2199,12 @@ function Install-BetterClipboard {
     $recorded = Get-RecordedReleasedKeys $state
     $released = @()
     $givenBack = @()
-    if ($null -eq $effective) {
+    if ($script:ForAllUsers -and -not $script:ForDesktopUser) {
+        # Explorer's shortcuts are each user's own, and this account is not one who uses the PC: every user's BetterClipboard
+        # takes Win+V over with its keyboard hook, and Settings > Shortcut releases it from Explorer for that user.
+        Write-Note "Win+V is each user's own: BetterClipboard takes it over with its keyboard hook for everyone, and each user can release it from Explorer in Settings > Shortcut."
+    }
+    elseif ($null -eq $effective) {
         Write-Note "BetterClipboard's settings could not be read here, so Explorer's shortcuts were left as they are."
     }
     else {
@@ -1548,23 +2229,38 @@ function Install-BetterClipboard {
         Restart-Explorer
     }
 
-    # Record what was installed where (support/diagnostics; the app never reads it). Keys released by an earlier run
-    # stay recorded across updates, so -Uninstall knows to give them back.
-    $releasedKeys = -join @(@($recorded) + @($released) | Where-Object { $givenBack -notcontains $_ } | Select-Object -Unique)
-    New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
-    $newState = [ordered]@{
-        version      = $semver
-        installDir   = $InstallDir
-        releasedWinV = $releasedKeys.Contains('V')
-        releasedKeys = $releasedKeys
-        onUserPath   = Test-InUserPath $InstallDir
-        installedUtc = (Get-Date).ToUniversalTime().ToString('o')
+    # Record what was installed where (support/diagnostics; the app reads only installDir, InstalledCopy). Keys released
+    # by an earlier run stay recorded across updates, so -Uninstall knows to give them back. Not for an install for every
+    # user by another account (SYSTEM): it released nothing of anyone's, and its profile is nobody's who uses the app.
+    if (-not $script:ForAllUsers -or $script:ForDesktopUser) {
+        $releasedKeys = -join @(@($recorded) + @($released) | Where-Object { $givenBack -notcontains $_ } | Select-Object -Unique)
+        New-Item -ItemType Directory -Path $DataDir -Force | Out-Null
+        $newState = [ordered]@{
+            version      = $semver
+            installDir   = $InstallDir
+            releasedWinV = $releasedKeys.Contains('V')
+            releasedKeys = $releasedKeys
+            onUserPath   = Test-InUserPath $InstallDir
+            allUsers     = $script:ForAllUsers
+            installedUtc = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $newState | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
     }
-    $newState | ConvertTo-Json | Set-Content -Path $StatePath -Encoding UTF8
 
-    if (-not $NoLaunch) {
+    if (-not $NoLaunch -and $script:ForAllUsers -and -not $script:ForDesktopUser) {
+        # Started from here it would run as this account (SYSTEM, the administrator), with that account's history.
+        $atSignIn = [string]::Equals((Get-MachineRunTarget), $exe, [StringComparison]::OrdinalIgnoreCase)
+        $next = if ($atSignIn) { "It starts at each user's next sign-in, or from the Start menu." } else { 'Users start it from the Start menu.' }
+        Write-Note "BetterClipboard was not started now: this install is not the signed-in user's own. $next"
+    }
+    elseif (-not $NoLaunch) {
         Write-Step 'Starting BetterClipboard'
         Start-AppUnelevated $exe
+    }
+
+    if ($script:ForAllUsers) {
+        Write-AllUsersSummary -Exe $exe -Semver $semver -Effective $effective
+        return
     }
 
     Write-Host ''
@@ -1602,6 +2298,41 @@ function Install-BetterClipboard {
     }
 }
 
+function Write-AllUsersSummary([string] $Exe, [string] $Semver, $Effective) {
+    <#
+    .SYNOPSIS
+        The closing words of an install for every user: what each user gets, what was done for the signed-in user, and
+        how this copy is updated.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe.
+    .PARAMETER Semver
+        The version that was installed.
+    .PARAMETER Effective
+        The shortcuts of the signed-in user (Get-ConfiguredHotkeys' answer, or the ones just set), or $null when unknown.
+    #>
+    Write-Host ''
+    Write-Host "BetterClipboard $Semver is installed for every user of this PC." -ForegroundColor Green
+    if ($script:ForDesktopUser) {
+        $press = if ($null -ne $Effective) { @($Effective) -join ' or ' } else { 'your shortcut' }
+        Write-Note "Press $press to open it. Your history is encrypted in:"
+        Write-Note "  $DataDir"
+    }
+
+    Write-Note "Each user's history is kept, encrypted, in their own %LOCALAPPDATA%\$AppName."
+    if (-not $NoStartup -and [string]::Equals((Get-MachineRunTarget), $Exe, [StringComparison]::OrdinalIgnoreCase)) {
+        Write-Note 'It starts when anyone signs in; each user can turn that off in Settings > Start with Windows.'
+    }
+
+    if ($AddToPath) {
+        Write-Note 'bclip is on the PATH of every user. Each user turns it on in Settings > Command line (off by default).'
+    }
+
+    # How this copy is updated: it neither replaces itself nor asks GitHub by itself (UpdateInstallKind.AllUsers).
+    Write-Note 'This copy does not check for updates by itself. To update it, run in PowerShell as administrator:'
+    Write-Note "  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/$Repository/main/install.ps1))) -AllUsers"
+    Write-Note "Settings > Updates > Check now asks GitHub when you want to know. Privacy: https://github.com/$Repository#privacy"
+}
+
 function Uninstall-BetterClipboard {
     $exe = Join-Path $InstallDir $ExeName
     $null = Stop-RunningApp $exe
@@ -1625,7 +2356,8 @@ function Uninstall-BetterClipboard {
         Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
     }
 
-    Remove-Item -Path $ShortcutPath -Force -ErrorAction SilentlyContinue
+    # Remove-Item refuses an empty path outright: an account without a Start menu folder has no shortcut to remove.
+    if ($ShortcutPath) { Remove-Item -Path $ShortcutPath -Force -ErrorAction SilentlyContinue }
     Remove-Item -Path $UninstallKeyPath -Recurse -Force -ErrorAction SilentlyContinue
 
     # The folder is about to disappear; a PATH entry for it (from -AddToPath or the app's "Add bclip to
@@ -1681,18 +2413,184 @@ function Uninstall-BetterClipboard {
         Write-Note "Your history was kept in $DataDir (use -RemoveData to delete it)."
     }
 
+    # The copy for every user is another install, which this one leaves alone; say how it goes too.
+    $allUsersCopy = Get-AllUsersCopy
+    if ($allUsersCopy) {
+        Write-Note "BetterClipboard is still installed for every user of this PC ($allUsersCopy); -Uninstall -AllUsers removes that copy."
+    }
+
     Write-Host ''
     Write-Host 'BetterClipboard was uninstalled.' -ForegroundColor Green
 }
 
+function Restore-ExplorerHotkeysForThisUser([string] $OtherCopy) {
+    <#
+    .SYNOPSIS
+        Gives back to Windows the Win+<key> shortcuts this account released from Explorer for BetterClipboard - Win+V,
+        the keys installer runs recorded, and the Win+letter shortcuts in its settings - and restarts Explorer once.
+    .DESCRIPTION
+        The rule of the uninstall of a copy of one user (Uninstall-BetterClipboard), for the uninstall of the copy for
+        every user run by the signed-in user: without BetterClipboard a released shortcut would do nothing at all. Not
+        while another copy of BetterClipboard stays installed for this user, which still uses them, nor with
+        -KeepWinVReleased.
+    .PARAMETER OtherCopy
+        Where another copy that stays installed for this user lives ('' for none).
+    #>
+    $configured = Get-ConfiguredHotkeys
+    $recorded = Get-RecordedReleasedKeys (Read-InstallerState)
+    $candidates = @([char] 'V') + @($recorded) + @(@($configured) | ForEach-Object { Get-ReleasableKey $_ } | Where-Object { $null -ne $_ })
+    $toGiveBack = @($candidates | Select-Object -Unique | Where-Object { Test-KeyReleased $_ })
+    if ($KeepWinVReleased -or $toGiveBack.Count -eq 0) {
+        return
+    }
+
+    if ($OtherCopy) {
+        Write-Note "$(Format-KeyNames $toGiveBack) $(if ($toGiveBack.Count -eq 1) { 'stays' } else { 'stay' }) released from Explorer: the copy at $OtherCopy still uses $(if ($toGiveBack.Count -eq 1) { 'it' } else { 'them' })."
+        return
+    }
+
+    Write-Step "Giving $(Format-KeyNames $toGiveBack) back to Windows"
+    Set-ExplorerHotkeysReleased $toGiveBack $false | Out-Null
+    Restart-Explorer
+}
+
+function Uninstall-BetterClipboardForAllUsers {
+    <#
+    .SYNOPSIS
+        Removes the copy for every user of the PC: its programs in every session, the startup entry, Start menu shortcut
+        and Installed-apps entry for every user, its folder on the PATH of every user, and the folder. Each user's
+        history stays in their own profile.
+    .DESCRIPTION
+        Needs an administrator; without one, it runs itself again as administrator (Invoke-ElevatedUninstall), which is
+        how Settings > Apps starts it. The startup entry for every user is handed to the Chocolatey package's copy while
+        that one stays installed (everyone can start it too, and the package's own uninstall hands it back the same
+        way); an entry or shortcut that starts another existing copy is left alone. Explorer's shortcuts and the
+        startup entries in a user's own registry are each user's: only the signed-in user's are given back or cleaned
+        up, and only by that user's own run - another user who released Win+V in Settings removes V from Explorer's
+        DisabledHotkeys value themselves, and an own entry of theirs for this copy stays behind, starting nothing.
+    #>
+    if (-not (Test-Elevated)) {
+        Invoke-ElevatedUninstall
+        return
+    }
+
+    $exe = Join-Path $InstallDir $ExeName
+    # Only what runs from this folder: a copy of one user in this session is another install and keeps running.
+    $null = Stop-InstalledApp $exe
+    $stopped = Stop-AllUsersCopyElsewhere $InstallDir
+    if ($stopped -gt 0) {
+        Write-Note "Closed BetterClipboard in other users' sessions ($stopped process(es))."
+    }
+
+    Write-Step 'Removing the startup entry, shortcut and Installed-apps entry for every user'
+    $machineTarget = Get-MachineRunTarget
+    $chocolateyCopy = Get-ChocolateyCopy
+    if (Test-OtherCopy $machineTarget $InstallDir) {
+        Write-Note "Kept the startup entry for every user: it starts the copy at $machineTarget."
+    }
+    elseif ($machineTarget -and $chocolateyCopy) {
+        Set-MachineRunEntry $chocolateyCopy
+        Write-Note "Start with Windows for every user now starts the Chocolatey copy ($chocolateyCopy)."
+    }
+    elseif ($machineTarget) {
+        # This copy's entry, or a stale one pointing at a missing file.
+        Remove-MachineRunEntry
+    }
+
+    $shortcutTarget = Get-ShortcutTarget $AllUsersShortcutPath
+    if ($shortcutTarget -and -not (Test-OtherCopy $shortcutTarget $InstallDir)) {
+        Remove-Item -LiteralPath $AllUsersShortcutPath -Force -ErrorAction SilentlyContinue
+    }
+
+    # Only an entry for this folder: a copy for every user that someone installed elsewhere keeps its own.
+    $registered = (Get-MachineValue $MachineUninstallSubKey 'InstallLocation').Trim()
+    if (-not $registered -or (Test-SamePath $registered $InstallDir)) {
+        Remove-MachineUninstallEntry
+    }
+
+    # The folder is about to disappear; a PATH entry for it would leave every user's shells probing a missing directory.
+    if (Remove-FromMachinePath $InstallDir) {
+        Write-Note "Removed $InstallDir from the PATH of every user."
+    }
+
+    if ($script:ForDesktopUser) {
+        # This user's own entry for this copy - the app's switch writes one when the entry for every user is off - would
+        # point at a deleted program: removed, or handed to the Chocolatey copy while that stays (as the uninstall of a
+        # copy of one user does). Other users' own entries are in their own registry, out of this run's reach.
+        $ownTarget = Get-RunTarget
+        if ($ownTarget -and (Test-SamePath (Split-Path -Parent $ownTarget) $InstallDir)) {
+            if ($chocolateyCopy) {
+                Set-ItemProperty -Path $RunKeyPath -Name $AppName -Value "`"$chocolateyCopy`" --background" -Type String
+                Write-Note "Your own Start with Windows entry now starts the Chocolatey copy ($chocolateyCopy)."
+            }
+            else {
+                Remove-ItemProperty -Path $RunKeyPath -Name $AppName -ErrorAction SilentlyContinue
+            }
+        }
+
+        # A copy of one user (install.ps1's or Chocolatey's) that stays installed for this user still needs them.
+        $ownCopy = (Get-ItemProperty -Path $UninstallKeyPath -ErrorAction SilentlyContinue)
+        $ownFolder = if ($ownCopy -and $ownCopy.PSObject.Properties['InstallLocation']) { [string] $ownCopy.InstallLocation } else { '' }
+        $otherCopy = if ($ownFolder -and (Test-Path -LiteralPath (Join-Path $ownFolder $ExeName))) { $ownFolder } elseif ($chocolateyCopy) { $chocolateyCopy } else { '' }
+        Restore-ExplorerHotkeysForThisUser $otherCopy
+    }
+
+    Write-Step "Removing $InstallDir"
+    # As in Uninstall-BetterClipboard: the process's own current directory would keep the folder undeletable.
+    $neutral = [IO.Path]::GetTempPath()
+    Set-Location $neutral
+    [Environment]::CurrentDirectory = $neutral
+    $state = Read-InstallerState
+    if ($state -and $state.PSObject.Properties['installDir'] -and (Test-SamePath ([string] $state.installDir) $InstallDir)) {
+        Remove-Item -Path $StatePath -Force -ErrorAction SilentlyContinue
+    }
+
+    if (Test-Path $InstallDir) {
+        try {
+            Remove-Item -Path $InstallDir -Recurse -Force
+        }
+        catch {
+            Write-Warning "Could not delete $InstallDir ($($_.Exception.Message)). Close any window or console open in that folder and delete it manually."
+        }
+    }
+
+    if ($RemoveData) {
+        Write-Step "Deleting history, settings and logs in $DataDir"
+        if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
+        Write-Note "Other users' histories stay in their own %LOCALAPPDATA%\$AppName."
+    }
+    else {
+        Write-Note "Each user's history was kept in their own %LOCALAPPDATA%\$AppName."
+    }
+
+    Write-Host ''
+    Write-Host 'BetterClipboard was uninstalled for every user of this PC.' -ForegroundColor Green
+}
+
 # Paths the caller typed are relative to the caller's folder, so they are resolved before the installer moves to the
-# temp folder; the data folder override too (tests and dev runs pass relative ones).
-$InstallDir = Resolve-FileSystemPath $InstallDir
+# temp folder; the data folder override too (tests and dev runs pass relative ones). An empty -InstallDir means the
+# default of this run's scope, filled in once the scope is known.
+if ($InstallDir) { $InstallDir = Resolve-FileSystemPath $InstallDir }
 $DataDir = Resolve-FileSystemPath $DataDir
 $StatePath = Join-Path $DataDir 'installer.json'
 if ($Package) { $Package = Resolve-FileSystemPath $Package }
 if ($ResultPath) { $ResultPath = Resolve-FileSystemPath $ResultPath }
 if ($LogPath) { $LogPath = Resolve-FileSystemPath $LogPath }
+
+# Who this run is for (every user, or this account), then the folder that goes with it.
+Resolve-InstallScope
+if (-not $InstallDir) {
+    $InstallDir = if (-not $script:ForAllUsers) {
+        Join-Path $env:LOCALAPPDATA 'Programs\BetterClipboard'
+    }
+    elseif (Get-AllUsersCopy) {
+        # The copy for every user that exists already, wherever an administrator put it.
+        Get-AllUsersCopy
+    }
+    else {
+        Join-Path (Get-ProgramFilesFolder) $AppName
+    }
+}
 
 # -LogPath: a run without a window (the app's updater) leaves what it printed in a file. A transcript that cannot be
 # started only warns: the install matters more than its log.
@@ -1710,7 +2608,10 @@ if ($LogPath) {
 
 Enter-WorkingFolder
 try {
-    if ($Uninstall) {
+    if ($Uninstall -and $script:ForAllUsers) {
+        Uninstall-BetterClipboardForAllUsers
+    }
+    elseif ($Uninstall) {
         Uninstall-BetterClipboard
     }
     else {

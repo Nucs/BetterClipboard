@@ -5,8 +5,9 @@ using Microsoft.Win32;
 namespace BetterClipboard.Windows.Updates;
 
 /// <summary>
-/// Reads from Windows what the update system must know about the running copy: which folder <c>install.ps1</c>
-/// registered as installed, and which architecture this PC has (so an update downloads the right package).
+/// Reads from Windows what the update system must know about the running copy: which folders <c>install.ps1</c>
+/// registered as installed (for this user, and for every user of the PC), and which architecture this PC has (so an
+/// update downloads the right package).
 /// </summary>
 /// <remarks>
 /// Read-only, and it never throws: a registry it cannot read simply proves nothing, and the copy then counts as
@@ -15,8 +16,10 @@ namespace BetterClipboard.Windows.Updates;
 public static class InstalledCopyLocator
 {
     /// <summary>
-    /// The per-user Installed-apps entry <c>install.ps1</c> writes (its <c>$UninstallKeyPath</c>). A constant shared with
-    /// the installer by convention: renaming it there orphans every installed copy's self-update.
+    /// The Installed-apps entry <c>install.ps1</c> writes: under <c>HKEY_CURRENT_USER</c> for a copy of one user (its
+    /// <c>$UninstallKeyPath</c>), under <c>HKEY_LOCAL_MACHINE</c> for a copy of every user (its <c>$MachineUninstallSubKey</c>).
+    /// A constant shared with the installer by convention: renaming it there orphans every installed copy's self-update,
+    /// and makes copies installed for every user try to replace a folder only an administrator may write.
     /// </summary>
     internal const string UninstallKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\BetterClipboard";
 
@@ -63,14 +66,62 @@ public static class InstalledCopyLocator
     }
 
     /// <summary>
-    /// Works out how the running copy was installed, from the folder it runs in, the Installed-apps entry and this
-    /// instance's <c>installer.json</c>.
+    /// The folder the PC's Installed-apps entry for BetterClipboard names: the copy <c>install.ps1 -AllUsers</c> installed
+    /// for every user (the same key name under <c>HKEY_LOCAL_MACHINE</c>, 64-bit view, where the installer writes it
+    /// whatever PowerShell it runs in).
+    /// </summary>
+    /// <returns>
+    /// The entry's <c>InstallLocation</c>, or <see langword="null"/> when there is no entry, it has no such text, or the
+    /// registry cannot be read.
+    /// </returns>
+    public static string? ReadMachineInstallLocation()
+    {
+        try
+        {
+            using var machine = RegistryKey.OpenBaseKey(RegistryHive.LocalMachine, RegistryView.Registry64);
+            return ReadMachineInstallLocation(machine, UninstallKeyPath);
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException or ObjectDisposedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The folder an Installed-apps entry under <paramref name="root"/> names; tests pass a scratch key as the root
+    /// instead of the PC's registry.
+    /// </summary>
+    /// <param name="root">The key that stands for <c>HKEY_LOCAL_MACHINE</c>.</param>
+    /// <param name="keyPath">Path of the entry's key under <paramref name="root"/>.</param>
+    /// <returns>The entry's <c>InstallLocation</c>, trimmed, or <see langword="null"/> as for <see cref="ReadMachineInstallLocation()"/>.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="root"/> is <see langword="null"/>.</exception>
+    internal static string? ReadMachineInstallLocation(RegistryKey root, string keyPath)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        try
+        {
+            using var key = root.OpenSubKey(keyPath);
+            return key?.GetValue(InstallLocationValue) is string location && !string.IsNullOrWhiteSpace(location)
+                ? location.Trim()
+                : null;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException or ObjectDisposedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Works out how the running copy was installed, from the folder it runs in, the Installed-apps entries (the user's
+    /// and the PC's) and this instance's <c>installer.json</c>.
     /// </summary>
     /// <remarks>
     /// An isolated instance (its own data directory) is judged by its own <c>installer.json</c> alone. The Installed-apps
     /// entry belongs to the user's regular instance: an isolated instance started from the installed folder must not
     /// count as "installed" through it, or its self-update would replace that folder under the regular instance, which
     /// the installer would then have to end by force (its graceful exit signal reaches only the instance that asked).
+    /// The PC's entry is left out for the same reason, and so that a test's answer never depends on what the PC that
+    /// runs it has installed for every user.
     /// </remarks>
     /// <param name="appDirectory">The folder of the running <c>BetterClipboard.exe</c>.</param>
     /// <param name="installerStatePath">This instance's <c>installer.json</c> (<see cref="Core.AppPaths.InstallerStatePath"/>).</param>
@@ -86,6 +137,7 @@ public static class InstalledCopyLocator
         return InstalledCopy.Classify(
             appDirectory,
             isolatedInstance ? null : ReadRegisteredInstallLocation(),
-            InstalledCopy.ReadInstallerStateDirectory(installerStatePath));
+            InstalledCopy.ReadInstallerStateDirectory(installerStatePath),
+            isolatedInstance ? null : ReadMachineInstallLocation());
     }
 }

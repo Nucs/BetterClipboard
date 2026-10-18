@@ -12,14 +12,19 @@
       3. Marks the executables for Chocolatey's shims: a GUI shim for BetterClipboard.exe, a console shim for
          bclip.exe, none for the runtime's helpers (createdump.exe, RestartAgent.exe, ...).
       4. Fresh install only: the Start menu shortcut and the "Start with Windows" entry. An upgrade leaves both as
-         the user left them (they point at the same exe path in every version).
+         the user left them (they point at the same exe path in every version). The entry is the user's own when the
+         signed-in user installs; when someone else does - SYSTEM (Intune, an RMM agent), an administrator whose
+         credentials were typed in for a standard user - or with /AllUsersStartup, it is the entry for every user of
+         the PC, which each user can turn off for themselves in BetterClipboard's Settings.
       5. Starts the app as the signed-in user: on a fresh install with a plain start (Settings opens, as with
          install.ps1), after an upgrade into the tray, and only if it was running before.
 
     Package parameters (choco install betterclipboard --params "'/NoStartup /NoShortcut'"):
-      /NoStartup   no "Start with Windows" entry
-      /NoShortcut  no Start menu shortcut
-      /NoLaunch    do not start the app
+      /NoStartup        no "Start with Windows" entry
+      /AllUsersStartup  start BetterClipboard at every user's sign-in (the entry for every user), also when the
+                        signed-in user installs it; chosen by itself when SYSTEM or another account installs it
+      /NoShortcut       no Start menu shortcut
+      /NoLaunch         do not start the app
     The design and every verified Chocolatey behavior behind it: docs/chocolatey.md.
 #>
 $ErrorActionPreference = 'Stop'
@@ -101,9 +106,27 @@ if (-not $isUpgrade -and -not $pp.NoShortcut) {
 
 if (-not $isUpgrade -and -not $pp.NoStartup) {
     $current = Get-BetterClipboardRunTarget
-    if ($me.IsSystem -or $foreignDesktop) {
-        # HKCU here is SYSTEM's or the administrator's: an entry there would never start the app for this desktop.
-        Write-Warning 'Not set to start with Windows: this install does not run as the signed-in user. Each user can turn it on in BetterClipboard''s Settings.'
+    if ($pp.AllUsersStartup -or $me.IsSystem -or $foreignDesktop) {
+        # Not the signed-in user's own install: HKCU here is SYSTEM's or the administrator's, and an entry there would
+        # never start the app for anyone who uses this PC. The entry for every user starts it at each user's sign-in,
+        # and a user who has an entry of their own or turns it off in Settings is left alone (--all-users-startup).
+        $currentForEveryone = Get-BetterClipboardMachineRunTarget
+        if (-not (Test-ProcessAdminRights)) {
+            Write-Warning 'Not set to start for every user: that needs administrator rights. Each user can turn it on in BetterClipboard''s Settings.'
+        }
+        elseif (Test-BetterClipboardOtherCopy $currentForEveryone $appDir) {
+            # One value for every user: taking it over would leave no copy starting once this package is uninstalled.
+            Write-Host "'Start with Windows' for every user stays with the other copy of BetterClipboard ($currentForEveryone)."
+        }
+        else {
+            try {
+                Set-BetterClipboardMachineRunEntry -Exe $exe
+                Write-Host 'BetterClipboard starts when any user of this PC signs in; each of them can turn that off in its Settings.'
+            }
+            catch {
+                Write-Warning "Not set to start for every user: $($_.Exception.Message)"
+            }
+        }
     }
     elseif (Test-BetterClipboardOtherCopy $current $appDir) {
         # One value for both copies: taking it over would leave no copy starting once this package is uninstalled.
@@ -125,11 +148,17 @@ if ($otherCopy) {
     Write-Warning "BetterClipboard is also installed with install.ps1 at '$otherCopy'. Both use the same history; to keep only this copy, uninstall that one in Settings > Apps > Installed apps."
 }
 
+$allUsersCopy = Get-BetterClipboardAllUsersInstall
+if ($allUsersCopy) {
+    Write-Warning "BetterClipboard is also installed for every user with install.ps1 at '$allUsersCopy'. Each user's history is shared by both copies; to keep only this copy, uninstall that one in Settings > Apps > Installed apps."
+}
+
 if (-not $pp.NoLaunch -and (-not $isUpgrade -or $state -eq 'running')) {
     if (-not $isDesktopUser) {
-        # "At the next sign-in" only when this account's "Start with Windows" entry starts this copy: as SYSTEM or for
-        # another user's desktop the entry was not written above, and nothing would start it.
-        $atSignIn = [string]::Equals((Get-BetterClipboardRunTarget), $exe, [StringComparison]::OrdinalIgnoreCase)
+        # "At the next sign-in" only when an entry starts this copy: this account's own (the remote shell of the user
+        # who installs), or the one for every user, which an install as SYSTEM or for another user's desktop writes.
+        $atSignIn = [string]::Equals((Get-BetterClipboardRunTarget), $exe, [StringComparison]::OrdinalIgnoreCase) -or
+            [string]::Equals((Get-BetterClipboardMachineRunTarget), $exe, [StringComparison]::OrdinalIgnoreCase)
         $next = if ($atSignIn) { 'It starts at the next sign-in, or from the Start menu.' } else { 'Start it from the Start menu.' }
         Write-Host "BetterClipboard was not started: this install does not run as the signed-in user. $next"
     }

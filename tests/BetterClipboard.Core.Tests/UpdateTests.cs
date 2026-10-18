@@ -596,6 +596,28 @@ public sealed class InstalledCopyTests
         Assert.Equal(expected, InstalledCopy.Classify(appDirectory, registered, state));
     }
 
+    /// <summary>
+    /// The PC's Installed-apps entry naming the running folder makes it a copy for every user, also when the installing
+    /// administrator's own records name the same folder; Chocolatey's shape still comes first, and an entry for another
+    /// folder changes nothing.
+    /// </summary>
+    /// <param name="appDirectory">The folder the app runs from.</param>
+    /// <param name="registered">The user's Installed-apps entry's install location.</param>
+    /// <param name="state">installer.json's install folder.</param>
+    /// <param name="machine">The PC's Installed-apps entry's install location.</param>
+    /// <param name="expected">The kind of copy.</param>
+    [Theory]
+    [InlineData(@"C:\Program Files\BetterClipboard", null, null, @"C:\Program Files\BetterClipboard", UpdateInstallKind.AllUsers)]
+    [InlineData(@"C:\Program Files\BetterClipboard\", null, null, @"c:\program files\BETTERCLIPBOARD", UpdateInstallKind.AllUsers)]
+    [InlineData(@"C:\Program Files\BetterClipboard", @"C:\Program Files\BetterClipboard", @"C:\Program Files\BetterClipboard", @"C:\Program Files\BetterClipboard", UpdateInstallKind.AllUsers)]
+    [InlineData(@"C:\Users\me\AppData\Local\Programs\BetterClipboard", @"C:\Users\me\AppData\Local\Programs\BetterClipboard", null, @"C:\Program Files\BetterClipboard", UpdateInstallKind.Installer)]
+    [InlineData(@"C:\Tools", null, null, @"C:\Program Files\BetterClipboard", UpdateInstallKind.Portable)]
+    [InlineData(@"C:\ProgramData\chocolatey\lib\betterclipboard\tools\app", null, null, @"C:\ProgramData\chocolatey\lib\betterclipboard\tools\app", UpdateInstallKind.Chocolatey)]
+    public void Classify_ThePcsEntry_MakesACopyForEveryUser(string appDirectory, string? registered, string? state, string? machine, UpdateInstallKind expected)
+    {
+        Assert.Equal(expected, InstalledCopy.Classify(appDirectory, registered, state, machine));
+    }
+
     /// <summary>A record that is not a path at all names no folder (and never throws).</summary>
     [Fact]
     public void SameFolder_ToleratesGarbage()
@@ -878,6 +900,28 @@ public sealed class UpdateTextTests
         Assert.Contains("does not replace itself", portable, StringComparison.Ordinal);
 
         Assert.Equal("BetterClipboard 0.2.7 is available (you skipped it)", UpdateText.ButtonTip(installer with { IsSkipped = true }));
+    }
+
+    /// <summary>
+    /// A copy installed for every user says an administrator updates it, with the command for PowerShell as administrator,
+    /// and why it does not check by itself.
+    /// </summary>
+    [Fact]
+    public void CopyForEveryUser_NamesTheAdministrator()
+    {
+        var offered = UpdateText.Detail(Running(UpdateInstallKind.AllUsers) with { Offer = Offer() }, Now, TimeZoneInfo.Utc, Culture);
+        Assert.StartsWith("You have 0.2.6.", offered, StringComparison.Ordinal);
+        Assert.Contains("installed for every user of this PC, so an administrator updates it", offered, StringComparison.Ordinal);
+        Assert.Contains("PowerShell as administrator", offered, StringComparison.Ordinal);
+
+        var quiet = Running(UpdateInstallKind.AllUsers) with { AutomaticChecks = false };
+        Assert.Contains("does not check by itself", UpdateText.Detail(quiet, Now, TimeZoneInfo.Utc, Culture), StringComparison.Ordinal);
+        Assert.Contains("Check now still asks GitHub", UpdateText.SettingsStatus(quiet with { LastChecked = Now }, Now, TimeZoneInfo.Utc, Culture), StringComparison.Ordinal);
+
+        // The command the dialog copies: the README's installer with -AllUsers, in the form that takes arguments.
+        Assert.Equal(
+            "& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AllUsers",
+            UpdateSource.AllUsersInstallCommand);
     }
 
     /// <summary>Each step of an approved update has its own words, with the download's progress.</summary>

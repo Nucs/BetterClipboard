@@ -221,6 +221,16 @@ public sealed partial class UpdateView : UserControl
                     secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
                     break;
 
+                case UpdateInstallKind.AllUsers:
+                    // Only an administrator may replace a folder installed for every user: the command is for
+                    // PowerShell as administrator, where the installer finds this copy and updates it in place.
+                    primary = "Copy command";
+                    primaryTip = UpdateSource.AllUsersInstallCommand;
+                    primaryAction = () => Copy(PrimaryButton, UpdateSource.AllUsersInstallCommand);
+                    secondary = "Later";
+                    secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
+                    break;
+
                 default:
                     // A copy extracted by hand: the new version comes from its release page, or the installer command
                     // installs it properly (and then it updates itself from here on).
