@@ -98,11 +98,15 @@ public sealed class WindowsScreenshotWatcherTests : IDisposable
             first.Write(png, 0, png.Length / 2);
         }
 
-        // Well past the settle delay, while the watcher keeps reading the half file: every reopen must succeed.
-        var until = DateTime.UtcNow.AddMilliseconds(900);
+        // Well past the settle delay, while the watcher keeps reading the half file: every reopen must succeed. The loop
+        // runs until both 0.9 s and 21 reopens are behind it, at most 5 s (half the watcher's ReadTimeout, so it is still
+        // waiting for the end when the file is completed below): a fixed 0.9 s fitted fewer than 21 reopens on a busy
+        // GitHub runner, where every Task.Delay(5) came back late (2026-10-26), although no reopen failed.
+        var start = DateTime.UtcNow;
         int reopened = 0;
-        while (DateTime.UtcNow < until)
+        while (DateTime.UtcNow - start < TimeSpan.FromMilliseconds(900) || reopened <= 20)
         {
+            Assert.True(DateTime.UtcNow - start < TimeSpan.FromSeconds(5), $"Only {reopened} reopens within 5 s.");
             await using (new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.Read))
             {
                 reopened++;
