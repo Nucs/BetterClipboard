@@ -3692,7 +3692,8 @@ Snipping tab (2026-10-01), with a copy of the dev build:
       copy in 52 s, and a malformed hash was refused with that message. Locally
       [`tools/release/test-iex.ps1`](tools/release/test-iex.ps1) fails on the old `install.ps1` and passes on the
       fixed one, in both shells. CI runs it on every push.
-    - **Users have it only after a push to `main`:** the README downloads `main`'s `install.ps1`.
+    - **Users have it since the push of 2026-10-26** (`79d5d59`, with v0.2.9): the README downloads `main`'s
+      `install.ps1`. From 2026-10-10 to 2026-10-26 the README's first command failed for everyone.
   - **Since 2026-10-18: for every user (`-AllUsers`, §2.34).**
     - Program Files with protected rights, the PC's Run value with `--all-users-startup`, the PC's Installed-apps
       entry (its uninstall asks for administrator rights itself), the shortcut for every user and the PATH of every
@@ -4213,6 +4214,18 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   (private window station, see §1.9) and drive them with `ClipboardProducer`. Writing unmarked content to
   the real clipboard pushes items out of the user's RAM-only Win+V history — that loss is unrecoverable.
 - **Gaps in timing tests:** busy-wait on a `Stopwatch` — `Thread.Sleep(n)` rounds up to the 15.6 ms tick.
+- **A test never asserts "not yet" or "at least N" after a fixed `await Task.Delay`.** On GitHub's runners a
+  continuation can come back far later than asked (a thread pool starved by the parallel test classes on few cores).
+  Three Windows tests failed that way on 2026-10-10 and in 4 of 5 CI test runs on 2026-10-26; `a4aa62b` and `4da86bd`
+  fixed them.
+  - Wait for something the code under test makes observable: a counter, an attempt count, `WaitUntilAsync`.
+  - When the order matters (unlock right after the second attempt), wait on the test's own thread with
+    `SpinWait.SpinUntil`, not in a continuation.
+  - A loop that must run long enough runs to a count, not only to a time.
+  - Read a counter only after waiting for it: an entry is visible in the history before the code that stored it has
+    counted it (`ImportedThisSession` is bumped after `AddAsync` returns).
+  - This PC did not reproduce any of them, also not with `DOTNET_PROCESSOR_COUNT=1`, pinned to one core, or with the
+    pool capped at 4 threads (`DOTNET_ThreadPool_ForceMaxWorkerThreads=4`). CI is the check.
 - **Core tests run one class at a time** (`[assembly: Xunit.v3.Parallelization(Mode = ParallelMode.None)]` in
   `TestData.cs`; the old `CollectionBehavior.DisableTestParallelization` is a CS0619 error in xunit v3 4.x).
   - Why: `SqliteConnection.ClearAllPools` (`TempDirectory.Dispose`, `EncryptedStoreTests`) empties every pool
@@ -4447,6 +4460,13 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   - To only wait (no output wanted), piping on is enough: `& $exe --exit | Out-Null` waits and sets `$LASTEXITCODE`.
     Measured 2026-10-03 with a GUI program that sleeps 2 s: 2,095 ms (5.1) and 2,063 ms (7) piped, against 3-164 ms
     and no exit code for `& $exe` and `$null = & $exe`. The Chocolatey before-modify script relies on it.
+- **A Windows PowerShell started from PowerShell 7 must not inherit 7's `PSModulePath`.** It would look for its modules
+  in 7's folders first and load none of its own, so even `Get-FileHash` is "not recognized".
+  - Remove it: `ProcessStartInfo.EnvironmentVariables.Remove('PSModulePath')`, or `$env:PSModulePath = $null` around a
+    `Start-Process`, put back in `finally`. From bash: `env -u PSModulePath` (§3.1).
+  - CI's steps run in pwsh, so every test script that starts `powershell.exe` needs it. The app's updater and
+    `test-update.ps1` had it; `test-all-users.ps1` did not, and its first CI run failed (2026-10-26, fixed in
+    `676ec40`). A scheduled task (the SYSTEM runs) starts with its own environment and is not affected.
 - **`gh release` subcommands read the repository from the current folder's git remote** unless `--repo` is given
   (`gh api` takes the repository in its path). In a workflow step after `actions/checkout` that works by accident;
   run anywhere else, `gh release download` fails with "not a git repository". Pass `--repo $env:GITHUB_REPOSITORY` in
@@ -4685,6 +4705,7 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **v0.2.9 released** (2026-10-26, "Do we have anything to release?", then "Release new version"). Bump `79d5d59` (0.2.8 → 0.2.9; the notes draft is in its message) on `1de68ea` (Start with Windows for every user, §2.34) and `b5ac0e0` (the `irm \| iex` fix, §3.1); the rest since v0.2.8 is docs and research. The push range `baca929..79d5d59` (8 commits, 42 files) was scanned first: no secret-like added lines, no personal email address, three PNGs with BC-TEST content only (looked at). `main` pushed at 05:26Z; raw.githubusercontent served the fixed `install.ps1` at once (same hash as the blob). **CI passed only after three test-only commits:** run 40274246627 on `79d5d59` failed attempt 1 (`Codex_HistoryLockedByAWriter_IsReadOnceUnlocked`), attempt 2 (`WindowsScreenshotsIntegrationTests.FirstActivation_NoBackfill_ThenLive`) and attempt 3 (tests passed; the new step "Installer for every user" failed 8 of 36: its admin install ran Windows PowerShell 5.1 with PowerShell 7's `PSModulePath`, "Get-FileHash is not recognized", fixed in `676ec40`); run 40275737053 on `676ec40` failed on the lock test again; `a4aa62b` made the lock test and both counter tests wait on conditions; run 40277011148 failed on the third listed flake (`Watch_NeverLocksTheWriterOut_AndWaitsForTheEnd`), fixed in `4da86bd` (§4, §6). Run 40277654488 on `4da86bd` passed at the first attempt: 1,564 tests (1,560 passed, 4 skipped), the update mode, `test-iex.ps1` in 7.6.7 and 5.1, Chocolatey 32 of 32 twice, and **`test-all-users.ps1` 36 of 36, its first pass on GitHub**. Tag `v0.2.9`: annotated, on `4da86bd`, message identical to `79d5d59`'s draft. Release run 40278303399 passed at the first attempt (5.5 min); published 06:16:14Z, Latest. So for 50 minutes `irm \| iex` served the new installer with the 0.2.8 app. Assets: zips x64 74,534,777 / ARM64 72,030,825 bytes, `.7z` 45,315,407 / 41,152,840, `betterclipboard.0.2.9.nupkg` 86,514,705 (attached only: no `CHOCOLATEY_API_KEY`, the step warned), `install.ps1`, `SHA256SUMS.txt`. All four sums equal GitHub's digests; the body is the notes plus the code-signing footer, no mojibake; the `install.ps1` asset and the one in the x64 zip equal the blob except CRLF; the x64 zip's `BetterClipboard.exe` and `bclip.exe` report `0.2.9+4da86bd…`. Not installed on this PC (not asked): it runs `0.2.8+03f5058` with the automatic check on, so its update button offers 0.2.9 | `gh run view --log`, `gh api …/releases/tags/v0.2.9`, `gh release download`, scratch scripts in session 1c552075's scratchpad (`release-0.2.9/`) | ✅ |
 | **`install.ps1 -AllUsers`, for real** (2026-10-18, §2.34). A package of the working tree (`0.2.9-allusers`, x64) on a disposable claude-desktops VM (Windows 11 Pro 25H2, 26200, admin "Docker", UAC off, Windows PowerShell 5.1). `tools/release/test-all-users.ps1 -ConfirmMachineChanges`. The first run: 29 of 36; every run as SYSTEM stopped at its first line, because SYSTEM has no Start menu folder and `Join-Path ''` throws, a fault since v0.1.0. The `-Hotkey` refusal passed only by that accident, so the check now reads the reason. After the fix: **36 of 36**. As the administrator with `-AllUsers -AddToPath`: Program Files with the package's version; protected rights with no ordinary writer; the PC's Run value with `--all-users-startup` and none of the user's own; the PC's Installed-apps entry with `-Uninstall -AllUsers`; the shortcut for every user and none of the user's own; the PC's PATH and not the user's; Win+V taken over for that user; every other startup entry kept. Then all of it removed by `-Uninstall -AllUsers`, with Win+V given back. As SYSTEM: `-Hotkey` refused for the right reason with nothing installed; without `-AllUsers`, the install for every user by itself, nothing in SYSTEM's own registry, the user's `DisabledHotkeys` untouched, Explorer not restarted, the log naming the reason; then `-Uninstall` as SYSTEM removed everything | the test script (new, in CI) with the fixed installer put into the test zip | ✅ |
 | **Start with Windows for every user at sign-in** (the same VM, an install as SYSTEM, four reboots). 1st sign-in: BetterClipboard ran in the user's session with `--background --all-users-startup`, no window; Settings showed the switch on, with "It is set up to start for every user of this PC; turning this off changes that only for you.", the update switch disabled, and "This copy is installed for every user of this PC and an administrator updates it, so BetterClipboard does not check by itself. Check now still asks GitHub." Switch off: `SkipAllUsersStartup: true`, the PC's value kept, no user value written. 2nd sign-in: nothing started; the log said "Not started by the sign-in entry for every user: this user turned Start with Windows off in Settings." Started by hand, the switch read off; on: the setting false, still no user value. A second `--background` start while it ran: ended with exit code 0, no window. A user value for the same program: 3rd sign-in, exactly one process, the user's (`--background` without the marker); the log has the step-aside line at 18:02:10 and the user's start at 18:02:11. The PC's Installed-apps command run as Settings › Apps runs it: graceful close, the PC's value, the user's leftover value, folder, entry and shortcut removed, history kept. Chocolatey as SYSTEM: the entry for every user by itself; 4th sign-in, the package's copy ran from it | UI Automation in the guest (`TogglePattern` on the switch), `Win32_Process` command lines, the app's log, `settings.json`, the registry | ✅ |
 | **Chocolatey with the entry for every user** (the same VM, Chocolatey 2.7.4, the package of `0.2.9-allusers`). `test-chocolatey.ps1` (now with a neighbor in the PC's Run key): **32 of 32** as the desktop user (their own entry, none for every user) and **32 of 32** with `-AllUsersStartup` (the entry for every user, none of the installer's own, kept through the upgrade, removed by the uninstall, every other entry kept). `choco install` as SYSTEM: "BetterClipboard starts when any user of this PC signs in; each of them can turn that off in its Settings." and "It starts at the next sign-in, or from the Start menu."; `choco uninstall` as SYSTEM: the user's copy stopped, the entry and the package folder gone. The VM was deleted afterwards | scheduled tasks as SYSTEM, the registry | ✅ |
@@ -4824,10 +4845,14 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     back unelevated), instead of copying the command;
   - optionally, start the app at once for the signed-in user when SYSTEM or another account installs (a scheduled
     task in that user's session), instead of at the next sign-in;
-  - optionally, automatic update checks for a copy for every user when the signed-in user is an administrator.
-- **Push the `irm | iex` fix** (2026-10-16, §3.1). Until `main` has it, the README's first install command fails for
-  everyone; the `[scriptblock]::Create` form works meanwhile. The installers inside the v0.2.6–v0.2.8 zips need no
-  release: the update button runs them with `-File`, which binds parameters normally.
+  - optionally, automatic update checks for a copy for every user when the signed-in user is an administrator;
+  - a version check for the install for every user in `install.ps1`, like `$HotkeyOptionsMinimumVersion` (0.2.9).
+    `-Version 0.2.8 -AllUsers`, or an install as SYSTEM or for another account's desktop with an older `-Version`,
+    installs an app that has none of the app side: no per-user "off", no step-aside, and a copy that would try to
+    update Program Files itself. Found while releasing 0.2.9; the window in which the latest release lacked it lasted
+    from the push of `79d5d59` to the release (§5).
+- ~~**Push the `irm | iex` fix**~~ (2026-10-16, §3.1): done 2026-10-26 with v0.2.9 (`79d5d59`). The installers inside the
+  v0.2.6–v0.2.8 zips needed no release: the update button runs them with `-File`, which binds parameters normally.
 - **Ditto** (§2.32, [`docs/ditto.md`](docs/ditto.md)):
   - "Import from Ditto…" in Settings › Integrations, read-only, as designed in the doc's §8: find the database
     (registry, ini files, a running portable copy, or a chosen file / `.dto` export), stream it newest first through the
@@ -4846,12 +4871,17 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     converter, WebView2 only on request with every request blocked);
   - step 3: virtual files (zip contents, Outlook attachments: not recorded at all today), LibreOffice's `Markdown`,
     perhaps Office's EMF.
-- **Timing tests that fail on GitHub's runners** (seen 2026-10-10 on code identical to a green run; a re-run of the
+- ~~**Timing tests that fail on GitHub's runners**~~ (seen 2026-10-10 on code identical to a green run; a re-run of the
   failed job passed each time): `WindowsScreenshotWatcherTests.Watch_NeverLocksTheWriterOut_AndWaitsForTheEnd`
   (`reopened > 20` within 900 ms), `PromptArchiveTests.Codex_HistoryLockedByAWriter_IsReadOnceUnlocked` (the locked
   read had already completed after 150 ms) and `WindowsScreenshotsIntegrationTests.FirstActivation_NoBackfill_ThenLive`
-  (expected 1, got 0). One of them failed v0.2.7's first release run before anything was published. Make them wait on
-  conditions instead of fixed times; until then `gh run rerun <id> --failed` is the way through.
+  (expected 1, got 0). One of them failed v0.2.7's first release run before anything was published.
+  - **Fixed 2026-10-26** (`a4aa62b`, `4da86bd`), while releasing 0.2.9: they failed 4 of 5 CI test runs that day. The
+    three wait on conditions now (§4), and so does the ShareX twin of the counter test.
+  - If another test starts failing on the runners, `gh run rerun <id> --failed` still gets a run through; fix the test
+    the same way afterwards.
+  - Candidates seen under a pool capped at 4 threads on this PC (never on GitHub so far):
+    `ClipboardCaptureTests.QuickSuccessiveCopies_AreAllCaptured` and `CliPipeServerTests.ManyConnections_AreAllServed`.
   - They also fail on this PC while it is busy (2026-10-10, Rider on about 10 cores, total load about 60 %): 1 to 3 per
     run of the Windows suite. `ClipboardCaptureTests.QuickSuccessiveCopies_AreAllCaptured` failed in every run (24 of
     25 copies, 20 ms apart), also alone and on unchanged code. `PromptArchiveTests.PauseAndOffOn`,
