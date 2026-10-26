@@ -332,6 +332,10 @@ public sealed class WindowsScreenshotsIntegrationTests : IAsyncLifetime
         await ShareXScreenshotWatcherTests.WaitUntilAsync(() => SnippingItemsAsync().Result.Count == 1);
         var entry = (await SnippingItemsAsync()).Single();
         Assert.Equal((ClipOrigin.WindowsScreenshot, "Win+PrtScn"), (entry.Origin, entry.SourceAppName));
+
+        // The history lists the entry once its worker stored it, a moment before the integration counts it (after
+        // AddAsync returns), so the count is waited for too: read at once it was still 0 on a GitHub runner (2026-10-26).
+        await ShareXScreenshotWatcherTests.WaitUntilAsync(() => integration.ImportedThisSession >= 1);
         Assert.Equal(1, integration.ImportedThisSession);
         await ShareXScreenshotWatcherTests.WaitUntilAsync(() => Marker(history.GetStateValueAsync(WindowsScreenshotsIntegration.LastSeenStateName).Result) > now);
     }

@@ -213,6 +213,14 @@ public sealed class PromptArchiveTests : IAsyncLifetime
     /// Codex's history is written under a mandatory Windows file lock: a read that runs into it is retried until the lock is
     /// gone, then reads the file.
     /// </summary>
+    /// <remarks>
+    /// The lock is held until the reader has come back for a second attempt, which proves the first one ran into the lock
+    /// and was retried, and that is waited for on this thread. The test used to unlock after <c>await Task.Delay(150)</c>
+    /// instead: on GitHub's runners that continuation came back after the reader's whole retry budget
+    /// (<see cref="PromptFileAccess.LockRetries"/> × <see cref="PromptFileAccess.LockRetryDelay"/>, about half a second
+    /// with the timer's rounding; the failing runs took 0.73 and 0.85 s), so the read had already given up and the test
+    /// failed (2026-10-10, and twice on 2026-10-26) while the code under test was fine.
+    /// </remarks>
     /// <returns>A task.</returns>
     [Fact]
     public async Task Codex_HistoryLockedByAWriter_IsReadOnceUnlocked()
@@ -223,14 +231,19 @@ public sealed class PromptArchiveTests : IAsyncLifetime
         {
             locker.Lock(0, locker.Length);
             var source = new CodexPromptSource(CodexRoot);
+            var attempts = 0;
             var read = Task.Run(() => PromptFileAccess.WithLockRetries(() =>
             {
+                Interlocked.Increment(ref attempts);
                 using var stream = PromptFileAccess.OpenShared(path);
                 var bytes = new byte[stream.Length];
                 stream.ReadExactly(bytes);
                 return bytes.Length;
             }, CancellationToken.None));
-            await Task.Delay(150);
+
+            // Waiting here, not with an await, keeps the unlock a few instructions after the second attempt however late a
+            // busy thread pool runs continuations; the reader only has to start within the 10 s.
+            Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref attempts) >= 2 || read.IsCompleted, TimeSpan.FromSeconds(10)));
             Assert.False(read.IsCompleted);
             locker.Unlock(0, locker.Length);
             Assert.True(await read > 0);

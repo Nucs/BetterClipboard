@@ -712,6 +712,11 @@ public sealed class ShareXIntegrationTests : IAsyncLifetime
 
         await File.WriteAllBytesAsync(Path.Combine(month, "new.png"), await ShareXScreenshotWatcherTests.PngAsync(8, 8, 2), TestContext.Current.CancellationToken);
         await ShareXScreenshotWatcherTests.WaitUntilAsync(() => ShareXItemsAsync().Result.Count == 1);
+
+        // The history lists the entry once its worker stored it, a moment before the integration counts it (after
+        // AddAsync returns), so the count is waited for too; the Snipping tab's twin of this test failed on a GitHub
+        // runner (2026-10-26) by reading it at once.
+        await ShareXScreenshotWatcherTests.WaitUntilAsync(() => integration.ImportedThisSession >= 1);
         Assert.Equal(1, integration.ImportedThisSession);
         await ShareXScreenshotWatcherTests.WaitUntilAsync(() => Marker(history.GetStateValueAsync(ShareXIntegration.LastSeenStateName).Result) > now);
     }
