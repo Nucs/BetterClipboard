@@ -171,6 +171,13 @@ function Invoke-Installer([string] $Name, [string[]] $Arguments) {
     .SYNOPSIS
         Runs the packaged install.ps1 in Windows PowerShell 5.1 as this account (like a user who downloaded it), its
         output into <work>\<Name>.log, and returns the exit code.
+    .DESCRIPTION
+        Windows PowerShell starts without this shell's PSModulePath, as the app's updater starts it. CI runs this
+        script in PowerShell 7, whose PSModulePath names 7's own module folders first, and a Windows PowerShell that
+        inherits it loads none of its own modules: the first CI run (2026-10-26) stopped the admin install at
+        "Verifying SHA-256" with "Get-FileHash is not recognized". Started from Windows PowerShell (the VM runs), the
+        variable was harmless, which is why those runs passed.
+        Throws when the installer has not finished after 10 minutes; its process is killed first.
     .PARAMETER Name
         Log file name.
     .PARAMETER Arguments
@@ -181,8 +188,19 @@ function Invoke-Installer([string] $Name, [string[]] $Arguments) {
     $log = Join-Path $work "$Name.log"
     $quoted = @($Arguments | ForEach-Object { if ($_ -match '\s') { "`"$_`"" } else { $_ } })
     $powershell = Join-Path ([Environment]::SystemDirectory) 'WindowsPowerShell\v1.0\powershell.exe'
-    $process = Start-Process -FilePath $powershell -ArgumentList (@('-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"") + $quoted) `
-        -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    # Start-Process hands this process's environment on and Windows PowerShell's has no -Environment, so the variable
+    # is taken out for the start only and put back at once: the child keeps the copy it was started with, and this
+    # script's own module lookups (PowerShell 7's) never run without it.
+    $modulePath = $env:PSModulePath
+    $env:PSModulePath = $null
+    try {
+        $process = Start-Process -FilePath $powershell -ArgumentList (@('-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"") + $quoted) `
+            -NoNewWindow -PassThru -RedirectStandardOutput $log -RedirectStandardError "$log.err"
+    }
+    finally {
+        $env:PSModulePath = $modulePath
+    }
+
     $null = $process.Handle
     if (-not $process.WaitForExit(600000)) {
         $process.Kill()
