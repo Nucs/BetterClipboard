@@ -565,7 +565,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             var registration = registrations.FirstOrDefault(r => r.Gesture == gesture);
             rows.Add(registration is null
                 ? new HotkeyItemViewModel(gesture.ToString(), UiText.Translate("Registering…"), IsActive: true)
-                : new HotkeyItemViewModel(gesture.ToString(), registration.DescribeState(), registration.IsActive));
+                : new HotkeyItemViewModel(gesture.ToString(), UiText.Translate(registration.DescribeState()), registration.IsActive));
         }
 
         // The last shortcut cannot go: without one, only the tray icon would open BetterClipboard.
