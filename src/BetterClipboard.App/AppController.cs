@@ -252,8 +252,9 @@ public sealed partial class AppController
         AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}).");
 
         settings = new SettingsStore(paths.SettingsPath);
-        Core.Localization.UiText.Language = settings.Current.InterfaceLanguage;
         settings.Load();
+        // Read the persisted selection before any view model or XAML markup resolves its labels.
+        Core.Localization.UiText.Language = settings.Current.InterfaceLanguage;
         rules = CaptureRules.FromSettings(settings.Current);
         settings.Changed += OnSettingsChanged;
 
