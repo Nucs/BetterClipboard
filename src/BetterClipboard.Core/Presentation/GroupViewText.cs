@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Globalization;
 using BetterClipboard.Core.Model;
 
@@ -65,7 +66,7 @@ public static class GroupViewText
     /// <exception cref="ArgumentNullException"><paramref name="groups"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="groups"/> is empty.</exception>
     public static string AnyOf(IReadOnlyList<ClipGroup> groups, CultureInfo? culture = null) =>
-        NamesFit(groups) ? Sentence(groups, "or") : "these " + Count(groups.Count, culture);
+        NamesFit(groups) ? Sentence(groups, UiText.Translate("or")) : UiText.Translate("these ") + Count(groups.Count, culture);
 
     /// <summary>
     /// The groups as "all of them", for actions on each: "Remove from Work and Home" — "Work", "Work and Home",
@@ -77,7 +78,7 @@ public static class GroupViewText
     /// <exception cref="ArgumentNullException"><paramref name="groups"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="groups"/> is empty.</exception>
     public static string AllOf(IReadOnlyList<ClipGroup> groups, CultureInfo? culture = null) =>
-        NamesFit(groups) ? Sentence(groups, "and") : "these " + Count(groups.Count, culture);
+        NamesFit(groups) ? Sentence(groups, UiText.Translate("and")) : UiText.Translate("these ") + Count(groups.Count, culture);
 
     /// <summary>
     /// Whether the groups are named rather than counted in the short texts: always for one group (whatever its length,
@@ -112,5 +113,5 @@ public static class GroupViewText
     /// <param name="culture">Number formatting (defaults to the current UI culture).</param>
     /// <returns>The phrase.</returns>
     private static string Count(int count, CultureInfo? culture) =>
-        string.Create(culture ?? CultureInfo.CurrentUICulture, $"{count:N0} groups");
+        UiText.Format(culture ?? CultureInfo.CurrentUICulture, $"{count:N0} groups");
 }

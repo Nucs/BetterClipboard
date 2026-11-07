@@ -46,6 +46,12 @@ public static class UiText
     /// <returns>The translated template formatted using the user's numeric and date culture.</returns>
     public static string Format(FormattableString message) => string.Format(CultureInfo.CurrentCulture, Translate(message.Format), message.GetArguments());
 
+    /// <summary>Formats a localized template while preserving a caller-supplied number and date culture.</summary>
+    /// <param name="provider">Explicit culture, or null for the current culture.</param>
+    /// <param name="message">Application-owned interpolation whose arguments are not translated.</param>
+    /// <returns>Localized and formatted UI text.</returns>
+    public static string Format(IFormatProvider? provider, FormattableString message) => string.Format(provider, Translate(message.Format), message.GetArguments());
+
     /// <summary>Loads an embedded catalog once; catalogs ship inside the assembly and require no external language files.</summary>
     /// <param name="language">Catalog name without the JSON suffix.</param>
     /// <returns>The catalog's stable keys and display strings.</returns>

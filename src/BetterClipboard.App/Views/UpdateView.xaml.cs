@@ -252,7 +252,7 @@ public sealed partial class UpdateView : UserControl
             primary = UiText.Translate("Check now");
             primaryEnabled = snapshot.Phase != UpdatePhase.Checking;
             primaryAction = () => CheckRequested?.Invoke(this, EventArgs.Empty);
-            secondary = "Close";
+            secondary = UiText.Translate("Close");
             secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
         }
 
@@ -299,7 +299,7 @@ public sealed partial class UpdateView : UserControl
     private void Copy(Button button, string command)
     {
         CopyRequested?.Invoke(this, command);
-        button.Content = "Copied";
+        button.Content = UiText.Translate("Copied");
         copiedTimer ??= CreateCopiedTimer();
         copiedTimer.Stop();
         copiedTimer.Start();

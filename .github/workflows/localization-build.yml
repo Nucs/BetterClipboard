@@ -24,8 +24,16 @@ jobs:
       - name: Build self-contained Windows package
         shell: pwsh
         run: tools/release/package.ps1 -Version 0.2.9-zh.1 -Architectures x64 -OutputDirectory artifacts/zh-Hans
+      - name: Isolated English and Chinese UI smoke test
+        shell: pwsh
+        run: tools/localization/smoke-windows.ps1 -PublishDirectory artifacts/publish/release-win-x64 -OutputDirectory artifacts/localization-ui
       - uses: actions/upload-artifact@v4
         with:
           name: BetterClipboard-zh-Hans-win-x64
           path: artifacts/zh-Hans/*
           if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: localization-ui-verification
+          path: artifacts/localization-ui

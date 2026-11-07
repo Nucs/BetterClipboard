@@ -172,9 +172,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
         : Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
     {
         ClipKind.RichText => UiText.Translate("Formatted text"),
-        ClipKind.Link => "Link",
-        ClipKind.Color => "Color",
-        ClipKind.Image => "Image",
+        ClipKind.Link => UiText.Translate("Link"),
+        ClipKind.Color => UiText.Translate("Color"),
+        ClipKind.Image => UiText.Translate("Image"),
         ClipKind.Files => UiText.Translate("Files"),
         _ => UiText.Translate("Text"),
     };
