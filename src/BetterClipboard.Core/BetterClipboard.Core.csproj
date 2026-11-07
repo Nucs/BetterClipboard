@@ -18,5 +18,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="BetterClipboard.Core.Tests" />
+    <EmbeddedResource Include="Localization\*.json" />
   </ItemGroup>
 </Project>

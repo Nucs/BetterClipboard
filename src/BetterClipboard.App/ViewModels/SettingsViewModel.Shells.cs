@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Shells;
 using BetterClipboard.Windows.Integrations;
@@ -32,36 +33,36 @@ public sealed partial class SettingsViewModel
     {
         if (!ShowPowerShellTab)
         {
-            PowerShellHistoryStatus = "Off — the panel has no Pwsh tab. Commands kept from it stay in your history.";
+            PowerShellHistoryStatus = UiText.Translate("Off — the panel has no Pwsh tab. Commands kept from it stay in your history.");
         }
         else
         {
             var folder = controller.PowerShellHistoryFolder ?? PowerShellHistorySource.ResolveFolder();
             int records = controller.PowerShellRecordCount;
             PowerShellHistoryStatus = !controller.IsPowerShellTabAvailable
-                ? $"No PowerShell history file yet in {folder} — the tab appears once PowerShell saved a command."
+                ? UiText.Format($"No PowerShell history file yet in {folder} — the tab appears once PowerShell saved a command.")
                 : records < 0
-                    ? $"Reads {folder} when the tab opens."
-                    : $"Reads {folder} when the tab opens: {records:N0} commands at the last look (PowerShell itself loads the newest 4,096).";
+                    ? UiText.Format($"Reads {folder} when the tab opens.")
+                    : UiText.Format($"Reads {folder} when the tab opens: {records:N0} commands at the last look (PowerShell itself loads the newest 4,096).");
         }
 
         if (!ShowCmdTab)
         {
-            CmdHistoryStatus = "Off — Command Prompt windows are not read, and nothing is kept.";
+            CmdHistoryStatus = UiText.Translate("Off — Command Prompt windows are not read, and nothing is kept.");
             return;
         }
 
         if (!controller.IsCmdHistoryReading)
         {
-            CmdHistoryStatus = "Starting… (if this stays, the log says why).";
+            CmdHistoryStatus = UiText.Translate("Starting… (if this stays, the log says why).");
             return;
         }
 
         int windows = controller.CmdOpenWindows;
-        var open = windows < 0 ? "Reading open Command Prompt windows every 30 seconds."
-            : $"Reading open Command Prompt windows every 30 seconds: {windows:N0} open now.";
+        var open = windows < 0 ? UiText.Translate("Reading open Command Prompt windows every 30 seconds.")
+            : UiText.Format($"Reading open Command Prompt windows every 30 seconds: {windows:N0} open now.");
         int kept = controller.CmdKeptCount;
-        CmdHistoryStatus = $"{open}\n{kept:N0} command{(kept == 1 ? string.Empty : "s")} kept (newest {CmdHistory.MaxKept:N0}).";
+        CmdHistoryStatus = UiText.Format($"{open}\n{kept:N0} command{(kept == 1 ? string.Empty : "s")} kept (newest {CmdHistory.MaxKept:N0}).");
     }
 
     /// <summary>Persists the Pwsh tab switch; the tab and the status line follow the controller's status event.</summary>

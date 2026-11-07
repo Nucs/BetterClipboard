@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
 
@@ -16,7 +17,7 @@ public sealed record ForgottenItemViewModel(long Id, string Title, string Detail
     /// Accessible name of the row's button. Every row has an "Allow again" button, so the name says which
     /// item it is for — otherwise a screen reader (or UI Automation) sees a column of identical buttons.
     /// </summary>
-    public string AllowAgainName => $"Allow again: {Title}";
+    public string AllowAgainName => UiText.Format($"Allow again: {Title}");
 
     /// <summary>
     /// Builds a row from a store entry.

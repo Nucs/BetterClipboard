@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Updates;
@@ -45,7 +46,7 @@ public sealed partial class SettingsViewModel
 
     /// <summary>The label of the button that opens the update dialog: "Update to 0.2.7…" while one is offered, else "Release notes…".</summary>
     [ObservableProperty]
-    public partial string UpdateActionText { get; set; } = "Release notes…";
+    public partial string UpdateActionText { get; set; } = UiText.Translate("Release notes…");
 
     /// <summary>
     /// Re-reads the update status. Called for every change, which during a download is up to ten times a second: it
@@ -59,8 +60,8 @@ public sealed partial class SettingsViewModel
             CanCheckForUpdates = false;
             CanToggleUpdateCheck = false;
             IsUpdateWaiting = false;
-            UpdateActionText = "Release notes…";
-            UpdateStatus = "Updates are not available in this build. Get new versions from the releases page on GitHub.";
+            UpdateActionText = UiText.Translate("Release notes…");
+            UpdateStatus = UiText.Translate("Updates are not available in this build. Get new versions from the releases page on GitHub.");
             return;
         }
 
@@ -69,7 +70,7 @@ public sealed partial class SettingsViewModel
         // Copies that never check by themselves (UpdateText says why): the switch would change nothing.
         CanToggleUpdateCheck = snapshot.InstallKind is not (UpdateInstallKind.Chocolatey or UpdateInstallKind.AllUsers);
         IsUpdateWaiting = snapshot.WantsAttention;
-        UpdateActionText = snapshot.Offer is { } offer ? $"Update to {offer.Release.Version}…" : "Release notes…";
+        UpdateActionText = snapshot.Offer is { } offer ? UiText.Format($"Update to {offer.Release.Version}…") : "Release notes…";
         UpdateStatus = UpdateText.SettingsStatus(snapshot, DateTimeOffset.Now);
     }
 

@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Diagnostics;
 using BetterClipboard.App.Interop;
 using BetterClipboard.Core.Diagnostics;
@@ -120,7 +121,7 @@ public sealed partial class ClipboardFlyout
     /// </summary>
     private void InitializeUpdateToolTip()
     {
-        var tip = new ToolTip { Content = "Updates" };
+        var tip = new ToolTip { Content = UiText.Translate("Updates") };
         tip.Closed += UpdateToolTip_Closed;
         ToolTipService.SetToolTip(UpdateButton, tip);
         updateToolTip = tip;

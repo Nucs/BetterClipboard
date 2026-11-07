@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Prompts;
@@ -30,8 +31,8 @@ public sealed partial class ClipItemViewModel
     private string? PromptLabel => (Prompt?.Agent, Entry.Origin) switch
     {
         (PromptAgent agent, _) => $"{PromptAgents.NameOf(agent)} {(Prompt!.IsCommand ? "slash command" : "prompt")}",
-        (null, ClipOrigin.ClaudeCode) => $"{PromptAgents.ClaudeCodeName} prompt",
-        (null, ClipOrigin.Codex) => $"{PromptAgents.CodexName} prompt",
+        (null, ClipOrigin.ClaudeCode) => UiText.Format($"{PromptAgents.ClaudeCodeName} prompt"),
+        (null, ClipOrigin.Codex) => UiText.Format($"{PromptAgents.CodexName} prompt"),
         _ => null,
     };
 
@@ -89,12 +90,12 @@ public sealed partial class ClipItemViewModel
         parts.Add(RelativeTimeFormatter.Format(prompt.LastSentUtc, DateTimeOffset.UtcNow));
         if (prompt.Sends > 1)
         {
-            parts.Add($"sent {prompt.Sends:N0} times");
+            parts.Add(UiText.Format($"sent {prompt.Sends:N0} times"));
         }
 
         if (prompt.ImageCount > 0)
         {
-            parts.Add(prompt.ImageCount == 1 ? "1 image" : $"{prompt.ImageCount:N0} images");
+            parts.Add(prompt.ImageCount == 1 ? "1 image" : UiText.Format($"{prompt.ImageCount:N0} images"));
         }
 
         return string.Join(" · ", parts);

@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Settings;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -25,28 +26,28 @@ public sealed partial class SettingsViewModel
     {
         if (!ImportWindowsScreenshots)
         {
-            SnippingStatus = "Off — screenshot files are not imported, and the panel has no Snipping tab. Snipping Tool's clipboard copies are still recorded like any copy.";
+            SnippingStatus = UiText.Translate("Off — screenshot files are not imported, and the panel has no Snipping tab. Snipping Tool's clipboard copies are still recorded like any copy.");
             return;
         }
 
         var location = controller.SnippingLocation;
         var watched = controller.SnippingWatchedFolder;
-        var folder = watched is not null ? $"Watching {watched}."
-            : location.Folder is { } waiting ? $"Waiting for {waiting} — Windows creates it with the first screenshot."
-            : "Looking for the Screenshots folder…";
+        var folder = watched is not null ? UiText.Format($"Watching {watched}.")
+            : location.Folder is { } waiting ? UiText.Format($"Waiting for {waiting} — Windows creates it with the first screenshot.")
+            : UiText.Translate("Looking for the Screenshots folder…");
 
         // What Snipping Tool's own switches mean here. Its snips reach the clipboard either way; only the file depends on them.
         var snippingTool = location.SnippingToolVersion is not { } version
-            ? "Snipping Tool is not installed — Win+PrtScn screenshots still arrive."
+            ? UiText.Translate("Snipping Tool is not installed — Win+PrtScn screenshots still arrive.")
             : location.SnippingTool is not { } saving
-                ? $"Snipping Tool {version} — its settings could not be read right now (it may be running); its snips' clipboard copies arrive either way."
+                ? UiText.Format($"Snipping Tool {version} — its settings could not be read right now (it may be running); its snips' clipboard copies arrive either way.")
                 : !saving.SavesScreenshots
-                    ? $"Snipping Tool {version} does not save snips (its “Automatically save original screenshots” is off): they arrive as clipboard copies only."
+                    ? UiText.Format($"Snipping Tool {version} does not save snips (its “Automatically save original screenshots” is off): they arrive as clipboard copies only.")
                     : saving.HasCustomFolder
-                        ? $"Snipping Tool {version} saves to a folder you chose, which is not watched: its snips arrive as clipboard copies; Win+PrtScn screenshots arrive from the Screenshots folder."
-                        : $"Snipping Tool {version} saves every snip here, and copies it to the clipboard (both become one entry).";
+                        ? UiText.Format($"Snipping Tool {version} saves to a folder you chose, which is not watched: its snips arrive as clipboard copies; Win+PrtScn screenshots arrive from the Screenshots folder.")
+                        : UiText.Format($"Snipping Tool {version} saves every snip here, and copies it to the clipboard (both become one entry).");
         int imported = controller.SnippingImportedThisSession;
-        var count = imported > 0 ? $"\n{imported:N0} screenshot{(imported == 1 ? string.Empty : "s")} added since BetterClipboard started." : string.Empty;
+        var count = imported > 0 ? UiText.Format($"\n{imported:N0} screenshot{(imported == 1 ? string.Empty : "s")} added since BetterClipboard started.") : string.Empty;
         SnippingStatus = $"{folder}\n{snippingTool}{count}";
     }
 

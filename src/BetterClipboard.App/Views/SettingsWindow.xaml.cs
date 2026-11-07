@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.App.Interop;
 using BetterClipboard.App.ViewModels;
 using BetterClipboard.Core.Services;
@@ -290,9 +291,9 @@ public sealed partial class SettingsWindow : Window
     private async void AllowAllForgotten_Click(object sender, RoutedEventArgs e)
     {
         if (await ConfirmAsync(
-                "Allow everything you forgot?",
-                "All of it is recorded again from its next copy. Nothing that was deleted comes back.",
-                "Allow all again"))
+                UiText.Translate("Allow everything you forgot?"),
+                UiText.Translate("All of it is recorded again from its next copy. Nothing that was deleted comes back."),
+                UiText.Translate("Allow all again")))
         {
             await ViewModel.AllowAllAgainAsync();
         }
@@ -352,10 +353,10 @@ public sealed partial class SettingsWindow : Window
         try
         {
             if (await ConfirmAsync(
-                    $"Delete {count:N0} stored {name} prompt{(count == 1 ? string.Empty : "s")}?",
-                    $"BetterClipboard's copy is deleted; {name}'s own files are not changed. Prompts {name} no longer has are gone for good."
-                    + (on ? $" The switch is on, so what {name} still has is read again right away — turn it off first to keep them out." : string.Empty),
-                    "Delete"))
+                    UiText.Format($"Delete {count:N0} stored {name} prompt{(count == 1 ? string.Empty : "s")}?"),
+                    UiText.Format($"BetterClipboard's copy is deleted; {name}'s own files are not changed. Prompts {name} no longer has are gone for good.")
+                    + (on ? UiText.Format($" The switch is on, so what {name} still has is read again right away — turn it off first to keep them out.") : string.Empty),
+                    UiText.Translate("Delete")))
             {
                 await ViewModel.DeleteStoredPromptsAsync(agent);
             }
@@ -453,11 +454,11 @@ public sealed partial class SettingsWindow : Window
         HotkeyPresetsMenu.Items.Add(new MenuFlyoutSeparator());
 
         // A disabled item serves as the section's heading: MenuFlyout has no header items.
-        HotkeyPresetsMenu.Items.Add(new MenuFlyoutItem { Text = "Used before", IsEnabled = false });
+        HotkeyPresetsMenu.Items.Add(new MenuFlyoutItem { Text = UiText.Translate("Used before"), IsEnabled = false });
         var usedBefore = ViewModel.UsedBeforeHotkeys;
         if (usedBefore.Count == 0)
         {
-            HotkeyPresetsMenu.Items.Add(new MenuFlyoutItem { Text = "Shortcuts you add are listed here", IsEnabled = false });
+            HotkeyPresetsMenu.Items.Add(new MenuFlyoutItem { Text = UiText.Translate("Shortcuts you add are listed here"), IsEnabled = false });
             return;
         }
 
@@ -468,7 +469,7 @@ public sealed partial class SettingsWindow : Window
 
         // No icon: one item with an icon makes the menu reserve an icon column for every item, shifting all the shortcuts.
         HotkeyPresetsMenu.Items.Add(new MenuFlyoutSeparator());
-        var clear = new MenuFlyoutItem { Text = "Clear shortcuts used before" };
+        var clear = new MenuFlyoutItem { Text = UiText.Translate("Clear shortcuts used before") };
         clear.Click += (_, _) => ViewModel.ClearHotkeyHistory();
         HotkeyPresetsMenu.Items.Add(clear);
     }
@@ -555,11 +556,11 @@ public sealed partial class SettingsWindow : Window
             var names = plan.KeyNames;
             const string Restart = "Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.";
             var confirmed = await ConfirmAsync(
-                release ? $"Release {names} from Explorer?" : $"Give {names} back to Explorer?",
+                release ? UiText.Format($"Release {names} from Explorer?") : UiText.Format($"Give {names} back to Explorer?"),
                 release
-                    ? $"Explorer will stop registering {names}, so BetterClipboard can own {(one ? "it" : "them")} without a keyboard hook. While BetterClipboard is not running, {(one ? "it does" : "they do")} nothing. {Restart}"
-                    : $"Explorer will register {names} again (Windows' own {(one ? "shortcut" : "shortcuts")}). {Restart}",
-                release ? "Release and restart Explorer" : "Restore and restart Explorer");
+                    ? UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own {(one ? "it" : "them")} without a keyboard hook. While BetterClipboard is not running, {(one ? "it does" : "they do")} nothing. {Restart}")
+                    : UiText.Format($"Explorer will register {names} again (Windows' own {(one ? "shortcut" : "shortcuts")}). {Restart}"),
+                release ? UiText.Translate("Release and restart Explorer") : UiText.Translate("Restore and restart Explorer"));
             if (confirmed)
             {
                 await ViewModel.ApplyExplorerReleaseAsync(plan);
@@ -587,7 +588,7 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Click data.</param>
     private async void ClearUnpinned_Click(object sender, RoutedEventArgs e)
     {
-        if (await ConfirmAsync("Clear clipboard history?", "Items are deleted permanently. Pinned items and items in groups stay.", "Clear"))
+        if (await ConfirmAsync(UiText.Translate("Clear clipboard history?"), UiText.Translate("Items are deleted permanently. Pinned items and items in groups stay."), UiText.Translate("Clear")))
         {
             await controller.History.ClearAsync(includePinned: false);
             await ViewModel.RefreshStatsAsync();
@@ -599,7 +600,7 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Click data.</param>
     private async void ClearAll_Click(object sender, RoutedEventArgs e)
     {
-        if (await ConfirmAsync("Delete everything?", "Every item — including pinned ones and those in groups — is deleted permanently. Your groups stay, empty. This cannot be undone.", "Delete everything"))
+        if (await ConfirmAsync(UiText.Translate("Delete everything?"), UiText.Translate("Every item — including pinned ones and those in groups — is deleted permanently. Your groups stay, empty. This cannot be undone."), UiText.Translate("Delete everything")))
         {
             await controller.History.ClearAsync(includePinned: true);
             await ViewModel.RefreshStatsAsync();
@@ -645,7 +646,7 @@ public sealed partial class SettingsWindow : Window
             Title = title,
             Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
             PrimaryButtonText = action,
-            CloseButtonText = "Cancel",
+            CloseButtonText = UiText.Translate("Cancel"),
             DefaultButton = ContentDialogButton.Close,
             RequestedTheme = Root.ActualTheme,
         };
@@ -661,7 +662,7 @@ public sealed partial class SettingsWindow : Window
     /// <summary>x:Bind helper: capture status text.</summary>
     /// <param name="paused">Paused state.</param>
     /// <returns>The text.</returns>
-    public string CaptureText(bool paused) => paused ? "Paused" : "Capturing";
+    public string CaptureText(bool paused) => paused ? UiText.Translate("Paused") : "Capturing";
 
     /// <summary>x:Bind helper: visible when the text is non-empty.</summary>
     /// <param name="text">Text.</param>

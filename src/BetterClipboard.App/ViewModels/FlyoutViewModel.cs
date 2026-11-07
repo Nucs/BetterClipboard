@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Collections.ObjectModel;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Everything;
@@ -517,7 +518,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             // is wrong, and how to search for the characters themselves. A superseded query's verdict is stale.
             if (!cancellation.IsCancellationRequested)
             {
-                ShowSearchProblem("Not a valid regular expression", $"{ex.Reason} Turn off .* (Alt+E) to search for these characters as they are.");
+                ShowSearchProblem("Not a valid regular expression", UiText.Format($"{ex.Reason} Turn off .* (Alt+E) to search for these characters as they are."));
             }
         }
         catch (SearchTooSlowException)
@@ -526,8 +527,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
             {
                 AppLog.Info("A search's regular expression ran out of time on an item; the search was stopped.");
                 ShowSearchProblem(
-                    "This regular expression is too slow",
-                    $"It needed more than {SearchMatcher.MatchTimeout.TotalMilliseconds:0} ms on one item (it backtracks heavily). Simplify it, or turn off .* (Alt+E).");
+                    UiText.Translate("This regular expression is too slow"),
+                    UiText.Format($"It needed more than {SearchMatcher.MatchTimeout.TotalMilliseconds:0} ms on one item (it backtracks heavily). Simplify it, or turn off .* (Alt+E)."));
             }
         }
         catch (Exception ex)
@@ -883,7 +884,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
     {
         var groups = SelectedGroups;
         GroupTitle = groups.Count == 0 ? string.Empty : "› " + GroupViewText.Title(groups);
-        SearchPlaceholder = groups.Count > 0 ? $"Search in {GroupViewText.ShortName(groups)}…"
+        SearchPlaceholder = groups.Count > 0 ? UiText.Format($"Search in {GroupViewText.ShortName(groups)}…")
             : IsEverythingView ? EverythingSearchPlaceholder
             : IsShellView ? ShellSearchPlaceholder
             : IsPromptView ? PromptSearchPlaceholder(CurrentAgent)
@@ -963,7 +964,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
 
         // A pattern is shown as typed (its spaces may matter); words are trimmed like the search trims them.
-        var phrase = UseRegex ? $"matches “{SearchText}”" : $"contains “{SearchText.Trim()}”";
+        var phrase = UseRegex ? UiText.Format($"matches “{SearchText}”") : UiText.Format($"contains “{SearchText.Trim()}”");
         return qualifiers.Count == 0 ? phrase : $"{phrase} ({string.Join(", ", qualifiers)})";
     }
 
@@ -1028,58 +1029,58 @@ public sealed partial class FlyoutViewModel : ObservableObject
             // "Work", "Work or Home", "these 4 groups": true of none of the groups shown.
             bool searching = !string.IsNullOrWhiteSpace(SearchText);
             var name = GroupViewText.AnyOf(groups);
-            EmptyTitle = searching ? "No matches" : $"Nothing in {name} yet";
+            EmptyTitle = searching ? "No matches" : UiText.Format($"Nothing in {name} yet");
             EmptyMessage = searching
-                ? $"Nothing in {name} {DescribeSearch()}."
+                ? UiText.Format($"Nothing in {name} {DescribeSearch()}.")
                 : groups.Count == 1
-                    ? $"Open the full history (the clipboard icon above), then drag cards onto the {name} icon."
-                    : "Open the full history (the clipboard icon above), then drag cards onto their icons.";
+                    ? UiText.Format($"Open the full history (the clipboard icon above), then drag cards onto the {name} icon.")
+                    : UiText.Translate("Open the full history (the clipboard icon above), then drag cards onto their icons.");
         }
         else if (!string.IsNullOrWhiteSpace(SearchText))
         {
-            EmptyTitle = "No matches";
-            EmptyMessage = $"Nothing in your history {DescribeSearch()}.";
+            EmptyTitle = UiText.Translate("No matches");
+            EmptyMessage = UiText.Format($"Nothing in your history {DescribeSearch()}.");
         }
         else if (Filter == ClipFilter.Pinned)
         {
-            EmptyTitle = "Nothing pinned yet";
-            EmptyMessage = "Pin items (Ctrl+P) to keep them at hand forever.";
+            EmptyTitle = UiText.Translate("Nothing pinned yet");
+            EmptyMessage = UiText.Translate("Pin items (Ctrl+P) to keep them at hand forever.");
         }
         else if (Filter == ClipFilter.ShareX)
         {
-            EmptyTitle = "No ShareX screenshots yet";
+            EmptyTitle = UiText.Translate("No ShareX screenshots yet");
             EmptyMessage = controller.Settings.Current.ImportShareXScreenshots
-                ? "Take a screenshot with ShareX — it shows up here the moment ShareX saves it."
-                : "Turn on “Import ShareX screenshots” in Settings to collect them here. Copies from ShareX still show up.";
+                ? UiText.Translate("Take a screenshot with ShareX — it shows up here the moment ShareX saves it.")
+                : UiText.Translate("Turn on “Import ShareX screenshots” in Settings to collect them here. Copies from ShareX still show up.");
         }
         else if (Filter == ClipFilter.Snipping)
         {
-            EmptyTitle = "No screenshots yet";
+            EmptyTitle = UiText.Translate("No screenshots yet");
             EmptyMessage = controller.Settings.Current.ImportWindowsScreenshots
-                ? "Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up here the moment Windows saves it."
-                : "Turn on “Snipping Tool and Win+PrtScn” in Settings to collect Windows' screenshots here.";
+                ? UiText.Translate("Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up here the moment Windows saves it.")
+                : UiText.Translate("Turn on “Snipping Tool and Win+PrtScn” in Settings to collect Windows' screenshots here.");
         }
         else if (Filter == ClipFilter.Files)
         {
-            EmptyTitle = "No files or paths yet";
+            EmptyTitle = UiText.Translate("No files or paths yet");
             EmptyMessage = @"Copy files in Explorer, or copy a path such as C:\folder\file.txt, /var/log/syslog or src/app.cs.";
         }
         else if (Filter == ClipFilter.Run)
         {
-            EmptyTitle = "No Win+R commands yet";
+            EmptyTitle = UiText.Translate("No Win+R commands yet");
             EmptyMessage = controller.Settings.Current.RecordRunHistory
-                ? "Run something with Win+R — it shows up here at once, and stays after Windows forgets it (Windows keeps only 26)."
-                : "Turn on “Win+R history” in Settings to keep every command you run with Win+R here.";
+                ? UiText.Translate("Run something with Win+R — it shows up here at once, and stays after Windows forgets it (Windows keeps only 26).")
+                : UiText.Translate("Turn on “Win+R history” in Settings to keep every command you run with Win+R here.");
         }
         else if (Filter != ClipFilter.All)
         {
-            EmptyTitle = "Nothing here yet";
-            EmptyMessage = "Items of this kind will show up as soon as you copy one.";
+            EmptyTitle = UiText.Translate("Nothing here yet");
+            EmptyMessage = UiText.Translate("Items of this kind will show up as soon as you copy one.");
         }
         else
         {
-            EmptyTitle = "Your clipboard history is empty";
-            EmptyMessage = "Copy something — it will be kept here, even after a restart.";
+            EmptyTitle = UiText.Translate("Your clipboard history is empty");
+            EmptyMessage = UiText.Translate("Copy something — it will be kept here, even after a restart.");
         }
     }
 
@@ -1093,31 +1094,31 @@ public sealed partial class FlyoutViewModel : ObservableObject
         var problem = lastPicks?.Problem;
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
-            EmptyTitle = "No matches";
-            EmptyMessage = $"Nothing you opened in Everything or copied from it contains “{SearchText.Trim()}”.";
+            EmptyTitle = UiText.Translate("No matches");
+            EmptyMessage = UiText.Format($"Nothing you opened in Everything or copied from it contains “{SearchText.Trim()}”.");
         }
         else if (state == EverythingState.Loading)
         {
-            EmptyTitle = "Everything is loading its index";
-            EmptyMessage = "The files you open in Everything show up here as soon as it is ready.";
+            EmptyTitle = UiText.Translate("Everything is loading its index");
+            EmptyMessage = UiText.Translate("The files you open in Everything show up here as soon as it is ready.");
         }
         else if (state is EverythingState.NotRunning or EverythingState.Untrusted)
         {
-            EmptyTitle = "Everything is not running";
+            EmptyTitle = UiText.Translate("Everything is not running");
             ShowStartEverything = controller.Everything?.CanStart == true;
             EmptyMessage = ShowStartEverything
-                ? "Start it to see the files you open in it here, newest first."
-                : "Open Everything (voidtools) to see the files you open in it here, newest first.";
+                ? UiText.Translate("Start it to see the files you open in it here, newest first.")
+                : UiText.Translate("Open Everything (voidtools) to see the files you open in it here, newest first.");
         }
         else if (problem is not null)
         {
-            EmptyTitle = "Everything did not answer";
-            EmptyMessage = $"{char.ToUpperInvariant(problem[0])}{problem[1..]}. Try again in a moment.";
+            EmptyTitle = UiText.Translate("Everything did not answer");
+            EmptyMessage = UiText.Format($"{char.ToUpperInvariant(problem[0])}{problem[1..]}. Try again in a moment.");
         }
         else
         {
-            EmptyTitle = "Nothing opened in Everything yet";
-            EmptyMessage = "Files and folders you open from Everything's results show up here, newest first — and so does anything you copy in Everything.";
+            EmptyTitle = UiText.Translate("Nothing opened in Everything yet");
+            EmptyMessage = UiText.Translate("Files and folders you open from Everything's results show up here, newest first — and so does anything you copy in Everything.");
         }
     }
 
@@ -1127,12 +1128,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
     {
         int picks = Items.Count(i => i.Pick is not null);
         int stored = Items.Count - picks;
-        var kept = stored > 0 ? $" · {stored:N0} kept" : string.Empty;
+        var kept = stored > 0 ? UiText.Format($" · {stored:N0} kept") : string.Empty;
         return lastPicks?.Source switch
         {
-            EverythingPicksSource.Live => $"{picks:N0} opened in Everything{kept}",
-            EverythingPicksSource.SavedFile => $"{picks:N0} from Everything's saved history{kept}",
-            _ => stored > 0 ? $"{stored:N0} from Everything" : string.Empty,
+            EverythingPicksSource.Live => UiText.Format($"{picks:N0} opened in Everything{kept}"),
+            EverythingPicksSource.SavedFile => UiText.Format($"{picks:N0} from Everything's saved history{kept}"),
+            _ => stored > 0 ? UiText.Format($"{stored:N0} from Everything") : string.Empty,
         };
     }
 
@@ -1145,7 +1146,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             var groups = SelectedGroups;
             if (groups.Count == 1)
             {
-                StatusText = $"{groups[0].ItemCount:N0} in {groups[0].Name}";
+                StatusText = UiText.Format($"{groups[0].ItemCount:N0} in {groups[0].Name}");
                 return;
             }
 
@@ -1159,7 +1160,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 // Another click may have changed the view during the await: its own update writes the footer.
                 if (selection.HasSameIds(GroupSelection))
                 {
-                    StatusText = $"{count:N0} in {GroupViewText.ShortName(groups)}";
+                    StatusText = UiText.Format($"{count:N0} in {GroupViewText.ShortName(groups)}");
                 }
 
                 return;
@@ -1187,13 +1188,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
             if (Filter == ClipFilter.Run)
             {
                 // The number that matters here: how many commands are kept, against Windows' own 26.
-                StatusText = $"{stats.RunCount:N0} command{(stats.RunCount == 1 ? string.Empty : "s")} kept";
+                StatusText = UiText.Format($"{stats.RunCount:N0} command{(stats.RunCount == 1 ? string.Empty : "s")} kept");
                 return;
             }
 
             StatusText = stats.PinnedCount > 0
-                ? $"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned"
-                : $"{stats.Count:N0} items";
+                ? UiText.Format($"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned")
+                : UiText.Format($"{stats.Count:N0} items");
         }
         catch (Exception ex)
         {
