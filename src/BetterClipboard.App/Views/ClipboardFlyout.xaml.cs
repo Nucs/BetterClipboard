@@ -73,12 +73,13 @@ namespace BetterClipboard.App.Views;
 /// </para>
 /// <para>
 /// <b>Getting around</b> (ClipboardFlyout.Navigation.cs). A summon opens in the tab the user last chose
-/// (<see cref="AppSettings.LastTab"/>). Up and Down move through the rows, Left and Right through the tabs in a circle, and
-/// Up from the top row walks into the groups column, onto the first group shown (the clipboard icon when none is), where
-/// Up and Down then step through the groups until Right goes back to the list. Each step shows its group, and Space,
-/// Enter or Down on the lowest group go back to the list with it — unless several groups are merged: then the keys only
-/// move a ring, and Space or Enter adds the group under it to the view or takes it out. The mouse selects the row it is
-/// over, once it really moved.
+/// (<see cref="AppSettings.LastTab"/>), with the newest copy selected — below the pinned cards while they are listed first,
+/// so Enter pastes the copy just made and Up goes to the lowest pin. Up and Down move through the rows, Left and Right
+/// through the tabs in a circle, and Up from the top row walks into the groups column, onto the first group shown (the
+/// clipboard icon when none is), where Up and Down then step through the groups until Right goes back to the list. Each
+/// step shows its group, and Space, Enter or Down on the lowest group go back to the list with it — unless several groups
+/// are merged: then the keys only move a ring, and Space or Enter adds the group under it to the view or takes it out. The
+/// mouse selects the row it is over, once it really moved.
 /// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
@@ -245,12 +246,13 @@ public sealed partial class ClipboardFlyout : Window
         Root.PointerCanceled += Root_PointerEnded;
         Root.PointerCaptureLost += Root_PointerEnded;
 
-        // Like Win+V, the top item is always "armed": after every (re)load — typing a search, switching
-        // a filter — select the first card so Enter pastes the best match immediately. Unconditionally: a reload patches
-        // the list (FlyoutViewModel.ApplyEntries) instead of clearing it, so a card that is still listed keeps its
-        // selection, which may no longer be the first card (it used to be lost with the clear), and the list keeps its
-        // scroll position (the clear used to reset it): SelectIndex also scrolls the first card into view. Callers that keep
-        // a card selected across their reload (a history change, a prompt tab) select it again after awaiting the reload.
+        // Like Win+V, the newest copy is always "armed": after every (re)load — typing a search, switching a filter — select
+        // it so Enter pastes the best match immediately. That is the first card, or the first one below the pinned cards
+        // while they are listed first (ArmCard; Up from it reaches the pins). Unconditionally: a reload patches the list
+        // (FlyoutViewModel.ApplyEntries) instead of clearing it, so a card that is still listed keeps its selection, which
+        // may no longer be the armed one (it used to be lost with the clear), and the list keeps its scroll position (the
+        // clear used to reset it): ArmCard also brings the list back to its top. Callers that keep a card selected across
+        // their reload (a history change, a prompt tab) select it again after awaiting the reload.
         ViewModel.Reloaded += (_, _) =>
         {
             // The rows changed under a mouse that may lie on the list: until it really moves, it must not take the
@@ -258,7 +260,7 @@ public sealed partial class ClipboardFlyout : Window
             SuspendPointerSelection();
             if (ViewModel.Items.Count > 0)
             {
-                SelectIndex(0);
+                ArmCard();
             }
         };
     }
@@ -455,7 +457,7 @@ public sealed partial class ClipboardFlyout : Window
             ViewModel.RefreshCaptions();
 
             // The panel may appear right under the mouse, and Windows then tells it that the pointer "moved": the mouse
-            // selects no row until it has really left the spot it is on now, so the first card stays the armed one.
+            // selects no row until it has really left the spot it is on now, so the armed card stays the selected one.
             SuspendPointerSelection();
 
             // On screen in one step: no fade, no slide, no DWM animation (ClipboardFlyout.Summon.cs has the numbers).
@@ -481,7 +483,7 @@ public sealed partial class ClipboardFlyout : Window
                 await ViewModel.ReloadAsync();
             }
 
-            SelectIndex(0);
+            ResetListPosition();
             LogSummon(context, onScreen, reload);
 
             // Second line of defence for the first summon: if no element of the panel has the keyboard yet (the box's
@@ -621,8 +623,9 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Keeps the list current: in place or by a coalesced reload while visible, by a background refresh while concealed (so
-    /// the next summon finds it ready, ClipboardFlyout.Summon.cs).
+    /// Keeps the list current: in place or by a coalesced reload while visible — the card the user had selected stays
+    /// selected and in view — and by a background refresh while concealed (so the next summon finds it ready,
+    /// ClipboardFlyout.Summon.cs).
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="change">What changed.</param>
@@ -661,6 +664,11 @@ public sealed partial class ClipboardFlyout : Window
                 if (selected is { } id && ViewModel.Items.FirstOrDefault(i => i.Id == id) is { } again)
                 {
                     ItemsList.SelectedItem = again;
+
+                    // The reload brought the list to its own armed card (ArmCard), which below many pins lies a screenful
+                    // away from the card selected again here — the copy just pinned with Ctrl+P sits up among the pins.
+                    // Brought back into view, so the user's card stays on screen (the list only moves when it is not).
+                    ItemsList.ScrollIntoView(again);
                 }
             }
         }
@@ -1547,7 +1555,8 @@ public sealed partial class ClipboardFlyout : Window
     /// <remarks>
     /// The search waits for its debounce first (<see cref="FlyoutViewModel.SettleSearchAsync"/>): typed and Enter at once
     /// used to paste the card selected before the search ran (QA pass 2026-10-09: "delta" + Enter pasted the newest item).
-    /// After the wait the first match is selected, unless the user moved the selection meanwhile. A second Enter while this
+    /// After the wait the armed match is selected — the first one, or the first below the pinned matches while pins are
+    /// listed first (<see cref="ArmCard"/>) — unless the user moved the selection meanwhile. A second Enter while this
     /// waits is ignored, so one keystroke never pastes twice.
     /// </remarks>
     /// <param name="ctrl">Ctrl was held (run a Win+R command).</param>
@@ -1569,8 +1578,10 @@ public sealed partial class ClipboardFlyout : Window
                 return; // dismissed while the search ran: nothing is pasted behind the user's back
             }
 
-            // Fall back to the first card if the selection was lost (e.g. mid-reload).
-            if ((Selected ?? ViewModel.Items.FirstOrDefault()) is { } toPaste)
+            // Fall back to the card a load arms if the selection was lost (e.g. mid-reload): the same card the list would
+            // show selected, never a pin above the newest copy.
+            int armed = ArmedIndex();
+            if ((Selected ?? (armed >= 0 ? ViewModel.Items[armed] : null)) is { } toPaste)
             {
                 // Ctrl+Enter on a Win+R command runs it like the Run dialog (Ctrl+Shift+Enter as administrator);
                 // on any other card it pastes, as it always did.

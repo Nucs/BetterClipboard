@@ -361,7 +361,7 @@
                     <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.MoveToTopOnPaste, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Tc907e7af7ff5}"
+                    Description="{loc:Tr Key=T7ffed93d48ee}"
                     Glyph="&#xE840;"
                     Header="{loc:Tr Key=T4ab0ecb908e1}">
                     <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.PinnedOnTop, Mode=TwoWay}" />

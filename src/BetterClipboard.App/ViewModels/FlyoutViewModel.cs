@@ -235,15 +235,23 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public bool IsGroupView => !GroupSelection.IsEmpty;
 
     /// <summary>
-    /// Whether the list already shows what a load would show now: it was loaded for the current search, tab, groups and
-    /// search toggles, and no history change was reported since that load started. A summon then shows the list as it is,
-    /// without the reload that used to rebuild every card after the panel appeared.
+    /// Whether the list already shows what a load would show now: it was loaded for the current search, tab, groups,
+    /// search toggles and order (Settings' "Show pinned items first"), and no history change was reported since that load
+    /// started. A summon then shows the list as it is, without the reload that used to rebuild every card after the panel
+    /// appeared.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Only views of stored history qualify (<see cref="IsStoredHistoryView"/>). The Everything, shell and prompt tabs also
     /// show what other apps keep (picks, shell histories, the prompt archive), which no history event announces, so they
     /// always reload. A summon starts in one of them when it is the tab the user last chose: the panel then shows that
     /// tab's list as it was last loaded, and reloads it right after it appeared.
+    /// </para>
+    /// <para>
+    /// The order counts since 2026-11-08: no event reloads the hidden panel when the setting changes, and its list kept the
+    /// old order until the next copy — with the pins among the copies right after the setting was turned on, or on top
+    /// after it was turned off. Now the next summon finds the list stale and reloads it.
+    /// </para>
     /// </remarks>
     public bool IsListCurrent =>
         IsStoredHistoryView
@@ -264,7 +272,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public bool GroupsLoaded { get; private set; }
 
     /// <summary>The view a load is made for (see <see cref="IsListCurrent"/>).</summary>
-    private ViewKey CurrentViewKey => new(SearchText, Filter, string.Join(",", GroupSelection.Ids), CurrentSearchOptions);
+    private ViewKey CurrentViewKey =>
+        new(SearchText, Filter, string.Join(",", GroupSelection.Ids), CurrentSearchOptions, controller.Settings.Current.PinnedOnTop);
 
     /// <summary>
     /// Notes that the history changed (an entry added, updated, removed or reordered), whether or not the change was applied
@@ -1203,12 +1212,17 @@ public sealed partial class FlyoutViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Everything that decides which entries a load shows: two keys are equal exactly when a load for one would show the
-    /// same list as a load for the other (with the same history), which is what <see cref="IsListCurrent"/> relies on.
+    /// Everything that decides which entries a load shows, and in which order: two keys are equal exactly when a load for one
+    /// would show the same list as a load for the other (with the same history), which is what <see cref="IsListCurrent"/>
+    /// relies on.
     /// </summary>
     /// <param name="Search">The search box's text, as typed.</param>
     /// <param name="Filter">The tab.</param>
     /// <param name="Groups">The ids of the groups shown, in column order, comma-separated (empty in the regular view).</param>
     /// <param name="Options">The search toggles.</param>
-    private readonly record struct ViewKey(string Search, ClipFilter Filter, string Groups, SearchOptions Options);
+    /// <param name="PinnedFirst">
+    /// Whether pinned entries come first (<see cref="Core.Settings.AppSettings.PinnedOnTop"/>, read when the load starts):
+    /// the same entries in another order are another list, and the row a load selects depends on it.
+    /// </param>
+    private readonly record struct ViewKey(string Search, ClipFilter Filter, string Groups, SearchOptions Options, bool PinnedFirst);
 }

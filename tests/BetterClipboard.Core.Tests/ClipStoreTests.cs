@@ -111,6 +111,48 @@ public sealed class ClipStoreTests : IDisposable
         Assert.Equal(["new", "old"], store.Query(new ClipQuery { PinnedFirst = false }).Select(e => e.Preview));
     }
 
+    /// <summary>
+    /// On a page the store orders pins first, the row the panel selects (<see cref="Presentation.PanelNavigation.ArmedRow{T}"/>)
+    /// is the newest copy, right below the pins — also when a pin was pasted after every copy (it then heads the pins), and
+    /// for a search that matches pins and copies. In plain recency order it is the top row, whatever that is — also while
+    /// the setting already asks for pins first but the page is still in recency order.
+    /// </summary>
+    [Fact]
+    public void ArmedRow_OfAPinnedFirstPage_IsTheNewestCopy_BelowThePins()
+    {
+        var pinOld = Add(TestData.Text("BC-TEST pin old note", TestData.Now.AddDays(-30)))!.Entry;
+        var pinPasted = Add(TestData.Text("BC-TEST pin pasted note", TestData.Now.AddDays(-20)))!.Entry;
+        Add(TestData.Text("BC-TEST older copy note", TestData.Now.AddMinutes(-10)));
+        var newest = Add(TestData.Text("BC-TEST newest copy note", TestData.Now.AddMinutes(-1)))!.Entry;
+        Add(TestData.Text("BC-TEST copy without the word", TestData.Now.AddMinutes(-5)));
+        store.SetPinned(pinOld.Id, true, TestData.Now);
+        store.SetPinned(pinPasted.Id, true, TestData.Now);
+        store.Touch(pinPasted.Id, TestData.Now); // pasted just now: the most recently used item of all
+
+        static int Armed(IReadOnlyList<ClipEntry> page, bool pinnedFirst) =>
+            Presentation.PanelNavigation.ArmedRow(page, static entry => entry.IsPinned, pinnedFirst);
+
+        var cancellation = TestContext.Current.CancellationToken;
+        var page = store.Query(new ClipQuery(), cancellation);
+        Assert.Equal([pinPasted.Id, pinOld.Id], page.Take(2).Select(e => e.Id));
+        Assert.Equal(newest.Id, page[Armed(page, pinnedFirst: true)].Id);
+
+        var search = store.Query(new ClipQuery { SearchText = "note" }, cancellation);
+        Assert.Equal(4, search.Count);
+        Assert.Equal(newest.Id, search[Armed(search, pinnedFirst: true)].Id);
+
+        var recency = store.Query(new ClipQuery { PinnedFirst = false }, cancellation);
+        Assert.Equal(0, Armed(recency, pinnedFirst: false));
+        Assert.Equal(pinPasted.Id, recency[0].Id);
+
+        // The same page right after the setting was turned on (the panel keeps a list until its next load): its pins are
+        // not on top, so it starts on its top row as well, never under a pin of the old order.
+        Assert.Equal(0, Armed(recency, pinnedFirst: true));
+
+        var pins = store.Query(new ClipQuery { Filter = ClipFilter.Pinned }, cancellation);
+        Assert.Equal(0, Armed(pins, pinnedFirst: true));
+    }
+
     /// <summary>The trigram index gives substring search, case-insensitively, across languages.</summary>
     [Fact]
     public void Query_SearchIsSubstringAndCaseInsensitive()

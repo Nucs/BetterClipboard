@@ -5,10 +5,10 @@ using BetterClipboard.Core.Storage;
 namespace BetterClipboard.Core.Tests;
 
 /// <summary>
-/// Tests for the panel's arrow-key rules (<see cref="PanelNavigation"/>): Left and Right through the tabs in a circle, Up
-/// and Down through the rows, Up from the top row into the groups column — where the keys land there, and whether their
-/// steps show groups or only move — Up and Down inside it, when Space and Enter pick a group, and when Left and Right
-/// belong to the search box's text instead.
+/// Tests for the panel's arrow-key rules (<see cref="PanelNavigation"/>): the row a load selects (the newest copy, below
+/// the pins when they come first), Left and Right through the tabs in a circle, Up and Down through the rows, Up from the
+/// top row into the groups column — where the keys land there, and whether their steps show groups or only move — Up and
+/// Down inside it, when Space and Enter pick a group, and when Left and Right belong to the search box's text instead.
 /// </summary>
 public sealed class PanelNavigationTests
 {
@@ -163,6 +163,85 @@ public sealed class PanelNavigationTests
         Assert.Equal(new ListMove(-1, true), PanelNavigation.MoveInList(-1, 0, -1, isRepeat: false, groupsReachable: true));
         Assert.Equal(new ListMove(-1, false), PanelNavigation.MoveInList(-1, 0, -1, isRepeat: true, groupsReachable: true));
         Assert.Equal(new ListMove(-1, false), PanelNavigation.MoveInList(-1, 0, 1, isRepeat: false, groupsReachable: true));
+    }
+
+    /// <summary>
+    /// The cases of <see cref="ArmedRow_IsTheNewestCopy_BelowThePinsWhenTheyComeFirst"/>: whether each row is pinned (top
+    /// to bottom), whether the list puts its pins first, and the row a load must select.
+    /// </summary>
+    public static TheoryData<bool[], bool, int> ArmedRowCases => new()
+    {
+        { [true, true, true, false, false], true, 3 },   // three pins on top: the newest copy right below them
+        { [true, false], true, 1 },                      // one pin
+        { [false, false, false], true, 0 },              // no pins: the top row, as always
+        { [false], true, 0 },
+        { [true, true], true, 0 },                       // nothing but pins (the Pinned tab): the top pin
+        { [true], true, 0 },
+        { [], true, -1 },                                // nothing to select
+        { [true, true, false], false, 0 },               // recency order: the top row is the newest, pinned or not
+        { [false, true, false], false, 0 },
+        { [], false, -1 },
+        { [false, true, false], true, 0 },               // a copy on top is the newest copy, whatever follows it
+        { [true, false, true, false], true, 0 },         // a pin below a copy: still in recency order (the setting just
+        { [true, true, false, false, true], true, 0 },   //   turned on, the list not reloaded yet): the top row
+    };
+
+    /// <summary>
+    /// A load selects the newest copy: the top row, except below the pins of a list that shows them first — not the top
+    /// pin, which Win+V and Enter used to paste instead of the copy just made (user report, 2026-11-08). A list in plain
+    /// recency order keeps its top row, also one still in that order after the setting was turned on (a pin below a copy),
+    /// and a list of nothing but pins its top pin; an empty list selects nothing.
+    /// </summary>
+    /// <param name="pinned">Whether each row is pinned, top to bottom.</param>
+    /// <param name="pinnedFirst">Whether the list puts its pins first.</param>
+    /// <param name="expected">The row to select, or -1.</param>
+    [Theory]
+    [MemberData(nameof(ArmedRowCases))]
+    public void ArmedRow_IsTheNewestCopy_BelowThePinsWhenTheyComeFirst(bool[] pinned, bool pinnedFirst, int expected)
+    {
+        Assert.Equal(expected, PanelNavigation.ArmedRow(pinned, static isPinned => isPinned, pinnedFirst));
+    }
+
+    /// <summary>
+    /// From the armed row, Up goes to the lowest pin and on through the pins, and only Up on the very top row walks into the
+    /// groups column — the order the user asked for ("pressing up after open should go to the lowest pinned row"). Down
+    /// goes on to the older copies.
+    /// </summary>
+    [Fact]
+    public void ArmedRow_UpReachesTheLowestPinFirst_ThenTheGroupsColumn()
+    {
+        bool[] rows = [true, true, false, false];
+        int armed = PanelNavigation.ArmedRow(rows, static isPinned => isPinned, pinnedFirst: true);
+        Assert.Equal(2, armed);
+
+        var up = PanelNavigation.MoveInList(armed, rows.Length, -1, isRepeat: false, groupsReachable: true);
+        Assert.Equal(new ListMove(1, false), up);
+        Assert.True(rows[up.Index]);
+        up = PanelNavigation.MoveInList(up.Index, rows.Length, -1, isRepeat: false, groupsReachable: true);
+        Assert.Equal(new ListMove(0, false), up);
+        Assert.Equal(new ListMove(-1, true), PanelNavigation.MoveInList(up.Index, rows.Length, -1, isRepeat: false, groupsReachable: true));
+
+        Assert.Equal(new ListMove(3, false), PanelNavigation.MoveInList(armed, rows.Length, 1, isRepeat: false, groupsReachable: true));
+    }
+
+    /// <summary>
+    /// With pins first, the rule asks about every row once (no pin may follow a copy: one page, at most 60 calls); in
+    /// recency order it asks about none. Null arguments are refused.
+    /// </summary>
+    [Fact]
+    public void ArmedRow_AsksAboutEveryRowOnce_OnlyWithPinsFirst_AndRefusesNulls()
+    {
+        int asked = 0;
+        bool[] rows = [true, false, false, false, false];
+        Assert.Equal(1, PanelNavigation.ArmedRow(rows, isPinned => { asked++; return isPinned; }, pinnedFirst: true));
+        Assert.Equal(rows.Length, asked);
+
+        asked = 0;
+        Assert.Equal(0, PanelNavigation.ArmedRow(rows, isPinned => { asked++; return isPinned; }, pinnedFirst: false));
+        Assert.Equal(0, asked);
+
+        Assert.Throws<ArgumentNullException>(() => PanelNavigation.ArmedRow<bool>(null!, static isPinned => isPinned, pinnedFirst: true));
+        Assert.Throws<ArgumentNullException>(() => PanelNavigation.ArmedRow(rows, null!, pinnedFirst: true));
     }
 
     /// <summary>A groups column, top to bottom (ids deliberately not 1, 2, 3: positions and ids must not be confused).</summary>

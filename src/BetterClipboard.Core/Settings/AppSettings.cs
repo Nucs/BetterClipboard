@@ -193,7 +193,11 @@ public sealed record AppSettings
     /// <summary>Move an item to the top of history when it is pasted from the flyout.</summary>
     public bool MoveToTopOnPaste { get; init; } = true;
 
-    /// <summary>Show pinned items above everything else.</summary>
+    /// <summary>
+    /// Show pinned items above everything else. The panel still selects the newest copy, the first item below the pins
+    /// (<see cref="Presentation.PanelNavigation.ArmedRow{T}"/>): off, the list is in plain recency order and its top item is
+    /// the one selected.
+    /// </summary>
     public bool PinnedOnTop { get; init; } = true;
 
     /// <summary>

@@ -52,9 +52,11 @@ you send to Claude Code and Codex.
 - **A panel that fits you.** It opens in the tab you used last, also after a restart. Drag any empty spot to move it,
   and drag an edge to resize it: it opens at that size from then on. Tabs that don't fit scroll sideways with the ‹ ›
   arrows, the mouse wheel or a drag. The mouse selects the item it is over.
-- **Pins and groups.** Pin what you reuse. Make groups with your own icons, drag cards onto them, and show one group or
-  several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group you reach with the arrow keys). Pinned and grouped
-  items outlive every limit, and *Clear* keeps them ([Groups](#groups)).
+- **Pins and groups.** Pin what you reuse: pinned items are listed on top, and the panel still opens on your newest copy
+  just below them, so `Win+V` `Enter` pastes what you copied last and `↑` reaches the pins. Make groups with your own
+  icons, drag cards onto them, and show one group or several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group
+  you reach with the arrow keys). Pinned and grouped items outlive every limit, and *Clear* keeps them
+  ([Groups](#groups)).
 - **Reads every copy at once.** Copies 2 ms apart or more are all kept. A program that copies faster than that
   overwrites its own copies before any app, Win+V included, can read them: BetterClipboard keeps the last one and
   counts the rest (*Settings › Capture reliability*).
@@ -199,13 +201,14 @@ when you say so.
 ## Use
 
 Press **Win+V**. The panel appears at once by your text cursor, in the tab you used last, with the search box focused
-— just type.
+— just type. Your newest copy is selected, so `Enter` pastes it. Pinned items are listed above it (*Settings › Pasting*
+can list them in time order instead), and `↑` reaches them.
 
 | Key | Action |
 |---|---|
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
 | `Alt+C` / `Alt+W` / `Alt+E` | Toggle the search box's **Aa** (match case), **W** (whole word) and **.\*** (regular expression) — or click them. They stay as you leave them. |
-| `↑` `↓` `PgUp` `PgDn` | Move the selection. With the groups column open, press `↑` on the top item to step into the groups (see [Groups](#groups)). |
+| `↑` `↓` `PgUp` `PgDn` | Move the selection. The panel opens on your newest copy, so `↑` goes first to the pinned items above it, the lowest one first. With the groups column open, press `↑` on the top item to step into the groups (see [Groups](#groups)). |
 | `Space` / `Enter` in the groups column | While the arrow keys are in the groups column: keep the group under the ring and go back to the items. While several groups are open: add the group under the ring to the list, or take it out (see [Groups](#groups)). Everywhere else, `Space` is typed and `Enter` pastes. |
 | `←` `→` | Previous / next tab, in a circle: `←` on the first tab goes to the last tab, `→` on the last tab to the first. While you edit search text, they move its caret instead; after `↑` or `↓` they switch tabs again. A held key stops at the first or last tab. |
 | Mouse over an item | Select it. Tabs and group icons are only selected by a click. |
@@ -225,7 +228,8 @@ Press **Win+V**. The panel appears at once by your text cursor, in the tab you u
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
 | The update button, left of Pause | Open the update dialog: the release notes, and *Update and restart* when a newer version exists (the button is highlighted then; see [Updates](#updates)) |
 
-Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match.
+Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match — the
+newest one that is not pinned, when pinned matches are listed above it.
 
 **Pasting into a window that runs as administrator** (an elevated terminal, say): Windows does not let an app that runs
 without administrator rights type into it. BetterClipboard puts the item on the clipboard, goes back to that window, and

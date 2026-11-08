@@ -124,12 +124,17 @@ public enum GroupPickAction
 /// <summary>
 /// The rules of the panel's arrow keys: Up and Down move through the rows, Left and Right through the tabs in a circle, and
 /// Up from the top row walks into the groups column, where Up and Down then move through the groups until Right goes back
-/// to the list.
+/// to the list. Also where the keys start: the row a load selects (<see cref="ArmedRow{T}"/>).
 /// </summary>
 /// <remarks>
 /// <para>
 /// Pure and free of UI types, so the rules are unit-tested; the panel reads its own state (which row is selected, how
 /// many tabs show, whether the key repeats), asks here, and acts on the answer.
+/// </para>
+/// <para>
+/// <b>Where the keys start.</b> Every load of the list (a summon, a search, another tab or group) selects the newest copy:
+/// the top row, or — when the list puts its pinned rows first — the first row below them (<see cref="ArmedRow{T}"/>). Up from
+/// there reaches the pins, the lowest one first; only Up on the very top row walks into the groups column.
 /// </para>
 /// <para>
 /// <b>Held keys stop at an edge, a new press crosses it.</b> A key that repeats because it is held down never wraps from
@@ -276,6 +281,90 @@ public static class PanelNavigation
         // No selection counts as "just above the first row", so Down selects it (and Page Down the fifth row).
         long current = selected < 0 ? -1 : Math.Min(selected, count - 1);
         return new ListMove((int)Math.Clamp(current + delta, 0, count - 1), false);
+    }
+
+    /// <summary>
+    /// The row the panel selects whenever it loads its list — a summon, a search, another tab, another group — which is the
+    /// card a plain Enter pastes: the newest copy. That is the top row, except in a list that shows its pinned rows first:
+    /// there it is the first row below the pins, so that Up from it reaches the lowest pin.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why not the top row.</b> With pinned items first (the default), the top row is a pin, maybe weeks old, and Win+V
+    /// followed by Enter pasted that pin instead of the copy just made — which is what Win+V and Enter mean to anyone coming
+    /// from Windows' own panel. User report, 2026-11-08: "the top pinned clipboard row is selected where the unpinned should
+    /// be selected, pressing up after open should go to the lowest pinned row".
+    /// </para>
+    /// <para>
+    /// <b>Only for a list that shows its pins first:</b> the setting asks for it (<paramref name="pinnedFirst"/>) and the
+    /// pins are the list's leading rows. In recency order (Settings' "Show pinned items first" off) the top row is the newest
+    /// item, pinned or not, and stays the one selected — also when it is a pin the user just pasted. The rows are checked
+    /// as well because a list keeps the order of the load that made it: one loaded while the setting was off still shows its
+    /// pins among the copies right after the setting is turned on, and starts on its top row like any list in recency order
+    /// — the selection never lands below pins that are not on top. Seen 2026-11-08 in the QA pass, before the panel reloaded
+    /// a list on that setting: the setting alone put the selection on the second row, under a pin of the old order.
+    /// </para>
+    /// <para>
+    /// <b>The same for every load,</b> searches included: a search lists its pinned matches first too, and the selection
+    /// stays on the first match that is not pinned while the user types, instead of jumping into the pins with the first
+    /// letter.
+    /// </para>
+    /// <para>
+    /// <b>A list of nothing but pins</b> (the Pinned tab, a search that only pins match, a group of pins) starts on its top
+    /// row, as every list did before. Footgun: the panel loads its list a page at a time, and a first page that holds only
+    /// pins — more pins than a page has rows — starts on its top pin as well, since the newest copy is not loaded yet.
+    /// </para>
+    /// </remarks>
+    /// <typeparam name="T">The type of the list's rows (the panel's cards, a store's entries).</typeparam>
+    /// <param name="rows">The list, top to bottom.</param>
+    /// <param name="isPinned">
+    /// Whether a row is pinned; called once for every row while <paramref name="pinnedFirst"/> is set (no pin may follow a
+    /// copy), never otherwise.
+    /// </param>
+    /// <param name="pinnedFirst">
+    /// Whether the panel puts pinned rows on top (<see cref="Settings.AppSettings.PinnedOnTop"/>, which orders every list
+    /// it loads); <see langword="false"/> for plain recency order.
+    /// </param>
+    /// <returns>
+    /// The row to select: the first row that is not pinned while <paramref name="pinnedFirst"/> is set and every pin of the
+    /// list lies above it; otherwise the top row (0), also in a list of nothing but pins; -1 for an empty list.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="rows"/> or <paramref name="isPinned"/> is <see langword="null"/>.</exception>
+    public static int ArmedRow<T>(IReadOnlyList<T> rows, Func<T, bool> isPinned, bool pinnedFirst)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentNullException.ThrowIfNull(isPinned);
+        if (rows.Count == 0)
+        {
+            return -1;
+        }
+
+        if (!pinnedFirst)
+        {
+            return 0;
+        }
+
+        int firstCopy = -1;
+        for (int i = 0; i < rows.Count; i++)
+        {
+            bool pinned = isPinned(rows[i]);
+            if (firstCopy < 0)
+            {
+                if (!pinned)
+                {
+                    firstCopy = i;
+                }
+            }
+            else if (pinned)
+            {
+                // A pin below a copy: the list does not show its pins first (see the remarks), so its top row is its newest
+                // item, as in any list in recency order.
+                return 0;
+            }
+        }
+
+        // No copy at all — nothing but pins on this page — leaves nothing to skip to.
+        return firstCopy < 0 ? 0 : firstCopy;
     }
 
     /// <summary>
