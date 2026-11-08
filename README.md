@@ -1,4 +1,4 @@
-# BetterClipboard
+# <img src="src/BetterClipboard.App/Assets/AppIcon.png" width="40" height="40" align="top" alt="BetterClipboard icon"> BetterClipboard
 
 **The Win+V clipboard history Windows should have shipped.** Same shortcut, same panel by your cursor —
 but it remembers everything, survives restarts, searches instantly, and keeps it all encrypted on your PC.

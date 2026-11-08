@@ -4413,6 +4413,10 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   `settings.png`, `update.png`) show the code of `7d7df8d` (2026-10-09) with invented demo data from a claude-desktops
   Windows desktop, never the user's screen.
   When a change makes one of them wrong, retake that photo the same way (§3.4).
+  The title carries the app icon, `src/BetterClipboard.App/Assets/AppIcon.png` (256 px, from `tools/make_icon.py`; the
+  Chocolatey `iconUrl` loads the same file, so keep it there). At 40 px with `align="top"` it sits within 2 px of the
+  centre of the title's capitals (GitHub's styles, Segoe UI, measured 2026-11-08). `align="middle"` or `"center"` hangs
+  it 11 px low, and no `align` raises it 5 px. GitHub links every image to its own file, so the `alt` names that link.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
