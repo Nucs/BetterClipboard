@@ -194,8 +194,12 @@ public sealed partial class FlyoutViewModel
         var kept = keptShown > 0 ? UiText.Format($" · {keptShown:N0} kept") : string.Empty;
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
+            // "60+" says that more pages match: a sentence of its own, since a "+" passed in as a value was left out of
+            // the Chinese template, which then claimed exactly 60.
             int matching = Items.Count(i => i.Prompt is not null);
-            return UiText.Format($"{matching:N0}{(hasMore ? "+" : string.Empty)} matching of {lastPromptStats.Distinct:N0} prompts{kept}");
+            return hasMore
+                ? UiText.Format($"{matching:N0}+ matching of {lastPromptStats.Distinct:N0} prompts{kept}")
+                : UiText.Format($"{matching:N0} matching of {lastPromptStats.Distinct:N0} prompts{kept}");
         }
 
         var stats = lastPromptStats;

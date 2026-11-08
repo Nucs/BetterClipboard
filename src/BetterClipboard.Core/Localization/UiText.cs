@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using BetterClipboard.Core.Diagnostics;
 
 namespace BetterClipboard.Core.Localization;
@@ -53,6 +56,12 @@ public static class UiText
 
     /// <summary>English text → key, for C#'s lookups by English text.</summary>
     private static readonly IReadOnlyDictionary<string, string> KeysByEnglish = IndexEnglish(EnglishLanguage);
+
+    /// <summary>
+    /// The matching pattern of every template <see cref="TranslateFormatted(string?, IReadOnlyList{string}, UiLanguage)"/>
+    /// has seen, built once per template: the lists are fixed sets of a few dozen strings, so the cache stays small.
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, TemplateShape> TemplateShapes = new(StringComparer.Ordinal);
 
     /// <summary>
     /// The last resolution of <see cref="Current"/>, with the inputs it came from. Replaced as a whole (a reference
@@ -206,6 +215,139 @@ public static class UiText
     /// <param name="message">Application-owned interpolation whose arguments are not translated.</param>
     /// <returns>Localized and formatted UI text.</returns>
     public static string Format(IFormatProvider? provider, FormattableString message) => string.Format(provider, Translate(message.Format), message.GetArguments());
+
+    /// <summary>
+    /// Translates a text that was already formatted in English from one of the given templates: a reason or a status
+    /// that a component words once, in English, for the log, and that the interface also shows (why Everything was not
+    /// trusted, how ShareX was found, why an update failed, why a shortcut cannot be used).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The first template whose shape matches the whole text wins; the parts its placeholders matched are carried into
+    /// the template's translation as they are. A part that is itself exactly one of the templates (a fragment such as
+    /// "the release list" inside a sentence) is translated too, through the same list, so nothing else is: a part is
+    /// usually a file name, a process name or a number, and must never turn into a catalog word that happens to be
+    /// spelled the same.
+    /// </para>
+    /// <para>
+    /// The component keeps its English (its tests and the log read it), and the template list is its contract with the
+    /// catalogs: every template needs an entry in every catalog, and every text the component makes must match one of
+    /// them, or it shows in English. Each component's tests check both.
+    /// </para>
+    /// <para>
+    /// A placeholder's format (<c>{0:X8}</c>) is not applied again: the matched part is text, and composite formatting
+    /// ignores a format for text. Footgun: a template made only of a placeholder ("{0}") would match every text; none
+    /// may be.
+    /// </para>
+    /// </remarks>
+    /// <param name="text">The English text; <see langword="null"/> gives an empty string.</param>
+    /// <param name="templates">Composite format strings in the order to try ("signed by {0}"); a template without
+    /// placeholders matches only itself.</param>
+    /// <returns>The translation in <see cref="Current"/>; the text as it is when no template matches.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="templates"/> is <see langword="null"/>.</exception>
+    public static string TranslateFormatted(string? text, IReadOnlyList<string> templates) => TranslateFormatted(text, templates, Current);
+
+    /// <summary>
+    /// <see cref="TranslateFormatted(string?, IReadOnlyList{string})"/> into a given language (the tests' route, and
+    /// any caller that must not depend on <see cref="Language"/>).
+    /// </summary>
+    /// <param name="text">The English text; <see langword="null"/> gives an empty string.</param>
+    /// <param name="templates">Composite format strings in the order to try.</param>
+    /// <param name="language">The language to translate into.</param>
+    /// <returns>The translation; the text as it is when no template matches.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="templates"/> or <paramref name="language"/> is <see langword="null"/>.</exception>
+    public static string TranslateFormatted(string? text, IReadOnlyList<string> templates, UiLanguage language)
+    {
+        ArgumentNullException.ThrowIfNull(templates);
+        ArgumentNullException.ThrowIfNull(language);
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        // English is what the component wrote: nothing to do, and no regular expression runs for it.
+        if (ReferenceEquals(language, EnglishLanguage))
+        {
+            return text;
+        }
+
+        foreach (string template in templates)
+        {
+            var shape = TemplateShapes.GetOrAdd(template, BuildTemplateShape);
+            Match match;
+            try
+            {
+                match = shape.Pattern.Match(text);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // Lazy groups over a long text with many near-misses: treat as no match rather than stall the UI thread.
+                continue;
+            }
+
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            var parts = new object[shape.PartCount];
+            for (int i = 0; i < parts.Length; i++)
+            {
+                // A placeholder index the template skipped ({1} without {0}) has no group: an empty part.
+                string part = match.Groups[$"p{i}"].Value;
+
+                // A nested fragment of the same list, exactly; anything else (a name, a number) is never translated.
+                parts[i] = templates.Contains(part, StringComparer.Ordinal) ? Translate(part, language) : part;
+            }
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, Translate(template, language), parts);
+            }
+            catch (FormatException)
+            {
+                // A translation whose placeholders do not fit the template's (a catalog bug the tests catch): the English
+                // text is better than nothing.
+                return text;
+            }
+        }
+
+        return text;
+    }
+
+    /// <summary>
+    /// The culture whose day and month names, and time pattern, the panel's dates use (<c>RelativeTimeFormatter</c>): the
+    /// regional culture Windows is set to while it belongs to the interface language (<c>en-GB</c> for English keeps its
+    /// 24-hour clock, <c>zh-CN</c> for Simplified Chinese), else the interface language's own culture — so an English
+    /// Windows with the Chinese interface shows "周三", not "Wed", and a Chinese Windows with the English one shows "Wed".
+    /// </summary>
+    /// <param name="regional">Windows' formatting culture (usually <see cref="CultureInfo.CurrentUICulture"/>).</param>
+    /// <returns>The culture to format dates with.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="regional"/> is <see langword="null"/>.</exception>
+    public static CultureInfo DateCulture(CultureInfo regional)
+    {
+        ArgumentNullException.ThrowIfNull(regional);
+        var language = Current;
+
+        // The invariant culture names days and months in English: it belongs to English (callers that pin it, such as
+        // the tests, keep their exact output), and to no other language.
+        if (regional.Name.Length == 0)
+        {
+            return ReferenceEquals(language, EnglishLanguage) ? regional : language.Culture;
+        }
+
+        // "Belongs to": the interface language's culture is the regional one or one of its parents (zh-CN → zh-Hans,
+        // en-GB → en). zh-TW's parents are zh-Hant and zh, so Traditional names never stand in for Simplified ones.
+        for (var culture = regional; culture.Name.Length > 0; culture = culture.Parent)
+        {
+            if (string.Equals(culture.Name, language.Tag, StringComparison.OrdinalIgnoreCase))
+            {
+                return regional;
+            }
+        }
+
+        return language.Culture;
+    }
 
     /// <summary>
     /// Reads every catalog embedded in this assembly. English must be there and valid (without it there is no text to
@@ -391,6 +533,62 @@ public static class UiText
 
         return names;
     }
+
+    /// <summary>
+    /// The matching pattern of one composite format string: its literal text escaped, each placeholder a lazy group named
+    /// <c>p{index}</c> (a repeated index must match the same text again), anchored at both ends. A brace that is not a
+    /// well-formed placeholder is matched as a literal character, like the text the template would have produced.
+    /// </summary>
+    /// <param name="template">The template.</param>
+    /// <returns>Its pattern and how many parts a match yields (the highest index plus one).</returns>
+    private static TemplateShape BuildTemplateShape(string template)
+    {
+        var pattern = new StringBuilder("^");
+        var literal = new StringBuilder();
+        var seen = new HashSet<int>();
+        int partCount = 0;
+        for (int i = 0; i < template.Length; i++)
+        {
+            char c = template[i];
+            if ((c == '{' || c == '}') && i + 1 < template.Length && template[i + 1] == c)
+            {
+                // "{{" and "}}" are a literal brace in a composite format.
+                literal.Append(c);
+                i++;
+                continue;
+            }
+
+            int close = c == '{' ? template.IndexOf('}', i + 1) : -1;
+            if (close > i)
+            {
+                var spec = template.AsSpan(i + 1, close - i - 1);
+                int end = spec.IndexOfAny(',', ':');
+                if (int.TryParse(end < 0 ? spec : spec[..end], NumberStyles.None, CultureInfo.InvariantCulture, out int index))
+                {
+                    pattern.Append(Regex.Escape(literal.ToString()));
+                    literal.Clear();
+                    pattern.Append(seen.Add(index) ? $"(?<p{index}>.*?)" : $"\\k<p{index}>");
+                    partCount = Math.Max(partCount, index + 1);
+                    i = close;
+                    continue;
+                }
+            }
+
+            literal.Append(c);
+        }
+
+        pattern.Append(Regex.Escape(literal.ToString())).Append('$');
+
+        // Singleline: a reason may hold a line break. The timeout bounds the lazy groups on a hostile text (the matched
+        // parts can come from outside: an exception message, a signer's name).
+        var regex = new Regex(pattern.ToString(), RegexOptions.Singleline | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        return new TemplateShape(regex, partCount);
+    }
+
+    /// <summary>One template's matching pattern (<see cref="BuildTemplateShape"/>).</summary>
+    /// <param name="Pattern">The anchored pattern with a group per placeholder.</param>
+    /// <param name="PartCount">How many parts a match yields: the template's highest placeholder index plus one.</param>
+    private sealed record TemplateShape(Regex Pattern, int PartCount);
 
     /// <summary>One resolution of <see cref="Current"/> and the inputs it came from.</summary>
     /// <param name="Selection">The <see cref="Language"/> value it was made for.</param>

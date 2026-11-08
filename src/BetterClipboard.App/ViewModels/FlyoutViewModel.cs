@@ -145,7 +145,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// (<see cref="SetGroupsNavigation"/>), <see cref="GroupsKeyHint"/> or <see cref="GroupsPickKeyHint"/>.
     /// </summary>
     [ObservableProperty]
-    public partial string KeyHint { get; set; } = DefaultKeyHint;
+    public partial string KeyHint { get; set; } = UiText.Translate(DefaultKeyHint);
 
     /// <summary>The footer's key hints everywhere but the Run tab.</summary>
     public const string DefaultKeyHint = "↵ paste · ⇧↵ plain text · Ctrl+P pin · Del delete";
@@ -216,7 +216,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>Search box placeholder ("Search in Work…" or "Search in Work + Home…" in a group view).</summary>
     [ObservableProperty]
-    public partial string SearchPlaceholder { get; set; } = DefaultSearchPlaceholder;
+    public partial string SearchPlaceholder { get; set; } = UiText.Translate(DefaultSearchPlaceholder);
 
     /// <summary>
     /// Whether the empty Everything tab offers "Start Everything": it is not running, nothing could be shown, and
@@ -527,7 +527,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             // is wrong, and how to search for the characters themselves. A superseded query's verdict is stale.
             if (!cancellation.IsCancellationRequested)
             {
-                ShowSearchProblem("Not a valid regular expression", UiText.Format($"{ex.Reason} Turn off .* (Alt+E) to search for these characters as they are."));
+                ShowSearchProblem(UiText.Translate("Not a valid regular expression"), UiText.Format($"{ex.Reason} Turn off .* (Alt+E) to search for these characters as they are."));
             }
         }
         catch (SearchTooSlowException)
@@ -795,17 +795,18 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <returns>One of the key hint texts.</returns>
     private string CurrentKeyHint()
     {
+        // The constants are the English catalog texts (they also document each hint); the footer shows the translation.
         if (groupsWalk is { } walk)
         {
-            return walk == GroupWalkMode.Pick ? GroupsPickKeyHint : GroupsKeyHint;
+            return UiText.Translate(walk == GroupWalkMode.Pick ? GroupsPickKeyHint : GroupsKeyHint);
         }
 
         // The Run tab is where Ctrl+Enter runs a command (it works on any card with a run time, but only the
         // Run tab has room to say so). In a shell tab Delete hides a command rather than deleting anything.
-        return Filter == ClipFilter.Run ? RunKeyHint
+        return UiText.Translate(Filter == ClipFilter.Run ? RunKeyHint
             : Filter is ClipFilter.PowerShell or ClipFilter.Cmd ? ShellKeyHint
             : Filter is ClipFilter.ClaudeCode or ClipFilter.Codex ? PromptKeyHint
-            : DefaultKeyHint;
+            : DefaultKeyHint);
     }
 
     /// <summary>
@@ -894,10 +895,10 @@ public sealed partial class FlyoutViewModel : ObservableObject
         var groups = SelectedGroups;
         GroupTitle = groups.Count == 0 ? string.Empty : "› " + GroupViewText.Title(groups);
         SearchPlaceholder = groups.Count > 0 ? UiText.Format($"Search in {GroupViewText.ShortName(groups)}…")
-            : IsEverythingView ? EverythingSearchPlaceholder
-            : IsShellView ? ShellSearchPlaceholder
+            : IsEverythingView ? UiText.Translate(EverythingSearchPlaceholder)
+            : IsShellView ? UiText.Translate(ShellSearchPlaceholder)
             : IsPromptView ? PromptSearchPlaceholder(CurrentAgent)
-            : DefaultSearchPlaceholder;
+            : UiText.Translate(DefaultSearchPlaceholder);
     }
 
     /// <summary>The ids of the groups column, top to bottom (what <see cref="GroupSelection"/> orders and runs by).</summary>
@@ -959,22 +960,29 @@ public sealed partial class FlyoutViewModel : ObservableObject
         var qualifiers = new List<string>(3);
         if (UseRegex)
         {
-            qualifiers.Add("regular expression");
+            qualifiers.Add(UiText.Translate("regular expression"));
         }
 
         if (WholeWord)
         {
-            qualifiers.Add(UseRegex ? "whole words only" : "whole words");
+            qualifiers.Add(UseRegex ? UiText.Translate("whole words only") : UiText.Translate("whole words"));
         }
 
         if (MatchCase)
         {
-            qualifiers.Add("match case");
+            qualifiers.Add(UiText.Translate("match case"));
         }
 
-        // A pattern is shown as typed (its spaces may matter); words are trimmed like the search trims them.
+        // A pattern is shown as typed (its spaces may matter); words are trimmed like the search trims them. The brackets
+        // and the separator are the language's own (Chinese uses full-width ones), so they are catalog entries too.
         var phrase = UseRegex ? UiText.Format($"matches “{SearchText}”") : UiText.Format($"contains “{SearchText.Trim()}”");
-        return qualifiers.Count == 0 ? phrase : $"{phrase} ({string.Join(", ", qualifiers)})";
+        if (qualifiers.Count == 0)
+        {
+            return phrase;
+        }
+
+        var joined = string.Join(UiText.Translate(", "), qualifiers);
+        return UiText.Format($"{phrase} ({joined})");
     }
 
     /// <summary>
@@ -1038,7 +1046,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             // "Work", "Work or Home", "these 4 groups": true of none of the groups shown.
             bool searching = !string.IsNullOrWhiteSpace(SearchText);
             var name = GroupViewText.AnyOf(groups);
-            EmptyTitle = searching ? "No matches" : UiText.Format($"Nothing in {name} yet");
+            EmptyTitle = searching ? UiText.Translate("No matches") : UiText.Format($"Nothing in {name} yet");
             EmptyMessage = searching
                 ? UiText.Format($"Nothing in {name} {DescribeSearch()}.")
                 : groups.Count == 1
@@ -1121,8 +1129,10 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
         else if (problem is not null)
         {
+            // The problem is worded in English for the log too; it is translated as a whole, then made a sentence.
             EmptyTitle = UiText.Translate("Everything did not answer");
-            EmptyMessage = UiText.Format($"{char.ToUpperInvariant(problem[0])}{problem[1..]}. Try again in a moment.");
+            var reason = UiText.TranslateFormatted(problem, EverythingIntegration.ProblemTemplates);
+            EmptyMessage = UiText.Format($"{char.ToUpperInvariant(reason[0])}{reason[1..]}. Try again in a moment.");
         }
         else
         {

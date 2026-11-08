@@ -28,14 +28,14 @@ public static class ForgottenText
         culture ??= CultureInfo.CurrentUICulture;
         return item.Kind switch
         {
-            ClipKind.Files => item.FileCount is { } files ? Count(files, UiText.Translate("file"), UiText.Translate("files"), culture) : UiText.Translate("Files"),
+            ClipKind.Files => item.FileCount is { } files ? FileCount(files, culture) : UiText.Translate("Files"),
             ClipKind.Image => item.ImageWidth is > 0 && item.ImageHeight is > 0
                 ? UiText.Format(culture, $"Image · {item.ImageWidth} × {item.ImageHeight}")
                 : UiText.Translate("Image"),
 
             // Rich text without plain text (HTML/RTF only) has no characters to count.
             ClipKind.RichText when item.TextLength is null => UiText.Translate("Formatted content"),
-            _ => item.TextLength is { } length ? $"{KindName(item.Kind)} · {Count(length, "character", "characters", culture)}" : KindName(item.Kind),
+            _ => item.TextLength is { } length ? $"{KindName(item.Kind)} · {CharacterCount(length, culture)}" : KindName(item.Kind),
         };
     }
 
@@ -56,13 +56,23 @@ public static class ForgottenText
         var parts = new List<string>(3);
         if (!string.IsNullOrWhiteSpace(item.SourceAppName))
         {
-            parts.Add(UiText.Format($"from {item.SourceAppName}"));
+            // Stored in English; a name BetterClipboard made up ("Command Prompt") is shown in the interface language.
+            parts.Add(UiText.Format($"from {SourceNames.Display(item.SourceAppName)}"));
         }
 
         parts.Add(UiText.Format($"forgotten {RelativeTimeFormatter.Format(item.ForgottenUtc, now, zone, culture)}"));
-        parts.Add(item.BlockedCount == 0 || item.LastBlockedUtc is not { } last
-            ? UiText.Translate("not copied since")
-            : UiText.Format($"kept out {Count(item.BlockedCount, "time", "times", culture)}, last {RelativeTimeFormatter.Format(last, now, zone, culture)}"));
+        if (item.BlockedCount == 0 || item.LastBlockedUtc is not { } last)
+        {
+            parts.Add(UiText.Translate("not copied since"));
+        }
+        else
+        {
+            // One whole phrase per count, never a translated template around an English noun ("3 times").
+            var lastTime = RelativeTimeFormatter.Format(last, now, zone, culture);
+            parts.Add(item.BlockedCount == 1
+                ? UiText.Format(culture, $"kept out 1 time, last {lastTime}")
+                : UiText.Format(culture, $"kept out {item.BlockedCount:N0} times, last {lastTime}"));
+        }
 
         var text = string.Join(" · ", parts);
         return char.ToUpper(text[0], culture) + text[1..];
@@ -81,12 +91,21 @@ public static class ForgottenText
         _ => UiText.Translate("Text"),
     };
 
-    /// <summary>"1 file" / "3 files" with grouped digits ("1,234 characters").</summary>
+    /// <summary>"1 file" / "3 files" with grouped digits ("1,234 files").</summary>
+    /// <remarks>
+    /// A whole phrase per count rather than a number and a noun put together: a language words "1 file" and "3 files"
+    /// its own way (Chinese "1 个文件"), and a noun passed in untranslated once showed "23 characters" inside Chinese text.
+    /// </remarks>
     /// <param name="count">The count.</param>
-    /// <param name="singular">Noun for exactly one.</param>
-    /// <param name="plural">Noun otherwise (zero included).</param>
     /// <param name="culture">Number formatting.</param>
     /// <returns>The phrase.</returns>
-    private static string Count(long count, string singular, string plural, CultureInfo culture) =>
-        UiText.Format(culture, $"{count:N0} {(count == 1 ? singular : plural)}");
+    private static string FileCount(long count, CultureInfo culture) =>
+        count == 1 ? UiText.Translate("1 file") : UiText.Format(culture, $"{count:N0} files");
+
+    /// <summary>"1 character" / "1,234 characters" (see <see cref="FileCount"/> for why whole phrases).</summary>
+    /// <param name="count">The count.</param>
+    /// <param name="culture">Number formatting.</param>
+    /// <returns>The phrase.</returns>
+    private static string CharacterCount(long count, CultureInfo culture) =>
+        count == 1 ? UiText.Translate("1 character") : UiText.Format(culture, $"{count:N0} characters");
 }

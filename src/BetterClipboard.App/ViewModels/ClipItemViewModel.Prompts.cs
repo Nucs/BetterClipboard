@@ -95,7 +95,7 @@ public sealed partial class ClipItemViewModel
 
         if (prompt.ImageCount > 0)
         {
-            parts.Add(prompt.ImageCount == 1 ? "1 image" : UiText.Format($"{prompt.ImageCount:N0} images"));
+            parts.Add(prompt.ImageCount == 1 ? UiText.Translate("1 image") : UiText.Format($"{prompt.ImageCount:N0} images"));
         }
 
         return string.Join(" · ", parts);

@@ -553,13 +553,21 @@ public sealed partial class SettingsWindow : Window
 
             bool release = plan.Action == BetterClipboard.Windows.Shell.ExplorerReleaseAction.Release;
             bool one = plan.Keys.Count == 1;
-            var names = plan.KeyNames;
-            const string Restart = "Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.";
+            var names = plan.DisplayKeyNames;
+
+            // Whole sentences for one shortcut and for several: an English "it" or "them" put into a translated template
+            // once showed inside Chinese text.
+            var restart = UiText.Translate("Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.");
+            var body = (release, one) switch
+            {
+                (true, true) => UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own it without a keyboard hook. While BetterClipboard is not running, it does nothing. {restart}"),
+                (true, false) => UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own them without a keyboard hook. While BetterClipboard is not running, they do nothing. {restart}"),
+                (false, true) => UiText.Format($"Explorer will register {names} again (Windows' own shortcut). {restart}"),
+                (false, false) => UiText.Format($"Explorer will register {names} again (Windows' own shortcuts). {restart}"),
+            };
             var confirmed = await ConfirmAsync(
                 release ? UiText.Format($"Release {names} from Explorer?") : UiText.Format($"Give {names} back to Explorer?"),
-                release
-                    ? UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own {(one ? "it" : "them")} without a keyboard hook. While BetterClipboard is not running, {(one ? "it does" : "they do")} nothing. {Restart}")
-                    : UiText.Format($"Explorer will register {names} again (Windows' own {(one ? "shortcut" : "shortcuts")}). {Restart}"),
+                body,
                 release ? UiText.Translate("Release and restart Explorer") : UiText.Translate("Restore and restart Explorer"));
             if (confirmed)
             {
@@ -662,7 +670,7 @@ public sealed partial class SettingsWindow : Window
     /// <summary>x:Bind helper: capture status text.</summary>
     /// <param name="paused">Paused state.</param>
     /// <returns>The text.</returns>
-    public string CaptureText(bool paused) => paused ? UiText.Translate("Paused") : "Capturing";
+    public string CaptureText(bool paused) => paused ? UiText.Translate("Paused") : UiText.Translate("Capturing");
 
     /// <summary>x:Bind helper: visible when the text is non-empty.</summary>
     /// <param name="text">Text.</param>

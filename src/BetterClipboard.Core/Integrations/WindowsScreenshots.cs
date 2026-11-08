@@ -60,10 +60,16 @@ public static partial class WindowsScreenshots
     public static readonly SourceAppInfo WinPrtScnSource = new(WinPrtScnName, null, WinPrtScnName);
 
     /// <summary>
+    /// The display name of an image of no known tool (<see cref="FolderSource"/>): stored in English, shown in the
+    /// interface language (<see cref="Presentation.SourceNames"/>).
+    /// </summary>
+    public const string FolderSourceName = "Screenshots folder";
+
+    /// <summary>
     /// The source of an image of no known tool. Its process name "Screenshots" lets Ignored apps skip such files
     /// without skipping the two tools.
     /// </summary>
-    public static readonly SourceAppInfo FolderSource = new("Screenshots", null, "Screenshots folder");
+    public static readonly SourceAppInfo FolderSource = new("Screenshots", null, FolderSourceName);
 
     /// <summary>Image extensions read from the folder; recordings (.mp4) and everything else are left alone.</summary>
     private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)

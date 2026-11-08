@@ -166,7 +166,7 @@
                             <TextBox
                                 x:Name="HotkeyBox"
                                 MinWidth="190"
-                                AutomationProperties.HelpText="Press the keys of the shortcut, or type its name, then press Enter."
+                                AutomationProperties.HelpText="{loc:Tr Key=T6626753c41fe}"
                                 AutomationProperties.Name="{loc:Tr Key=Ta61a1d57d437}"
                                 GotFocus="HotkeyBox_GotFocus"
                                 KeyDown="HotkeyBox_KeyDown"

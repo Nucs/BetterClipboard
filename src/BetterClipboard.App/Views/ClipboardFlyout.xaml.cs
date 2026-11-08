@@ -1263,7 +1263,7 @@ public sealed partial class ClipboardFlyout : Window
         if (item.Pick is null && item.Entry.HasRunHistory)
         {
             menu.Items.Add(MenuItem(UiText.Translate("Run"), RunGlyph, "Ctrl+Enter", () => _ = RunItemAsync(item, asAdministrator: false)));
-            menu.Items.Add(MenuItem("Run as administrator", RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
+            menu.Items.Add(MenuItem(UiText.Translate("Run as administrator"), RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1741,7 +1741,7 @@ public sealed partial class ClipboardFlyout : Window
     /// <returns>The submenu.</returns>
     private MenuFlyoutSubItem BuildGroupsSubMenu(ClipItemViewModel item)
     {
-        var submenu = new MenuFlyoutSubItem { Text = "Groups", Icon = new FontIcon { Glyph = "\uE8EC" } };
+        var submenu = new MenuFlyoutSubItem { Text = UiText.Translate("Groups"), Icon = new FontIcon { Glyph = "\uE8EC" } };
         if (ViewModel.Groups.Count == 0)
         {
             submenu.Items.Add(new MenuFlyoutItem { Text = UiText.Translate("No groups yet: open the groups column (Ctrl+G) and press +"), IsEnabled = false });
@@ -1948,13 +1948,14 @@ public sealed partial class ClipboardFlyout : Window
             Tag = group.Id,
             AllowDrop = true,
         };
-        string count = group.ItemCount == 1 ? "1 item" : UiText.Format($"{group.ItemCount:N0} items");
+        string count = group.ItemCount == 1 ? UiText.Translate("1 item") : UiText.Format($"{group.ItemCount:N0} items");
 
         // The tooltip is where a mouse user meets the multi-selection; screen readers get it as help text (their
         // route is the icon menu's "Add to view", since an invoke is a plain click).
-        ToolTipService.SetToolTip(button, $"{group.Name} · {count}\n{MultiSelectHint}");
+        var multiSelectHint = UiText.Translate(MultiSelectHint);
+        ToolTipService.SetToolTip(button, $"{group.Name} · {count}\n{multiSelectHint}");
         AutomationProperties.SetName(button, UiText.Format($"{group.Name} group, {count}"));
-        AutomationProperties.SetHelpText(button, MultiSelectHint);
+        AutomationProperties.SetHelpText(button, multiSelectHint);
         button.Click += (_, _) => ClickGroup(group.Id);
         button.RightTapped += (_, e) =>
         {
@@ -2012,9 +2013,9 @@ public sealed partial class ClipboardFlyout : Window
     /// or empty.
     /// </returns>
     private static string GroupItemStatus(bool shown, bool keyboard) =>
-        shown && keyboard ? ShownAndKeyboardItemStatus
-        : shown ? ShownItemStatus
-        : keyboard ? KeyboardItemStatus
+        shown && keyboard ? UiText.Translate(ShownAndKeyboardItemStatus)
+        : shown ? UiText.Translate(ShownItemStatus)
+        : keyboard ? UiText.Translate(KeyboardItemStatus)
         : string.Empty;
 
     /// <summary>The group-icon style for a state (see App.xaml: whole styles, so brushes follow the flyout's theme).</summary>
@@ -2200,7 +2201,7 @@ public sealed partial class ClipboardFlyout : Window
         if (!selection.IsEmpty && !(selection.Ids is [var only] && only == group.Id))
         {
             bool shown = selection.Contains(group.Id);
-            menu.Items.Add(MenuItem(shown ? UiText.Translate("Remove from view") : UiText.Translate("Add to view"), shown ? "\uE738" : "\uE710", "Ctrl+Click",
+            menu.Items.Add(MenuItem(shown ? UiText.Translate("Remove from view") : UiText.Translate("Add to view"), shown ? "\uE738" : "\uE710", UiText.Translate("Ctrl+Click"),
                 () => ViewModel.ToggleGroupInView(group.Id)));
             menu.Items.Add(new MenuFlyoutSeparator());
         }
@@ -2227,7 +2228,7 @@ public sealed partial class ClipboardFlyout : Window
         var panel = new StackPanel { Width = 280, Spacing = 10 };
         panel.Children.Add(new TextBlock
         {
-            Text = existing is null ? "New group" : UiText.Format($"Icon for {existing.Name}"),
+            Text = existing is null ? UiText.Translate("New group") : UiText.Format($"Icon for {existing.Name}"),
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
         });
 
@@ -2243,8 +2244,10 @@ public sealed partial class ClipboardFlyout : Window
         foreach (var icon in GroupIconCatalog.All)
         {
             var choice = new Button { Style = GroupStyle(selected: existing?.Glyph == icon.Glyph), Content = icon.Glyph };
-            ToolTipService.SetToolTip(choice, icon.Name);
-            AutomationProperties.SetName(choice, icon.Name);
+            // The catalog's names are English; shown, and used as a new group's default name, in the interface language.
+            var iconName = UiText.Translate(icon.Name);
+            ToolTipService.SetToolTip(choice, iconName);
+            AutomationProperties.SetName(choice, iconName);
             choice.Click += (_, _) =>
             {
                 flyout.Hide();
@@ -2280,7 +2283,7 @@ public sealed partial class ClipboardFlyout : Window
         {
             if (existing is null)
             {
-                string name = string.IsNullOrWhiteSpace(typedName) ? icon.Name : typedName.Trim();
+                string name = string.IsNullOrWhiteSpace(typedName) ? UiText.Translate(icon.Name) : typedName.Trim();
                 await controller.History.CreateGroupAsync(name, icon.Glyph);
             }
             else if (existing.Glyph != icon.Glyph)
@@ -2301,7 +2304,7 @@ public sealed partial class ClipboardFlyout : Window
     {
         var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220 };
         AutomationProperties.SetName(box, UiText.Translate("Group name"));
-        var save = new Button { Content = "Rename", HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var save = new Button { Content = UiText.Translate("Rename"), HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         var panel = new StackPanel { Spacing = 10 };
         panel.Children.Add(new TextBlock { Text = UiText.Translate("Rename group"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         panel.Children.Add(box);
@@ -2491,7 +2494,7 @@ public sealed partial class ClipboardFlyout : Window
         var result = await controller.RunCommandAsync(item.Entry, asAdministrator, hwnd);
         if (IsOpen && result is { Outcome: not RunCommandOutcome.Started } refused)
         {
-            ViewModel.StatusText = UiText.Format($"Not run: {refused.Describe()}");
+            ViewModel.StatusText = UiText.Format($"Not run: {UiText.TranslateFormatted(refused.Describe(), RunCommandResult.DescriptionTemplates)}");
         }
     }
 

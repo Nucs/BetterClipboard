@@ -30,7 +30,17 @@ POINT_RATIO = 0.381966  # inner / outer radius of a regular five-pointed star (c
 
 
 def star(cx: float, cy: float, radius: float, angle: float = -90.0) -> str:
-    """Path data of a five-pointed star whose first point is at `angle` degrees (-90 = straight up, SVG's y grows down)."""
+    """Path data of a five-pointed star whose first point is at `angle` degrees (-90 = straight up, SVG's y grows down).
+
+    Args:
+        cx: The star's centre, x.
+        cy: The star's centre, y.
+        radius: The distance from the centre to each outer point.
+        angle: The direction of the first point, in degrees.
+
+    Returns:
+        SVG path data ("M…L…Z") for the ten corners.
+    """
     points = []
     for i in range(10):
         r = radius if i % 2 == 0 else radius * POINT_RATIO
@@ -40,7 +50,11 @@ def star(cx: float, cy: float, radius: float, angle: float = -90.0) -> str:
 
 
 def united_states() -> str:
-    """13 stripes, a canton of 7 stripes' height and 2/5 of the width, 50 stars in 9 alternating rows of 6 and 5."""
+    """13 stripes, a canton of 7 stripes' height and 2/5 of the width, 50 stars in 9 alternating rows of 6 and 5.
+
+    Returns:
+        The flag's SVG elements, without the document around them.
+    """
     stripe = HEIGHT / 13
     parts = [f'<rect width="{WIDTH}" height="{HEIGHT}" fill="#FFFFFF"/>']
     for i in range(0, 13, 2):
@@ -60,7 +74,11 @@ def united_states() -> str:
 
 
 def china() -> str:
-    """Red field; a large star and four small ones turned toward it, on the official 30 x 20 grid (unit = width / 30)."""
+    """Red field; a large star and four small ones turned toward it, on the official 30 x 20 grid (unit = width / 30).
+
+    Returns:
+        The flag's SVG elements, without the document around them.
+    """
     unit = WIDTH / 30
     big = (5 * unit, 5 * unit)
     parts = [f'<rect width="{WIDTH}" height="{HEIGHT}" fill="#EE1C25"/>']
@@ -74,7 +92,14 @@ def china() -> str:
 
 
 def document(body: str) -> str:
-    """Wraps a flag's drawing: 3:2 canvas, rounded-corner clip, faint outline on top."""
+    """Wraps a flag's drawing: 3:2 canvas, rounded-corner clip, faint outline on top.
+
+    Args:
+        body: The flag's SVG elements (united_states() or china()).
+
+    Returns:
+        A complete SVG document, ending with a newline.
+    """
     outline = (f'<rect x="3" y="3" width="{WIDTH - 6}" height="{HEIGHT - 6}" rx="{CORNER - 3}" ry="{CORNER - 3}" '
                f'fill="none" stroke="#000000" stroke-opacity="0.18" stroke-width="6"/>')
     return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" viewBox="0 0 {WIDTH} {HEIGHT}">'

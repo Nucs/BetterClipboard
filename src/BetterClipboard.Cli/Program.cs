@@ -146,6 +146,7 @@ internal static class Program
     /// <param name="cancellationToken">Ctrl+C.</param>
     /// <returns>The response.</returns>
     /// <exception cref="TimeoutException">Still unreachable.</exception>
+    /// <exception cref="InvalidOperationException">The process's token has no user SID, so the pipe's name cannot be made.</exception>
     private static async Task<CliResponse> SendAsync(CliRequest request, CancellationToken cancellationToken)
     {
         var sid = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("No user SID.");

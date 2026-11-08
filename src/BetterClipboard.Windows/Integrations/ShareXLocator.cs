@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Win32;
 
@@ -28,8 +29,11 @@ public sealed record ShareXInstallation(
     public static readonly IReadOnlySet<string> ImageExtensions =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp" };
 
+    /// <summary>The <see cref="DetectedBy"/> of <see cref="NotFound"/> (one of <see cref="ShareXLocator.DetectedByTemplates"/>).</summary>
+    public const string NotFoundReason = "not found";
+
     /// <summary>ShareX is not on this machine.</summary>
-    public static ShareXInstallation NotFound { get; } = new(false, null, string.Empty, [], DefaultThumbnailSuffix, "not found");
+    public static ShareXInstallation NotFound { get; } = new(false, null, string.Empty, [], DefaultThumbnailSuffix, NotFoundReason);
 
     /// <summary>
     /// Folders to watch recursively: the distinct <see cref="Folders"/> roots, none inside another. Computed on
@@ -110,6 +114,29 @@ public sealed record ShareXLocatorInputs(
 /// </remarks>
 public static class ShareXLocator
 {
+    /// <summary>{0}: the variable that points an isolated run at a fake personal folder.</summary>
+    private const string OverrideVia = "{0} override";
+
+    /// <summary>{0}: the registry hive of ShareX's own installer registration.</summary>
+    private const string InstallerVia = "installer registration ({0})";
+
+    /// <summary>{0}: the uninstall entry's key name (Steam's, say); {1}: its hive.</summary>
+    private const string UninstallEntryVia = "uninstall entry '{0}' ({1})";
+
+    /// <summary>Found through the running <c>ShareX.exe</c>.</summary>
+    private const string RunningProcessVia = "running process";
+
+    /// <summary>Found through the personal folder alone (no program folder known).</summary>
+    private const string PersonalFolderVia = "personal folder";
+
+    /// <summary>
+    /// Every <see cref="ShareXInstallation.DetectedBy"/> wording, as composite formats: Settings shows it in the
+    /// interface language through <c>UiText.TranslateFormatted</c>, the log keeps the English. A new wording must be one
+    /// of these constants and have an entry in every catalog (the tests check the catalogs).
+    /// </summary>
+    public static IReadOnlyList<string> DetectedByTemplates { get; } =
+        [OverrideVia, InstallerVia, UninstallEntryVia, RunningProcessVia, PersonalFolderVia, ShareXInstallation.NotFoundReason];
+
     /// <summary>The Inno Setup <c>AppId</c> of ShareX's installer (uninstall key <c>{AppId}_is1</c>).</summary>
     public const string InstallerAppId = "82E6AC09-0FEF-4390-AD9F-0DD3F5561EFC";
 
@@ -144,7 +171,7 @@ public static class ShareXLocator
         if (Environment.GetEnvironmentVariable(PersonalFolderOverrideVariable) is { Length: > 0 } overridden)
         {
             // The override replaces the registry lookup entirely: an isolated run must not see the real install.
-            return Resolve(new ShareXLocatorInputs(null, overridden, documents, localAppData, $"{PersonalFolderOverrideVariable} override"));
+            return Resolve(new ShareXLocatorInputs(null, overridden, documents, localAppData, string.Format(CultureInfo.InvariantCulture, OverrideVia, PersonalFolderOverrideVariable)));
         }
 
         var (installDirectory, detectedBy) = FindInstallDirectory();
@@ -422,7 +449,7 @@ public static class ShareXLocator
                 {
                     if (installer?.GetValue("InstallLocation") is string location && Directory.Exists(location))
                     {
-                        return (location, $"installer registration ({hive})");
+                        return (location, string.Format(CultureInfo.InvariantCulture, InstallerVia, hive));
                     }
                 }
 
@@ -432,7 +459,7 @@ public static class ShareXLocator
                     if (entry?.GetValue("DisplayName") is string display && string.Equals(display, AppName, StringComparison.OrdinalIgnoreCase)
                         && entry.GetValue("InstallLocation") is string location && Directory.Exists(location))
                     {
-                        return (location, $"uninstall entry '{name}' ({hive})");
+                        return (location, string.Format(CultureInfo.InvariantCulture, UninstallEntryVia, name, hive));
                     }
                 }
             }
@@ -450,7 +477,7 @@ public static class ShareXLocator
                 {
                     if (process.MainModule?.FileName is { } exe)
                     {
-                        return (Path.GetDirectoryName(exe), "running process");
+                        return (Path.GetDirectoryName(exe), RunningProcessVia);
                     }
                 }
             }
@@ -460,7 +487,7 @@ public static class ShareXLocator
             // Not allowed to inspect it (elevated ShareX): fall back to the personal-folder check.
         }
 
-        return (null, "personal folder");
+        return (null, PersonalFolderVia);
     }
 
     /// <summary>Reads <c>SOFTWARE\ShareX\PersonalPath</c> (HKLM first, like ShareX).</summary>
