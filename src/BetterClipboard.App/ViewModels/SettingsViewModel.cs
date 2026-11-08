@@ -219,7 +219,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial string IgnoredAppsText { get; set; } = string.Empty;
 
-    /// <summary>Index into Near caret / Near cursor / Center.</summary>
+    /// <summary>
+    /// Index into Settings' panel position list: 0 next to the text cursor, 1 next to the mouse, 2 center of the main
+    /// screen, 3 center of the current screen (<see cref="PlacementIndexOf"/>, <see cref="OnPlacementIndexChanged(int)"/>).
+    /// </summary>
+    /// <remarks>
+    /// The list's order is not the stored values' order: the two centered entries are one stored placement
+    /// (<see cref="FlyoutPlacement.CenterScreen"/>) told apart by <see cref="AppSettings.CenterOnMainScreen"/>, kept apart
+    /// so older versions can still read the file.
+    /// </remarks>
     [ObservableProperty]
     public partial int PlacementIndex { get; set; }
 
@@ -384,7 +392,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ImportWindowsHistoryOnStartup = settings.ImportWindowsHistoryOnStartup;
             IsCapturePaused = settings.IsCapturePaused;
             IgnoredAppsText = string.Join(Environment.NewLine, settings.IgnoredApps);
-            PlacementIndex = (int)settings.Placement;
+            PlacementIndex = PlacementIndexOf(settings);
             ThemeIndex = (int)settings.Theme;
             LanguageIndex = settings.InterfaceLanguage switch { "en" => 1, "zh-Hans" => 2, _ => 0 };
             RefreshLaunchAtStartup(settings);
@@ -1145,15 +1153,36 @@ public sealed partial class SettingsViewModel : ObservableObject
         RefreshEverythingStatus();
     }
 
-    /// <summary>Persists the change.</summary>
-    /// <param name="value">New value.</param>
+    /// <summary>
+    /// Persists the panel position picked in the list (<see cref="PlacementIndex"/>): both halves of it, the placement and
+    /// whether a centered panel goes to the main screen, in one write.
+    /// </summary>
+    /// <param name="value">New list index; -1 (nothing selected, while the list is rebuilt) changes nothing.</param>
     partial void OnPlacementIndexChanged(int value)
     {
-        if (value >= 0)
+        (FlyoutPlacement Placement, bool MainScreen)? choice = value switch
         {
-            Update(s => s with { Placement = (FlyoutPlacement)value });
+            0 => (FlyoutPlacement.NearCaret, false),
+            1 => (FlyoutPlacement.NearCursor, false),
+            2 => (FlyoutPlacement.CenterScreen, true),
+            3 => (FlyoutPlacement.CenterScreen, false),
+            _ => null,
+        };
+        if (choice is { } picked)
+        {
+            Update(s => s with { Placement = picked.Placement, CenterOnMainScreen = picked.MainScreen });
         }
     }
+
+    /// <summary>The panel position list's entry for a settings snapshot (the inverse of <see cref="OnPlacementIndexChanged(int)"/>).</summary>
+    /// <param name="settings">The snapshot.</param>
+    /// <returns>0 next to the text cursor (also for an unknown placement), 1 next to the mouse, 2 center of the main screen, 3 center of the current screen.</returns>
+    private static int PlacementIndexOf(AppSettings settings) => settings.Placement switch
+    {
+        FlyoutPlacement.NearCursor => 1,
+        FlyoutPlacement.CenterScreen => settings.CenterOnMainScreen ? 2 : 3,
+        _ => 0,
+    };
 
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>

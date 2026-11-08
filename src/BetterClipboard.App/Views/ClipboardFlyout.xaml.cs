@@ -313,7 +313,8 @@ public sealed partial class ClipboardFlyout : Window
         {
             if (cloaking)
             {
-                AppWindow.MoveAndResize(WarmUpBounds());
+                // Exactly: the window may land on a monitor with another scale than the one it was created on.
+                MoveAndResizeExactly(WarmUpBounds());
             }
             else
             {
@@ -368,12 +369,21 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// Where the warm-up shows the cloaked window: the remembered size (and the groups column, if open) at the scale of the
-    /// monitor under the pointer, at that monitor's work-area corner — where a summon on that monitor needs no resize.
+    /// monitor under the pointer, at that monitor's work-area corner — where a summon on that monitor needs no resize. With
+    /// the panel centered on the main screen, exactly where every summon will put it.
     /// </summary>
     /// <returns>The bounds in physical screen pixels.</returns>
     private RectInt32 WarmUpBounds()
     {
         var settings = controller.Settings.Current;
+
+        // Centered on the main screen, the next summon's bounds depend on nothing the shortcut captures: shown there now,
+        // the first summon needs neither a move nor a resize — and no monitor change with another scale.
+        if (settings.Placement == FlyoutPlacement.CenterScreen && settings.CenterOnMainScreen)
+        {
+            return SummonBounds(ForegroundContext.CursorOnly(), settings.Placement, centerOnMainScreen: true, settings.ShowGroupsPane);
+        }
+
         var cursor = ForegroundContext.CursorOnly().Cursor;
         var (workArea, scale) = MonitorLookup.FromPoint(cursor);
         // The same arithmetic as ShowAt (the column added in whole pixels after the list's size), so the sizes match exactly.
@@ -387,13 +397,15 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the flyout for a summon: positions it by the caret, puts it on screen at once with the list as it was prepared
-    /// while concealed (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately).
-    /// The list is reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
+    /// Shows the flyout for a summon: positions it by the placement setting (next to the caret by default;
+    /// ClipboardFlyout.Placement.cs), puts it on screen at once with the list as it was prepared while concealed
+    /// (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately). The list is
+    /// reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
     /// </summary>
     /// <param name="context">Caret/cursor snapshot.</param>
-    /// <param name="placement">Placement preference.</param>
-    public async void ShowAt(ForegroundContext context, FlyoutPlacement placement)
+    /// <param name="placement">Placement preference (<see cref="AppSettings.Placement"/>).</param>
+    /// <param name="centerOnMainScreen">With a centered placement, center on the main screen (<see cref="AppSettings.CenterOnMainScreen"/>).</param>
+    public async void ShowAt(ForegroundContext context, FlyoutPlacement placement, bool centerOnMainScreen)
     {
         try
         {
@@ -432,26 +444,9 @@ public sealed partial class ClipboardFlyout : Window
             // Show and take focus FIRST, load after (and only if needed): keys typed right after the shortcut must land in
             // our search box. Loading first (even for a few ms, more on a cold start) lets fast typists' keys leak into the
             // document underneath. A list that is not current briefly shows its previous (near-identical) content.
-            var anchorPoint = placement == FlyoutPlacement.CenterScreen && context.TargetWindow != 0
-                ? default
-                : (context.Caret is { } caret && placement == FlyoutPlacement.NearCaret
-                    ? new ScreenPoint(caret.Left, caret.Bottom)
-                    : context.Cursor);
-            var (workArea, scale) = placement == FlyoutPlacement.CenterScreen && context.TargetWindow != 0
-                ? MonitorLookup.FromWindow(context.TargetWindow)
-                : MonitorLookup.FromPoint(anchorPoint);
-
-            // The size the user last dragged the panel to (without the column, added below), in this monitor's pixels;
-            // Compute shrinks it to a smaller work area without changing what is remembered.
-            var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
-            var bounds = FlyoutPositioner.Compute(placement, context, workArea, width, height, (int)Math.Round(GapDip * scale));
-            if (groupsPaneOpen)
-            {
-                // Place the list where it always goes, then add the column on its left.
-                bounds = FlyoutPositioner.ExtendLeft(bounds, (int)Math.Round(GroupsPaneDip * scale), workArea);
-            }
-
-            var rect = new RectInt32(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+            // Where: the screen and the spot the placement setting asks for, at the remembered size in that screen's pixels,
+            // the groups column included (ClipboardFlyout.Placement.cs).
+            var rect = SummonBounds(context, placement, centerOnMainScreen, groupsPaneOpen);
 
             // Relative times ("5 min ago") are recomputed before the panel shows, so its first frame has them right.
             ViewModel.RefreshCaptions();

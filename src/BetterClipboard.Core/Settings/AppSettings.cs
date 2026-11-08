@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 namespace BetterClipboard.Core.Settings;
 
 /// <summary>Where the flyout appears when summoned.</summary>
+/// <remarks>
+/// Written to the settings file by name. Footgun: never add a member. A version that does not know a name throws while
+/// reading the file and sets the whole file aside as corrupt (<see cref="SettingsStore.Load"/>), losing every setting. A
+/// new choice gets a member of <see cref="AppSettings"/> of its own instead, the way
+/// <see cref="AppSettings.CenterOnMainScreen"/> refines <see cref="CenterScreen"/>.
+/// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter<FlyoutPlacement>))]
 public enum FlyoutPlacement
 {
@@ -12,7 +18,12 @@ public enum FlyoutPlacement
     /// <summary>Next to the mouse cursor.</summary>
     NearCursor = 1,
 
-    /// <summary>Centered on the monitor that holds the foreground window.</summary>
+    /// <summary>
+    /// Centered on a screen's work area: the screen the user is working on, or the main screen when
+    /// <see cref="AppSettings.CenterOnMainScreen"/> is on. The screen the user is working on is the one with the text
+    /// cursor, else the one showing most of the window they were in, else the one with the mouse (nothing active, the
+    /// desktop, the tray); <c>FlyoutPositioner.ChooseScreen</c> in BetterClipboard.Windows has the full rule.
+    /// </summary>
     CenterScreen = 2,
 }
 
@@ -424,8 +435,34 @@ public sealed record AppSettings
     /// </remarks>
     public IReadOnlyList<string> SeededIgnoredApps { get; init; } = [];
 
-    /// <summary>Where the flyout appears.</summary>
+    /// <summary>
+    /// Where the panel appears at every summon (Settings › Shortcut › Panel position): next to the text cursor (the
+    /// default, like Win+V), next to the mouse, or centered on a screen (<see cref="CenterOnMainScreen"/> says which).
+    /// </summary>
+    /// <remarks>
+    /// Only where a summon puts the panel: a panel the user dragged elsewhere is placed this way again at the next summon,
+    /// and its size is always <see cref="FlyoutWidth"/> × <see cref="FlyoutHeight"/>, shrunk to the chosen screen's work
+    /// area.
+    /// </remarks>
     public FlyoutPlacement Placement { get; init; } = FlyoutPlacement.NearCaret;
+
+    /// <summary>
+    /// With <see cref="Placement"/> <see cref="FlyoutPlacement.CenterScreen"/>: center the panel on the main screen (the
+    /// one Windows' display settings call the main display) instead of the screen the user is working on. Off by default;
+    /// the other placements ignore it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A member of its own, not a fourth <see cref="FlyoutPlacement"/> value, on purpose:</b> the placement is written
+    /// by name, and a name an older version does not know makes that version set the whole settings file aside as
+    /// corrupt. This way an older version reads <c>CenterScreen</c>, which it knows, and centers on the current screen.
+    /// </para>
+    /// <para>
+    /// Footgun: an older version that saves the settings file drops this member; the next newer version then centers on
+    /// the current screen until the main screen is chosen again.
+    /// </para>
+    /// </remarks>
+    public bool CenterOnMainScreen { get; init; }
 
     /// <summary>Theme of BetterClipboard's windows.</summary>
     public AppTheme Theme { get; init; } = AppTheme.System;

@@ -263,6 +263,29 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool IsIconic(nint hWnd);
 
+    /// <summary>Whether a window has the <c>WS_VISIBLE</c> style (it may still be covered, off-screen or cloaked).</summary>
+    /// <param name="hWnd">Window.</param>
+    /// <returns><see langword="true"/> when the window and its parents are visible.</returns>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsWindowVisible(nint hWnd);
+
+    /// <summary>A window's rectangle in screen coordinates (physical pixels for a DPI-aware caller), invisible resize borders included.</summary>
+    /// <param name="hWnd">Window.</param>
+    /// <param name="lpRect">Receives the rectangle.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+    /// <summary>A window's class name.</summary>
+    /// <param name="hWnd">Window.</param>
+    /// <param name="lpClassName">Output buffer (a raw pointer: <c>[Out] char[]</c> would need runtime marshalling).</param>
+    /// <param name="nMaxCount">Buffer length in chars, terminating NUL included.</param>
+    /// <returns>Characters copied (without the NUL), or 0 on failure.</returns>
+    [LibraryImport("user32.dll", EntryPoint = "GetClassNameW", SetLastError = true)]
+    internal static unsafe partial int GetClassName(nint hWnd, char* lpClassName, int nMaxCount);
+
     /// <summary>Sets a window's show state.</summary>
     /// <param name="hWnd">Window.</param>
     /// <param name="nCmdShow"><c>SW_*</c> command.</param>

@@ -398,7 +398,10 @@ public sealed partial class AppController
 
         // A Screenshots folder that did not exist may have been created by the first screenshot: look again (only then).
         RefreshSnippingIfWaiting();
-        EnsureFlyout().ShowAt(context, Settings.Current.Placement);
+
+        // One snapshot for both halves of the placement (where, and which screen when centered).
+        var settings = Settings.Current;
+        EnsureFlyout().ShowAt(context, settings.Placement, settings.CenterOnMainScreen);
     }
 
     /// <summary>Opens (or focuses) the settings window.</summary>
