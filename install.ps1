@@ -668,6 +668,58 @@ function Rename-WithRetry([string] $Path, [string] $NewName) {
     }
 }
 
+function Remove-Leftover([string] $Path, [switch] $BestEffort) {
+    <#
+    .SYNOPSIS
+        Removes a folder an earlier install left next to the install folder ("<install>.new" or "<install>.old"); one
+        that cannot be removed is renamed aside, so its name is free for this install.
+    .DESCRIPTION
+        A file of the previous version can stay in use long after that version closed. Found 2026-11-08 on the owner's
+        PC: ShareX had loaded DWriteCore.dll from the install folder (Settings > Add bclip to PATH puts that folder on the
+        user PATH, and Windows' DLL search falls back to the PATH), held it for days, and the update to 0.2.9 could not
+        delete it from "<install>.old". Every later install and update then failed at its first step on that one file.
+        Now the folder is renamed to "<install>.old-stale-<time>" - a loaded DLL does not keep its folder from being
+        renamed; the update that left it had renamed the same folder - and a later run removes it once nothing holds it
+        (Remove-StaleLeftovers).
+    .PARAMETER Path
+        The leftover folder.
+    .PARAMETER BestEffort
+        Never throw and say nothing (after a successful swap: the new version is in place, and the next run cleans up).
+    .NOTES
+        Without -BestEffort, throws when the folder can be neither removed nor renamed: a file in it is open without
+        delete sharing, which would also keep the swap from working, so the message names what to close.
+    #>
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+    Remove-Item -LiteralPath $Path -Recurse -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+
+    $asideName = "$(Split-Path -Leaf $Path)-stale-$((Get-Date).ToString('yyyyMMddHHmmss'))"
+    try {
+        Rename-Item -LiteralPath $Path -NewName $asideName -ErrorAction Stop
+        if (-not $BestEffort) {
+            Write-Note "A file of an earlier version is still in use by another program; its folder was set aside as $asideName and goes at a later install."
+        }
+    }
+    catch {
+        if ($BestEffort) { return }
+        throw "The folder $Path from an earlier install is still in use by another program and can be neither removed nor renamed ($($_.Exception.Message)). Close that program (a terminal or File Explorer window open in it), then try again."
+    }
+}
+
+function Remove-StaleLeftovers {
+    <#
+    .SYNOPSIS
+        Removes the folders Remove-Leftover set aside earlier ("<install>.old-stale-<time>", "<install>.new-stale-<time>")
+        where nothing holds them any more; silently, leaving the rest for a later run.
+    #>
+    $parent = Split-Path -Parent $InstallDir
+    $leaf = Split-Path -Leaf $InstallDir
+    if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return }
+    foreach ($stale in @(Get-ChildItem -LiteralPath $parent -Directory -Filter "$leaf.*-stale-*" -ErrorAction SilentlyContinue)) {
+        Remove-Item -LiteralPath $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Undo-FailedSwap([string] $Staging, [string] $Previous, [bool] $WasRunning, [string] $Exe, [string] $Reason) {
     <#
     .SYNOPSIS
@@ -1960,8 +2012,12 @@ function Install-BetterClipboard {
 
         $staging = "$InstallDir.new"
         $previous = "$InstallDir.old"
+
+        # What earlier runs could not remove: gone now if nothing holds it any more. Then this run's two names must be
+        # free; a leftover still in use is set aside instead of stopping the install (Remove-Leftover says why).
+        Remove-StaleLeftovers
         foreach ($leftover in @($staging, $previous)) {
-            if (Test-Path $leftover) { Remove-Item $leftover -Recurse -Force }
+            Remove-Leftover $leftover
         }
 
         if ($script:ForAllUsers) {
@@ -2025,7 +2081,9 @@ function Install-BetterClipboard {
             Undo-FailedSwap -Staging $staging -Previous $previous -WasRunning $wasRunning -Exe $exe -Reason $_.Exception.Message
         }
 
-        if (Test-Path $previous) { Remove-Item $previous -Recurse -Force -ErrorAction SilentlyContinue }
+        # The new version is in place: a file of the old one that another program still holds only sets the old folder
+        # aside under a name of its own, so the next install or update does not trip over it (Remove-Leftover).
+        Remove-Leftover $previous -BestEffort
     }
     finally {
         Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
@@ -2404,6 +2462,14 @@ function Uninstall-BetterClipboard {
             Write-Warning "Could not delete $InstallDir ($($_.Exception.Message)). Close any window or console open in that folder and delete it manually."
         }
     }
+
+    # What updates left next to it: an interrupted swap's folders, and old versions set aside while another program held
+    # a file of theirs (Remove-Leftover). Best effort: one still in use stays, as the install folder itself would.
+    foreach ($leftover in @("$InstallDir.new", "$InstallDir.old")) {
+        Remove-Item -LiteralPath $leftover -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    Remove-StaleLeftovers
 
     if ($RemoveData) {
         Write-Step "Deleting history, settings and logs in $DataDir"

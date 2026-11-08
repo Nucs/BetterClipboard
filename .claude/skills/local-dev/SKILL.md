@@ -109,6 +109,7 @@ release should stop offering newer dev builds.
 | "The copy does not match the build's checksum" | The zip changed after `SHA256SUMS.txt` was written: publish again (`-Force`). |
 | "… changed in the dev-builds folder after it was offered" | Republished meanwhile: open the dialog again. |
 | `install.ps1 failed` in `-Install` | Its output above; another BetterClipboard holding the install folder (CLAUDE.md §4). |
+| "Cannot remove item …\BetterClipboard.old\…: Access … denied" | An installer from before 2026-11-08 met a leftover of an earlier update that another program still holds — on the owner's PC ShareX, which loads `DWriteCore.dll` from the install folder because *Add bclip to PATH* put it on the PATH. Installers from 2026-11-08 on set such a folder aside (`…old-stale-<time>`); with an older one, close the holder (find it with the Restart Manager, CLAUDE.md §4) or publish from a current commit. |
 | Package step fails | Build errors of that commit; `dotnet build BetterClipboard.sln` there. `-SkipArchives` needs a commit from 2026-11-08 on (older ones build `.7z` too and need 7-Zip). |
 
 ## Code map
