@@ -28,6 +28,16 @@ namespace BetterClipboard.App.Views;
 /// scroll (<see cref="IsDragSurface"/>); while every tab fits, its empty space still does, as before.
 /// </para>
 /// <para>
+/// <b>A press that leaves its tab is forgotten</b> (<see cref="Tab_PointerExited"/>). A tab is a WinUI <c>ItemContainer</c>,
+/// which draws a press as "pressed" (dimmed: <c>UnselectedPressed</c>) until the button comes up over it; the WinUI we ship
+/// (2.3.9) never forgets a mouse press when the pointer leaves the tab. So a tab dragged anywhere but sideways along a
+/// scrollable strip — down into the list, along a strip where every tab fits, out of the window — stayed grayed out after
+/// the drag, and after a right-button drag it also refused every later click: it invokes only once no button is flagged
+/// pressed, and its right-button flag never cleared (reproduced on a Windows 11 test desktop, 2026-11-08). WinUI fixed the
+/// same thing later (microsoft-ui-xaml PR 16243757, 2026-07-25: <c>ItemContainer</c> resets the press on exit); this
+/// does the same for the WinUI we ship, and stays harmless once a WinUI with that fix arrives.
+/// </para>
+/// <para>
 /// <b>A summon</b> starts in the tab the user last chose (ClipboardFlyout.Navigation.cs), so the strip is placed for that
 /// tab — at its start when the tab lies in the first screenful, otherwise just far enough to show it
 /// (<see cref="PlaceTabStripForShow"/>) — and keeps it in view until the user scrolls the strip.
@@ -85,6 +95,18 @@ public sealed partial class ClipboardFlyout
     private SelectorBarItem? tabPanPressedTab;
 
     /// <summary>
+    /// The tab the mouse's left or right button was last pressed on, while that press may still be the start of a click
+    /// there; <see langword="null"/> once the press ended — released or cancelled inside the strip
+    /// (<see cref="TabsScroller_PointerEnded"/>), or forgotten because the pointer left the tab
+    /// (<see cref="Tab_PointerExited"/>).
+    /// </summary>
+    /// <remarks>
+    /// Why it is kept: only this tab can be holding a press, so only its exit needs the reset (<see cref="ForgetTabPress"/>);
+    /// a drag that merely crosses other tabs on its way leaves them alone. The middle button never counts: a tab ignores it.
+    /// </remarks>
+    private SelectorBarItem? heldTab;
+
+    /// <summary>
     /// The clip last given to <see cref="TabsScroller"/> (left inset, right inset, width, height), or <see langword="null"/>
     /// for none: <see cref="UpdateTabArrows"/> runs on every frame of a scroll, and an unchanged clip is not set again.
     /// </summary>
@@ -118,7 +140,8 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Wires the carousel up (from the constructor, once): arrows follow every change of offset, extent or viewport; the
-    /// wheel, drags and bring-into-view requests get their handlers.
+    /// wheel, drags and bring-into-view requests get their handlers, and every tab's exit is watched for a press it must
+    /// forget (<see cref="Tab_PointerExited"/>).
     /// </summary>
     /// <remarks>
     /// Several triggers because no single one covers everything: <see cref="ScrollViewer.ViewChanged"/> fires for scrolling
@@ -158,6 +181,15 @@ public sealed partial class ClipboardFlyout
         TabsScroller.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler(TabsScroller_PointerEnded), handledEventsToo: true);
         TabsScroller.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler(TabsScroller_PointerEnded), handledEventsToo: true);
         TabsScroller.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler(TabsScroller_PointerCaptureLost), handledEventsToo: true);
+
+        // On each tab, not once on the bar: WinUI raises PointerExited on every element the pointer leaves, one by one (the
+        // test desktop's log showed one exit per tab crossed), and the tab itself is the element that must forget the press.
+        // The tabs are the XAML's fixed set — the ones not wanted right now are only collapsed — so wiring them here, once,
+        // covers every tab that can ever show.
+        foreach (var tab in Filters.Items)
+        {
+            tab.PointerExited += Tab_PointerExited;
+        }
     }
 
     /// <summary>
@@ -374,13 +406,23 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// A mouse press (left or middle button) on the scrollable strip may start a drag that pulls it; nothing is captured yet,
-    /// so a click without travel still reaches the tab and picks it.
+    /// A mouse press on the strip: a left or right press on a tab is remembered (<see cref="heldTab"/>), whatever the strip
+    /// can do, so the tab forgets it if the pointer leaves before the release (<see cref="Tab_PointerExited"/>). A left or
+    /// middle press on the scrollable strip may also start a drag that pulls it; nothing is captured yet, so a click without
+    /// travel still reaches the tab and picks it.
     /// </summary>
     /// <param name="sender">The viewer.</param>
     /// <param name="e">Pointer data.</param>
     private void TabsScroller_PointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse)
+        {
+            // Before the drag's checks below, which leave out the right button and a strip where every tab fits: both can
+            // leave a tab holding a press. Left and right only, like the tab itself, which ignores the other buttons.
+            var buttons = e.GetCurrentPoint(TabsScroller).Properties;
+            heldTab = buttons.IsLeftButtonPressed || buttons.IsRightButtonPressed ? FindTab(e.OriginalSource as DependencyObject) : null;
+        }
+
         if (tabPanPointerId is not null || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse || !IsTabStripScrollable)
         {
             return; // touch and pen pan natively; with every tab in view there is nothing to pull
@@ -457,16 +499,19 @@ public sealed partial class ClipboardFlyout
     /// capture the release never reaches the tab.
     /// </para>
     /// <para>
-    /// The hand-over goes through the tab: it captures first, so the viewer's capture takes the pointer <i>from</i> it and
-    /// raises <c>PointerCaptureLost</c> on it — where a tab (an <c>ItemContainer</c>) forgets a press, resetting its
-    /// pressed and pointer-over state. Capturing on the viewer alone left the tab without any event: it stayed drawn
-    /// pressed after the drag (seen in the live test's captures, 2026-10-01), and a later release over it, from a press
-    /// elsewhere, would still have picked it.
+    /// The hand-over goes through the tab, because <c>PointerCaptureLost</c> is where a tab (an <c>ItemContainer</c>)
+    /// forgets a press, resetting its pressed and pointer-over state (<see cref="ForgetTabPress"/> uses the same event).
+    /// Capturing on the viewer alone left the tab without any event: it stayed drawn pressed after the drag (seen in the
+    /// live test's captures, 2026-10-01), and a later release over it, from a press elsewhere, would still have picked it.
     /// </para>
     /// <para>
-    /// Should the viewer ever fail to take the capture from the tab, the tab gives its capture back — which raises the same
-    /// <c>PointerCaptureLost</c> on it — and the viewer captures alone afterwards, so the hand-over can never cost the drag
-    /// itself.
+    /// What runs in practice is the second half: WinUI never moves a capture from one element to another
+    /// (microsoft-ui-xaml <c>PointerInputProcessor::SetPointerCapture</c> refuses while another element holds the pointer),
+    /// so the viewer's first attempt fails while the tab holds the capture; the tab gives it back — which raises
+    /// <c>PointerCaptureLost</c> on it — and the viewer captures alone. The test desktop's log showed exactly that order,
+    /// with the tab back in its normal look before the strip moved (2026-11-08). The first attempt stays for a WinUI that
+    /// would let a capture be taken over: the tab then loses it to the viewer, with the same event, so the hand-over can
+    /// never cost the drag itself.
     /// </para>
     /// </remarks>
     private bool TakeOverTabPress(Pointer pointer)
@@ -486,11 +531,28 @@ public sealed partial class ClipboardFlyout
         return TabsScroller.CapturePointer(pointer);
     }
 
-    /// <summary>Release or cancel ends the drag; a drag that pulled the strip hands the keyboard back to the search box.</summary>
+    /// <summary>
+    /// Release or cancel ends the drag; a drag that pulled the strip hands the keyboard back to the search box. A press that
+    /// ends inside the strip also ends the tab's hold on it (<see cref="heldTab"/>), once neither the left nor the right
+    /// button is still down.
+    /// </summary>
     /// <param name="sender">The viewer.</param>
     /// <param name="e">Pointer data.</param>
     private void TabsScroller_PointerEnded(object sender, PointerRoutedEventArgs e)
     {
+        if (e.Pointer.PointerDeviceType == PointerDeviceType.Mouse)
+        {
+            // Released over its tab, the press was the tab's to finish (it picked the tab or, for the right button, did
+            // nothing); released over another tab or cancelled, the tab already forgot it on the way out or in its own
+            // cancel. Either way nothing is left to forget — unless the other button is still held: a left press with a
+            // right click in between is still the left button's.
+            var buttons = e.GetCurrentPoint(TabsScroller).Properties;
+            if (!buttons.IsLeftButtonPressed && !buttons.IsRightButtonPressed)
+            {
+                heldTab = null;
+            }
+        }
+
         if (tabPanPointerId != e.Pointer.PointerId)
         {
             return;
@@ -516,6 +578,70 @@ public sealed partial class ClipboardFlyout
         if (ReferenceEquals(e.OriginalSource, TabsScroller))
         {
             TabsScroller_PointerEnded(sender, e);
+        }
+    }
+
+    /// <summary>
+    /// The pointer left a tab: when that tab holds the mouse's press (<see cref="heldTab"/>), it forgets it now
+    /// (<see cref="ForgetTabPress"/>), as a newer WinUI's own tab does on its exit. The release then comes elsewhere — over
+    /// the list, another tab, outside the window — and no longer leaves this tab drawn pressed (grayed out) or, after a
+    /// right-button drag, deaf to every later click.
+    /// </summary>
+    /// <param name="sender">The tab the pointer left.</param>
+    /// <param name="e">Pointer data.</param>
+    /// <remarks>
+    /// Consequence for the gesture: a press that leaves its tab and comes back is no click any more — releasing it over the
+    /// tab picks nothing, as with WinUI's fixed tab (microsoft-ui-xaml PR 16243757), where the same exit ends the press.
+    /// During a drag that pulls the strip no tab gets an exit (the viewer holds the capture, and WinUI then raises exits on
+    /// the capturing element's chain only); the drag's own hand-over already made the tab forget (<see cref="TakeOverTabPress"/>).
+    /// Touch and pen are left alone: the tab forgets those on its own exit already.
+    /// </remarks>
+    private void Tab_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (heldTab is not { } tab || !ReferenceEquals(sender, tab) || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse)
+        {
+            return; // a hover leaving a tab, a tab that holds no press, or touch and pen
+        }
+
+        // Cleared first: forgetting raises PointerCaptureLost, which bubbles through the strip's own handlers.
+        heldTab = null;
+        ForgetTabPress(tab, e.Pointer);
+    }
+
+    /// <summary>
+    /// Makes a tab forget a mouse press it took as the start of a click: the tab captures the pointer and gives the capture
+    /// straight back, and the <c>PointerCaptureLost</c> that this raises on the tab is where WinUI's <c>ItemContainer</c>
+    /// resets its pressed and pointer-over state (<c>OnPointerCaptureLost</c> → <c>ProcessPointerCanceled</c>,
+    /// microsoft-ui-xaml <c>ItemContainer.cpp</c>) — the only public way in: the state itself is private.
+    /// </summary>
+    /// <param name="tab">The tab holding the press.</param>
+    /// <param name="pointer">The pointer that pressed it (still down: a press ends when the button comes up).</param>
+    /// <remarks>
+    /// <para>
+    /// The capture is given back at once, so nothing that follows changes: the release still goes wherever the pointer is
+    /// (no element holds the capture). The event bubbles through the strip's handlers on its way, which ignore it
+    /// (<see cref="TabsScroller_PointerCaptureLost"/> acts only on the viewer's own loss).
+    /// </para>
+    /// <para>
+    /// The capture fails — and nothing is reset, nor needs to be — when WinUI has already seen the button come up (the
+    /// release reached the element under the pointer, so the tab held no press any more) or another element holds the
+    /// pointer (then no exit reaches a tab at all). It throws for a tab that cannot be hit, one collapsed while pressed
+    /// (WinUI's <c>CUIElement::CapturePointer</c> returns E_INVALIDARG for an element that is not hit-test visible); such a
+    /// tab shows nothing, and a click on it with the same button, once it shows again, ends the press it kept.
+    /// </para>
+    /// </remarks>
+    private static void ForgetTabPress(SelectorBarItem tab, Pointer pointer)
+    {
+        try
+        {
+            if (tab.CapturePointer(pointer))
+            {
+                tab.ReleasePointerCapture(pointer);
+            }
+        }
+        catch (ArgumentException)
+        {
+            // Not hit-test visible (collapsed while pressed): see the remarks. Never let a pointer event handler throw.
         }
     }
 

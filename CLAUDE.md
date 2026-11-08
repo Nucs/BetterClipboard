@@ -2194,10 +2194,14 @@ scroll"); a middle-button drag pulls it too.
   - A left- or middle-button drag pulls the strip past the 4-DIP threshold. It captures the pointer, so the release
     never reaches the tab: ItemsView selects on `PointerReleased` (microsoft-ui-xaml source, `ItemsViewInteractions.cpp`).
     A click without travel still picks the tab. After a drag the search box gets the keyboard back.
-  - The capture goes through the pressed tab (`TakeOverTabPress`): the tab captures first, the viewer takes it over,
-    and the tab's `PointerCaptureLost` makes it forget the press. Capturing on the viewer alone left the tab drawn
-    pressed (dimmed) after the drag, seen in the live test's captures, and still counting as pressed: a later release
-    over it would have picked it (`ItemContainer.cpp` resets only on exit, cancel or capture loss).
+  - The capture goes through the pressed tab (`TakeOverTabPress`): the tab captures, the viewer's first attempt fails
+    (WinUI never moves a capture from one element to another), the tab gives the capture back — its
+    `PointerCaptureLost` makes it forget the press — and the viewer captures. Capturing on the viewer alone left the tab
+    drawn pressed (dimmed) after the drag, seen in the live test's captures, and still counting as pressed: a later
+    release over it would have picked it. (Until 2026-11-08 this said the viewer takes the capture over from the tab; the
+    test desktop's log showed the order above.)
+  - A press that leaves its tab any other way is forgotten as the pointer leaves (`Tab_PointerExited`, since
+    2026-11-08): "Dragging a tab off itself" below.
   - Touch pans natively.
 - **Window drag:** `IsDragSurface` treats `TabsScroller` as a control while it can scroll; while every tab fits, its
   empty space moves the window, as before.
@@ -2222,6 +2226,44 @@ future template without them only loses the fix).
     a wheel turn jumping to 87 %.
   - `HorizontalCacheLength = 64` viewports now realizes every tab: the width is exact, and every tab can be measured,
     focused and read by screen readers.
+
+**Dragging a tab off itself** (fixed 2026-11-08). User report: "If you drag and drop a tab (Files, ShareX or any really)
+then it gets bugged, unclickable and grayed out."
+- **The cause** **[verified]** on a claude-desktops Windows 11 desktop, with every tab's visual state and pointer events
+  logged by a temporary build (never committed), and in the WinUI source:
+  - A tab is a WinUI `ItemContainer`. It draws a mouse press as `UnselectedPressed` (dimmed foreground: the "grayed out")
+    until the button comes up over it. The WinUI we ship (`Microsoft.WindowsAppSDK.WinUI` 2.3.9) never forgets a mouse
+    press when the pointer leaves: its exit only cleared the pointer-over flag. So a release anywhere else left the tab
+    drawn pressed.
+  - With the right button the tab was also unclickable: it picks itself on a left release only when no button is
+    flagged pressed, and the right-button flag clears only on a right release over it or a cancel. Reproduced: after a
+    right-button drag, two left clicks reached the tab (`PointerReleased` in the log) and picked nothing.
+  - After a left drag a click still picked it.
+  - Microsoft fixed this in `ItemContainer.cpp` on 2026-07-25 (microsoft-ui-xaml PR 16243757, "Fix ItemContainer stuck
+    in pressed visual state after mouse release outside": the exit resets the press), not in 2.3.9.
+- **Which drags:** only the sideways drag that pulls a scrollable strip was clean (the hand-over above; the log showed it
+  working). Every other one left its tab grayed:
+  - down into the list (the sideways travel stays under the 4-DIP threshold, so the pull never starts);
+  - along a strip where every tab fits (no pull at all; the strip fits on a wide panel), released on another tab;
+  - out of the window;
+  - any right-button drag (the pull uses the left and middle buttons only).
+- **The fix** (`ClipboardFlyout.TabStrip.cs`): `TabsScroller_PointerPressed` remembers the tab a left or right mouse press
+  lands on (`heldTab`), whatever the strip can do. Each tab's own `PointerExited` (wired once per tab in
+  `InitializeTabStrip`) makes that tab forget the press (`ForgetTabPress`: the tab captures the pointer and gives the
+  capture straight back; the `PointerCaptureLost` is where `ItemContainer` resets, its state being private). A press that
+  ends inside the strip clears `heldTab`; tabs merely crossed by a drag are left alone.
+  - Consequence, as with WinUI's own fix: a press that leaves its tab and comes back picks nothing on release.
+  - Harmless once a WinUI with PR 16243757 ships: the tab has then forgotten the press already, and the capture adds a
+    second, idempotent reset.
+- **Facts found on the way** **[verified from microsoft-ui-xaml source]**:
+  - WinUI never moves a capture: `PointerInputProcessor::SetPointerCapture` refuses while another element holds the
+    pointer (the result is true only for the element that holds it already).
+  - `CUIElement::CapturePointer` returns E_INVALIDARG (an `ArgumentException` in C#) for an element that is not hit-test
+    visible, a collapsed one included.
+  - Under a capture, `PointerEntered`/`PointerExited` fire only on the capturing element's chain
+    (`ProcessPointerCaptureEnterLeave`), so no tab gets an exit during a pull.
+  - `PointerExited` comes once per element the pointer leaves: the log had one exit per tab crossed.
+- **Verified:** see §5.
 
 **Pieces** (all unit-tested except the App's):
 - Core `Presentation/TabStripScroll` (`Step`, `Reveal`, `Wheel`, `Drag`, `Clamp`, the arrow rules; `TabExtent`).
@@ -4733,11 +4775,17 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   are not realized: they have no size, the content width is an estimate, and UIA cannot see them (their rectangles read
   (0, 0, 0, 0)). The tab carousel raises the cache (§2.23). Anything else that measures or reaches items of such a list
   must do the same, or work only with what is realized.
-- **Capturing the pointer on an ancestor leaves a pressed WinUI item stale.** An `ItemContainer` (SelectorBarItem,
-  ItemsView items) forgets a press only on its own exit, cancel or `PointerCaptureLost`; a capture taken by an ancestor
-  gives it none, so it stays drawn pressed and still counts as pressed. Let the item capture first and take the capture
-  from it (`ClipboardFlyout.TakeOverTabPress`), and ignore the item's `PointerCaptureLost` bubbling into the ancestor's
-  handler (check `OriginalSource`).
+- **A pressed WinUI item stays pressed unless it sees its press end.** An `ItemContainer` (SelectorBarItem, ItemsView
+  items) forgets a mouse press only on a release over itself, a cancel or `PointerCaptureLost` — in the WinUI we ship
+  (2.3.9) not on its exit (fixed upstream 2026-07-25, PR 16243757; §2.23 "Dragging a tab off itself").
+  - So a release elsewhere, and a capture taken by an ancestor, leave it drawn pressed (grayed) and still counting as
+    pressed. After a right-button press it also refuses every left click.
+  - Make it forget with a capture it gives straight back (`ClipboardFlyout.ForgetTabPress`): when the pointer leaves it
+    (`Tab_PointerExited`), and before an ancestor captures (`TakeOverTabPress`).
+  - A capture never moves between elements: `CapturePointer` returns false while another element holds the pointer
+    (until 2026-11-08 this entry said to take the capture from the item, which WinUI never allows). Release the item's
+    capture first, then capture the ancestor.
+  - Ignore the item's `PointerCaptureLost` bubbling into the ancestor's handler (check `OriginalSource`).
 - **The panel is never hidden: it is concealed** (§2.27). Every way it goes away calls `Conceal` (cloak, hide once to
   hand the foreground on, show again without activation), and `IsOpen` is the `presented` flag — `AppWindow.IsVisible` is
   true all the time once the warm-up ran. New code that hides or shows the panel's window directly breaks the instant
