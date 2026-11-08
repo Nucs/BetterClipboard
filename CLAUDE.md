@@ -4005,18 +4005,20 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   - Keep the `^`: `--grep` matches line by line, so the anchor skips a message that merely quotes the command
     mid-line. Without it, a later commit message that quotes it becomes "the newest draft" although it holds no notes
     (nearly happened 2026-10-02). Never start a line of a commit message with the marker unless the notes follow it.
-  - **The notes' shape, since v0.2.10** (the owner, 2026-11-08: "Note that we have a new contributer! we must thank
-    and congragulate right after the first area that covers the release notes in a short form"): the title line;
-    **In short**, a few bullets; then, when the release carries work of people outside the project, a section that
-    thanks and congratulates them by a bare `@login` (read it with `gh pr view <n> --json author,commits`; on the
-    release page GitHub links it, notifies them and lists them under the release's contributors, and the update
-    dialog shows plain text); then *Update or install* (the command, and who updates how); one section per feature;
-    **Fixed**; the pointer to the previous release; the files table and the two notes. First draft: `c46b49a`.
-  - **One line per paragraph and bullet in the notes.** GitHub renders a newline inside a release body as a line
-    break: v0.2.9's `body_html` breaks every ~118 characters where its tag message was wrapped, like every release
-    before it. The update dialog follows CommonMark and joins the lines either way. Check a draft with GitHub's own
-    renderer (`gh api markdown --input <json>`, `mode` `gfm`, `context` `Nucs/BetterClipboard`), which publishes
-    nothing.
+  - **The notes follow the earlier releases' format** (the owner, 2026-11-08: "Go over our last 10 releases, follow
+    their format"): the title line `BetterClipboard X.Y.Z — summary`; the install command; who updates how
+    (`**You have …:**` bullets); one bold lead-in paragraph per feature, with bullets; **Fixed**; "What came in
+    X.Y.Z (…) is described in the [X.Y.Z release](…)."; the files table and the two notes. No headings and no summary
+    list of their own: the title line is the short form. Wrapped at 117 columns like them, never inside a link, a
+    code span or an emphasis: GitHub shows a line break at each wrap (v0.2.9's `body_html`), which every release page
+    has, and the update dialog follows CommonMark and joins the lines.
+  - **An outside contributor is thanked in one line, right after the title line**, naming what they brought and
+    their bare `@login` (the owner, 2026-11-08, of a five-line paragraph and a language section: "Horrible, simplify
+    and minimize the language addition to a single line"). Keep that line within the 117 columns, so GitHub never
+    breaks it. Read the login with `gh pr view <n> --json author,commits`. On the release page GitHub links the
+    mention, notifies the person and lists them under the release's contributors; the update dialog shows plain
+    text. Check a draft with GitHub's own renderer (`gh api markdown --input <json>`, `mode` `gfm`, `context`
+    `Nucs/BetterClipboard`), which publishes nothing. First used for v0.2.10 (pull request #1, Simplified Chinese).
 - **Dev build on this PC** ("Build and install dev", 2026-10-01): the same install, of `main`'s latest commit.
   - Build from a separate worktree at that commit (`git worktree add --detach <scratch>/wt <sha>`), never from the
     shared tree: other sessions' uncommitted, half-done work would ship into the user's real app. Remove the worktree
