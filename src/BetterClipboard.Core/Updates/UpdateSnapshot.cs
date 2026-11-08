@@ -89,8 +89,29 @@ public sealed record UpdateSnapshot
     /// </summary>
     public bool IsSkipped { get; init; }
 
-    /// <summary>Whether a newer release can be installed.</summary>
+    /// <summary>
+    /// How many complete builds this copy's dev-builds folder holds (<see cref="LocalBuildFeed"/>); 0 for a copy without
+    /// one, and for any copy the installer did not install (they never read it).
+    /// </summary>
+    public int LocalBuildCount { get; init; }
+
+    /// <summary>
+    /// Whether something can be installed: a newer release, a local build, or — on a development build — GitHub's latest
+    /// release as the way back (<see cref="OffersOlderVersion"/>).
+    /// </summary>
     public bool IsUpdateAvailable => Offer is not null;
+
+    /// <summary>Whether the running copy is a development build (<see cref="UpdateCatalog.IsDevBuild"/>).</summary>
+    public bool IsDevBuild => UpdateCatalog.IsDevBuild(CurrentVersion);
+
+    /// <summary>Whether <see cref="Offer"/> is a build from this PC's dev-builds folder rather than a release on GitHub.</summary>
+    public bool IsLocalOffer => Offer?.Release.IsLocalBuild == true;
+
+    /// <summary>
+    /// Whether <see cref="Offer"/> is older than the running version: GitHub's latest release offered to a development
+    /// build that is ahead of it, the way back to the official version. The dialog then says "install", not "update".
+    /// </summary>
+    public bool OffersOlderVersion => Offer is { } offer && offer.Release.Version < CurrentVersion;
 
     /// <summary>Whether an approved update is on its way (downloading, verifying or installing).</summary>
     public bool IsInstalling => Phase is UpdatePhase.Downloading or UpdatePhase.Verifying or UpdatePhase.Installing;

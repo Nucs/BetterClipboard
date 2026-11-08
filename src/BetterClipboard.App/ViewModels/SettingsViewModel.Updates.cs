@@ -70,7 +70,9 @@ public sealed partial class SettingsViewModel
         // Copies that never check by themselves (UpdateText says why): the switch would change nothing.
         CanToggleUpdateCheck = snapshot.InstallKind is not (UpdateInstallKind.Chocolatey or UpdateInstallKind.AllUsers);
         IsUpdateWaiting = snapshot.WantsAttention;
-        UpdateActionText = snapshot.Offer is { } offer ? UiText.Format($"Update to {offer.Release.Version}…") : "Release notes…";
+        // "Install 0.2.9…" for the way back from a development build (UpdateText.OfferAction); the fallback goes through the
+        // catalog too, or a Chinese Settings page would show it in English.
+        UpdateActionText = snapshot.Offer is not null ? UpdateText.OfferAction(snapshot) : UiText.Translate("Release notes…");
         UpdateStatus = UpdateText.SettingsStatus(snapshot, DateTimeOffset.Now);
     }
 

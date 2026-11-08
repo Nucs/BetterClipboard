@@ -208,7 +208,8 @@ public sealed partial class UpdateView : UserControl
             switch (snapshot.InstallKind)
             {
                 case UpdateInstallKind.Installer:
-                    primary = UiText.Translate("Update and restart");
+                    // "Install and restart" for the way back from a development build to an older release.
+                    primary = UpdateText.ApproveButton(snapshot);
                     primaryAction = () => InstallRequested?.Invoke(this, EventArgs.Empty);
                     secondary = UiText.Translate("Later");
                     secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
@@ -333,6 +334,11 @@ public sealed partial class UpdateView : UserControl
         releasePage = snapshot.Offer?.Release.PageUrl
                       ?? (changelog.Releases.Count > 0 ? changelog.Releases[0].PageUrl : null)
                       ?? ReleasesPage;
+
+        // Notes of a build from the dev-builds folder have no page on GitHub: a "View on GitHub" link under them would lead
+        // to releases that say nothing about that build.
+        bool localNotes = snapshot.IsLocalOffer || (changelog.Releases.Count > 0 && changelog.Releases[0].IsLocalBuild);
+        ReleasePageLink.Visibility = localNotes ? Visibility.Collapsed : Visibility.Visible;
 
         if (changelog.Kind == ChangelogKind.None || changelog.Releases.Count == 0)
         {

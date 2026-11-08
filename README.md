@@ -193,6 +193,11 @@ when you say so.
   `-NoUpdateCheck`. *Check now* asks once, whatever the switch says.
 - **Skip this version** ends the highlight and the weekly reminder for that release. The next release brings both
   back.
+- **A development build** (a version such as `0.2.10-dev.12.gabc1234`, see [Build from source](#build-from-source))
+  is offered the builds published to its PC's `dev-builds` folder first: *Dev build available*, and *Update and
+  restart* copies the build from that folder instead of downloading it. Otherwise it is always offered GitHub's latest
+  release, also an older one, as the way back to the official version (*Install and restart*). It gets no weekly
+  reminder.
 - **A copy you extracted by hand** does not replace itself: an update replaces the whole folder, and that is only
   safe for a folder the installer made. Its dialog has the download page and the install command instead.
 - **A copy installed for every user** neither replaces itself nor checks by itself: only an administrator may change
@@ -740,6 +745,17 @@ pwsh tools/release/package.ps1 -Version 0.1.0     # the exact release zips and .
 ```
 
 Set `BETTERCLIPBOARD_DATA_DIR` to a scratch folder when experimenting so your real history stays clean.
+
+To run your own build as your installed app, publish it to this PC's dev-builds folder
+(`%LOCALAPPDATA%\BetterClipboard\dev-builds`); the installed app's update button then offers it:
+
+```powershell
+pwsh tools/release/publish-dev.ps1             # builds HEAD's commit (never uncommitted changes) as X.Y.Z-dev.N.g<sha>
+pwsh tools/release/publish-dev.ps1 -Install    # the first time: installs it now (an installed 0.2.9 or older cannot
+                                               # read the folder); the update button does the rest
+```
+
+A development build's update button always offers GitHub's latest release too, as the way back.
 Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) from a `v*` tag.
 
 ## Code signing policy

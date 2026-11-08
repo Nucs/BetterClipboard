@@ -49,13 +49,25 @@ public sealed record Changelog(ChangelogKind Kind, IReadOnlyList<ReleaseInfo> Re
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Stable releases only.</b> A pre-release (<c>v0.3.0-rc.1</c>, or one GitHub marks as such) is never offered and
-/// never listed: people who install a release must not be moved to a test build by an update button.
+/// <b>Stable releases only, from GitHub.</b> A pre-release (<c>v0.3.0-rc.1</c>, or one GitHub marks as such) is never
+/// offered and never listed: people who install a release must not be moved to a test build by an update button.
+/// </para>
+/// <para>
+/// <b>Local builds come first</b> (the owner's rule of 2026-11-08): a build published into this PC's dev-builds folder
+/// (<see cref="LocalBuildFeed"/>) that is newer than the running version is offered before anything from GitHub, whatever
+/// its version says — publishing it there is the developer asking for exactly that build.
+/// </para>
+/// <para>
+/// <b>A development build is always offered GitHub's latest release</b> (<see cref="IsDevBuild"/>; the same rule): when
+/// no newer local build exists, the newest complete stable release is offered even when it is older than the running
+/// development build, as the way back to the official version. The update button of a development build therefore stays
+/// lit once the release list is known; "Skip this version" quiets it for that release. Every other build is offered a
+/// release only when it is newer.
 /// </para>
 /// <para>
 /// <b>Only complete releases are offered:</b> the release must carry this architecture's zip and <c>SHA256SUMS.txt</c>.
 /// A newer release without them is skipped in favor of the next one that has them, so an update is never offered that
-/// could not be verified.
+/// could not be verified. The same holds for local builds (<see cref="LocalBuildFeed.Read"/> lists only complete ones).
 /// </para>
 /// </remarks>
 public static class UpdateCatalog
@@ -65,6 +77,36 @@ public static class UpdateCatalog
 
     /// <summary>The most newer releases whose notes the dialog shows; a copy further behind gets a link to the rest.</summary>
     public const int MaxChangelogReleases = 10;
+
+    /// <summary>
+    /// The first pre-release identifier of a development build's version: <c>0.2.10-dev.12.gabc1234</c> (what
+    /// <c>tools/release/publish-dev.ps1</c> writes), and the older <c>0.2.6-dev.52539eb</c>.
+    /// </summary>
+    public const string DevelopmentLabel = "dev";
+
+    /// <summary>
+    /// Whether a version is a development build: its pre-release part starts with the identifier <c>dev</c>
+    /// (<see cref="DevelopmentLabel"/>, any case). Release candidates (<c>1.0.0-rc.1</c>) and releases are not.
+    /// </summary>
+    /// <remarks>
+    /// It decides the "always offer the latest release" rule (<see cref="FindUpdate(SemanticVersion, IReadOnlyList{ReleaseInfo}, IReadOnlyList{ReleaseInfo}, string)"/>)
+    /// and keeps the weekly reminder away from developers (<see cref="UpdateReminder.IsWanted"/>). Only the first
+    /// identifier counts: <c>0.2.6-devtools.1</c> and <c>0.2.6-rc.dev</c> are not development builds.
+    /// </remarks>
+    /// <param name="version">The version.</param>
+    /// <returns><see langword="true"/> for a development build.</returns>
+    public static bool IsDevBuild(SemanticVersion version)
+    {
+        if (!version.IsPrerelease)
+        {
+            return false;
+        }
+
+        var prerelease = version.Prerelease;
+        int dot = prerelease.IndexOf('.');
+        var first = dot < 0 ? prerelease : prerelease[..dot];
+        return string.Equals(first, DevelopmentLabel, StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// The name of a release's package for one architecture: <c>BetterClipboard-&lt;version&gt;-win-&lt;architecture&gt;.zip</c>
@@ -99,36 +141,93 @@ public static class UpdateCatalog
     }
 
     /// <summary>
-    /// Finds the update to offer: the newest stable release that is newer than <paramref name="current"/> and complete
-    /// for <paramref name="architecture"/>.
+    /// Finds the update to offer from GitHub's release list alone (no dev-builds folder): the newest complete stable
+    /// release — newer than <paramref name="current"/>, or for a development build whatever its version (see the class
+    /// remarks).
     /// </summary>
     /// <param name="current">The running app's version (a pre-release build is older than its own release).</param>
     /// <param name="releases">The release list, in any order.</param>
     /// <param name="architecture">This PC's architecture: <c>x64</c> or <c>arm64</c>.</param>
-    /// <returns>The offer, or <see langword="null"/> when the app is up to date or no newer release is complete.</returns>
+    /// <returns>The offer, or <see langword="null"/> when the app is up to date or no suitable release is complete.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="releases"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="architecture"/> is neither <c>x64</c> nor <c>arm64</c>.</exception>
-    public static UpdateOffer? FindUpdate(SemanticVersion current, IReadOnlyList<ReleaseInfo> releases, string architecture)
+    public static UpdateOffer? FindUpdate(SemanticVersion current, IReadOnlyList<ReleaseInfo> releases, string architecture) =>
+        FindUpdate(current, releases, [], architecture);
+
+    /// <summary>
+    /// Finds the update to offer: a local build newer than <paramref name="current"/> first; else GitHub's newest complete
+    /// stable release — for a development build always (its way back to the official version, even when older), for any
+    /// other build only when it is newer.
+    /// </summary>
+    /// <remarks>
+    /// The owner's table (2026-11-08), for a running <c>0.2.10-dev.12</c>: GitHub <c>0.2.9</c> and nothing newer locally
+    /// offers <c>0.2.9</c>; a local <c>0.2.10-dev.15</c> offers that build, also when GitHub has <c>0.2.10</c>; GitHub
+    /// <c>0.2.10</c> and nothing newer locally offers <c>0.2.10</c>; a local <c>0.2.11-dev.3</c> offers that build.
+    /// </remarks>
+    /// <param name="current">The running app's version (a pre-release build is older than its own release).</param>
+    /// <param name="releases">GitHub's release list, in any order. Entries marked <see cref="ReleaseInfo.IsLocalBuild"/> are ignored here.</param>
+    /// <param name="localBuilds">
+    /// The complete builds of this PC's dev-builds folder (<see cref="LocalBuildFeed.Read"/>), in any order; empty for a
+    /// copy without one. Entries that are not marked <see cref="ReleaseInfo.IsLocalBuild"/> are ignored here.
+    /// </param>
+    /// <param name="architecture">This PC's architecture: <c>x64</c> or <c>arm64</c>.</param>
+    /// <returns>The offer, or <see langword="null"/> when nothing suitable is known and complete.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="releases"/> or <paramref name="localBuilds"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="architecture"/> is neither <c>x64</c> nor <c>arm64</c>.</exception>
+    public static UpdateOffer? FindUpdate(SemanticVersion current, IReadOnlyList<ReleaseInfo> releases, IReadOnlyList<ReleaseInfo> localBuilds, string architecture)
     {
         ArgumentNullException.ThrowIfNull(releases);
+        ArgumentNullException.ThrowIfNull(localBuilds);
         architecture = NormalizeArchitecture(architecture);
-        UpdateOffer? best = null;
-        foreach (var release in releases)
+
+        // A newer local build wins over anything GitHub has: the developer published it to get exactly that build.
+        UpdateOffer? local = null;
+        foreach (var build in localBuilds)
         {
-            if (release.IsPrerelease || release.Version <= current || (best is not null && release.Version <= best.Release.Version))
+            if (!build.IsLocalBuild || build.Version <= current || (local is not null && build.Version <= local.Release.Version))
             {
                 continue;
             }
 
-            var package = release.FindAsset(PackageFileName(release.Version, architecture));
-            var checksums = release.FindAsset(ChecksumsFileName);
-            if (package is not null && checksums is not null)
+            local = Complete(build, architecture) ?? local;
+        }
+
+        if (local is not null)
+        {
+            return local;
+        }
+
+        // Then GitHub. A development build takes the latest release whatever its number (the way back to the official
+        // version); a release or a release candidate only takes a newer one, as before.
+        bool always = IsDevBuild(current);
+        UpdateOffer? best = null;
+        foreach (var release in releases)
+        {
+            if (release.IsLocalBuild || release.IsPrerelease || release.Version == current ||
+                (!always && release.Version < current) ||
+                (best is not null && release.Version <= best.Release.Version))
             {
-                best = new UpdateOffer(release, package, checksums);
+                continue;
             }
+
+            best = Complete(release, architecture) ?? best;
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// The offer for one release when it carries both files an installation needs: this architecture's package and the
+    /// checksum list.
+    /// </summary>
+    /// <param name="release">The release or local build.</param>
+    /// <param name="architecture">The normalized architecture.</param>
+    /// <returns>The offer, or <see langword="null"/> when a file is missing.</returns>
+    private static UpdateOffer? Complete(ReleaseInfo release, string architecture)
+    {
+        var package = release.FindAsset(PackageFileName(release.Version, architecture));
+        var checksums = release.FindAsset(ChecksumsFileName);
+        return package is not null && checksums is not null ? new UpdateOffer(release, package, checksums) : null;
     }
 
     /// <summary>
@@ -146,7 +245,7 @@ public static class UpdateCatalog
     public static Changelog SelectChangelog(SemanticVersion current, IReadOnlyList<ReleaseInfo> releases)
     {
         ArgumentNullException.ThrowIfNull(releases);
-        var stable = releases.Where(r => !r.IsPrerelease).OrderByDescending(r => r.Version).ToList();
+        var stable = releases.Where(r => !r.IsPrerelease && !r.IsLocalBuild).OrderByDescending(r => r.Version).ToList();
         var newer = stable.Where(r => r.Version > current).ToList();
         if (newer.Count > 0)
         {
@@ -161,11 +260,54 @@ public static class UpdateCatalog
         return stable.Count > 0 ? new Changelog(ChangelogKind.LatestRelease, [stable[0]]) : Changelog.Empty;
     }
 
+    /// <summary>
+    /// Chooses the release notes to show next to <paramref name="offer"/>: the local builds it brings when it is a local
+    /// build; otherwise GitHub's notes (<see cref="SelectChangelog(SemanticVersion, IReadOnlyList{ReleaseInfo})"/>), and
+    /// when GitHub's list is not known, the running build's own notes from the dev-builds folder.
+    /// </summary>
+    /// <remarks>
+    /// The publish script writes each build's notes as the commits since the build published before it, so the notes of
+    /// every local build newer than the running one, newest first, are exactly what the update brings when the running
+    /// build came from the same folder.
+    /// </remarks>
+    /// <param name="current">The running app's version.</param>
+    /// <param name="releases">GitHub's release list, in any order.</param>
+    /// <param name="localBuilds">The dev-builds folder's builds (<see cref="LocalBuildFeed.Read"/>), in any order.</param>
+    /// <param name="offer">What is offered (<see cref="FindUpdate(SemanticVersion, IReadOnlyList{ReleaseInfo}, IReadOnlyList{ReleaseInfo}, string)"/>), or <see langword="null"/>.</param>
+    /// <returns>
+    /// For a local offer: the local builds newer than <paramref name="current"/>, newest first (at most
+    /// <see cref="MaxChangelogReleases"/>; the rest counted). Otherwise GitHub's choice; when that is empty, the running
+    /// build's own local notes (<see cref="ChangelogKind.CurrentRelease"/>), else <see cref="Changelog.Empty"/>.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="releases"/> or <paramref name="localBuilds"/> is <see langword="null"/>.</exception>
+    public static Changelog SelectChangelog(SemanticVersion current, IReadOnlyList<ReleaseInfo> releases, IReadOnlyList<ReleaseInfo> localBuilds, UpdateOffer? offer)
+    {
+        ArgumentNullException.ThrowIfNull(releases);
+        ArgumentNullException.ThrowIfNull(localBuilds);
+        if (offer is { Release.IsLocalBuild: true })
+        {
+            var newer = localBuilds.Where(b => b.IsLocalBuild && b.Version > current).OrderByDescending(b => b.Version).ToList();
+            return new Changelog(ChangelogKind.NewerReleases, newer.Take(MaxChangelogReleases).ToArray(), Math.Max(0, newer.Count - MaxChangelogReleases));
+        }
+
+        var fromGitHub = SelectChangelog(current, releases);
+        if (fromGitHub.Kind != ChangelogKind.None)
+        {
+            return fromGitHub;
+        }
+
+        // No release list yet (offline, or automatic checks off): what the running build itself brought, when it was
+        // published here, beats a dialog that only says "Check now".
+        return localBuilds.FirstOrDefault(b => b.IsLocalBuild && b.Version == current) is { } own
+            ? new Changelog(ChangelogKind.CurrentRelease, [own])
+            : fromGitHub;
+    }
+
     /// <summary>Checks and lower-cases an architecture name.</summary>
     /// <param name="architecture">The name.</param>
     /// <returns><c>x64</c> or <c>arm64</c>.</returns>
     /// <exception cref="ArgumentException">Another name, or none.</exception>
-    private static string NormalizeArchitecture(string architecture) => architecture?.Trim().ToLowerInvariant() switch
+    internal static string NormalizeArchitecture(string architecture) => architecture?.Trim().ToLowerInvariant() switch
     {
         "x64" => "x64",
         "arm64" => "arm64",

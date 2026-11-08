@@ -9,6 +9,7 @@ using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Everything;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Security;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
@@ -1236,9 +1237,10 @@ public sealed partial class AppController
 
         // Only while an update waits that the user did not skip: the same condition that highlights the panel's update
         // button, so the menu never nags about a version they chose to pass over. The snapshot is safe to read here.
-        if (UpdateStatus is { IsInstalling: false, IsSkipped: false, Offer: { } offer })
+        if (UpdateStatus is { IsInstalling: false, IsSkipped: false, Offer: not null } waiting)
         {
-            items.Add(new TrayMenuItem(UiText.Format($"Update to {offer.Release.Version}…"), () => ui.TryEnqueue(ShowUpdate)));
+            // "Install 0.2.9…" when the offer is the way back from a development build: "Update to" an older version misleads.
+            items.Add(new TrayMenuItem(UpdateText.OfferAction(waiting), () => ui.TryEnqueue(ShowUpdate)));
         }
 
         items.Add(TrayMenuItem.Separator);

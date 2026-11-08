@@ -41,6 +41,19 @@ public sealed class UpdateServiceOptions
     /// <summary>Starts the installer for an approved update; <see langword="null"/> when this copy cannot install updates.</summary>
     public IUpdateInstaller? Installer { get; init; }
 
+    /// <summary>
+    /// This PC's dev-builds folder (<see cref="AppPaths.DevBuildsDirectory"/>), whose newer builds are offered before
+    /// GitHub's releases (<see cref="LocalBuildFeed"/>); <see langword="null"/> for a copy that must not read it — every
+    /// copy the installer did not install, since only those can install a build by themselves.
+    /// </summary>
+    /// <remarks>
+    /// Reading the folder is local and costs nothing on the network, so it happens whatever
+    /// <see cref="AppSettings.CheckForUpdates"/> says: at <see cref="UpdateService.Start"/>, at every check and schedule
+    /// tick, when the dialog opens, and whenever the host calls <see cref="UpdateService.RefreshLocalBuilds"/> (the app's
+    /// folder watcher does).
+    /// </remarks>
+    public string? LocalBuildsDirectory { get; init; }
+
     /// <summary>The clock and timers (replaced in tests).</summary>
     public TimeProvider Time { get; init; } = TimeProvider.System;
 }
@@ -62,6 +75,12 @@ public sealed class UpdateServiceOptions
 /// again after an hour, doubling up to a day, and never before a rate limit ends. The release list and its entity tag are
 /// cached in the working folder, so an unchanged list costs a "not modified" answer, and after a restart the update
 /// button shows what is known at once.
+/// </para>
+/// <para>
+/// <b>Local builds.</b> A copy with a dev-builds folder (<see cref="UpdateServiceOptions.LocalBuildsDirectory"/>) also
+/// offers the development builds published there, before anything from GitHub (<see cref="UpdateCatalog"/> has the
+/// rule). Approving one copies its package from the folder instead of downloading it, checks it against the build's own
+/// <c>SHA256SUMS.txt</c>, and hands it to the same installer with the same command line (<see cref="LocalBuildFeed"/>).
 /// </para>
 /// <para>
 /// <b>Threads.</b> Every member may be called from any thread. <see cref="Changed"/> is raised on the thread that made
@@ -108,6 +127,18 @@ public sealed class UpdateService : IAsyncDisposable
 
     /// <summary>The last release list (from the feed or the cache); what <see cref="current"/>'s offer and changelog derive from.</summary>
     private IReadOnlyList<ReleaseInfo> releases = [];
+
+    /// <summary>
+    /// The complete builds of the dev-builds folder at the last look (<see cref="RefreshLocalBuilds"/>), newest first;
+    /// empty for a copy without the folder. Read and replaced under <see cref="gate"/>, like <see cref="releases"/>.
+    /// </summary>
+    private IReadOnlyList<ReleaseInfo> localBuilds = [];
+
+    /// <summary>
+    /// Serializes looks into the dev-builds folder: the watcher, the schedule and the dialog can ask at the same moment,
+    /// and a slower, older look must not replace a newer one.
+    /// </summary>
+    private readonly Lock localRead = new();
 
     /// <summary>The entity tag of <see cref="releases"/>, sent with the next request; <see langword="null"/> without a usable cache.</summary>
     private string? etag;
@@ -176,8 +207,8 @@ public sealed class UpdateService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Loads the cached release list (so <see cref="Current"/> shows a known update at once), removes old downloads and
-    /// starts the daily schedule. Requests nothing by itself before <see cref="InitialDelay"/>.
+    /// Loads the cached release list and the dev-builds folder (so <see cref="Current"/> shows a known update at once),
+    /// removes old downloads and starts the daily schedule. Requests nothing by itself before <see cref="InitialDelay"/>.
     /// </summary>
     /// <exception cref="ObjectDisposedException">The service was disposed.</exception>
     public void Start()
@@ -195,6 +226,7 @@ public sealed class UpdateService : IAsyncDisposable
 
         CleanWorkDirectory();
         LoadCache();
+        RefreshLocalBuilds();
         lock (gate)
         {
             // Due at the first tick unless the cached list is still fresh.
@@ -250,21 +282,78 @@ public sealed class UpdateService : IAsyncDisposable
 
     /// <summary>
     /// Checks now when the release list is older than <paramref name="maxAge"/> — what opening the update dialog does, so
-    /// the changelog it shows is current. Does nothing while this copy does not ask by itself
-    /// (<see cref="UpdateSnapshot.AutomaticChecks"/> off): then only "Check now" requests anything.
+    /// the changelog it shows is current. Requests nothing while this copy does not ask by itself
+    /// (<see cref="UpdateSnapshot.AutomaticChecks"/> off): then only "Check now" goes to the network. The dev-builds
+    /// folder is looked at in any case (it is local).
     /// </summary>
     /// <param name="maxAge">How old the release list may be.</param>
     /// <returns>A task completing when the list is fresh enough, or the check ended.</returns>
     public Task EnsureFreshAsync(TimeSpan maxAge)
     {
+        // On the pool: the dialog asks from the UI thread, and a folder read has no place there.
+        var local = options.LocalBuildsDirectory is null ? Task.CompletedTask : Task.Run(() => RefreshLocalBuilds());
         var snapshot = Current;
         if (!snapshot.AutomaticChecks || snapshot.IsInstalling)
         {
-            return Task.CompletedTask;
+            return local;
         }
 
         bool fresh = snapshot.LastChecked is { } last && options.Time.GetUtcNow() - last <= maxAge;
-        return fresh ? Task.CompletedTask : CheckAsync(userInitiated: false);
+        return fresh ? local : Task.WhenAll(local, CheckAsync(userInitiated: false));
+    }
+
+    /// <summary>
+    /// Looks into the dev-builds folder again and updates <see cref="Current"/> when its builds changed. Cheap (a few
+    /// small files) and local; the host calls it when its folder watcher sees a change.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Does nothing for a copy without the folder, after disposal, and while an approved update is on its way: that
+    /// update owns the state, and the next look (the schedule's tick, the dialog, a check) picks up whatever changed.
+    /// </para>
+    /// <para>
+    /// A failed installation is about one version, as after a check: when another version is offered now, its message
+    /// goes (<see cref="UpdateSnapshot.InstallProblem"/>).
+    /// </para>
+    /// <para>Blocks on file reads: call it from a pool thread, never from the UI thread.</para>
+    /// </remarks>
+    /// <returns><see langword="true"/> when the builds changed and <see cref="Changed"/> was raised.</returns>
+    public bool RefreshLocalBuilds()
+    {
+        if (options.LocalBuildsDirectory is not { } folder)
+        {
+            return false;
+        }
+
+        UpdateSnapshot? announced = null;
+        lock (localRead)
+        {
+            var builds = LocalBuildFeed.Read(folder, options.Architecture);
+            lock (gate)
+            {
+                if (disposed || current.IsInstalling || SameBuilds(localBuilds, builds))
+                {
+                    return false;
+                }
+
+                localBuilds = builds;
+                var offeredBefore = current.Offer?.Release.Version;
+                var next = Derive(current);
+                if (next.Offer?.Release.Version != offeredBefore)
+                {
+                    next = next with { InstallProblem = null };
+                }
+
+                SetLocked(next);
+                announced = next;
+            }
+        }
+
+        AppLog.Info(announced.IsLocalOffer
+            ? $"Local builds: {announced.LocalBuildCount} in the dev-builds folder; BetterClipboard {announced.Offer!.Release.Version} is offered (running {announced.CurrentVersion})."
+            : $"Local builds: {announced.LocalBuildCount} in the dev-builds folder, none newer than the running {announced.CurrentVersion}.");
+        RaiseChanged();
+        return true;
     }
 
     /// <summary>
@@ -408,9 +497,13 @@ public sealed class UpdateService : IAsyncDisposable
         client.Dispose();
     }
 
-    /// <summary>The schedule's tick: checks when one is due and this copy checks by itself.</summary>
+    /// <summary>
+    /// The schedule's tick: looks into the dev-builds folder (a missed watcher event costs at most an hour), then checks
+    /// GitHub when a check is due and this copy checks by itself.
+    /// </summary>
     private void OnTimer()
     {
+        RefreshLocalBuilds();
         bool due;
         lock (gate)
         {
@@ -431,6 +524,8 @@ public sealed class UpdateService : IAsyncDisposable
         UpdateProblem? problem = null;
         try
         {
+            // "Check now" also means "look at the folder": a build published a moment ago shows up even without a watcher.
+            RefreshLocalBuilds();
             string? tag;
             lock (gate)
             {
@@ -465,9 +560,16 @@ public sealed class UpdateService : IAsyncDisposable
 
             SaveCache(feed, now);
             var snapshot = Current;
-            AppLog.Info(snapshot.Offer is { } offer
-                ? $"Update check: BetterClipboard {offer.Release.Version} is available (running {snapshot.CurrentVersion})."
-                : $"Update check: up to date (running {snapshot.CurrentVersion}, latest release {snapshot.Latest?.Version.ToString() ?? "unknown"}).");
+
+            // Three kinds of offer read differently in a log: "available" for the way back from a development build would
+            // suggest something newer.
+            AppLog.Info(snapshot.Offer is not { } offer
+                ? $"Update check: up to date (running {snapshot.CurrentVersion}, latest release {snapshot.Latest?.Version.ToString() ?? "unknown"})."
+                : snapshot.IsLocalOffer
+                    ? $"Update check: the local build {offer.Release.Version} is offered (running {snapshot.CurrentVersion})."
+                    : snapshot.OffersOlderVersion
+                        ? $"Update check: the latest release, {offer.Release.Version}, is offered as the way back from this development build (running {snapshot.CurrentVersion})."
+                        : $"Update check: BetterClipboard {offer.Release.Version} is available (running {snapshot.CurrentVersion}).");
         }
         catch (UpdateException ex)
         {
@@ -531,18 +633,34 @@ public sealed class UpdateService : IAsyncDisposable
     {
         UpdateProblem? problem = null;
         bool installerStarted = false;
+        bool local = offer.Release.IsLocalBuild;
         try
         {
-            AppLog.Info($"Update to {offer.Release.Version} approved: downloading {offer.Package.Name} ({offer.Package.Size:N0} bytes).");
+            AppLog.Info(local
+                ? $"Update to {offer.Release.Version} approved: copying {offer.Package.Name} ({offer.Package.Size:N0} bytes) from the dev-builds folder."
+                : $"Update to {offer.Release.Version} approved: downloading {offer.Package.Name} ({offer.Package.Size:N0} bytes).");
 
-            // The expected hash first: without it nothing would be worth downloading.
-            var checksums = await client.GetTextAsync(offer.Checksums, MaxChecksumListBytes, cancellationToken).ConfigureAwait(false);
-            if (!Sha256Sums.TryFind(checksums, offer.Package.Name, out var expected))
+            // A local build is read from the folder it was offered from, and only from there: the offer names files, and a
+            // copy without the folder (or any other folder) has no business reading them.
+            string? localFolder = null;
+            if (local && (localFolder = options.LocalBuildsDirectory) is null)
             {
-                throw new UpdateException(UpdateFailure.Verification, $"The release's checksum list has no entry for {offer.Package.Name}, so the update cannot be verified. Nothing was installed.");
+                throw new UpdateException(UpdateFailure.BadResponse, "This copy does not read a dev-builds folder, so the build cannot be installed from here. Nothing was installed.");
             }
 
-            // GitHub computes its own digest when a file is uploaded: a second witness that must agree with the list.
+            // The expected hash first: without it nothing would be worth downloading (or copying).
+            var checksums = local
+                ? await LocalBuildFeed.ReadChecksumsAsync(offer.Checksums, localFolder!, cancellationToken).ConfigureAwait(false)
+                : await client.GetTextAsync(offer.Checksums, MaxChecksumListBytes, cancellationToken).ConfigureAwait(false);
+            if (!Sha256Sums.TryFind(checksums, offer.Package.Name, out var expected))
+            {
+                throw new UpdateException(UpdateFailure.Verification, local
+                    ? $"The build's checksum list has no entry for {offer.Package.Name}, so the build cannot be verified. Nothing was installed."
+                    : $"The release's checksum list has no entry for {offer.Package.Name}, so the update cannot be verified. Nothing was installed.");
+            }
+
+            // GitHub computes its own digest when a file is uploaded: a second witness that must agree with the list. A
+            // local build has none (its list is its only witness, see LocalBuildFeed's remarks).
             if (offer.Package.Sha256 is { } digest && !string.Equals(digest, expected, StringComparison.OrdinalIgnoreCase))
             {
                 throw new UpdateException(UpdateFailure.Verification, $"The release's two checksums for {offer.Package.Name} disagree, so the update cannot be trusted. Nothing was installed.");
@@ -557,17 +675,23 @@ public sealed class UpdateService : IAsyncDisposable
             if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
             {
                 var progress = new InlineProgress(bytes => ReportProgress(bytes));
-                actual = await client.DownloadAsync(offer.Package, package, progress, cancellationToken).ConfigureAwait(false);
+                actual = local
+                    ? await LocalBuildFeed.CopyPackageAsync(offer.Package, localFolder!, package, progress, cancellationToken).ConfigureAwait(false)
+                    : await client.DownloadAsync(offer.Package, package, progress, cancellationToken).ConfigureAwait(false);
             }
 
             Set(s => s with { Phase = UpdatePhase.Verifying, DownloadedBytes = s.TotalBytes });
             if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
             {
                 TryDelete(package);
-                throw new UpdateException(UpdateFailure.Verification, "The download does not match the release's checksum, so it was deleted. Nothing was installed. Try again; if it happens again, download the release from GitHub.");
+                throw new UpdateException(UpdateFailure.Verification, local
+                    ? "The copy does not match the build's checksum, so it was deleted. Nothing was installed. Publish the build again."
+                    : "The download does not match the release's checksum, so it was deleted. Nothing was installed. Try again; if it happens again, download the release from GitHub.");
             }
 
-            AppLog.Info("Update package verified: its SHA-256 matches the release's checksum list.");
+            AppLog.Info(local
+                ? "Update package verified: its SHA-256 matches the build's checksum list."
+                : "Update package verified: its SHA-256 matches the release's checksum list.");
             cancellationToken.ThrowIfCancellationRequested();
 
             // From here on there is no cancelling: the installer is its own process.
@@ -669,23 +793,61 @@ public sealed class UpdateService : IAsyncDisposable
         Set(s => s.Phase == UpdatePhase.Downloading ? s with { DownloadedBytes = bytes } : s);
 
     /// <summary>
-    /// Fills the parts of a snapshot that follow from the release list and the settings: the newest release, the offer,
-    /// the changelog, whether the offer is skipped, and whether this copy checks by itself.
+    /// Fills the parts of a snapshot that follow from the release list, the dev-builds folder and the settings: the newest
+    /// release, the offer, the changelog, how many local builds there are, whether the offer is skipped, and whether this
+    /// copy checks by itself. The caller holds <see cref="gate"/> (or owns the snapshot alone, in the constructor).
     /// </summary>
     /// <param name="snapshot">The snapshot to complete.</param>
     /// <returns>The completed snapshot.</returns>
     private UpdateSnapshot Derive(UpdateSnapshot snapshot)
     {
         var settings = options.Settings();
-        var offer = UpdateCatalog.FindUpdate(options.CurrentVersion, releases, options.Architecture);
+        var offer = UpdateCatalog.FindUpdate(options.CurrentVersion, releases, localBuilds, options.Architecture);
         return snapshot with
         {
             Latest = UpdateCatalog.LatestStable(releases),
             Offer = offer,
-            Changelog = UpdateCatalog.SelectChangelog(options.CurrentVersion, releases),
+            Changelog = UpdateCatalog.SelectChangelog(options.CurrentVersion, releases, localBuilds, offer),
+            LocalBuildCount = localBuilds.Count,
             IsSkipped = IsSkipped(offer, settings),
             AutomaticChecks = options.AllowAutomaticChecks && settings.CheckForUpdates,
         };
+    }
+
+    /// <summary>
+    /// Whether two looks into the dev-builds folder found the same builds: same versions in the same order, same package
+    /// sizes, same times and notes. A rebuilt package under the same version has another size (or time), and counts as new.
+    /// </summary>
+    /// <param name="before">The builds of the previous look.</param>
+    /// <param name="after">The builds of this look.</param>
+    /// <returns><see langword="true"/> when nothing the offer, the dialog or an installation depends on changed.</returns>
+    private static bool SameBuilds(IReadOnlyList<ReleaseInfo> before, IReadOnlyList<ReleaseInfo> after)
+    {
+        if (before.Count != after.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < before.Count; i++)
+        {
+            var a = before[i];
+            var b = after[i];
+            if (a.Version != b.Version || a.PublishedAt != b.PublishedAt || a.Assets.Count != b.Assets.Count ||
+                !string.Equals(a.Notes, b.Notes, StringComparison.Ordinal) || !string.Equals(a.Title, b.Title, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            for (int f = 0; f < a.Assets.Count; f++)
+            {
+                if (a.Assets[f] != b.Assets[f])
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Whether the user chose to skip exactly the offered version.</summary>

@@ -32,10 +32,12 @@ public sealed class UpdateServiceTests
         /// <param name="allowAutomaticChecks">Whether the copy may check by itself at all.</param>
         /// <param name="workDirectory">A working folder to reuse (a second service over the same cache); a new one by default.</param>
         /// <param name="time">A clock to reuse; a new one at <see cref="Start"/> by default.</param>
-        public Harness(string current = "0.2.6", UpdateInstallKind kind = UpdateInstallKind.Installer, bool allowAutomaticChecks = true, string? workDirectory = null, ManualTimeProvider? time = null)
+        /// <param name="readsLocalBuilds">Whether the copy reads a dev-builds folder (<see cref="LocalBuilds"/>), as one the installer installed does.</param>
+        public Harness(string current = "0.2.6", UpdateInstallKind kind = UpdateInstallKind.Installer, bool allowAutomaticChecks = true, string? workDirectory = null, ManualTimeProvider? time = null, bool readsLocalBuilds = false)
         {
             Time = time ?? new ManualTimeProvider(Start);
             WorkDirectory = workDirectory ?? Path.Combine(temp.Path, "updates");
+            LocalBuilds = Path.Combine(temp.Path, "dev-builds");
             Handler.Respond = Route;
             Service = new UpdateService(new UpdateClient(UpdateSource.GitHub, current, Handler), new UpdateServiceOptions
             {
@@ -49,9 +51,13 @@ public sealed class UpdateServiceTests
                 AllowAutomaticChecks = allowAutomaticChecks,
                 Installer = Installer,
                 Time = Time,
+                LocalBuildsDirectory = readsLocalBuilds ? LocalBuilds : null,
             });
             Service.Changed += (_, _) => Interlocked.Increment(ref changes);
         }
+
+        /// <summary>The dev-builds folder of this copy (it exists only once a test publishes into it).</summary>
+        public string LocalBuilds { get; }
 
         /// <summary>The service under test.</summary>
         public UpdateService Service { get; }
@@ -905,5 +911,133 @@ public sealed class UpdateServiceTests
         Assert.True(result?.Succeeded);
         Assert.Equal("0.2.7", result!.Version);
         Assert.Null(harness.Service.TakeLastResult());
+    }
+
+    /// <summary>
+    /// A build already in the dev-builds folder is offered at start, without any request, and approving it copies its
+    /// package from the folder, verifies it and hands exactly that file to the installer.
+    /// </summary>
+    /// <returns>A task for the test.</returns>
+    [Fact]
+    public async Task LocalBuild_IsOfferedAtStart_AndInstalledFromTheFolder()
+    {
+        await using var harness = new Harness(current: "0.2.10-dev.12.gaaa1111", readsLocalBuilds: true);
+        var package = LocalBuildFixture.Package(80_000);
+        LocalBuildFixture.Publish(harness.LocalBuilds, "0.2.10-dev.15.gbbb2222", package, notes: "- The new thing (bbb2222)\n");
+
+        harness.Service.Start();
+        var offered = harness.Service.Current;
+
+        Assert.True(offered.IsLocalOffer);
+        Assert.Equal("0.2.10-dev.15.gbbb2222", offered.Offer!.Release.Version.ToString());
+        Assert.Equal(1, offered.LocalBuildCount);
+        Assert.True(offered.WantsAttention);
+        Assert.Equal(ChangelogKind.NewerReleases, offered.Changelog.Kind);
+        Assert.Equal("- The new thing (bbb2222)\n", Assert.Single(offered.Changelog.Releases).Notes);
+        Assert.Equal(0, harness.FeedRequests);
+
+        var install = harness.Service.InstallAsync();
+        var request = await harness.Installer.Started.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal("0.2.10-dev.15.gbbb2222", request.Version.ToString());
+        Assert.Equal(Path.Combine(harness.WorkDirectory, "BetterClipboard-0.2.10-dev.15.gbbb2222-win-x64.zip"), request.PackagePath);
+        Assert.Equal(LocalBuildFixture.Sha256Of(package), request.PackageSha256);
+        Assert.Equal(package, harness.Installer.PackageBytes);
+        Assert.Empty(harness.Handler.Requests);
+
+        harness.Installer.End(1);
+        await install;
+        Assert.Equal(UpdateFailure.Installer, harness.Service.Current.InstallProblem?.Failure);
+    }
+
+    /// <summary>
+    /// A build published after the start shows up when the folder is looked at again (what the app's watcher triggers),
+    /// raising one change; looking again without a change raises none; a removed build goes away again.
+    /// </summary>
+    /// <returns>A task for the test.</returns>
+    [Fact]
+    public async Task LocalBuild_FollowsTheFolder()
+    {
+        await using var harness = new Harness(current: "0.2.9", readsLocalBuilds: true);
+        harness.Service.Start();
+        Assert.Null(harness.Service.Current.Offer);
+        Assert.False(harness.Service.RefreshLocalBuilds());
+
+        var folder = LocalBuildFixture.Publish(harness.LocalBuilds, "0.2.10-dev.3.gccc3333", LocalBuildFixture.Package());
+        int before = harness.Changes;
+        Assert.True(harness.Service.RefreshLocalBuilds());
+        Assert.Equal(before + 1, harness.Changes);
+        Assert.Equal("0.2.10-dev.3.gccc3333", harness.Service.Current.Offer?.Release.Version.ToString());
+        Assert.False(harness.Service.RefreshLocalBuilds());
+        Assert.Equal(before + 1, harness.Changes);
+
+        Directory.Delete(folder, recursive: true);
+        Assert.True(harness.Service.RefreshLocalBuilds());
+        Assert.Null(harness.Service.Current.Offer);
+        Assert.Equal(0, harness.Service.Current.LocalBuildCount);
+
+        // Opening the dialog looks too, also with automatic checks off (the folder is not the network).
+        LocalBuildFixture.Publish(harness.LocalBuilds, "0.2.10-dev.4.gddd4444", LocalBuildFixture.Package());
+        harness.Settings = harness.Settings with { CheckForUpdates = false };
+        harness.Service.ApplySettings();
+        await harness.Service.EnsureFreshAsync(TimeSpan.FromMinutes(5));
+        Assert.Equal("0.2.10-dev.4.gddd4444", harness.Service.Current.Offer?.Release.Version.ToString());
+        Assert.Equal(0, harness.FeedRequests);
+    }
+
+    /// <summary>
+    /// A package that changed in the folder after it was offered (same size, other bytes) fails the checksum: the copy is
+    /// deleted and nothing reaches the installer. A copy without the folder never reads it.
+    /// </summary>
+    /// <returns>A task for the test.</returns>
+    [Fact]
+    public async Task LocalBuild_AChangedPackageIsRefused()
+    {
+        await using var harness = new Harness(current: "0.2.9", readsLocalBuilds: true);
+        var package = LocalBuildFixture.Package(40_000, seed: 3);
+        var folder = LocalBuildFixture.Publish(harness.LocalBuilds, "0.2.10-dev.3.geee5555", package);
+        harness.Service.Start();
+        Assert.True(harness.Service.Current.IsLocalOffer);
+
+        await File.WriteAllBytesAsync(Path.Combine(folder, "BetterClipboard-0.2.10-dev.3.geee5555-win-x64.zip"), LocalBuildFixture.Package(40_000, seed: 4), TestContext.Current.CancellationToken);
+        await harness.Service.InstallAsync();
+
+        var failed = harness.Service.Current;
+        Assert.Equal(UpdateFailure.Verification, failed.InstallProblem?.Failure);
+        Assert.Contains("build's checksum", failed.InstallProblem!.Message, StringComparison.Ordinal);
+        Assert.False(harness.Installer.Started.IsCompleted);
+        Assert.False(File.Exists(Path.Combine(harness.WorkDirectory, "BetterClipboard-0.2.10-dev.3.geee5555-win-x64.zip")));
+
+        await using var other = new Harness(current: "0.2.9");
+        LocalBuildFixture.Publish(other.LocalBuilds, "0.2.10-dev.3.geee5555", package);
+        other.Service.Start();
+        Assert.Null(other.Service.Current.Offer);
+        Assert.False(other.Service.RefreshLocalBuilds());
+    }
+
+    /// <summary>
+    /// A development build is offered GitHub's latest release once the list is known, also when it is older (the way
+    /// back), and is never reminded of it; a newer local build then takes the offer over.
+    /// </summary>
+    /// <returns>A task for the test.</returns>
+    [Fact]
+    public async Task DevelopmentBuild_IsAlwaysOfferedTheLatestRelease()
+    {
+        await using var harness = new Harness(current: "0.2.10-dev.12.gaaa1111", readsLocalBuilds: true);
+        harness.Serve("0.2.9", "0.2.8");
+        harness.Service.Start();
+        await harness.Service.CheckAsync();
+
+        var back = harness.Service.Current;
+        Assert.Equal("0.2.9", back.Offer?.Release.Version.ToString());
+        Assert.True(back.OffersOlderVersion);
+        Assert.True(back.IsDevBuild);
+        Assert.True(back.WantsAttention);
+        Assert.False(UpdateReminder.IsWanted(back));
+        Assert.Equal(ChangelogKind.LatestRelease, back.Changelog.Kind);
+
+        LocalBuildFixture.Publish(harness.LocalBuilds, "0.2.10-dev.13.gfff6666", LocalBuildFixture.Package());
+        Assert.True(harness.Service.RefreshLocalBuilds());
+        Assert.Equal("0.2.10-dev.13.gfff6666", harness.Service.Current.Offer?.Release.Version.ToString());
+        Assert.False(harness.Service.Current.OffersOlderVersion);
     }
 }

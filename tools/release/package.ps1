@@ -25,6 +25,11 @@
 .PARAMETER OutputDirectory
     Where the zips, the .7z archives and SHA256SUMS.txt go (created; existing release files in it are replaced).
 
+.PARAMETER SkipArchives
+    Leave out the .7z archives (and the need for 7-Zip): only the zips and SHA256SUMS.txt. For development builds
+    (tools/release/publish-dev.ps1), which only ever install from the zip; the Chocolatey package of a release needs the
+    archives, so the release workflow never passes it.
+
 .EXAMPLE
     pwsh tools/release/package.ps1 -Version 0.1.0
 #>
@@ -37,7 +42,9 @@ param(
     [ValidateSet('x64', 'arm64')]
     [string[]] $Architectures = @('x64', 'arm64'),
 
-    [string] $OutputDirectory = 'artifacts/release'
+    [string] $OutputDirectory = 'artifacts/release',
+
+    [switch] $SkipArchives
 )
 
 Set-StrictMode -Version 3.0
@@ -82,7 +89,8 @@ function Get-SevenZip {
     throw 'Could not find 7-Zip (7z.exe) for the .7z archives; install 7-Zip or Chocolatey, or put 7z on PATH.'
 }
 
-$sevenZip = Get-SevenZip
+# Looked up only when the archives are made: a development build has no Chocolatey package, and needs no 7-Zip.
+$sevenZip = if ($SkipArchives) { $null } else { Get-SevenZip }
 
 # WinUI needs a concrete Platform that matches the runtime identifier (see BetterClipboard.App.csproj).
 $platforms = @{ x64 = 'x64'; arm64 = 'ARM64' }
@@ -114,6 +122,10 @@ foreach ($arch in $Architectures) {
     Compress-Archive -Path (Join-Path $publish '*') -DestinationPath $zip -CompressionLevel Optimal
     $zips += Get-Item $zip
     Write-Host ("    {0} ({1:N1} MB)" -f $zip, ((Get-Item $zip).Length / 1MB))
+
+    if ($SkipArchives) {
+        continue
+    }
 
     # The same files for the Chocolatey package: LZMA2 at the highest level, solid. Paths are relative to the
     # publish folder (the "*"), so the files sit at the archive root exactly as in the zip.

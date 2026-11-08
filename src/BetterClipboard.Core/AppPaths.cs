@@ -100,6 +100,14 @@ public sealed class AppPaths
     public string UpdatesDirectory => Path.Combine(DataDirectory, "updates");
 
     /// <summary>
+    /// The dev-builds folder: development builds published on this PC by <c>tools/release/publish-dev.ps1</c>, which a
+    /// copy the installer installed offers through its update button before GitHub's releases
+    /// (<see cref="Updates.LocalBuildFeed"/>). Nothing creates it but the publish script, so it exists only on a developer's
+    /// PC; an isolated instance (<see cref="DataDirectoryVariable"/>) has its own, inside its own data directory.
+    /// </summary>
+    public string DevBuildsDirectory => Path.Combine(DataDirectory, Updates.LocalBuildFeed.DirectoryName);
+
+    /// <summary>
     /// <c>installer.json</c>, which <c>install.ps1</c> writes on every install: what was installed where. The updater
     /// reads its <c>installDir</c> to tell a copy the installer owns from one extracted by hand
     /// (<see cref="Updates.InstalledCopy"/>).
