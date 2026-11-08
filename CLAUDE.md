@@ -4688,13 +4688,15 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   - Keep the `^`: `--grep` matches line by line, so the anchor skips a message that merely quotes the command
     mid-line. Without it, a later commit message that quotes it becomes "the newest draft" although it holds no notes
     (nearly happened 2026-10-02). Never start a line of a commit message with the marker unless the notes follow it.
-  - **The notes follow the earlier releases' format** (the owner, 2026-11-08: "Go over our last 10 releases, follow
-    their format"): the title line `BetterClipboard X.Y.Z — summary`; the install command; who updates how
-    (`**You have …:**` bullets); one bold lead-in paragraph per feature, with bullets; **Fixed**; "What came in
-    X.Y.Z (…) is described in the [X.Y.Z release](…)."; the files table and the two notes. No headings and no summary
-    list of their own: the title line is the short form. Wrapped at 117 columns like them, never inside a link, a
-    code span or an emphasis: GitHub shows a line break at each wrap (v0.2.9's `body_html`), which every release page
-    has, and the update dialog follows CommonMark and joins the lines.
+  - **The notes follow the earlier releases' format, minus anything about older versions** (the owner, 2026-11-08:
+    "Go over our last 10 releases, follow their format", then, after editing the v0.2.10 draft themselves: "Also no
+    mentions of older versions"): the title line `BetterClipboard X.Y.Z` alone (the owner's edit cut its summary);
+    the install command; one bold lead-in paragraph per feature, with bullets; **Fixed**; the files table; the
+    code-signing note. Nothing that names an older release: no "You have 0.2.x" lines, no "What came in X.Y.Z …"
+    pointer, no "An older BetterClipboard can still open your history", and no "since an earlier update" in a fix.
+    No headings and no summary list. Wrapped at 117 columns like the earlier notes, never inside a link, a code span
+    or an emphasis: GitHub shows a line break at each wrap (v0.2.9's `body_html`), which every release page has, and
+    the update dialog follows CommonMark and joins the lines.
   - **An outside contributor is thanked in one line, right after the title line**, naming what they brought and
     their bare `@login` (the owner, 2026-11-08, of a five-line paragraph and a language section: "Horrible, simplify
     and minimize the language addition to a single line"). Keep that line within the 117 columns, so GitHub never
