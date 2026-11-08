@@ -26,10 +26,17 @@ For a copy installed by `install.ps1` (Settings › Apps lists it; `installer.js
 | 0.2.10-dev.12 | 0.2.9 | 0.2.10-dev.15 | 0.2.10-dev.15 |
 | 0.2.10-dev.12 | 0.2.10 | none newer | 0.2.10 |
 | 0.2.10-dev.12 | 0.2.10 | 0.2.10-dev.15 | 0.2.10-dev.15 |
-| 0.2.9 (release) | 0.2.9 | 0.2.10-dev.3 | 0.2.10-dev.3 |
+| 0.2.10 (release) | 0.2.10 | 0.2.11-dev.3 | 0.2.11-dev.3 |
+| 0.2.9 (release) | 0.2.9 | 0.2.10-dev.30 | nothing: 0.2.9 predates the folder (`-Install`, below) |
 
 So a dev install's button is lit whenever GitHub's list is known. *Skip this version* quiets it for that version. Dev
 builds never get the weekly reminder tooltip. Chocolatey, all-users and hand-extracted copies never read the folder.
+
+**A lit button on a dev install is not always an update.** With nothing newer in the folder it is the way back to the
+release: tooltip "Back to the release: BetterClipboard 0.2.9", button *Install and restart* — against "Dev build
+available: …" and *Update and restart* for a newer dev build. On 2026-11-08 the owner, used to clicking the lit button
+for each new dev build, approved the way back 0.6 s after the dialog opened, and 0.2.9 offered no dev builds afterwards
+(troubleshooting, below).
 
 ## Publish
 
@@ -76,7 +83,10 @@ anything else (dot-folders included) is ignored. Delete builds by hand freely.
 An installed **release** of 0.2.9 or older cannot read the folder. `publish-dev.ps1 -Install` installs the build with
 its own `install.ps1 -Package <zip> -NoLaunch` (Windows PowerShell 5.1, `PSModulePath` removed), then starts the app
 through Explorer with `--background` (the user's environment, never the shell's). From then on the update button does
-it — also after an official release is installed (a release reads the folder too and offers newer dev builds).
+it — also after an official release **from 0.2.10 on** is installed (such a release reads the folder too and offers newer
+dev builds). The way back to **0.2.9** leaves the dev channel: that release predates the folder, so it takes this
+bootstrap again. For a build that is published already, `-Install -Ref <its commit>` builds nothing and only installs it
+(17 s on 2026-11-08; the commit is `build.json`'s `commit` in the build's folder).
 
 `install.ps1`'s full install closes **every** BetterClipboard of the session (also a `tools/launch_dev.py` copy and other
 sessions' test instances): close those first (`python tools/launch_dev.py --exit`).
@@ -93,7 +103,9 @@ sessions' test instances): close those first (`python tools/launch_dev.py --exit
   The whole loop (install A, publish B, click) belongs in a claude-desktops Windows desktop (skill `claude-desktops`).
 - Verify after an install: `installer.json` version, the log after "starting" (0 WRN/ERR; the line "Updates: … a
   development build …"), and for an offer the log line `Local builds: N in the dev-builds folder; BetterClipboard X is
-  offered`.
+  offered`. The app's parent is the `explorer.exe` that opened the start shortcut, and it exits within a minute: after
+  that, only the app's environment shows how it was started (no `CLAUDECODE`, no `MSYSTEM`; read the names, never the
+  values — the owner's environment holds tokens).
 
 ## Roll back to the release
 
@@ -101,11 +113,16 @@ On a dev install the button always offers GitHub's latest release: *Install and 
 `irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex`. Remove `dev-builds\` too if the
 release should stop offering newer dev builds.
 
+While GitHub's latest release is 0.2.9, going back means leaving dev builds: 0.2.9 cannot read the folder, so nothing
+offers them again until the bootstrap (`publish-dev.ps1 -Install`) runs once more. From 0.2.10 on, a release reads the
+folder, so the next dev build published after it is offered again.
+
 ## Troubleshooting
 
 | Symptom | Look at |
 |---|---|
 | Button not lit after publishing | Installed version newer or equal (`installer.json`)? Copy not installed by `install.ps1` (Chocolatey, all-users, extracted)? Installed copy ≤ 0.2.9 (`-Install` once)? Log: `Local builds: …` lines. Opening the dialog or *Check now* looks again. |
+| No dev builds offered after the button installed a release ("I accidentally updated to the real release") | The lit button on a dev install with nothing newer is the way back; the log has "the latest release, 0.2.9, is offered as the way back" just before "Update to 0.2.9 approved". 0.2.9 cannot read the folder: `publish-dev.ps1 -Install -Ref <the newest build's commit>` (`build.json`) installs it again without building. Happened 2026-11-08. |
 | "The copy does not match the build's checksum" | The zip changed after `SHA256SUMS.txt` was written: publish again (`-Force`). |
 | "… changed in the dev-builds folder after it was offered" | Republished meanwhile: open the dialog again. |
 | `install.ps1 failed` in `-Install` | Its output above; another BetterClipboard holding the install folder (CLAUDE.md §4). |
