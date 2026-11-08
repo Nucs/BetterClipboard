@@ -153,7 +153,11 @@ function ConvertTo-SemVerParts([string] $Text) {
     #>
     $clean = ($Text.Trim() -replace '^[vV]', '') -replace '\+.*$', ''
     if ($clean -notmatch '^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$') { return $null }
-    $pre = if ($Matches[4]) { @($Matches[4].Split('.')) } else { @() }
+
+    # Typed, and never through an if-expression: that would unroll an empty list to $null and one identifier to a bare
+    # string, and under StrictMode neither has a Count (the closing report failed on "0.2.10-dev" that way, 2026-11-08).
+    [string[]] $pre = @()
+    if ($Matches[4]) { $pre = [string[]] $Matches[4].Split('.') }
     return [pscustomobject]@{ Core = [version]::new([int]$Matches[1], [int]$Matches[2], [int]$Matches[3]); Pre = $pre }
 }
 
