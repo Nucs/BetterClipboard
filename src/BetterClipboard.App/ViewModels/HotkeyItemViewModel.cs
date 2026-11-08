@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using Microsoft.UI.Xaml;
 
 namespace BetterClipboard.App.ViewModels;
@@ -18,7 +19,7 @@ public sealed record HotkeyItemViewModel(string Text, string Status, bool IsActi
     /// Accessible name of the row's Remove button. Every row has one, so the name says which shortcut it removes —
     /// otherwise a screen reader (or UI Automation) sees a column of identical buttons.
     /// </summary>
-    public string RemoveName => $"Remove {Text}";
+    public string RemoveName => UiText.Format($"Remove {Text}");
 
     /// <summary>Shows the status in the secondary color while the shortcut works.</summary>
     public Visibility WorkingVisibility => IsActive ? Visibility.Visible : Visibility.Collapsed;

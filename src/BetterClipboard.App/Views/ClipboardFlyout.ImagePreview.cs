@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Runtime.InteropServices.WindowsRuntime;
 using BetterClipboard.App.Interop;
 using BetterClipboard.App.ViewModels;
@@ -474,8 +475,8 @@ public sealed partial class ClipboardFlyout
             HorizontalAlignment = HorizontalAlignment.Right,
             VerticalAlignment = VerticalAlignment.Top,
         };
-        AutomationProperties.SetName(closeButton, "Close image viewer");
-        ToolTipService.SetToolTip(closeButton, "Close (Esc)");
+        AutomationProperties.SetName(closeButton, UiText.Translate("Close image viewer"));
+        ToolTipService.SetToolTip(closeButton, UiText.Translate("Close (Esc)"));
         closeButton.Click += (_, _) => CloseViewer();
 
         viewerZoomLabel = new TextBlock
@@ -545,7 +546,7 @@ public sealed partial class ClipboardFlyout
             {
                 dim.Children.Add(new TextBlock
                 {
-                    Text = "This image could not be loaded.",
+                    Text = UiText.Translate("This image could not be loaded."),
                     Foreground = new SolidColorBrush(Colors.White),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,

@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Updates;
 using BetterClipboard.Windows.Input;
@@ -185,7 +186,7 @@ public sealed partial class ClipboardFlyout
             UpdateRing.IsActive = busy;
         }
 
-        var tip = snapshot is null ? "Updates" : UpdateText.ButtonTip(snapshot);
+        var tip = snapshot is null ? UiText.Translate("Updates") : UpdateText.ButtonTip(snapshot);
         if (tip != updateButtonTip)
         {
             updateButtonTip = tip;

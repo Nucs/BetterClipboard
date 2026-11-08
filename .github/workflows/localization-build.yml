@@ -1,0 +1,39 @@
+name: Simplified Chinese build
+
+on:
+  push:
+    branches: [feat/simplified-chinese]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build
+        run: dotnet build BetterClipboard.sln -c Release --nologo
+      - name: Test
+        run: dotnet test --solution BetterClipboard.sln -c Release --no-build
+      - name: Build self-contained Windows package
+        shell: pwsh
+        run: tools/release/package.ps1 -Version 0.2.9-zh.1 -Architectures x64 -OutputDirectory artifacts/zh-Hans
+      - name: Isolated English and Chinese UI smoke test
+        shell: pwsh
+        run: tools/localization/smoke-windows.ps1 -PublishDirectory artifacts/publish/release-win-x64 -OutputDirectory artifacts/localization-ui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BetterClipboard-zh-Hans-win-x64
+          path: artifacts/zh-Hans/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: localization-ui-verification
+          path: artifacts/localization-ui

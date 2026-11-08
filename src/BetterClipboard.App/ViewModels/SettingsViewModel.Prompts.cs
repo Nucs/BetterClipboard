@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Prompts;
@@ -106,35 +107,35 @@ public sealed partial class SettingsViewModel
     {
         var name = PromptAgents.NameOf(agent);
         var kept = stats.Sends == 0
-            ? "No prompts stored yet."
-            : $"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")} stored ({stats.Sends:N0} sends)"
-              + (stats.NewestSentUtc is { } newest ? $", the newest {RelativeTimeFormatter.Format(newest, DateTimeOffset.UtcNow)}." : ".");
+            ? UiText.Translate("No prompts stored yet.")
+            : UiText.Format($"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")} stored ({stats.Sends:N0} sends)")
+              + (stats.NewestSentUtc is { } newest ? UiText.Format($", the newest {RelativeTimeFormatter.Format(newest, DateTimeOffset.UtcNow)}.") : ".");
         if (!on)
         {
             return stats.Sends == 0
-                ? $"Off — {name}'s files are not read, and the panel has no {(agent == PromptAgent.Codex ? "Codex" : "Claude")} tab."
-                : $"Off — {name}'s files are not read. {kept} They stay until you delete them.";
+                ? UiText.Format($"Off — {name}'s files are not read, and the panel has no {(agent == PromptAgent.Codex ? "Codex" : "Claude")} tab.")
+                : UiText.Format($"Off — {name}'s files are not read. {kept} They stay until you delete them.");
         }
 
         if (reader is not { IsRunning: true })
         {
-            return "Starting… (if this stays, the log says why).";
+            return UiText.Translate("Starting… (if this stays, the log says why).");
         }
 
         var where = agent == PromptAgent.Codex
-            ? $"Reads {reader.Root} (session files and the CLI history)"
-            : $"Reads {Path.Combine(reader.Root, ClaudeCodeHistory.FileName)}";
+            ? UiText.Format($"Reads {reader.Root} (session files and the CLI history)")
+            : UiText.Format($"Reads {Path.Combine(reader.Root, ClaudeCodeHistory.FileName)}");
         if (reader.IsImporting)
         {
             var (done, total) = reader.ImportProgress;
-            return $"{where}. First import: {done:N0} of {total:N0} files read. {kept}";
+            return UiText.Format($"{where}. First import: {done:N0} of {total:N0} files read. {kept}");
         }
 
         var leftOut = reader.ExcludedFiles > 0
-            ? $" {reader.ExcludedFiles:N0} session file{(reader.ExcludedFiles == 1 ? " is" : "s are")} left out: written by agents or codex exec runs, not typed by you."
+            ? UiText.Format($" {reader.ExcludedFiles:N0} session file{(reader.ExcludedFiles == 1 ? " is" : "s are")} left out: written by agents or codex exec runs, not typed by you.")
             : string.Empty;
-        var session = reader.AddedThisSession > 0 ? $" {reader.AddedThisSession:N0} added since BetterClipboard started." : string.Empty;
-        return $"{where} as {name} writes them (only the new bytes).\n{kept}{session}{leftOut}";
+        var session = reader.AddedThisSession > 0 ? UiText.Format($" {reader.AddedThisSession:N0} added since BetterClipboard started.") : string.Empty;
+        return UiText.Format($"{where} as {name} writes them (only the new bytes).\n{kept}{session}{leftOut}");
     }
 
     /// <summary>Persists the Claude Code switch (the reader starts or stops; the status line follows its event).</summary>

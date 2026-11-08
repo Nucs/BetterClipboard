@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
@@ -156,10 +157,10 @@ public sealed partial class AppController
     public AppPaths Paths => paths;
 
     /// <summary>Settings store (valid after <see cref="Start"/>).</summary>
-    public SettingsStore Settings => settings ?? throw new InvalidOperationException("Not started.");
+    public SettingsStore Settings => settings ?? throw new InvalidOperationException(UiText.Translate("Not started."));
 
     /// <summary>History service (valid after <see cref="Start"/>).</summary>
-    public ClipHistoryService History => history ?? throw new InvalidOperationException("Not started.");
+    public ClipHistoryService History => history ?? throw new InvalidOperationException(UiText.Translate("Not started."));
 
     /// <summary>
     /// How the encrypted history store was opened (store id, folder, migration/quarantine flags) — for the
@@ -252,6 +253,8 @@ public sealed partial class AppController
 
         settings = new SettingsStore(paths.SettingsPath);
         settings.Load();
+        // Read the persisted selection before any view model or XAML markup resolves its labels.
+        Core.Localization.UiText.Language = settings.Current.InterfaceLanguage;
         rules = CaptureRules.FromSettings(settings.Current);
         settings.Changed += OnSettingsChanged;
 
@@ -463,8 +466,8 @@ public sealed partial class AppController
         if (outcome == PasteOutcome.TargetElevated && elevatedPasteNotified.Add(target))
         {
             tray?.ShowNotification(
-                "Copied: press Ctrl+V to paste",
-                "That window runs as administrator, and Windows does not let BetterClipboard type into it. The item is on the clipboard.");
+                UiText.Translate("Copied: press Ctrl+V to paste"),
+                UiText.Translate("That window runs as administrator, and Windows does not let BetterClipboard type into it. The item is on the clipboard."));
         }
     }
 
@@ -717,22 +720,22 @@ public sealed partial class AppController
             var importer = new WindowsHistoryImporter();
             var result = await Task.Run(() => importer.ReadAllAsync());
             int created = await History.ImportAsync(result.Captures);
-            var summary = $"Imported {created} new item{(created == 1 ? "" : "s")} from Windows " +
-                          $"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus)}; pinned on disk: {result.PinnedOnDisk}).";
+            var summary = UiText.Format($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows ") +
+                          UiText.Format($"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus)}; pinned on disk: {result.PinnedOnDisk}).");
             AppLog.Info(summary);
             return summary;
         }
         catch (Exception ex)
         {
             AppLog.Error("Importing Windows clipboard history failed.", ex);
-            return "Import failed: " + ex.Message;
+            return UiText.Translate("Import failed: ") + ex.Message;
         }
 
         static string Describe(string status) => status switch
         {
             "Success" => "read",
-            "ClipboardHistoryDisabled" => "turned off in Windows",
-            "AccessDenied" => "access denied",
+            "ClipboardHistoryDisabled" => UiText.Translate("turned off in Windows"),
+            "AccessDenied" => UiText.Translate("access denied"),
             _ => status,
         };
     }
@@ -875,7 +878,7 @@ public sealed partial class AppController
 
             // Ids and flags only — never the key, the binding or the identifiers they come from.
             AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
-                        $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
+                        UiText.Format($"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext})."));
             if (opened.QuarantinedDirectory is not null)
             {
                 AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
@@ -1173,7 +1176,7 @@ public sealed partial class AppController
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
                     // FirstPipeInstance failed: someone else holds the name. Never share it.
-                    CommandLineError = $"The bclip pipe is already in use by another program ({ex.Message}).";
+                    CommandLineError = UiText.Format($"The bclip pipe is already in use by another program ({ex.Message}).");
                     AppLog.Warn(CommandLineError);
                     await server.DisposeAsync();
                 }
@@ -1207,21 +1210,21 @@ public sealed partial class AppController
         var current = Settings.Current;
         List<TrayMenuItem> items =
         [
-            new TrayMenuItem($"Open clipboard\t{current.OpenHotkey}", () => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()))),
-            new TrayMenuItem("Settings…", () => ui.TryEnqueue(ShowSettings)),
+            new TrayMenuItem(UiText.Format($"Open clipboard\t{current.OpenHotkey}"), () => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()))),
+            new TrayMenuItem(UiText.Translate("Settings…"), () => ui.TryEnqueue(ShowSettings)),
         ];
 
         // Only while an update waits that the user did not skip: the same condition that highlights the panel's update
         // button, so the menu never nags about a version they chose to pass over. The snapshot is safe to read here.
         if (UpdateStatus is { IsInstalling: false, IsSkipped: false, Offer: { } offer })
         {
-            items.Add(new TrayMenuItem($"Update to {offer.Release.Version}…", () => ui.TryEnqueue(ShowUpdate)));
+            items.Add(new TrayMenuItem(UiText.Format($"Update to {offer.Release.Version}…"), () => ui.TryEnqueue(ShowUpdate)));
         }
 
         items.Add(TrayMenuItem.Separator);
-        items.Add(new TrayMenuItem("Pause capturing", () => ui.TryEnqueue(() => Settings.Update(s => s with { IsCapturePaused = !s.IsCapturePaused })), IsChecked: current.IsCapturePaused));
+        items.Add(new TrayMenuItem(UiText.Translate("Pause capturing"), () => ui.TryEnqueue(() => Settings.Update(s => s with { IsCapturePaused = !s.IsCapturePaused })), IsChecked: current.IsCapturePaused));
         items.Add(TrayMenuItem.Separator);
-        items.Add(new TrayMenuItem("Exit", () => ui.TryEnqueue(() => _ = ExitAsync())));
+        items.Add(new TrayMenuItem(UiText.Translate("Exit"), () => ui.TryEnqueue(() => _ = ExitAsync())));
         return items;
     }
 
@@ -1229,5 +1232,5 @@ public sealed partial class AppController
     /// <param name="current">Current settings.</param>
     /// <returns>The tooltip.</returns>
     private string TrayTooltip(AppSettings current) =>
-        current.IsCapturePaused ? "BetterClipboard — paused" : $"BetterClipboard — {current.OpenHotkey} to open";
+        current.IsCapturePaused ? "BetterClipboard — paused" : UiText.Format($"BetterClipboard — {current.OpenHotkey} to open");
 }

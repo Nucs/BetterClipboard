@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Runtime.InteropServices.WindowsRuntime;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
@@ -164,18 +165,18 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// reader announces that Ctrl+Enter runs it. A shell command names its shell ("PowerShell command"), a prompt its agent
     /// ("Claude Code prompt").
     /// </summary>
-    public string KindLabel => Pick is { } pick ? (pick.IsFolder ? "Folder opened in Everything" : "File opened in Everything")
-        : Entry.HasRunHistory ? "Win+R command"
+    public string KindLabel => Pick is { } pick ? (pick.IsFolder ? UiText.Translate("Folder opened in Everything") : UiText.Translate("File opened in Everything"))
+        : Entry.HasRunHistory ? UiText.Translate("Win+R command")
         : ShellCommandLabel is { } shellLabel ? shellLabel
         : PromptLabel is { } promptLabel ? promptLabel
         : Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
     {
-        ClipKind.RichText => "Formatted text",
-        ClipKind.Link => "Link",
-        ClipKind.Color => "Color",
-        ClipKind.Image => "Image",
-        ClipKind.Files => "Files",
-        _ => "Text",
+        ClipKind.RichText => UiText.Translate("Formatted text"),
+        ClipKind.Link => UiText.Translate("Link"),
+        ClipKind.Color => UiText.Translate("Color"),
+        ClipKind.Image => UiText.Translate("Image"),
+        ClipKind.Files => UiText.Translate("Files"),
+        _ => UiText.Translate("Text"),
     };
 
     /// <summary>Text body visibility (text, rich text, links, files).</summary>
@@ -290,7 +291,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
         if (Pick is { } pick)
         {
             // When it was last opened, and how often: Everything keeps one row per file, not one per opening.
-            var times = pick.RunCount == 1 ? "opened once" : $"opened {pick.RunCount:N0} times";
+            var times = pick.RunCount == 1 ? "opened once" : UiText.Format($"opened {pick.RunCount:N0} times");
             return pick.LastOpened is { } opened
                 ? $"Everything · {RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow)} · {times}"
                 : $"Everything · {times}";
@@ -304,7 +305,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
         else if (Entry.Origin == ClipOrigin.Captured)
         {
             // A live copy whose producer could not be identified (protected process, exited too fast).
-            parts.Add("Unknown app");
+            parts.Add(UiText.Translate("Unknown app"));
         }
 
         // Imported items (Windows never records their producer) show no source at all rather than a
@@ -318,13 +319,13 @@ public sealed partial class ClipItemViewModel : ObservableObject
         else if (Kind == ClipKind.Files)
         {
             int count = Entry.Preview.Split('\n').Length;
-            parts.Add(Entry.Preview.Contains(" more", StringComparison.Ordinal) ? "many files" : $"{count} file{(count == 1 ? "" : "s")}");
+            parts.Add(Entry.Preview.Contains(" more", StringComparison.Ordinal) ? "many files" : UiText.Format($"{count} file{(count == 1 ? "" : "s")}"));
         }
         else if (Entry.IsPathText)
         {
             // Tells why a text card shows up in the Files tab (and wins over "formatted" for a path copied
             // from a web page).
-            parts.Add(Entry.PathCount == 1 ? "path" : $"{Entry.PathCount} paths");
+            parts.Add(Entry.PathCount == 1 ? "path" : UiText.Format($"{Entry.PathCount} paths"));
         }
         else if (Entry.HasRichFormats && Kind == ClipKind.RichText)
         {

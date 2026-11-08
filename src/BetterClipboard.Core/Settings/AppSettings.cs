@@ -41,6 +41,9 @@ public enum AppTheme
 /// </remarks>
 public sealed record AppSettings
 {
+    /// <summary>Interface language (system, en, or zh-Hans); missing values preserve the system-language default.</summary>
+    public string InterfaceLanguage { get; init; } = "system";
+
     /// <summary>
     /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).
     /// The outer window's width, frame included, without the groups column.

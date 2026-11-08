@@ -155,10 +155,10 @@ public static class ExplorerHotkeys
 
         if (missing.Length > 0)
         {
-            var text = $"{Names(missing)} {IsAre(missing)} not released: BetterClipboard takes {ItThem(missing)} over with the keyboard hook while it runs.";
+            var text = BetterClipboard.Core.Localization.UiText.Format($"{Names(missing)} {IsAre(missing)} not released: BetterClipboard takes {ItThem(missing)} over with the keyboard hook while it runs.");
             if (released.Length > 0)
             {
-                text += $" {Names(released)} {IsAre(released)} released.";
+                text += BetterClipboard.Core.Localization.UiText.Format($" {Names(released)} {IsAre(released)} released.");
             }
 
             return new ExplorerReleasePlan(ExplorerReleaseAction.Release, missing, text + strayNote);
@@ -166,7 +166,7 @@ public static class ExplorerHotkeys
 
         char[] giveBack = strayV ? [.. releasable, 'V'] : [.. releasable];
         return new ExplorerReleasePlan(ExplorerReleaseAction.GiveBack, giveBack,
-            $"{Names(releasable)} {IsAre(releasable)} released from Explorer: Explorer does not register {ItThem(releasable)}, so BetterClipboard can." + strayNote);
+            BetterClipboard.Core.Localization.UiText.Format($"{Names(releasable)} {IsAre(releasable)} released from Explorer: Explorer does not register {ItThem(releasable)}, so BetterClipboard can.") + strayNote);
     }
 
     /// <summary>Shortcut names for keys: "Win+V", "Win+V and Win+C", "Win+V, Win+C and Win+1".</summary>

@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Globalization;
 using BetterClipboard.Core.Model;
 
@@ -27,13 +28,13 @@ public static class ForgottenText
         culture ??= CultureInfo.CurrentUICulture;
         return item.Kind switch
         {
-            ClipKind.Files => item.FileCount is { } files ? Count(files, "file", "files", culture) : "Files",
+            ClipKind.Files => item.FileCount is { } files ? Count(files, UiText.Translate("file"), UiText.Translate("files"), culture) : UiText.Translate("Files"),
             ClipKind.Image => item.ImageWidth is > 0 && item.ImageHeight is > 0
-                ? string.Create(culture, $"Image · {item.ImageWidth} × {item.ImageHeight}")
-                : "Image",
+                ? UiText.Format(culture, $"Image · {item.ImageWidth} × {item.ImageHeight}")
+                : UiText.Translate("Image"),
 
             // Rich text without plain text (HTML/RTF only) has no characters to count.
-            ClipKind.RichText when item.TextLength is null => "Formatted content",
+            ClipKind.RichText when item.TextLength is null => UiText.Translate("Formatted content"),
             _ => item.TextLength is { } length ? $"{KindName(item.Kind)} · {Count(length, "character", "characters", culture)}" : KindName(item.Kind),
         };
     }
@@ -55,13 +56,13 @@ public static class ForgottenText
         var parts = new List<string>(3);
         if (!string.IsNullOrWhiteSpace(item.SourceAppName))
         {
-            parts.Add($"from {item.SourceAppName}");
+            parts.Add(UiText.Format($"from {item.SourceAppName}"));
         }
 
-        parts.Add($"forgotten {RelativeTimeFormatter.Format(item.ForgottenUtc, now, zone, culture)}");
+        parts.Add(UiText.Format($"forgotten {RelativeTimeFormatter.Format(item.ForgottenUtc, now, zone, culture)}"));
         parts.Add(item.BlockedCount == 0 || item.LastBlockedUtc is not { } last
-            ? "not copied since"
-            : $"kept out {Count(item.BlockedCount, "time", "times", culture)}, last {RelativeTimeFormatter.Format(last, now, zone, culture)}");
+            ? UiText.Translate("not copied since")
+            : UiText.Format($"kept out {Count(item.BlockedCount, "time", "times", culture)}, last {RelativeTimeFormatter.Format(last, now, zone, culture)}"));
 
         var text = string.Join(" · ", parts);
         return char.ToUpper(text[0], culture) + text[1..];
@@ -72,12 +73,12 @@ public static class ForgottenText
     /// <returns>The name.</returns>
     private static string KindName(ClipKind kind) => kind switch
     {
-        ClipKind.RichText => "Formatted text",
-        ClipKind.Link => "Link",
-        ClipKind.Color => "Color",
-        ClipKind.Image => "Image",
-        ClipKind.Files => "Files",
-        _ => "Text",
+        ClipKind.RichText => UiText.Translate("Formatted text"),
+        ClipKind.Link => UiText.Translate("Link"),
+        ClipKind.Color => UiText.Translate("Color"),
+        ClipKind.Image => UiText.Translate("Image"),
+        ClipKind.Files => UiText.Translate("Files"),
+        _ => UiText.Translate("Text"),
     };
 
     /// <summary>"1 file" / "3 files" with grouped digits ("1,234 characters").</summary>
@@ -87,5 +88,5 @@ public static class ForgottenText
     /// <param name="culture">Number formatting.</param>
     /// <returns>The phrase.</returns>
     private static string Count(long count, string singular, string plural, CultureInfo culture) =>
-        string.Create(culture, $"{count:N0} {(count == 1 ? singular : plural)}");
+        UiText.Format(culture, $"{count:N0} {(count == 1 ? singular : plural)}");
 }

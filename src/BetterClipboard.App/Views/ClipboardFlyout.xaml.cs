@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Diagnostics;
 using System.Numerics;
 using BetterClipboard.App.Interop;
@@ -1230,35 +1231,35 @@ public sealed partial class ClipboardFlyout : Window
         }
 
         var menu = new MenuFlyout();
-        menu.Items.Add(MenuItem("Paste", "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
+        menu.Items.Add(MenuItem(UiText.Translate("Paste"), "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
         if (item.Entry.HasRichFormats || item.Kind == ClipKind.Files)
         {
-            menu.Items.Add(MenuItem(item.Kind == ClipKind.Files ? "Paste paths as text" : "Paste as plain text", "\uE8D2", "Shift+Enter",
+            menu.Items.Add(MenuItem(item.Kind == ClipKind.Files ? UiText.Translate("Paste paths as text") : UiText.Translate("Paste as plain text"), "\uE8D2", "Shift+Enter",
                 () => _ = PasteItemAsync(item, plainText: true)));
         }
 
-        menu.Items.Add(MenuItem("Copy only", "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
-        menu.Items.Add(MenuItem(item.IsPinned ? "Unpin" : "Pin", item.IsPinned ? "\uE77A" : "\uE718", "Ctrl+P",
+        menu.Items.Add(MenuItem(UiText.Translate("Copy only"), "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
+        menu.Items.Add(MenuItem(item.IsPinned ? UiText.Translate("Unpin") : UiText.Translate("Pin"), item.IsPinned ? "\uE77A" : "\uE718", "Ctrl+P",
             () => _ = TogglePinAsync(item)));
 
         if (item.Kind == ClipKind.Link && LinkDetector.TryGetLink(item.Preview, out var uri))
         {
-            menu.Items.Add(MenuItem("Open link", "\uE8A7", null, () => { Dismiss(false); _ = Launcher.LaunchUriAsync(uri!); }));
+            menu.Items.Add(MenuItem(UiText.Translate("Open link"), "\uE8A7", null, () => { Dismiss(false); _ = Launcher.LaunchUriAsync(uri!); }));
         }
         else if (item.Kind == ClipKind.Files)
         {
-            menu.Items.Add(MenuItem("Show in Explorer", "\uE8B7", null, () => { Dismiss(false); _ = RevealFilesAsync(item); }));
+            menu.Items.Add(MenuItem(UiText.Translate("Show in Explorer"), "\uE8B7", null, () => { Dismiss(false); _ = RevealFilesAsync(item); }));
             if (controller.IsEverythingTabAvailable)
             {
                 // Where is that file now? Everything finds it even when it moved since it was copied.
-                menu.Items.Add(MenuItem("Show in Everything", "\uE721", null, () => _ = ShowStoredInEverythingAsync(item)));
+                menu.Items.Add(MenuItem(UiText.Translate("Show in Everything"), "\uE721", null, () => _ = ShowStoredInEverythingAsync(item)));
             }
         }
 
         // Only commands run with Win+R before: running arbitrary copied text is one mistaken click from harm.
         if (item.Pick is null && item.Entry.HasRunHistory)
         {
-            menu.Items.Add(MenuItem("Run", RunGlyph, "Ctrl+Enter", () => _ = RunItemAsync(item, asAdministrator: false)));
+            menu.Items.Add(MenuItem(UiText.Translate("Run"), RunGlyph, "Ctrl+Enter", () => _ = RunItemAsync(item, asAdministrator: false)));
             menu.Items.Add(MenuItem("Run as administrator", RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
         }
 
@@ -1270,15 +1271,15 @@ public sealed partial class ClipboardFlyout : Window
         var viewed = ViewModel.SelectedGroups.Where(g => item.IsInGroup(g.Id)).ToList();
         if (viewed.Count > 0)
         {
-            menu.Items.Add(MenuItem($"Remove from {GroupViewText.AllOf(viewed)}", "\uE738", null, () => _ = RemoveFromGroupsAsync(item, viewed)));
+            menu.Items.Add(MenuItem(UiText.Format($"Remove from {GroupViewText.AllOf(viewed)}"), "\uE738", null, () => _ = RemoveFromGroupsAsync(item, viewed)));
         }
 
         menu.Items.Add(BuildGroupsSubMenu(item));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(MenuItem("Delete", "\uE74D", "Del", () => DeleteItem(item)));
+        menu.Items.Add(MenuItem(UiText.Translate("Delete"), "\uE74D", "Del", () => DeleteItem(item)));
 
         // Queued like the group menu's follow-ups: the confirmation opens after this menu has closed.
-        menu.Items.Add(MenuItem("Forget forever…", "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
+        menu.Items.Add(MenuItem(UiText.Translate("Forget forever…"), "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
 
         menu.Opened += Popup_Opened;
         menu.Closed += Popup_Closed;
@@ -1402,30 +1403,30 @@ public sealed partial class ClipboardFlyout : Window
         FrameworkElement anchor = ItemsList.ContainerFromItem(item) as FrameworkElement ?? ItemsList;
         var forget = new Button
         {
-            Content = "Forget forever",
+            Content = UiText.Translate("Forget forever"),
             HorizontalAlignment = HorizontalAlignment.Right,
             Style = (Style)Application.Current.Resources["AccentButtonStyle"],
         };
         var panel = new StackPanel { MaxWidth = 280, Spacing = 12 };
         panel.Children.Add(new TextBlock
         {
-            Text = "Forget this forever?",
+            Text = UiText.Translate("Forget this forever?"),
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
             TextWrapping = TextWrapping.Wrap,
         });
         panel.Children.Add(new TextBlock
         {
             Text = item.Pick is not null
-                ? "It leaves this tab, and BetterClipboard never records this file again, whichever app copies it. " +
-                  "Everything itself is not changed. To allow it again, use Settings › Forgotten forever."
+                ? UiText.Translate("It leaves this tab, and BetterClipboard never records this file again, whichever app copies it. ") +
+                  UiText.Translate("Everything itself is not changed. To allow it again, use Settings › Forgotten forever.")
                 : item.Command is not null
-                ? "It leaves this tab, and BetterClipboard never records this command again, whichever app copies it. " +
-                  "The shell's own history is not changed. To allow it again, use Settings › Forgotten forever."
+                ? UiText.Translate("It leaves this tab, and BetterClipboard never records this command again, whichever app copies it. ") +
+                  UiText.Translate("The shell's own history is not changed. To allow it again, use Settings › Forgotten forever.")
                 : item.Prompt is not null
-                ? "It leaves this tab and the prompt archive, and BetterClipboard never records or archives this text again, " +
-                  "whichever app copies it. The agent's own history is not changed. To allow it again, use Settings › Forgotten forever."
-                : "It is deleted now, and BetterClipboard never records it again, whichever app copies it. " +
-                  "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.",
+                ? UiText.Translate("It leaves this tab and the prompt archive, and BetterClipboard never records or archives this text again, ") +
+                  UiText.Translate("whichever app copies it. The agent's own history is not changed. To allow it again, use Settings › Forgotten forever.")
+                : UiText.Translate("It is deleted now, and BetterClipboard never records it again, whichever app copies it. ") +
+                  UiText.Translate("Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever."),
             Opacity = 0.8,
             TextWrapping = TextWrapping.Wrap,
         });
@@ -1644,19 +1645,19 @@ public sealed partial class ClipboardFlyout : Window
     private MenuFlyout ShowPickMenu(ClipItemViewModel item, EverythingPick pick, FrameworkElement target, global::Windows.Foundation.Point position)
     {
         var menu = new MenuFlyout();
-        menu.Items.Add(MenuItem(pick.IsFolder ? "Paste the folder" : "Paste the file", "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
-        menu.Items.Add(MenuItem("Paste the path as text", "\uE8D2", "Shift+Enter", () => _ = PasteItemAsync(item, plainText: true)));
-        menu.Items.Add(MenuItem("Copy only", "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
-        menu.Items.Add(MenuItem("Pin (keep in history)", "\uE718", "Ctrl+P", () => _ = TogglePinAsync(item)));
+        menu.Items.Add(MenuItem(pick.IsFolder ? UiText.Translate("Paste the folder") : UiText.Translate("Paste the file"), "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
+        menu.Items.Add(MenuItem(UiText.Translate("Paste the path as text"), "\uE8D2", "Shift+Enter", () => _ = PasteItemAsync(item, plainText: true)));
+        menu.Items.Add(MenuItem(UiText.Translate("Copy only"), "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
+        menu.Items.Add(MenuItem(UiText.Translate("Pin (keep in history)"), "\uE718", "Ctrl+P", () => _ = TogglePinAsync(item)));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(MenuItem("Open", "\uE8E5", null, () => { Dismiss(false); OpenPath(pick.FullPath); }));
-        menu.Items.Add(MenuItem("Show in Explorer", "\uE8B7", null, () => { Dismiss(false); RevealPath(pick.FullPath); }));
-        menu.Items.Add(MenuItem("Show in Everything", "\uE721", null, () => controller.ShowInEverything(pick.FullPath)));
+        menu.Items.Add(MenuItem(UiText.Translate("Open"), "\uE8E5", null, () => { Dismiss(false); OpenPath(pick.FullPath); }));
+        menu.Items.Add(MenuItem(UiText.Translate("Show in Explorer"), "\uE8B7", null, () => { Dismiss(false); RevealPath(pick.FullPath); }));
+        menu.Items.Add(MenuItem(UiText.Translate("Show in Everything"), "\uE721", null, () => controller.ShowInEverything(pick.FullPath)));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(BuildGroupsSubMenu(item));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(MenuItem("Hide until opened again", "\uED1A", "Del", () => DeleteItem(item)));
-        menu.Items.Add(MenuItem("Forget forever…", "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
+        menu.Items.Add(MenuItem(UiText.Translate("Hide until opened again"), "\uED1A", "Del", () => DeleteItem(item)));
+        menu.Items.Add(MenuItem(UiText.Translate("Forget forever…"), "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
         menu.Opened += Popup_Opened;
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });
@@ -1671,8 +1672,8 @@ public sealed partial class ClipboardFlyout : Window
         if (controller.StartEverything())
         {
             ViewModel.ShowStartEverything = false;
-            ViewModel.EmptyTitle = "Starting Everything…";
-            ViewModel.EmptyMessage = "The files you open in it show up here as soon as it is ready.";
+            ViewModel.EmptyTitle = UiText.Translate("Starting Everything…");
+            ViewModel.EmptyMessage = UiText.Translate("The files you open in it show up here as soon as it is ready.");
         }
 
         SearchBox.Focus(FocusState.Programmatic);
@@ -1737,7 +1738,7 @@ public sealed partial class ClipboardFlyout : Window
         var submenu = new MenuFlyoutSubItem { Text = "Groups", Icon = new FontIcon { Glyph = "\uE8EC" } };
         if (ViewModel.Groups.Count == 0)
         {
-            submenu.Items.Add(new MenuFlyoutItem { Text = "No groups yet: open the groups column (Ctrl+G) and press +", IsEnabled = false });
+            submenu.Items.Add(new MenuFlyoutItem { Text = UiText.Translate("No groups yet: open the groups column (Ctrl+G) and press +"), IsEnabled = false });
             return submenu;
         }
 
@@ -1849,7 +1850,7 @@ public sealed partial class ClipboardFlyout : Window
         GroupsToggle.Style = (Style)Application.Current.Resources[groupsPaneOpen ? "IconButtonActiveStyle" : "IconButtonStyle"];
         RibbonOutline.Visibility = groupsPaneOpen ? Visibility.Collapsed : Visibility.Visible;
         RibbonFilled.Visibility = groupsPaneOpen ? Visibility.Visible : Visibility.Collapsed;
-        AutomationProperties.SetName(GroupsToggle, groupsPaneOpen ? "Hide groups" : "Show groups");
+        AutomationProperties.SetName(GroupsToggle, groupsPaneOpen ? UiText.Translate("Hide groups") : UiText.Translate("Show groups"));
         UpdateGroupSelectionVisuals();
     }
 
@@ -1941,12 +1942,12 @@ public sealed partial class ClipboardFlyout : Window
             Tag = group.Id,
             AllowDrop = true,
         };
-        string count = group.ItemCount == 1 ? "1 item" : $"{group.ItemCount:N0} items";
+        string count = group.ItemCount == 1 ? "1 item" : UiText.Format($"{group.ItemCount:N0} items");
 
         // The tooltip is where a mouse user meets the multi-selection; screen readers get it as help text (their
         // route is the icon menu's "Add to view", since an invoke is a plain click).
         ToolTipService.SetToolTip(button, $"{group.Name} · {count}\n{MultiSelectHint}");
-        AutomationProperties.SetName(button, $"{group.Name} group, {count}");
+        AutomationProperties.SetName(button, UiText.Format($"{group.Name} group, {count}"));
         AutomationProperties.SetHelpText(button, MultiSelectHint);
         button.Click += (_, _) => ClickGroup(group.Id);
         button.RightTapped += (_, e) =>
@@ -2066,7 +2067,7 @@ public sealed partial class ClipboardFlyout : Window
         if (draggedClipIds is { Length: > 0 } && e.DataView.Contains(ClipIdsFormat))
         {
             e.AcceptedOperation = DataPackageOperation.Copy;
-            e.DragUIOverride.Caption = $"Add to {group.Name}";
+            e.DragUIOverride.Caption = UiText.Format($"Add to {group.Name}");
             SetDropHighlight(button, on: true);
         }
         else
@@ -2193,16 +2194,16 @@ public sealed partial class ClipboardFlyout : Window
         if (!selection.IsEmpty && !(selection.Ids is [var only] && only == group.Id))
         {
             bool shown = selection.Contains(group.Id);
-            menu.Items.Add(MenuItem(shown ? "Remove from view" : "Add to view", shown ? "\uE738" : "\uE710", "Ctrl+Click",
+            menu.Items.Add(MenuItem(shown ? UiText.Translate("Remove from view") : UiText.Translate("Add to view"), shown ? "\uE738" : "\uE710", "Ctrl+Click",
                 () => ViewModel.ToggleGroupInView(group.Id)));
             menu.Items.Add(new MenuFlyoutSeparator());
         }
 
         // The follow-up flyouts open after the menu has closed (queued), never on top of it.
-        menu.Items.Add(MenuItem("Rename…", "\uE8AC", null, () => DispatcherQueue.TryEnqueue(() => ShowRenameFlyout(group, button))));
-        menu.Items.Add(MenuItem("Change icon…", "\uE790", null, () => DispatcherQueue.TryEnqueue(() => ShowIconPicker(button, group))));
+        menu.Items.Add(MenuItem(UiText.Translate("Rename…"), "\uE8AC", null, () => DispatcherQueue.TryEnqueue(() => ShowRenameFlyout(group, button))));
+        menu.Items.Add(MenuItem(UiText.Translate("Change icon…"), "\uE790", null, () => DispatcherQueue.TryEnqueue(() => ShowIconPicker(button, group))));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(MenuItem("Delete group", "\uE74D", null, () => DispatcherQueue.TryEnqueue(() => ShowDeleteGroupFlyout(group, button))));
+        menu.Items.Add(MenuItem(UiText.Translate("Delete group"), "\uE74D", null, () => DispatcherQueue.TryEnqueue(() => ShowDeleteGroupFlyout(group, button))));
         menu.Opened += Popup_Opened;
         menu.Closed += Popup_Closed;
         menu.ShowAt(button, new FlyoutShowOptions { Position = position });
@@ -2220,15 +2221,15 @@ public sealed partial class ClipboardFlyout : Window
         var panel = new StackPanel { Width = 280, Spacing = 10 };
         panel.Children.Add(new TextBlock
         {
-            Text = existing is null ? "New group" : $"Icon for {existing.Name}",
+            Text = existing is null ? "New group" : UiText.Format($"Icon for {existing.Name}"),
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
         });
 
         TextBox? nameBox = null;
         if (existing is null)
         {
-            nameBox = new TextBox { PlaceholderText = "Name (optional)", MaxLength = ClipGroup.MaxNameLength };
-            AutomationProperties.SetName(nameBox, "Group name");
+            nameBox = new TextBox { PlaceholderText = UiText.Translate("Name (optional)"), MaxLength = ClipGroup.MaxNameLength };
+            AutomationProperties.SetName(nameBox, UiText.Translate("Group name"));
             panel.Children.Add(nameBox);
         }
 
@@ -2249,7 +2250,7 @@ public sealed partial class ClipboardFlyout : Window
         panel.Children.Add(new ScrollViewer { Content = grid, MaxHeight = 228, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         if (existing is null)
         {
-            panel.Children.Add(new TextBlock { Text = "Then drag cards onto the new icon to add them.", Opacity = 0.7, TextWrapping = TextWrapping.Wrap, FontSize = 12 });
+            panel.Children.Add(new TextBlock { Text = UiText.Translate("Then drag cards onto the new icon to add them."), Opacity = 0.7, TextWrapping = TextWrapping.Wrap, FontSize = 12 });
         }
 
         flyout.Content = panel;
@@ -2293,10 +2294,10 @@ public sealed partial class ClipboardFlyout : Window
     private void ShowRenameFlyout(ClipGroup group, FrameworkElement anchor)
     {
         var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220 };
-        AutomationProperties.SetName(box, "Group name");
+        AutomationProperties.SetName(box, UiText.Translate("Group name"));
         var save = new Button { Content = "Rename", HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         var panel = new StackPanel { Spacing = 10 };
-        panel.Children.Add(new TextBlock { Text = "Rename group", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
+        panel.Children.Add(new TextBlock { Text = UiText.Translate("Rename group"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         panel.Children.Add(box);
         panel.Children.Add(save);
         var flyout = new Flyout { Content = panel, Placement = FlyoutPlacementMode.RightEdgeAlignedTop };
@@ -2354,14 +2355,14 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="anchor">Placement target.</param>
     private void ShowDeleteGroupFlyout(ClipGroup group, FrameworkElement anchor)
     {
-        var delete = new Button { Content = "Delete group", HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var delete = new Button { Content = UiText.Translate("Delete group"), HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         var panel = new StackPanel { MaxWidth = 260, Spacing = 12 };
-        panel.Children.Add(new TextBlock { Text = $"Delete “{group.Name}”?", Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"], TextWrapping = TextWrapping.Wrap });
+        panel.Children.Add(new TextBlock { Text = UiText.Format($"Delete “{group.Name}”?"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"], TextWrapping = TextWrapping.Wrap });
         panel.Children.Add(new TextBlock
         {
             Text = group.ItemCount == 0
-                ? "The group is empty."
-                : "Its items stay in your history. Those in no other group are no longer kept like pinned items.",
+                ? UiText.Translate("The group is empty.")
+                : UiText.Translate("Its items stay in your history. Those in no other group are no longer kept like pinned items."),
             Opacity = 0.8,
             TextWrapping = TextWrapping.Wrap,
         });
@@ -2482,7 +2483,7 @@ public sealed partial class ClipboardFlyout : Window
         var result = await controller.RunCommandAsync(item.Entry, asAdministrator, hwnd);
         if (IsOpen && result is { Outcome: not RunCommandOutcome.Started } refused)
         {
-            ViewModel.StatusText = $"Not run: {refused.Describe()}";
+            ViewModel.StatusText = UiText.Format($"Not run: {refused.Describe()}");
         }
     }
 
@@ -2645,5 +2646,5 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>x:Bind helper: pause button tooltip.</summary>
     /// <param name="paused">Paused state.</param>
     /// <returns>The tooltip.</returns>
-    public string PauseTooltip(bool paused) => paused ? "Resume capturing" : "Pause capturing";
+    public string PauseTooltip(bool paused) => paused ? UiText.Translate("Resume capturing") : UiText.Translate("Pause capturing");
 }

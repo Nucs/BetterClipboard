@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Globalization;
 
 namespace BetterClipboard.Core.Presentation;
@@ -29,12 +30,12 @@ public static class RelativeTimeFormatter
         // Future timestamps (clock skew between machines/imports) read as "just now" rather than "-3 min".
         if (delta < TimeSpan.FromSeconds(45))
         {
-            return "just now";
+            return UiText.Translate("just now");
         }
 
         if (delta < TimeSpan.FromMinutes(60))
         {
-            return $"{Math.Max(1, (int)Math.Round(delta.TotalMinutes))} min ago";
+            return UiText.Format($"{Math.Max(1, (int)Math.Round(delta.TotalMinutes))} min ago");
         }
 
         var local = TimeZoneInfo.ConvertTime(timestamp, zone);
@@ -42,12 +43,12 @@ public static class RelativeTimeFormatter
         var time = local.ToString(culture.DateTimeFormat.ShortTimePattern, culture);
         if (local.Date == localNow.Date)
         {
-            return $"{(int)delta.TotalHours} h ago";
+            return UiText.Format($"{(int)delta.TotalHours} h ago");
         }
 
         if (local.Date == localNow.Date.AddDays(-1))
         {
-            return $"Yesterday {time}";
+            return UiText.Format($"Yesterday {time}");
         }
 
         if (localNow.Date - local.Date < TimeSpan.FromDays(7))

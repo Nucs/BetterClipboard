@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Shells;
 using BetterClipboard.Core.Storage;
 
@@ -128,22 +129,22 @@ public sealed partial class FlyoutViewModel
         bool powerShell = CurrentShell == ShellKind.PowerShell;
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
-            EmptyTitle = "No matches";
-            EmptyMessage = $"No command you typed in {(powerShell ? "PowerShell" : "Command Prompt")} {DescribeSearch()}.";
+            EmptyTitle = UiText.Translate("No matches");
+            EmptyMessage = UiText.Format($"No command you typed in {(powerShell ? "PowerShell" : "Command Prompt")} {DescribeSearch()}.");
         }
         else if (powerShell)
         {
-            EmptyTitle = "No PowerShell history yet";
-            EmptyMessage = "PowerShell (PSReadLine) saves every command you type to a history file — none was found yet. "
-                + "Type a command in PowerShell, and it shows up here, with every older one, searchable.";
+            EmptyTitle = UiText.Translate("No PowerShell history yet");
+            EmptyMessage = UiText.Translate("PowerShell (PSReadLine) saves every command you type to a history file — none was found yet. ")
+                + UiText.Translate("Type a command in PowerShell, and it shows up here, with every older one, searchable.");
         }
         else
         {
-            EmptyTitle = "No Command Prompt commands yet";
+            EmptyTitle = UiText.Translate("No Command Prompt commands yet");
             EmptyMessage = controller.Settings.Current.IsCapturePaused
-                ? "Capturing is paused: commands in open Command Prompt windows show up here, but none are kept."
-                : "cmd keeps no history file. Commands you type in a Command Prompt window show up here (read every 30 seconds), "
-                  + "and BetterClipboard keeps them after the window closes.";
+                ? UiText.Translate("Capturing is paused: commands in open Command Prompt windows show up here, but none are kept.")
+                : UiText.Translate("cmd keeps no history file. Commands you type in a Command Prompt window show up here (read every 30 seconds), ")
+                  + UiText.Translate("and BetterClipboard keeps them after the window closes.");
         }
     }
 
@@ -153,16 +154,16 @@ public sealed partial class FlyoutViewModel
     {
         int live = Items.Count(i => i.Command is not null);
         int stored = Items.Count - live;
-        var kept = stored > 0 ? $" · {stored:N0} kept" : string.Empty;
+        var kept = stored > 0 ? UiText.Format($" · {stored:N0} kept") : string.Empty;
         int total = lastShellCommands.Count;
         if (CurrentShell == ShellKind.PowerShell)
         {
-            var shown = live < total ? $"{live:N0} of {total:N0}" : $"{live:N0}";
-            return $"{shown} command{(total == 1 ? string.Empty : "s")} in PowerShell's history{kept}";
+            var shown = live < total ? UiText.Format($"{live:N0} of {total:N0}") : $"{live:N0}";
+            return UiText.Format($"{shown} command{(total == 1 ? string.Empty : "s")} in PowerShell's history{kept}");
         }
 
         int windows = controller.CmdOpenWindows;
-        var open = windows > 0 ? $" · {windows:N0} open window{(windows == 1 ? string.Empty : "s")}" : string.Empty;
-        return $"{live:N0} Command Prompt command{(live == 1 ? string.Empty : "s")}{open}{kept}";
+        var open = windows > 0 ? UiText.Format($" · {windows:N0} open window{(windows == 1 ? string.Empty : "s")}") : string.Empty;
+        return UiText.Format($"{live:N0} Command Prompt command{(live == 1 ? string.Empty : "s")}{open}{kept}");
     }
 }
