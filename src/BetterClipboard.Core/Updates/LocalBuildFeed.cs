@@ -223,12 +223,12 @@ public static class LocalBuildFeed
             var info = new FileInfo(path);
             if (!info.Exists)
             {
-                throw new UpdateException(UpdateFailure.Storage, $"The build's {checksums.Name} is gone from the dev-builds folder, so the build cannot be verified. Nothing was installed.");
+                throw new UpdateException(UpdateFailure.Storage, UpdateMessages.Format(UpdateMessages.BuildChecksumsGone, checksums.Name));
             }
 
             if (info.Length > MaxChecksumListBytes)
             {
-                throw new UpdateException(UpdateFailure.BadResponse, $"The build's {checksums.Name} is larger than a checksum list can be and was not read. Nothing was installed.");
+                throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.BuildChecksumsTooLarge, checksums.Name));
             }
 
             var bytes = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
@@ -236,7 +236,7 @@ public static class LocalBuildFeed
         }
         catch (Exception ex) when (IsFileFailure(ex))
         {
-            throw new UpdateException(UpdateFailure.Storage, $"The build's {checksums.Name} could not be read ({ex.Message}). Nothing was installed.", ex);
+            throw new UpdateException(UpdateFailure.Storage, UpdateMessages.Format(UpdateMessages.BuildChecksumsUnreadable, checksums.Name, ex.Message), ex);
         }
     }
 
@@ -281,18 +281,18 @@ public static class LocalBuildFeed
             }
             catch (FileNotFoundException ex)
             {
-                throw new UpdateException(UpdateFailure.Storage, $"{package.Name} is gone from the dev-builds folder. Publish the build again. Nothing was installed.", ex);
+                throw new UpdateException(UpdateFailure.Storage, UpdateMessages.Format(UpdateMessages.BuildPackageGone, package.Name), ex);
             }
             catch (DirectoryNotFoundException ex)
             {
-                throw new UpdateException(UpdateFailure.Storage, $"{package.Name} is gone from the dev-builds folder. Publish the build again. Nothing was installed.", ex);
+                throw new UpdateException(UpdateFailure.Storage, UpdateMessages.Format(UpdateMessages.BuildPackageGone, package.Name), ex);
             }
 
             await using (input)
             {
                 if (package.Size > 0 && input.Length != package.Size)
                 {
-                    throw new UpdateException(UpdateFailure.BadResponse, $"{package.Name} changed in the dev-builds folder after it was offered. Open the update dialog again. Nothing was installed.");
+                    throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.BuildPackageChangedSinceOffer, package.Name));
                 }
 
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(targetPath))!);
@@ -310,7 +310,7 @@ public static class LocalBuildFeed
                         // The stated size is the most a copy may hold: a file that grows while it is read is being rewritten.
                         if (package.Size > 0 && copied > package.Size)
                         {
-                            throw new UpdateException(UpdateFailure.BadResponse, $"{package.Name} changed in the dev-builds folder while it was copied. Nothing was installed.");
+                            throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.BuildPackageChangedWhileCopied, package.Name));
                         }
 
                         hash.AppendData(buffer.AsSpan(0, read));
@@ -327,7 +327,7 @@ public static class LocalBuildFeed
 
                 if (package.Size > 0 && copied != package.Size)
                 {
-                    throw new UpdateException(UpdateFailure.BadResponse, $"{package.Name} changed in the dev-builds folder while it was copied. Nothing was installed.");
+                    throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.BuildPackageChangedWhileCopied, package.Name));
                 }
 
                 var sha256 = Convert.ToHexStringLower(hash.GetHashAndReset());
@@ -339,7 +339,7 @@ public static class LocalBuildFeed
         catch (Exception ex) when (ex is not UpdateException and not OperationCanceledException && IsFileFailure(ex))
         {
             TryDelete(partial);
-            throw new UpdateException(UpdateFailure.Storage, $"The build could not be copied from the dev-builds folder: {ex.Message}", ex);
+            throw new UpdateException(UpdateFailure.Storage, UpdateMessages.Format(UpdateMessages.BuildNotCopied, ex.Message), ex);
         }
         catch
         {
@@ -385,7 +385,7 @@ public static class LocalBuildFeed
         // Assets come from Read, so this only fails on a bug or a list that was tampered with in memory: never follow it.
         if (!IsInside(directory, asset.DownloadUrl))
         {
-            throw new UpdateException(UpdateFailure.BadResponse, $"{asset.Name} is not a file in the dev-builds folder, so it was not used. Nothing was installed.");
+            throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.BuildAssetNotAFile, asset.Name));
         }
 
         return Path.GetFullPath(asset.DownloadUrl.LocalPath);

@@ -285,6 +285,29 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// "Restart now" next to the language list: restarts BetterClipboard so the chosen language applies to every window.
+    /// No confirmation: the button only shows after the user picked another language, and a restart loses nothing (the
+    /// new process opens Settings again).
+    /// </summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private async void RestartForLanguage_Click(object sender, RoutedEventArgs e)
+    {
+        // A second click while the old process drains its queue must not start a second new process.
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+        }
+
+        await ViewModel.RestartForLanguageAsync();
+        if (sender is Button again)
+        {
+            // Reached only when the restart did not happen (otherwise this process is exiting): let the user try again.
+            again.IsEnabled = true;
+        }
+    }
+
     /// <summary>"Allow all again", after confirmation.</summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
@@ -353,7 +376,7 @@ public sealed partial class SettingsWindow : Window
         try
         {
             if (await ConfirmAsync(
-                    UiText.Format($"Delete {count:N0} stored {name} prompt{(count == 1 ? string.Empty : "s")}?"),
+                    UiText.Plural(count, $"Delete {count:N0} stored {name} prompt?", $"Delete {count:N0} stored {name} prompts?"),
                     UiText.Format($"BetterClipboard's copy is deleted; {name}'s own files are not changed. Prompts {name} no longer has are gone for good.")
                     + (on ? UiText.Format($" The switch is on, so what {name} still has is read again right away — turn it off first to keep them out.") : string.Empty),
                     UiText.Translate("Delete")))
@@ -553,13 +576,21 @@ public sealed partial class SettingsWindow : Window
 
             bool release = plan.Action == BetterClipboard.Windows.Shell.ExplorerReleaseAction.Release;
             bool one = plan.Keys.Count == 1;
-            var names = plan.KeyNames;
-            const string Restart = "Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.";
+            var names = plan.DisplayKeyNames;
+
+            // Whole sentences for one shortcut and for several: an English "it" or "them" put into a translated template
+            // once showed inside Chinese text.
+            var restart = UiText.Translate("Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.");
+            var body = (release, one) switch
+            {
+                (true, true) => UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own it without a keyboard hook. While BetterClipboard is not running, it does nothing. {restart}"),
+                (true, false) => UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own them without a keyboard hook. While BetterClipboard is not running, they do nothing. {restart}"),
+                (false, true) => UiText.Format($"Explorer will register {names} again (Windows' own shortcut). {restart}"),
+                (false, false) => UiText.Format($"Explorer will register {names} again (Windows' own shortcuts). {restart}"),
+            };
             var confirmed = await ConfirmAsync(
                 release ? UiText.Format($"Release {names} from Explorer?") : UiText.Format($"Give {names} back to Explorer?"),
-                release
-                    ? UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own {(one ? "it" : "them")} without a keyboard hook. While BetterClipboard is not running, {(one ? "it does" : "they do")} nothing. {Restart}")
-                    : UiText.Format($"Explorer will register {names} again (Windows' own {(one ? "shortcut" : "shortcuts")}). {Restart}"),
+                body,
                 release ? UiText.Translate("Release and restart Explorer") : UiText.Translate("Restore and restart Explorer"));
             if (confirmed)
             {
@@ -662,7 +693,7 @@ public sealed partial class SettingsWindow : Window
     /// <summary>x:Bind helper: capture status text.</summary>
     /// <param name="paused">Paused state.</param>
     /// <returns>The text.</returns>
-    public string CaptureText(bool paused) => paused ? UiText.Translate("Paused") : "Capturing";
+    public string CaptureText(bool paused) => paused ? UiText.Translate("Paused") : UiText.Translate("Capturing");
 
     /// <summary>x:Bind helper: visible when the text is non-empty.</summary>
     /// <param name="text">Text.</param>

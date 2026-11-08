@@ -106,9 +106,11 @@ public sealed partial class SettingsViewModel
     private static string PromptStatusLine(PromptAgent agent, bool on, AgentPromptsIntegration? reader, PromptStats stats)
     {
         var name = PromptAgents.NameOf(agent);
+        // Two counts, two plurals: the sends are worded on their own, then placed in the prompts' sentence.
+        var sends = UiText.Plural(stats.Sends, $"{stats.Sends:N0} send", $"{stats.Sends:N0} sends");
         var kept = stats.Sends == 0
             ? UiText.Translate("No prompts stored yet.")
-            : UiText.Format($"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")} stored ({stats.Sends:N0} sends)")
+            : UiText.Plural(stats.Distinct, $"{stats.Distinct:N0} prompt stored ({sends})", $"{stats.Distinct:N0} prompts stored ({sends})")
               + (stats.NewestSentUtc is { } newest ? UiText.Format($", the newest {RelativeTimeFormatter.Format(newest, DateTimeOffset.UtcNow)}.") : ".");
         if (!on)
         {
@@ -128,11 +130,14 @@ public sealed partial class SettingsViewModel
         if (reader.IsImporting)
         {
             var (done, total) = reader.ImportProgress;
-            return UiText.Format($"{where}. First import: {done:N0} of {total:N0} files read. {kept}");
+            return UiText.Plural(total, $"{where}. First import: {done:N0} of {total:N0} file read. {kept}", $"{where}. First import: {done:N0} of {total:N0} files read. {kept}");
         }
 
         var leftOut = reader.ExcludedFiles > 0
-            ? UiText.Format($" {reader.ExcludedFiles:N0} session file{(reader.ExcludedFiles == 1 ? " is" : "s are")} left out: written by agents or codex exec runs, not typed by you.")
+            ? UiText.Plural(
+                reader.ExcludedFiles,
+                $" {reader.ExcludedFiles:N0} session file is left out: written by agents or codex exec runs, not typed by you.",
+                $" {reader.ExcludedFiles:N0} session files are left out: written by agents or codex exec runs, not typed by you.")
             : string.Empty;
         var session = reader.AddedThisSession > 0 ? UiText.Format($" {reader.AddedThisSession:N0} added since BetterClipboard started.") : string.Empty;
         return UiText.Format($"{where} as {name} writes them (only the new bytes).\n{kept}{session}{leftOut}");

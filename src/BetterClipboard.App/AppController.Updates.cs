@@ -215,15 +215,15 @@ public sealed partial class AppController
         return UpdateSource.GitHub;
     }
 
-    /// <summary>Words an install kind for the log.</summary>
+    /// <summary>Words an install kind for the log, in English whatever the interface language: the log is the developer's.</summary>
     /// <param name="kind">The kind.</param>
     /// <returns>A short description.</returns>
     private static string DescribeInstallKind(UpdateInstallKind kind) => kind switch
     {
-        UpdateInstallKind.Installer => UiText.Translate("installed by the installer (it can update itself)"),
-        UpdateInstallKind.Chocolatey => UiText.Translate("a Chocolatey install (Chocolatey updates it)"),
-        UpdateInstallKind.AllUsers => UiText.Translate("installed for every user of this PC (an administrator updates it)"),
-        _ => UiText.Translate("not installed by the installer (updates come from the download page)"),
+        UpdateInstallKind.Installer => "installed by the installer (it can update itself)",
+        UpdateInstallKind.Chocolatey => "a Chocolatey install (Chocolatey updates it)",
+        UpdateInstallKind.AllUsers => "installed for every user of this PC (an administrator updates it)",
+        _ => "not installed by the installer (updates come from the download page)",
     };
 
     /// <summary>
@@ -236,12 +236,13 @@ public sealed partial class AppController
         if (result.Succeeded)
         {
             AppLog.Info($"The update to {Version} was installed.");
-            tray?.ShowNotification(UiText.Format($"BetterClipboard was updated to {Version}"), "The update button in the panel shows what is new.");
+            tray?.ShowNotification(UiText.Format($"BetterClipboard was updated to {Version}"), UiText.Translate("The update button in the panel shows what is new."));
             return;
         }
 
+        // The log keeps English; the notification below follows the interface language.
+        AppLog.Warn($"The update{(result.Version.Length > 0 ? $" to {result.Version}" : string.Empty)} was not installed: {result.Error}");
         var version = result.Version.Length > 0 ? UiText.Format($" to {result.Version}") : string.Empty;
-        AppLog.Warn($"The update{version} was not installed: {result.Error}");
         var reason = result.Error.Length > MaxNotificationText ? result.Error[..MaxNotificationText] + "…" : result.Error;
         tray?.ShowNotification(
             UiText.Format($"The update{version} was not installed"),

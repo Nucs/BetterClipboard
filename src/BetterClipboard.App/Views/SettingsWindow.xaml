@@ -109,7 +109,7 @@
                         <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="BetterClipboard" />
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Text="{loc:Tr Key=Tb6c6e5318383}"
+                            Text="{loc:Tr Text='Everything you copy — kept, searchable and pinned. Even after a restart.'}"
                             TextWrapping="Wrap" />
                         <StackPanel
                             Margin="0,6,0,0"
@@ -141,11 +141,11 @@
                 </Grid>
 
                 <!--  Shortcut  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=T5753ea3780f3}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Shortcut'}" />
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.HotkeyStatus, Mode=OneWay}"
                     Glyph="&#xE765;"
-                    Header="{loc:Tr Key=T6f6f44619212}">
+                    Header="{loc:Tr Text='Open BetterClipboard'}">
                     <StackPanel Spacing="4">
                         <!--
                           The box adds a shortcut to the list below: Enter or the Add button (HotkeyBox_KeyDown,
@@ -166,19 +166,19 @@
                             <TextBox
                                 x:Name="HotkeyBox"
                                 MinWidth="190"
-                                AutomationProperties.HelpText="Press the keys of the shortcut, or type its name, then press Enter."
-                                AutomationProperties.Name="{loc:Tr Key=Ta61a1d57d437}"
+                                AutomationProperties.HelpText="{loc:Tr Text='Press the keys of the shortcut, or type its name, then press Enter.'}"
+                                AutomationProperties.Name="{loc:Tr Text='Add a shortcut that opens BetterClipboard'}"
                                 GotFocus="HotkeyBox_GotFocus"
                                 KeyDown="HotkeyBox_KeyDown"
                                 LostFocus="HotkeyBox_LostFocus"
-                                PlaceholderText="{loc:Tr Key=T80a48ba602f2}"
+                                PlaceholderText="{loc:Tr Text='Press a shortcut, or type one'}"
                                 Text="{x:Bind ViewModel.NewHotkeyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <Button
                                 Grid.Column="1"
                                 VerticalAlignment="Stretch"
-                                AutomationProperties.Name="{loc:Tr Key=T239314aefce6}"
+                                AutomationProperties.Name="{loc:Tr Text='Add shortcut'}"
                                 Click="AddHotkey_Click"
-                                Content="{loc:Tr Key=T9fd728c66c9a}" />
+                                Content="{loc:Tr Text='Add'}" />
                             <!--
                               Presets, then "Used before" (AppSettings.HotkeyHistory), rebuilt each time the menu opens.
                               Both are toggles: a checked one is in the list, and picking it again removes it.
@@ -186,8 +186,8 @@
                             <DropDownButton
                                 Grid.Column="2"
                                 VerticalAlignment="Stretch"
-                                AutomationProperties.Name="{loc:Tr Key=T1dea1791b63a}"
-                                ToolTipService.ToolTip="{loc:Tr Key=T28526ce4685b}">
+                                AutomationProperties.Name="{loc:Tr Text='Suggested shortcuts and shortcuts used before'}"
+                                ToolTipService.ToolTip="{loc:Tr Text='Suggested shortcuts, and the ones you used before'}">
                                 <DropDownButton.Flyout>
                                     <MenuFlyout
                                         x:Name="HotkeyPresetsMenu"
@@ -245,7 +245,7 @@
                                             VerticalAlignment="Center"
                                             AutomationProperties.Name="{x:Bind RemoveName}"
                                             Click="RemoveHotkey_Click"
-                                            Content="{loc:Tr Key=Tc3812fc4acb8}"
+                                            Content="{loc:Tr Text='Remove'}"
                                             IsEnabled="{x:Bind CanRemove}"
                                             Tag="{x:Bind Text}" />
                                     </Grid>
@@ -261,26 +261,26 @@
                   screen the user is typing on (FlyoutPositioner.ChooseScreen).
                 -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T88640766017a}"
+                    Description="{loc:Tr Text='Where the clipboard panel opens. The current screen is the one you are typing on, or the one with the mouse when you are on the desktop.'}"
                     Glyph="&#xE8A7;"
-                    Header="{loc:Tr Key=T894d7f01eb87}">
+                    Header="{loc:Tr Text='Panel position'}">
                     <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.PlacementIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="{loc:Tr Key=T063543517b31}" />
-                        <ComboBoxItem Content="{loc:Tr Key=Tda7ca90ff4a1}" />
-                        <ComboBoxItem Content="{loc:Tr Key=Ted615dd586a6}" />
-                        <ComboBoxItem Content="{loc:Tr Key=T4b75609443c3}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Next to the text cursor'}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Next to the mouse'}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Center of the main screen'}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Center of the current screen'}" />
                     </ComboBox>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Ta7f11ff9cde7}"
+                    Description="{loc:Tr Text='Win+V belongs to Windows, and other shortcuts may belong to other apps. When on, BetterClipboard intercepts exactly your shortcuts that are taken with a keyboard hook while it runs — quit BetterClipboard and their owners get them back instantly.'}"
                     Glyph="&#xEDA7;"
-                    Header="{loc:Tr Key=T4a1dc53d09c1}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.UseKeyboardHookFallback, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Take over shortcuts owned by Windows'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.UseKeyboardHookFallback, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T783ba192f002}"
+                    Description="{loc:Tr Text='Advanced: tells Explorer not to register your Win+letter shortcuts (Win+V…) at all (DisabledHotkeys), so no hook is needed and they work over admin windows too. Restarts Explorer. While BetterClipboard is not running, those shortcuts then do nothing.'}"
                     Glyph="&#xEC50;"
-                    Header="{loc:Tr Key=T9e83803aa48f}">
+                    Header="{loc:Tr Text='Release from Explorer'}">
                     <Button
                         Click="ReleaseFromExplorer_Click"
                         Content="{x:Bind ViewModel.ExplorerReleaseButtonText, Mode=OneWay}"
@@ -295,11 +295,11 @@
                 </controls:SettingsCard>
 
                 <!--  History  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=T0e7696009337}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='History'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T64e67f12ffd7}"
+                    Description="{loc:Tr Text='The oldest items are removed beyond this count; pinned items and items in groups are kept and not counted. 0 = unlimited. (Win+V keeps 25.)'}"
                     Glyph="&#xE81C;"
-                    Header="{loc:Tr Key=T42e5c702ae42}">
+                    Header="{loc:Tr Text='Maximum items'}">
                     <NumberBox
                         MinWidth="140"
                         LargeChange="1000"
@@ -310,9 +310,9 @@
                         Value="{x:Bind ViewModel.MaxItems, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Ta2302c232999}"
+                    Description="{loc:Tr Text='Items not used for this many days are removed, except pinned items and items in groups. 0 = keep forever.'}"
                     Glyph="&#xE917;"
-                    Header="{loc:Tr Key=T602c7bafd9d6}">
+                    Header="{loc:Tr Text='Keep items for (days)'}">
                     <NumberBox
                         MinWidth="140"
                         Maximum="36500"
@@ -321,9 +321,9 @@
                         Value="{x:Bind ViewModel.RetentionDays, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Td35bd4dca3b0}"
+                    Description="{loc:Tr Text='Copies larger than this are not recorded. (Win+V caps at 4 MB.)'}"
                     Glyph="&#xE7C3;"
-                    Header="{loc:Tr Key=Td610b253d8a7}">
+                    Header="{loc:Tr Text='Largest item (MB)'}">
                     <NumberBox
                         MinWidth="140"
                         Maximum="1024"
@@ -332,9 +332,9 @@
                         Value="{x:Bind ViewModel.MaxItemSizeMB, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T488d84daaad3}"
+                    Description="{loc:Tr Text='Total size budget for history outside pins and groups; the least recently used items go first. 0 = unlimited.'}"
                     Glyph="&#xE8B7;"
-                    Header="{loc:Tr Key=Tbd66f239fde2}">
+                    Header="{loc:Tr Text='History size budget (MB)'}">
                     <NumberBox
                         MinWidth="140"
                         LargeChange="1024"
@@ -345,57 +345,57 @@
                         Value="{x:Bind ViewModel.MaxTotalSizeMB, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Ta4809902b7ad}"
+                    Description="{loc:Tr Text='Screenshots and copied images, with thumbnails.'}"
                     Glyph="&#xE91B;"
-                    Header="{loc:Tr Key=Tf4fa657ed328}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.CaptureImages, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Record images'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.CaptureImages, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Te09de8c2cd30}"
+                    Description="{loc:Tr Text='Files copied in Explorer (their paths — not the file contents).'}"
                     Glyph="&#xE8E5;"
-                    Header="{loc:Tr Key=T7a6a36e38c31}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.CaptureFiles, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Record copied files'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.CaptureFiles, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T9b879c1c1028}"
+                    Description="{loc:Tr Text='Also keep app-specific formats (Office, IDEs, design tools) for pixel-perfect pastes. Uses much more disk space.'}"
                     Glyph="&#xE943;"
-                    Header="{loc:Tr Key=T331ea7b7965e}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.PreserveAllFormats, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Preserve app-specific formats'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PreserveAllFormats, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <!--  Pasting  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=T32b02dac5489}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Pasting'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Tea00ebbf8563}"
+                    Description="{loc:Tr Text='After you pick an item, paste it into the app you came from (like Win+V). Off = only copy it.'}"
                     Glyph="&#xE77F;"
-                    Header="{loc:Tr Key=Tc8631cd93ef3}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.PasteOnSelect, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Paste after choosing an item'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PasteOnSelect, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Tdfc9fe90ac3b}"
+                    Description="{loc:Tr Text='Items you paste from history jump back to the top.'}"
                     Glyph="&#xE72A;"
-                    Header="{loc:Tr Key=T154354bfb90f}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.MoveToTopOnPaste, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Move pasted items to the top'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.MoveToTopOnPaste, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T7ffed93d48ee}"
+                    Description="{loc:Tr Text='Pinned items are listed before everything else. The panel still selects your newest copy, just below them.'}"
                     Glyph="&#xE840;"
-                    Header="{loc:Tr Key=T4ab0ecb908e1}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.PinnedOnTop, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Show pinned items first'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PinnedOnTop, Mode=TwoWay}" />
                 </controls:SettingsCard>
 
                 <!--  Privacy  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=T54a57c3147c4}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Privacy'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T76d6d31cb5a9}"
+                    Description="{loc:Tr Text='Stop recording new copies until you resume. Password managers that mark their copies as private are always skipped.'}"
                     Glyph="&#xE769;"
-                    Header="{loc:Tr Key=T2bb9b17ce493}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.IsCapturePaused, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Pause capturing'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.IsCapturePaused, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Ta103e3e5bea9}"
+                    Description="{loc:Tr Text='Never record copies from these apps (process names, one per line). Comes filled with known password managers and authenticator apps (1Password, Bitwarden, KeePass, KeePassXC, LastPass, Proton Pass, RoboForm and many more); delete any you do want recorded and they stay deleted. Managers that work only inside the browser cannot be told apart from the browser.'}"
                     Glyph="&#xEA18;"
-                    Header="{loc:Tr Key=Tac7a423f1531}">
+                    Header="{loc:Tr Text='Ignored apps'}">
                     <controls:SettingsCard.Footer>
                         <Grid ColumnSpacing="8">
                             <Grid.ColumnDefinitions>
@@ -418,23 +418,23 @@
                                 <Button
                                     HorizontalAlignment="Stretch"
                                     Click="AddKnownPasswordManagers_Click"
-                                    Content="{loc:Tr Key=Tcd058b100c10}"
-                                    ToolTipService.ToolTip="{loc:Tr Key=T8569b837987c}" />
+                                    Content="{loc:Tr Text='Add known password managers'}"
+                                    ToolTipService.ToolTip="{loc:Tr Text='Puts back every known password manager and authenticator that is missing from the list, then saves it.'}" />
                                 <Button
                                     HorizontalAlignment="Stretch"
                                     Click="ApplyIgnoredApps_Click"
-                                    Content="{loc:Tr Key=T31e392d1c037}" />
+                                    Content="{loc:Tr Text='Apply'}" />
                             </StackPanel>
                         </Grid>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T08dbe40b4edf}"
+                    Description="{loc:Tr Text=&quot;Items you forget forever (in the panel: right-click an item › Forget forever) are deleted and never recorded again, whichever app copies them. Line endings and spaces around the text don't matter; everything else has to match. Only a fingerprint of each is kept, encrypted with your history, plus its kind, length and source app so you can tell them apart here.&quot;}"
                     Glyph="&#xE733;"
-                    Header="{loc:Tr Key=T573c341b63a5}">
+                    Header="{loc:Tr Text='Forgotten forever'}">
                     <Button
                         Click="AllowAllForgotten_Click"
-                        Content="{loc:Tr Key=Tacc0ac378678}"
+                        Content="{loc:Tr Text='Allow all again…'}"
                         IsEnabled="{x:Bind ViewModel.HasForgotten, Mode=OneWay}" />
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="4">
@@ -469,7 +469,7 @@
                                                     VerticalAlignment="Center"
                                                     AutomationProperties.Name="{x:Bind AllowAgainName}"
                                                     Click="AllowAgain_Click"
-                                                    Content="{loc:Tr Key=Tc01a661b40b9}"
+                                                    Content="{loc:Tr Text='Allow again'}"
                                                     Tag="{x:Bind Id}" />
                                             </Grid>
                                         </DataTemplate>
@@ -482,36 +482,36 @@
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.EncryptionStatus}"
                     Glyph="&#xE72E;"
-                    Header="{loc:Tr Key=T89808f3e4651}" />
+                    Header="{loc:Tr Text='Encrypted history'}" />
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.CaptureReliabilityText, Mode=OneWay}"
                     Glyph="&#xE9D9;"
-                    Header="{loc:Tr Key=T95bde9396a25}" />
+                    Header="{loc:Tr Text='Capture reliability'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T00a57b01f388}"
+                    Description="{loc:Tr Text=&quot;Delete history permanently. Clearing keeps pinned items and items in groups; 'Everything' removes them too (the groups stay, empty). Forgotten items stay forgotten either way.&quot;}"
                     Glyph="&#xE74D;"
-                    Header="{loc:Tr Key=T496121494e4a}">
+                    Header="{loc:Tr Text='Clear history'}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Click="ClearUnpinned_Click" Content="{loc:Tr Key=T83b12c2216ef}" />
-                        <Button Click="ClearAll_Click" Content="{loc:Tr Key=T5dcd2e9debc0}" />
+                        <Button Click="ClearUnpinned_Click" Content="{loc:Tr Text='Clear'}" />
+                        <Button Click="ClearAll_Click" Content="{loc:Tr Text='Everything…'}" />
                     </StackPanel>
                 </controls:SettingsCard>
 
                 <!--  Windows clipboard  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=Tc340136f2afb}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Windows clipboard'}" />
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.WindowsHistoryStatus, Mode=OneWay}"
                     Glyph="&#xE77F;"
-                    Header="{loc:Tr Key=T577163190596}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.IsWindowsHistoryEnabled, Mode=OneWay}" Toggled="WindowsHistory_Toggled" />
+                    Header="{loc:Tr Text=&quot;Windows' own clipboard history&quot;}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.IsWindowsHistoryEnabled, Mode=OneWay}" Toggled="WindowsHistory_Toggled" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T531e9e2ae1b9}"
+                    Description="{loc:Tr Text=&quot;Bring in everything Win+V still remembers, including its pinned items (decrypted from Windows' pinned store with your own account).&quot;}"
                     Glyph="&#xE8B5;"
-                    Header="{loc:Tr Key=T7dda26ca4a36}">
+                    Header="{loc:Tr Text='Import from Windows'}">
                     <Button
                         Click="ImportNow_Click"
-                        Content="{loc:Tr Key=T6da9285b1e4f}"
+                        Content="{loc:Tr Text='Import now'}"
                         IsEnabled="{x:Bind Not(ViewModel.IsImporting), Mode=OneWay}" />
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="8">
@@ -521,18 +521,18 @@
                                 Text="{x:Bind ViewModel.ImportStatus, Mode=OneWay}"
                                 TextWrapping="Wrap"
                                 Visibility="{x:Bind HasText(ViewModel.ImportStatus), Mode=OneWay}" />
-                            <CheckBox Content="{loc:Tr Key=T6505a4370f6c}" IsChecked="{x:Bind ViewModel.ImportWindowsHistoryOnStartup, Mode=TwoWay}" />
+                            <CheckBox Content="{loc:Tr Text='Import automatically every time BetterClipboard starts'}" IsChecked="{x:Bind ViewModel.ImportWindowsHistoryOnStartup, Mode=TwoWay}" />
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
 
                 <!--  Integrations  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=T090512d93fcc}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Integrations'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T45ec570e7014}"
+                    Description="{loc:Tr Text='Every screenshot ShareX saves shows up in your history the moment the file is written, and the panel gets a ShareX tab. Pause capturing, Ignored apps (add ShareX to skip it) and the size limit apply to screenshots too.'}"
                     Glyph="&#xE722;"
-                    Header="{loc:Tr Key=Tdb43cff8589c}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.ImportShareXScreenshots, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='ShareX screenshots'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.ImportShareXScreenshots, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -544,10 +544,10 @@
                 </controls:SettingsCard>
                 <!--  Windows' own screenshots (CLAUDE.md §2.18). E8C6 = Cut, a pair of scissors (checked by rendering).  -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Tc0c8ce512db7}"
+                    Description="{loc:Tr Text=&quot;Every screenshot Windows saves — Snipping Tool's (Win+Shift+S, PrtScn) and Win+PrtScn's — shows up in your history the moment the file is written, and the panel gets a Snipping tab with them and everything Snipping Tool copied. BetterClipboard only reads your Screenshots folder. Pause capturing, Ignored apps (add SnippingTool or Win+PrtScn to skip them) and the size limit apply.&quot;}"
                     Glyph="&#xE8C6;"
-                    Header="{loc:Tr Key=Td2f495ea09d9}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.ImportWindowsScreenshots, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Snipping Tool and Win+PrtScn'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.ImportWindowsScreenshots, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -558,10 +558,10 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T60a6973d9fca}"
+                    Description="{loc:Tr Text='While voidtools Everything is installed or running, the panel gets an Everything tab: the files and folders you open from Everything, newest first, next to everything copied from it. BetterClipboard only reads from Everything. A file is kept in your history only when you paste, copy or pin it there.'}"
                     Glyph="&#xE721;"
                     Header="Everything">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.ShowEverythingTab, Mode=TwoWay}" />
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.ShowEverythingTab, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -573,10 +573,10 @@
                 </controls:SettingsCard>
                 <!--  E756 = CommandPrompt (checked by rendering): Win+R has no glyph of its own.  -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T67d795a6bf10}"
+                    Description="{loc:Tr Text=&quot;Windows keeps only your last 26 Win+R commands, in plain text. BetterClipboard keeps every one, encrypted, in a Run tab: each command shows up the moment you run it, and Ctrl+Enter runs it again. The first time, it imports the 26 Windows still remembers. Pause capturing, Ignored apps (add Win+R to skip them) and Forget forever apply. Windows' own list is never changed.&quot;}"
                     Glyph="&#xE756;"
-                    Header="{loc:Tr Key=Te86d3f324d30}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.RecordRunHistory, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Win+R history'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.RecordRunHistory, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -588,10 +588,10 @@
                 </controls:SettingsCard>
                 <!--  The shell tabs (CLAUDE.md §2.19). E756 = CommandPrompt, like the Run tab's commands.  -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T1e0f216cac73}"
+                    Description="{loc:Tr Text=&quot;The panel gets a Pwsh tab with every command you typed in PowerShell, newest first and searchable — also the ones older than the 4,096 PowerShell itself loads. It reads PowerShell's own history file (shared by Windows PowerShell and PowerShell 7) when the tab opens, and never changes it. A command is kept in your history only when you paste, copy or pin it there.&quot;}"
                     Glyph="&#xE756;"
-                    Header="{loc:Tr Key=Tab195a6ee533}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.ShowPowerShellTab, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Pwsh tab (PowerShell history)'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.ShowPowerShellTab, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -602,10 +602,10 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T7c2e5e319601}"
+                    Description="{loc:Tr Text=&quot;Command Prompt keeps no history file: a window's commands vanish when it closes. With this on, BetterClipboard reads open Command Prompt windows every 30 seconds (through a short helper process, only windows you opened) and keeps their commands, encrypted, in a Cmd tab. Pause capturing stops the keeping; off deletes what was kept.&quot;}"
                     Glyph="&#xE756;"
-                    Header="{loc:Tr Key=T7d676f5d773c}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.ShowCmdTab, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Cmd tab (Command Prompt history)'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.ShowCmdTab, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <TextBlock
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
@@ -620,10 +620,10 @@
                     what is stored; "Delete stored prompts…" (confirmed) is the way to remove it.
                 -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T00afc4e6b88a}"
+                    Description="{loc:Tr Text=&quot;Keeps every prompt you send in Claude Code, encrypted, in a Claude tab: newest first, searchable, one card per prompt with how often you sent it. Read from Claude Code's prompt history (pastes included) the moment Claude Code saves it, only the new bytes; Claude Code prunes its history after its cleanup period, BetterClipboard keeps it. Claude Code's files are never changed. Pause capturing skips prompts sent while paused; off stops reading and keeps what is stored.&quot;}"
                     Glyph="&#xE99A;"
-                    Header="{loc:Tr Key=T3884a7cb4416}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.KeepClaudeCodePrompts, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Claude Code prompts'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.KeepClaudeCodePrompts, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="8">
                             <TextBlock
@@ -634,16 +634,16 @@
                                 TextWrapping="Wrap" />
                             <Button
                                 Click="DeleteClaudeCodePrompts_Click"
-                                Content="{loc:Tr Key=Tad4ee43527da}"
+                                Content="{loc:Tr Text='Delete stored prompts…'}"
                                 IsEnabled="{x:Bind ViewModel.HasClaudeCodePrompts, Mode=OneWay}" />
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Tfa44dc1c0875}"
+                    Description="{loc:Tr Text=&quot;Keeps every prompt you send in Codex (the app, the CLI, the IDE extension), encrypted, in a Codex tab. Read from Codex's session files and its CLI history as Codex writes them, only the new bytes; compressed session files are read too. Threads started by agents, codex exec runs and MCP sessions are left out: their prompts were written by programs. Codex's files are never changed.&quot;}"
                     Glyph="&#xE99A;"
-                    Header="{loc:Tr Key=T4d8e7de00c28}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.KeepCodexPrompts, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Codex prompts'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.KeepCodexPrompts, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="8">
                             <TextBlock
@@ -654,45 +654,89 @@
                                 TextWrapping="Wrap" />
                             <Button
                                 Click="DeleteCodexPrompts_Click"
-                                Content="{loc:Tr Key=Tad4ee43527da}"
+                                Content="{loc:Tr Text='Delete stored prompts…'}"
                                 IsEnabled="{x:Bind ViewModel.HasCodexPrompts, Mode=OneWay}" />
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
 
                 <!--  App  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=T0d04bfeb7d64}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='App'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T150509e23a7b}"
+                    Description="{loc:Tr Text='Restart BetterClipboard to apply the language. History and custom names are not translated.'}"
                     Glyph="&#xE774;"
-                    Header="{loc:Tr Key=Ta4fe65264ef7}">
-                    <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.LanguageIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="{loc:Tr Key=T8b0b9e548a7a}" />
-                        <ComboBoxItem Content="English" />
-                        <ComboBoxItem Content="简体中文" />
-                    </ComboBox>
+                    Header="{loc:Tr Text='Language'}">
+                    <!--
+                      "Use Windows setting" (a globe, and the language it picks now), then every shipped language with
+                      its flag, own name and English name (SettingsViewModel.LanguageOptions): a new catalog shows up
+                      here by itself. ItemsSource comes before SelectedIndex, so the index never meets an empty list.
+                      "Restart now" shows once the saved language differs from the one on screen; it sits left of the
+                      list, so the list does not move when it appears.
+                    -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            VerticalAlignment="Center"
+                            Click="RestartForLanguage_Click"
+                            Content="{loc:Tr Text='Restart now'}"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Visibility="{x:Bind ViewModel.IsLanguageRestartPending, Mode=OneWay}" />
+                        <ComboBox
+                            MinWidth="240"
+                            AutomationProperties.Name="{loc:Tr Text='Language'}"
+                            ItemsSource="{x:Bind ViewModel.LanguageOptions}"
+                            SelectedIndex="{x:Bind ViewModel.LanguageIndex, Mode=TwoWay}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:LanguageOptionViewModel">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <Grid
+                                            Width="24"
+                                            Height="16"
+                                            VerticalAlignment="Center">
+                                            <!--  E774 = Globe, for "Use Windows setting".  -->
+                                            <FontIcon
+                                                FontSize="14"
+                                                Glyph="&#xE774;"
+                                                Visibility="{x:Bind IsSystem}" />
+                                            <Image
+                                                Source="{x:Bind Flag}"
+                                                Stretch="Uniform"
+                                                Visibility="{x:Bind HasFlag}" />
+                                        </Grid>
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Language="{x:Bind LanguageTag}"
+                                            Text="{x:Bind Name}" />
+                                        <TextBlock
+                                            VerticalAlignment="Center"
+                                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                            Text="{x:Bind EnglishName}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.LaunchAtStartupDescription, Mode=OneWay}"
                     Glyph="&#xE7E8;"
-                    Header="{loc:Tr Key=T0bfcd9317d0d}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Start with Windows'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T9751d60e27d9}"
+                    Description="{loc:Tr Text='Light, dark, or follow Windows.'}"
                     Glyph="&#xE771;"
-                    Header="{loc:Tr Key=Tefb52e7172b7}">
+                    Header="{loc:Tr Text='Theme'}">
                     <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="{loc:Tr Key=T8b0b9e548a7a}" />
-                        <ComboBoxItem Content="{loc:Tr Key=Tdbcd5e7bb7a0}" />
-                        <ComboBoxItem Content="{loc:Tr Key=T60acc53f13a5}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Use Windows setting'}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Light'}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Dark'}" />
                     </ComboBox>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Tcb2b510bfd64}"
+                    Description="{loc:Tr Text='Lets scripts and AI assistants list, search, read and copy your clipboard history with the bclip command. While this is on, any program running as you can read your history, so it is off by default.'}"
                     Glyph="&#xE756;"
-                    Header="{loc:Tr Key=T1d5f121fec89}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.EnableCommandLine, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Command line (bclip)'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.EnableCommandLine, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="8">
                             <TextBlock
@@ -703,7 +747,7 @@
                                 TextWrapping="Wrap" />
                             <Button
                                 Click="AddCommandLineToPath_Click"
-                                Content="{loc:Tr Key=T67718454be95}"
+                                Content="{loc:Tr Text='Add bclip to PATH'}"
                                 IsEnabled="{x:Bind ViewModel.CanAddCommandLineToPath, Mode=OneWay}" />
                         </StackPanel>
                     </controls:SettingsCard.Footer>
@@ -711,14 +755,14 @@
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.DataFolder}"
                     Glyph="&#xE8B7;"
-                    Header="{loc:Tr Key=T3e55f576865b}">
-                    <Button Click="OpenDataFolder_Click" Content="{loc:Tr Key=Ted077f3d8125}" />
+                    Header="{loc:Tr Text='Data folder'}">
+                    <Button Click="OpenDataFolder_Click" Content="{loc:Tr Text='Open'}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.VersionText}"
                     Glyph="&#xE946;"
-                    Header="{loc:Tr Key=T6a1d4fc9f1ff}">
-                    <Button Click="Exit_Click" Content="{loc:Tr Key=T4ec3b91698e3}" />
+                    Header="{loc:Tr Text='About BetterClipboard'}">
+                    <Button Click="Exit_Click" Content="{loc:Tr Text='Exit BetterClipboard'}" />
                 </controls:SettingsCard>
 
                 <!--
@@ -728,12 +772,12 @@
                   the panel's update button (the decision buttons, and below them the release notes); it is the accent
                   button while an update waits. E895 = Sync, the update button's glyph (checked by rendering).
                 -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=T22e2bada8f1c}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Updates'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T4cafc5ef31d8}"
+                    Description="{loc:Tr Text=&quot;Once a day, BetterClipboard asks GitHub for the list of its releases and highlights the update button in the panel when a newer version exists. The request names only the app's version: nothing about you, your PC or your clipboard is sent. Nothing is downloaded or installed until you approve it. Off: it asks only when you press Check now.&quot;}"
                     Glyph="&#xE895;"
-                    Header="{loc:Tr Key=T04fd6c4d82cd}">
-                    <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsEnabled="{x:Bind ViewModel.CanToggleUpdateCheck, Mode=OneWay}" IsOn="{x:Bind ViewModel.CheckForUpdates, Mode=TwoWay}" />
+                    Header="{loc:Tr Text='Check for updates automatically'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsEnabled="{x:Bind ViewModel.CanToggleUpdateCheck, Mode=OneWay}" IsOn="{x:Bind ViewModel.CheckForUpdates, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="8">
                             <TextBlock
@@ -745,7 +789,7 @@
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button
                                     Click="CheckForUpdates_Click"
-                                    Content="{loc:Tr Key=T2937cffb37ab}"
+                                    Content="{loc:Tr Text='Check now'}"
                                     IsEnabled="{x:Bind ViewModel.CanCheckForUpdates, Mode=OneWay}" />
                                 <!--  Its flyout (the update dialog) and its accent style while an update waits are set in code-behind.  -->
                                 <Button
@@ -763,35 +807,35 @@
                   THIRD-PARTY-NOTICES.md and with the packages the app restores (CLAUDE.md, "Third party" section).
                   EA86 = Puzzle, E8F1 = Library (both checked by rendering).
                 -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Key=Tf3c6dbcc99e4}" />
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Third party'}" />
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=Tf60a52d81270}"
+                    Description="{loc:Tr Text='Apps by other makers that BetterClipboard reads from while their setting above is on. BetterClipboard is not affiliated with them; get them from their official sites.'}"
                     Glyph="&#xEA86;"
-                    Header="{loc:Tr Key=T48f187a73308}">
+                    Header="{loc:Tr Text='Works with'}">
                     <controls:SettingsCard.Footer>
                         <ItemsControl
-                            AutomationProperties.Name="{loc:Tr Key=T4eb5acc0d2ab}"
+                            AutomationProperties.Name="{loc:Tr Text='Apps BetterClipboard works with'}"
                             IsTabStop="False"
                             ItemTemplate="{StaticResource ThirdPartyRowTemplate}"
                             ItemsSource="{x:Bind ViewModel.WorksWith}" />
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Key=T06d2f900bb11}"
+                    Description="{loc:Tr Text='The components inside BetterClipboard, each under its own license.'}"
                     Glyph="&#xE8F1;"
-                    Header="{loc:Tr Key=T39e511f482a8}">
+                    Header="{loc:Tr Text='Built with'}">
                     <HyperlinkButton
-                        AutomationProperties.Name="{loc:Tr Key=T7f9b5c13a517}"
+                        AutomationProperties.Name="{loc:Tr Text='License notices'}"
                         NavigateUri="{x:Bind ViewModel.NoticesLink}"
                         ToolTipService.ToolTip="{x:Bind ViewModel.NoticesLink.AbsoluteUri}">
                         <StackPanel Orientation="Horizontal" Spacing="6">
-                            <TextBlock Text="{loc:Tr Key=T7f9b5c13a517}" />
+                            <TextBlock Text="{loc:Tr Text='License notices'}" />
                             <FontIcon FontSize="12" Glyph="&#xE8A7;" />
                         </StackPanel>
                     </HyperlinkButton>
                     <controls:SettingsCard.Footer>
                         <ItemsControl
-                            AutomationProperties.Name="{loc:Tr Key=Td4a46523ec5d}"
+                            AutomationProperties.Name="{loc:Tr Text='Components inside BetterClipboard'}"
                             IsTabStop="False"
                             ItemTemplate="{StaticResource ThirdPartyRowTemplate}"
                             ItemsSource="{x:Bind ViewModel.BuiltWith}" />

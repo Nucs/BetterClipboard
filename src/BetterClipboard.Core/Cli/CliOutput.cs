@@ -27,6 +27,7 @@ public static class CliExitCodes
     /// <summary>Maps a response to an exit code.</summary>
     /// <param name="response">The response.</param>
     /// <returns>The exit code.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="response"/> is <see langword="null"/>.</exception>
     public static int For(CliResponse response)
     {
         ArgumentNullException.ThrowIfNull(response);
@@ -96,6 +97,7 @@ public static class CliOutput
     /// <param name="items">Items.</param>
     /// <param name="now">Clock.</param>
     /// <returns>The table.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="items"/> is <see langword="null"/>.</exception>
     public static string RenderTable(IReadOnlyList<CliItem> items, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(items);
@@ -103,7 +105,8 @@ public static class CliOutput
         foreach (var item in items)
         {
             var id = item.Id.ToString(CultureInfo.InvariantCulture) + (item.Pinned ? "*" : string.Empty);
-            var age = RelativeTimeFormatter.Format(item.LastUsed, now, culture: CultureInfo.InvariantCulture);
+            // English whatever the interface language: scripts and AI agents read this table (localized: false).
+            var age = RelativeTimeFormatter.Format(item.LastUsed, now, culture: CultureInfo.InvariantCulture, localized: false);
             var source = item.Source ?? string.Empty;
             var kind = item.Paths is > 0 ? "path" : item.Kind;
             builder.Append(CultureInfo.InvariantCulture, $"{id,7}  {kind,-9} {Cut(age, 14),-14} {Cut(source, 18),-18} {OneLine(item.Preview, PreviewWidth)}").Append('\n');
@@ -130,7 +133,8 @@ public static class CliOutput
         var builder = new StringBuilder();
         foreach (var prompt in prompts)
         {
-            var age = RelativeTimeFormatter.Format(prompt.LastSent, now, culture: CultureInfo.InvariantCulture);
+            // English whatever the interface language, like the history table.
+            var age = RelativeTimeFormatter.Format(prompt.LastSent, now, culture: CultureInfo.InvariantCulture, localized: false);
             var project = ProjectFolder(prompt.Project);
             var sends = prompt.Sends > 1 ? "×" + prompt.Sends.ToString(CultureInfo.InvariantCulture) : string.Empty;
             builder.Append(CultureInfo.InvariantCulture, $"{prompt.Id,7}  {prompt.Agent,-6} {Cut(age, 14),-14} {Cut(project, 18),-18} {sends,-5} {OneLine(prompt.Preview, PreviewWidth - 6)}").Append('\n');
@@ -156,6 +160,7 @@ public static class CliOutput
     /// <summary>Renders grep results as <c>id:line: text</c>.</summary>
     /// <param name="items">Items with <see cref="CliItem.Matches"/>.</param>
     /// <returns>The lines.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="items"/> is <see langword="null"/>.</exception>
     public static string RenderMatches(IReadOnlyList<CliItem> items)
     {
         ArgumentNullException.ThrowIfNull(items);
@@ -174,6 +179,7 @@ public static class CliOutput
     /// <summary>Renders <c>status</c>.</summary>
     /// <param name="status">Status.</param>
     /// <returns>Key: value lines.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="status"/> is <see langword="null"/>.</exception>
     public static string RenderStatus(CliStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);

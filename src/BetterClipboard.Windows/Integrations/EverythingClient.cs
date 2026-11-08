@@ -141,6 +141,7 @@ public sealed class EverythingClient : IDisposable
     /// <param name="timeout">Deadline for the reply.</param>
     /// <param name="cancellationToken">Cancels the wait (Everything keeps the query until the next one replaces it).</param>
     /// <returns>The decoded reply.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="status"/> or <paramref name="search"/> is <see langword="null"/>.</exception>
     /// <exception cref="InvalidOperationException"><paramref name="status"/> is not ready.</exception>
     /// <exception cref="EverythingUnavailableException">Everything refused the query or did not take it in time.</exception>
     /// <exception cref="TimeoutException">No reply before <paramref name="timeout"/> (e.g. its database is loading).</exception>
@@ -175,7 +176,7 @@ public sealed class EverythingClient : IDisposable
             bool accepted = await Task.Run(() => SendCopyData(status.Window, EverythingIpc.CopyDataQuery2W, bytes), cancellationToken).ConfigureAwait(false);
             if (!accepted)
             {
-                throw new EverythingUnavailableException("Everything did not accept the query (it may have exited or be hung).");
+                throw new EverythingUnavailableException(EverythingIntegration.NotAcceptedProblem + ".");
             }
 
             var reply = await query.Completion.Task.WaitAsync(timeout, cancellationToken).ConfigureAwait(false);
@@ -201,6 +202,7 @@ public sealed class EverythingClient : IDisposable
     /// <param name="status">A status with a window (<see cref="EverythingStatus.Window"/> ≠ 0) that is trusted.</param>
     /// <param name="commandLine">The arguments (<see cref="EverythingQuery.ShowCommandLine"/>).</param>
     /// <returns><see langword="true"/> when Everything accepted it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="status"/> or <paramref name="commandLine"/> is <see langword="null"/>.</exception>
     /// <exception cref="ObjectDisposedException">The client was disposed.</exception>
     public bool RunCommandLine(EverythingStatus status, string commandLine)
     {

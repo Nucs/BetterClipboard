@@ -1,3 +1,4 @@
+using System.Globalization;
 using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Integrations;
@@ -23,8 +24,11 @@ namespace BetterClipboard.App.ViewModels;
 /// </remarks>
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    /// <summary>The shortcut box's hint while it listens and holds nothing recorded yet (<see cref="HotkeyHint"/>).</summary>
-    private const string ListeningHint = "Listening: press the shortcut, or type it. Enter adds it.";
+    /// <summary>
+    /// The shortcut box's hint while it listens and holds nothing recorded yet (<see cref="HotkeyHint"/>), in the interface
+    /// language (read each time: the language is set before Settings opens, but this class's statics may load earlier).
+    /// </summary>
+    private static string ListeningHint => UiText.Translate("Listening: press the shortcut, or type it. Enter adds it.");
 
     private readonly AppController controller;
     private bool loading;
@@ -235,9 +239,31 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int ThemeIndex { get; set; }
 
-    /// <summary>Index of the interface language: system, English, or Simplified Chinese; requires an app restart.</summary>
+    /// <summary>
+    /// Index into <see cref="LanguageOptions"/>: 0 is "Use Windows setting", then every offered language. A change is
+    /// saved at once and applies with a restart (windows read their labels when they are built), which
+    /// <see cref="IsLanguageRestartPending"/> offers.
+    /// </summary>
     [ObservableProperty]
     public partial int LanguageIndex { get; set; }
+
+    /// <summary>
+    /// Whether the saved language differs from the one on screen, so Settings shows <em>Restart now</em> next to the
+    /// list: choosing the language already shown (or "Use Windows setting" when Windows picks it) offers no restart.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsLanguageRestartPending { get; set; }
+
+    /// <summary>
+    /// The Language card's choices: "Use Windows setting" (with the language it picks now), then every language this
+    /// build ships with its flag and names (<see cref="UiText.Languages"/>): a new catalog appears here without code.
+    /// Built once per window, on the UI thread.
+    /// </summary>
+    public IReadOnlyList<LanguageOptionViewModel> LanguageOptions { get; } =
+    [
+        new LanguageOptionViewModel(UiText.Translate("Use Windows setting"), UiText.MatchSystem(CultureInfo.CurrentUICulture.Name)),
+        .. UiText.Languages.Select(language => new LanguageOptionViewModel(language)),
+    ];
 
     /// <summary>
     /// Start with Windows: whether this copy starts when this user signs in (<see cref="SignInStartup.StartsThisCopy"/>),
@@ -394,7 +420,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             IgnoredAppsText = string.Join(Environment.NewLine, settings.IgnoredApps);
             PlacementIndex = PlacementIndexOf(settings);
             ThemeIndex = (int)settings.Theme;
-            LanguageIndex = settings.InterfaceLanguage switch { "en" => 1, "zh-Hans" => 2, _ => 0 };
+            // A saved tag this build does not ship (a newer version's language) shows as "Use Windows setting", which is
+            // also what it means here (UiText.Resolve).
+            LanguageIndex = Math.Max(0, LanguageOptions.ToList().FindIndex(option =>
+                !option.IsSystem && string.Equals(option.Selection, settings.InterfaceLanguage, StringComparison.OrdinalIgnoreCase)));
             RefreshLaunchAtStartup(settings);
             EnableCommandLine = settings.EnableCommandLine;
             ImportShareXScreenshots = settings.ImportShareXScreenshots;
@@ -443,15 +472,22 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         var installation = everything.Installation;
         var status = everything.Status;
+        // The installation's and the trust check's reasons are worded in English for the log; shown, they are translated.
+        var detectedBy = UiText.TranslateFormatted(installation.DetectedBy, EverythingLocator.DetectedByTemplates);
+        var trust = UiText.TranslateFormatted(status.Trust?.Reason, EverythingOwnerVerifier.ReasonTemplates);
         var installed = installation.IsInstalled
             ? UiText.Format($"Installed: {installation.ExecutablePath}{(installation.Version is { } version ? $" ({version})" : string.Empty)}.")
-            : UiText.Format($"Not installed ({installation.DetectedBy}).");
+            : installation.DetectedBy == EverythingInstallation.NotInstalled
+                ? UiText.Translate("Not installed.") // not "Not installed (not installed)."
+                : UiText.Format($"Not installed ({detectedBy}).");
         var running = status.State switch
         {
-            EverythingState.Ready => UiText.Format($"Running: Everything {status.Version}, {status.Trust?.Reason}{(status.IsBusy ? ", updating its index" : string.Empty)}. The tab lists the files you open in it, live."),
+            EverythingState.Ready => status.IsBusy
+                ? UiText.Format($"Running: Everything {status.Version}, {trust}, updating its index. The tab lists the files you open in it, live.")
+                : UiText.Format($"Running: Everything {status.Version}, {trust}. The tab lists the files you open in it, live."),
             EverythingState.Loading => UiText.Format($"Running: Everything {status.Version}, still loading its index — until it is ready the tab shows the history it saved last."),
             EverythingState.NotResponding => UiText.Translate("Everything is running but not responding — the tab shows the history it saved last."),
-            EverythingState.Untrusted => UiText.Format($"A program answering as Everything was ignored: {status.Trust?.Reason}."),
+            EverythingState.Untrusted => UiText.Format($"A program answering as Everything was ignored: {trust}."),
             _ => installation.IsInstalled
                 ? UiText.Translate("Not running — the tab shows the history Everything saved last, and can start it.")
                 : UiText.Translate("Not running. Install or start Everything (voidtools) and the panel gets its tab (checked whenever the panel or Settings opens)."),
@@ -475,6 +511,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The status lines' "3 screenshots added since BetterClipboard started", shared by the ShareX and the Snipping
+    /// cards so both read the same and a language words it once.
+    /// </summary>
+    /// <param name="count">Screenshots added this session (more than zero; the callers show nothing for none).</param>
+    /// <returns>The line, starting with a line break.</returns>
+    private static string ScreenshotsAdded(int count) =>
+        UiText.Plural(count, $"\n{count:N0} screenshot added since BetterClipboard started.", $"\n{count:N0} screenshots added since BetterClipboard started.");
+
+    /// <summary>
     /// Re-reads the ShareX integration state. Folders are listed as watched only while really watched, so
     /// a folder that does not exist yet (ShareX creates it with the first screenshot) is visible as such.
     /// </summary>
@@ -487,7 +532,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        var found = shareX.ExecutablePath is { } exe ? UiText.Format($"ShareX found: {exe} (via {shareX.DetectedBy}).") : UiText.Format($"ShareX found (via {shareX.DetectedBy}).");
+        var via = UiText.TranslateFormatted(shareX.DetectedBy, ShareXLocator.DetectedByTemplates);
+        var found = shareX.ExecutablePath is { } exe ? UiText.Format($"ShareX found: {exe} (via {via}).") : UiText.Format($"ShareX found (via {via}).");
         if (!ImportShareXScreenshots)
         {
             ShareXStatus = UiText.Format($"{found}\nOff — screenshots are not imported; copies made by ShareX are still recorded and shown in its tab.");
@@ -499,7 +545,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ? UiText.Format($"Watching: {string.Join("; ", watched)}")
             : UiText.Format($"Waiting for ShareX to create its screenshots folder ({string.Join("; ", shareX.WatchFolders)}).");
         int imported = controller.ShareXImportedThisSession;
-        var count = imported > 0 ? UiText.Format($"\n{imported:N0} screenshot{(imported == 1 ? string.Empty : "s")} added since BetterClipboard started.") : string.Empty;
+        var count = imported > 0 ? ScreenshotsAdded(imported) : string.Empty;
         ShareXStatus = $"{found}\n{folders}{count}";
     }
 
@@ -526,7 +572,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             ? UiText.Translate("Watching Windows' Win+R list.")
             : UiText.Format($"Watching Windows' Win+R list: Windows remembers {windows:N0} of its {RunMru.Capacity} commands.");
         int recorded = controller.RunHistoryRecordedThisSession;
-        var count = recorded > 0 ? UiText.Format($"\n{recorded:N0} run{(recorded == 1 ? string.Empty : "s")} recorded since BetterClipboard started.") : string.Empty;
+        var count = recorded > 0
+            ? UiText.Plural(recorded, $"\n{recorded:N0} run recorded since BetterClipboard started.", $"\n{recorded:N0} runs recorded since BetterClipboard started.")
+            : string.Empty;
         RunHistoryStatus = remembered + count;
     }
 
@@ -560,7 +608,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             {
                 // A hand-edited entry, or one an older version accepted (Ctrl+V): the app skipped it, and the row says why
                 // instead of hiding it.
-                rows.Add(new HotkeyItemViewModel(text, UiText.Format($"{problem} It is skipped: remove it."), IsActive: false));
+                var reason = UiText.TranslateFormatted(problem, HotkeyGesture.ProblemTemplates);
+                rows.Add(new HotkeyItemViewModel(text, UiText.Format($"{reason} It is skipped: remove it."), IsActive: false));
                 continue;
             }
 
@@ -573,7 +622,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             var registration = registrations.FirstOrDefault(r => r.Gesture == gesture);
             rows.Add(registration is null
                 ? new HotkeyItemViewModel(gesture.ToString(), UiText.Translate("Registering…"), IsActive: true)
-                : new HotkeyItemViewModel(gesture.ToString(), UiText.Translate(registration.DescribeState()), registration.IsActive));
+                : new HotkeyItemViewModel(gesture.ToString(), UiText.TranslateFormatted(registration.DescribeState(), HotkeyRegistration.StateTemplates), registration.IsActive));
         }
 
         // The last shortcut cannot go: without one, only the tray icon would open BetterClipboard.
@@ -588,7 +637,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsHotkeyActive = broken == 0;
         HotkeyStatus = broken == 0
             ? UiText.Translate("Any of these opens BetterClipboard. The first one is shown in the tray.")
-            : UiText.Format($"Any of these opens BetterClipboard. {broken} of {rows.Count} {(rows.Count == 1 ? "does" : "do")} not work right now: see below.");
+            : UiText.Plural(
+                broken,
+                $"Any of these opens BetterClipboard. {broken} of {rows.Count} does not work right now: see below.",
+                $"Any of these opens BetterClipboard. {broken} of {rows.Count} do not work right now: see below.");
     }
 
     /// <summary>Re-reads Windows-side state (clipboard history toggle, Explorer hotkey release).</summary>
@@ -627,7 +679,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (!HotkeyGesture.TryParse(text, out var gesture, out var problem))
         {
-            HotkeyError = problem ?? UiText.Translate("Not a valid shortcut. Press the keys in the box, or type them, for example Ctrl+Shift+V.");
+            // The problem is worded in English (the installer prints it too); Settings shows its translation.
+            HotkeyError = problem is not null
+                ? UiText.TranslateFormatted(problem, HotkeyGesture.ProblemTemplates)
+                : UiText.Translate("Not a valid shortcut. Press the keys in the box, or type them, for example Ctrl+Shift+V.");
             return false;
         }
 
@@ -691,7 +746,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var problem = HotkeyGesture.Problem(gesture.Modifiers, gesture.VirtualKey);
         if (problem is not null)
         {
-            HotkeyError = problem;
+            HotkeyError = UiText.TranslateFormatted(problem, HotkeyGesture.ProblemTemplates);
             HotkeyHint = ListeningHint;
         }
         else if (current.Contains(gesture))
@@ -797,7 +852,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             var stats = await controller.History.GetStatsAsync();
-            StatsText = UiText.Format($"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups") +
+            StatsText = UiText.Plural(
+                            stats.Count,
+                            $"{stats.Count:N0} item · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups",
+                            $"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups") +
                         (stats.ForgottenCount > 0 ? UiText.Format($" · {stats.ForgottenCount:N0} forgotten") : string.Empty);
         }
         catch (Exception ex)
@@ -828,8 +886,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ForgottenSummary = items.Count switch
             {
                 0 => UiText.Translate("Nothing is forgotten. To forget something, right-click it in the panel (or press the Menu key) and choose Forget forever."),
-                1 => UiText.Translate("1 item is never recorded:"),
-                _ => UiText.Format($"{items.Count:N0} items are never recorded:"),
+                _ => UiText.Plural(items.Count, $"{items.Count:N0} item is never recorded:", $"{items.Count:N0} items are never recorded:"),
             };
         }
         catch (Exception ex)
@@ -882,9 +939,12 @@ public sealed partial class SettingsViewModel : ObservableObject
             return UiText.Translate("Not watching the clipboard.");
         }
 
-        var text = UiText.Format($"Since start: {s.Read:N0} clipboard change{(s.Read == 1 ? "" : "s")} read the moment Windows announced them");
+        var text = UiText.Plural(
+            s.Read,
+            $"Since start: {s.Read:N0} clipboard change read the moment Windows announced it",
+            $"Since start: {s.Read:N0} clipboard changes read the moment Windows announced them");
         text += s.Superseded == 0
-            ? " — none overwritten before they could be read."
+            ? UiText.Translate(" — none overwritten before they could be read.")
             : UiText.Format($" — {s.Superseded:N0} replaced by a newer one within a fraction of a millisecond (usually one app updating the same copy twice).");
         if (s.LockedOut > 0)
         {
@@ -893,7 +953,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         if (s.Recovered > 0)
         {
-            text += UiText.Format($" The watchdog recovered {s.Recovered:N0} change{(s.Recovered == 1 ? "" : "s")} Windows never announced.");
+            text += UiText.Plural(s.Recovered, $" The watchdog recovered {s.Recovered:N0} change Windows never announced.", $" The watchdog recovered {s.Recovered:N0} changes Windows never announced.");
         }
 
         return text;
@@ -1194,12 +1254,34 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Persists the UI language without restarting or interrupting clipboard capture.</summary>
-    /// <param name="value">System (0), English (1), or Simplified Chinese (2).</param>
+    /// <summary>
+    /// Persists the UI language without restarting or interrupting clipboard capture, and offers the restart that applies
+    /// it (<see cref="IsLanguageRestartPending"/>).
+    /// </summary>
+    /// <param name="value">An index into <see cref="LanguageOptions"/> (-1 while the combo box has no selection: ignored).</param>
     partial void OnLanguageIndexChanged(int value)
     {
-        if (value is >= 0 and <= 2)
-            Update(s => s with { InterfaceLanguage = value switch { 1 => "en", 2 => "zh-Hans", _ => "system" } });
+        if (value >= 0 && value < LanguageOptions.Count)
+        {
+            Update(s => s with { InterfaceLanguage = LanguageOptions[value].Selection });
+            IsLanguageRestartPending = !ReferenceEquals(
+                UiText.Resolve(LanguageOptions[value].Selection, CultureInfo.CurrentUICulture.Name),
+                UiText.Current);
+        }
+    }
+
+    /// <summary>
+    /// Settings' <em>Restart now</em>: restarts BetterClipboard so the chosen language applies everywhere
+    /// (<see cref="AppController.RestartAsync"/>). The new process opens Settings again, in the new language.
+    /// </summary>
+    /// <returns>A task completing when the restart was started, or failed (then this process keeps running).</returns>
+    public async Task RestartForLanguageAsync()
+    {
+        if (!await controller.RestartAsync())
+        {
+            // The log has the reason; the card keeps offering the restart, so the user can try again or restart by hand.
+            IsLanguageRestartPending = true;
+        }
     }
 
     /// <summary>

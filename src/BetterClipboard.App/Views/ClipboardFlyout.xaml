@@ -50,10 +50,10 @@
                 x:Name="LogoButton"
                 Width="24"
                 Height="32"
-                AutomationProperties.Name="{loc:Tr Key=T67bc3a1fc8a1}"
+                AutomationProperties.Name="{loc:Tr Text='All clipboard history'}"
                 Click="LogoButton_Click"
                 Style="{StaticResource GroupButtonStyle}"
-                ToolTipService.ToolTip="{loc:Tr Key=T67bc3a1fc8a1}">
+                ToolTipService.ToolTip="{loc:Tr Text='All clipboard history'}">
                 <Image
                     Width="20"
                     Height="20"
@@ -78,7 +78,7 @@
                     VerticalAlignment="Center"
                     FontSize="15"
                     FontWeight="SemiBold"
-                    Text="{loc:Tr Key=T285d69f0c5d1}" />
+                    Text="{loc:Tr Text='Clipboard'}" />
                 <!--  The tooltip names every group shown: merged names trim early next to the Paused chip ("Work +…").  -->
                 <TextBlock
                     Grid.Column="1"
@@ -102,7 +102,7 @@
                     <TextBlock
                         FontSize="11"
                         Foreground="{ThemeResource SystemFillColorCautionBrush}"
-                        Text="{loc:Tr Key=Te159b06187d3}" />
+                        Text="{loc:Tr Text='Paused'}" />
                 </Border>
             </Grid>
             <StackPanel
@@ -120,9 +120,9 @@
                 -->
                 <Button
                     x:Name="UpdateButton"
-                    AutomationProperties.Name="{loc:Tr Key=T22e2bada8f1c}"
+                    AutomationProperties.Name="{loc:Tr Text='Updates'}"
                     Style="{StaticResource IconButtonStyle}"
-                    ToolTipService.ToolTip="{loc:Tr Key=T22e2bada8f1c}">
+                    ToolTipService.ToolTip="{loc:Tr Text='Updates'}">
                     <Grid>
                         <FontIcon
                             x:Name="UpdateGlyph"
@@ -140,7 +140,7 @@
                 </Button>
                 <Button
                     x:Name="PauseButton"
-                    AutomationProperties.Name="{loc:Tr Key=T1fb5a2083c58}"
+                    AutomationProperties.Name="{loc:Tr Text='Pause or resume capturing'}"
                     Click="PauseButton_Click"
                     Content="{x:Bind PauseGlyph(ViewModel.IsPaused), Mode=OneWay}"
                     Style="{StaticResource IconButtonStyle}"
@@ -159,10 +159,10 @@
                 -->
                 <Button
                     x:Name="GroupsToggle"
-                    AutomationProperties.Name="{loc:Tr Key=Td4707704d020}"
+                    AutomationProperties.Name="{loc:Tr Text='Show groups'}"
                     Click="GroupsToggle_Click"
                     Style="{StaticResource IconButtonStyle}"
-                    ToolTipService.ToolTip="{loc:Tr Key=T23afe0075220}">
+                    ToolTipService.ToolTip="{loc:Tr Text='Groups (Ctrl+G)'}">
                     <Grid>
                         <PathIcon
                             x:Name="RibbonOutline"
@@ -179,33 +179,33 @@
                 </Button>
                 <Button
                     x:Name="ClearButton"
-                    AutomationProperties.Name="{loc:Tr Key=T496121494e4a}"
+                    AutomationProperties.Name="{loc:Tr Text='Clear history'}"
                     Content="&#xE74D;"
                     Style="{StaticResource IconButtonStyle}"
-                    ToolTipService.ToolTip="{loc:Tr Key=T33b098693a45}">
+                    ToolTipService.ToolTip="{loc:Tr Text='Clear history (keeps pinned and grouped items)'}">
                     <Button.Flyout>
                         <Flyout x:Name="ClearFlyout" Closed="Popup_Closed" Opened="Popup_Opened">
                             <StackPanel MaxWidth="260" Spacing="12">
-                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{loc:Tr Key=Tfa29df3b8ddb}" />
+                                <TextBlock Style="{StaticResource BodyStrongTextBlockStyle}" Text="{loc:Tr Text='Clear clipboard history?'}" />
                                 <TextBlock
                                     Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                    Text="{loc:Tr Key=T26f856de78c4}"
+                                    Text="{loc:Tr Text='Items are deleted for good. Pinned items and items in groups stay.'}"
                                     TextWrapping="Wrap" />
                                 <Button
                                     HorizontalAlignment="Right"
                                     Click="ConfirmClear_Click"
-                                    Content="{loc:Tr Key=T83b12c2216ef}"
+                                    Content="{loc:Tr Text='Clear'}"
                                     Style="{StaticResource AccentButtonStyle}" />
                             </StackPanel>
                         </Flyout>
                     </Button.Flyout>
                 </Button>
                 <Button
-                    AutomationProperties.Name="{loc:Tr Key=T74a883a037bc}"
+                    AutomationProperties.Name="{loc:Tr Text='Settings'}"
                     Click="SettingsButton_Click"
                     Content="&#xE713;"
                     Style="{StaticResource IconButtonStyle}"
-                    ToolTipService.ToolTip="{loc:Tr Key=T74a883a037bc}" />
+                    ToolTipService.ToolTip="{loc:Tr Text='Settings'}" />
             </StackPanel>
         </Grid>
 
@@ -236,11 +236,11 @@
             <Button
                 x:Name="AddGroupButton"
                 Grid.Row="1"
-                AutomationProperties.Name="{loc:Tr Key=Tdf796c655f6f}"
+                AutomationProperties.Name="{loc:Tr Text='New group'}"
                 Click="AddGroupButton_Click"
                 Content="&#xE710;"
                 Style="{StaticResource GroupButtonStyle}"
-                ToolTipService.ToolTip="{loc:Tr Key=Tf3066c0b37c7}" />
+                ToolTipService.ToolTip="{loc:Tr Text='New group: pick an icon, then drag cards onto it'}" />
         </Grid>
 
         <!--
@@ -255,7 +255,7 @@
             x:Name="SearchBox"
             Grid.Row="1"
             Grid.Column="1"
-            AutomationProperties.Name="{loc:Tr Key=Ta5c27cff4b1a}"
+            AutomationProperties.Name="{loc:Tr Text='Search clipboard history'}"
             PlaceholderText="{x:Bind ViewModel.SearchPlaceholder, Mode=OneWay}"
             QueryIcon="Find"
             Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -265,28 +265,28 @@
                     <ToggleButton
                         x:Name="MatchCaseToggle"
                         AutomationProperties.AcceleratorKey="Alt+C"
-                        AutomationProperties.Name="{loc:Tr Key=T619880112496}"
+                        AutomationProperties.Name="{loc:Tr Text='Match case'}"
                         Content="Aa"
                         IsChecked="{x:Bind ViewModel.MatchCase, Mode=TwoWay}"
                         Style="{StaticResource SearchOptionToggleStyle}"
-                        ToolTipService.ToolTip="{loc:Tr Key=T21546a960021}" />
+                        ToolTipService.ToolTip="{loc:Tr Text='Match case (Alt+C)'}" />
                     <ToggleButton
                         x:Name="WholeWordToggle"
                         AutomationProperties.AcceleratorKey="Alt+W"
-                        AutomationProperties.Name="{loc:Tr Key=T3db2d3556b74}"
+                        AutomationProperties.Name="{loc:Tr Text='Match whole word'}"
                         Content="W"
                         IsChecked="{x:Bind ViewModel.WholeWord, Mode=TwoWay}"
                         Style="{StaticResource SearchOptionToggleStyle}"
-                        ToolTipService.ToolTip="{loc:Tr Key=T50f8629f0a31}" />
+                        ToolTipService.ToolTip="{loc:Tr Text='Match whole word (Alt+W)'}" />
                     <!--  Red outline while the pattern does not parse or ran out of time (FlyoutViewModel.HasPatternError).  -->
                     <ToggleButton
                         x:Name="RegexToggle"
                         AutomationProperties.AcceleratorKey="Alt+E"
-                        AutomationProperties.Name="{loc:Tr Key=T9a227abb5c51}"
+                        AutomationProperties.Name="{loc:Tr Text='Use regular expression'}"
                         Content=".*"
                         IsChecked="{x:Bind ViewModel.UseRegex, Mode=TwoWay}"
                         Style="{x:Bind RegexToggleStyle(ViewModel.HasPatternError), Mode=OneWay}"
-                        ToolTipService.ToolTip="{loc:Tr Key=Tb18448a4f9ca}" />
+                        ToolTipService.ToolTip="{loc:Tr Text='Use regular expression (Alt+E)'}" />
                 </StackPanel>
             </AutoSuggestBox.Description>
         </AutoSuggestBox>
@@ -321,21 +321,21 @@
                             <Setter Property="Padding" Value="9,10,9,7" />
                         </Style>
                     </SelectorBar.Resources>
-                    <SelectorBarItem IsSelected="True" Tag="All" Text="{loc:Tr Key=Ta52ace420f21}" />
-                    <SelectorBarItem Tag="Pinned" Text="{loc:Tr Key=Tf20c87946555}" />
-                    <SelectorBarItem Tag="Text" Text="{loc:Tr Key=T71988c4d8e08}" />
-                    <SelectorBarItem Tag="Images" Text="{loc:Tr Key=Tbe7e2f201293}" />
-                    <SelectorBarItem Tag="Links" Text="{loc:Tr Key=T9024c197d849}" />
+                    <SelectorBarItem IsSelected="True" Tag="All" Text="{loc:Tr Text='All'}" />
+                    <SelectorBarItem Tag="Pinned" Text="{loc:Tr Text='Pinned'}" />
+                    <SelectorBarItem Tag="Text" Text="{loc:Tr Text='Text'}" />
+                    <SelectorBarItem Tag="Images" Text="{loc:Tr Text='Images'}" />
+                    <SelectorBarItem Tag="Links" Text="{loc:Tr Text='Links'}" />
                     <SelectorBarItem
                         Tag="Files"
-                        Text="{loc:Tr Key=Tabc7e9892806}"
-                        ToolTipService.ToolTip="{loc:Tr Key=T3fff153e281f}" />
+                        Text="{loc:Tr Text='Files'}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Files copied in Explorer, and copied text that is nothing but paths'}" />
                     <!--  Only while ShareX is installed (code-behind: UpdateShareXTab).  -->
                     <SelectorBarItem
                         x:Name="ShareXFilter"
                         Tag="ShareX"
                         Text="ShareX"
-                        ToolTipService.ToolTip="{loc:Tr Key=T9840e0764aa8}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Screenshots saved by ShareX and everything copied from it'}"
                         Visibility="Collapsed" />
                     <!--
                         Only while Settings › Snipping Tool and Win+PrtScn is on and the history holds a picture this tab lists
@@ -344,8 +344,8 @@
                     <SelectorBarItem
                         x:Name="SnippingFilter"
                         Tag="Snipping"
-                        Text="{loc:Tr Key=Td4f56cabae63}"
-                        ToolTipService.ToolTip="{loc:Tr Key=T9d6d809ea7b5}"
+                        Text="{loc:Tr Text='Snipping'}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Screenshots saved by Snipping Tool (Win+Shift+S, PrtScn) and Win+PrtScn, and everything Snipping Tool copied'}"
                         Visibility="Collapsed" />
                     <!--
                         Only while Settings › Win+R history is on and the history holds a command run with Win+R (code-behind:
@@ -355,8 +355,8 @@
                     <SelectorBarItem
                         x:Name="RunFilter"
                         Tag="Run"
-                        Text="{loc:Tr Key=T00d60e31a4e6}"
-                        ToolTipService.ToolTip="{loc:Tr Key=Tde6ed32ac81c}"
+                        Text="{loc:Tr Text='Run'}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Commands you ran with Win+R, kept after Windows forgets them (Ctrl+Enter runs one again)'}"
                         Visibility="Collapsed" />
                     <!--
                         The shell tabs (code-behind: UpdateShellTabs, ClipboardFlyout.Shells.cs). Pwsh only while Settings › Pwsh tab
@@ -366,13 +366,13 @@
                         x:Name="PwshFilter"
                         Tag="PowerShell"
                         Text="Pwsh"
-                        ToolTipService.ToolTip="{loc:Tr Key=T21af313a095c}"
+                        ToolTipService.ToolTip="{loc:Tr Text=&quot;Every command you typed in PowerShell, newest first, searchable (from PowerShell's own history file)&quot;}"
                         Visibility="Collapsed" />
                     <SelectorBarItem
                         x:Name="CmdFilter"
                         Tag="Cmd"
                         Text="Cmd"
-                        ToolTipService.ToolTip="{loc:Tr Key=T0533d67d7d57}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Commands typed in Command Prompt windows, kept after the window closes'}"
                         Visibility="Collapsed" />
                     <!--
                         The prompt tabs (code-behind: UpdatePromptTabs, ClipboardFlyout.Prompts.cs): each while its Settings switch is
@@ -383,20 +383,20 @@
                         x:Name="ClaudeFilter"
                         Tag="ClaudeCode"
                         Text="Claude"
-                        ToolTipService.ToolTip="{loc:Tr Key=Teff295fef408}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Every prompt you sent to Claude Code, newest first, searchable, kept after Claude Code prunes its history'}"
                         Visibility="Collapsed" />
                     <SelectorBarItem
                         x:Name="CodexFilter"
                         Tag="Codex"
                         Text="Codex"
-                        ToolTipService.ToolTip="{loc:Tr Key=Tfdde8c3b9569}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Every prompt you sent to Codex (the app, the CLI, the IDE extension), newest first, searchable'}"
                         Visibility="Collapsed" />
                     <!--  Only while voidtools Everything is installed or running and the tab is on (code-behind: UpdateEverythingTab).  -->
                     <SelectorBarItem
                         x:Name="EverythingFilter"
                         Tag="Everything"
                         Text="Everything"
-                        ToolTipService.ToolTip="{loc:Tr Key=T99c4dabef4de}"
+                        ToolTipService.ToolTip="{loc:Tr Text='Files you opened in Everything, newest first, and everything copied from it'}"
                         Visibility="Collapsed" />
                 </SelectorBar>
             </ScrollViewer>
@@ -409,20 +409,20 @@
             <RepeatButton
                 x:Name="TabsBackButton"
                 HorizontalAlignment="Left"
-                AutomationProperties.Name="{loc:Tr Key=T7a08c90e8e96}"
+                AutomationProperties.Name="{loc:Tr Text='Scroll tabs left'}"
                 Click="TabsBackButton_Click"
                 Content="&#xE76B;"
                 Style="{StaticResource TabScrollButtonStyle}"
-                ToolTipService.ToolTip="{loc:Tr Key=Td6b1f99c5502}"
+                ToolTipService.ToolTip="{loc:Tr Text='Earlier tabs'}"
                 Visibility="Collapsed" />
             <RepeatButton
                 x:Name="TabsForwardButton"
                 HorizontalAlignment="Right"
-                AutomationProperties.Name="{loc:Tr Key=T449e09ffc380}"
+                AutomationProperties.Name="{loc:Tr Text='Scroll tabs right'}"
                 Click="TabsForwardButton_Click"
                 Content="&#xE76C;"
                 Style="{StaticResource TabScrollButtonStyle}"
-                ToolTipService.ToolTip="{loc:Tr Key=Tdfb19cd657ab}"
+                ToolTipService.ToolTip="{loc:Tr Text='More tabs'}"
                 Visibility="Collapsed" />
         </Grid>
 
@@ -493,7 +493,7 @@
                                 FontSize="12"
                                 Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
                                 Glyph="&#xE842;"
-                                ToolTipService.ToolTip="{loc:Tr Key=Tf20c87946555}"
+                                ToolTipService.ToolTip="{loc:Tr Text='Pinned'}"
                                 Visibility="{x:Bind PinVisibility, Mode=OneWay}" />
                         </Grid>
 
@@ -531,11 +531,11 @@
                                     Margin="0,0,6,6"
                                     HorizontalAlignment="Right"
                                     VerticalAlignment="Bottom"
-                                    AutomationProperties.Name="{loc:Tr Key=T26f7abcb8540}"
+                                    AutomationProperties.Name="{loc:Tr Text='View image full screen (zoom and pan)'}"
                                     Click="ViewImage_Click"
                                     Content="&#xE7B3;"
                                     Style="{StaticResource ImageViewButtonStyle}"
-                                    ToolTipService.ToolTip="{loc:Tr Key=T3e62e3fcc97b}" />
+                                    ToolTipService.ToolTip="{loc:Tr Text='View — zoom and pan (Esc closes)'}" />
                             </Grid>
                         </Border>
 
@@ -593,7 +593,7 @@
                 Margin="0,4,0,0"
                 HorizontalAlignment="Center"
                 Click="StartEverythingButton_Click"
-                Content="{loc:Tr Key=Tdda6942f9663}"
+                Content="{loc:Tr Text='Start Everything'}"
                 Visibility="{x:Bind BoolVisibility(ViewModel.ShowStartEverything), Mode=OneWay}" />
         </StackPanel>
 

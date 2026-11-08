@@ -31,6 +31,10 @@ internal static class Program
     /// <returns>An exit code from <see cref="CliExitCodes"/> (130 on Ctrl+C).</returns>
     private static async Task<int> Main(string[] args)
     {
+        // bclip's output is read by scripts and AI agents: English, whatever the app's or Windows' language. Without
+        // this, any Core text bclip prints through UiText would follow Windows' display language (bclip never reads
+        // the app's language setting), and a script written on one PC would misread another's output.
+        Core.Localization.UiText.Language = Core.Localization.UiText.EnglishTag;
         (stdout, stderr) = ConsoleText.CreateWriters();
         try
         {
@@ -142,6 +146,7 @@ internal static class Program
     /// <param name="cancellationToken">Ctrl+C.</param>
     /// <returns>The response.</returns>
     /// <exception cref="TimeoutException">Still unreachable.</exception>
+    /// <exception cref="InvalidOperationException">The process's token has no user SID, so the pipe's name cannot be made.</exception>
     private static async Task<CliResponse> SendAsync(CliRequest request, CancellationToken cancellationToken)
     {
         var sid = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("No user SID.");

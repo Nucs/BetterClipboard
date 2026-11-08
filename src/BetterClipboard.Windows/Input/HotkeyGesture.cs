@@ -106,6 +106,45 @@ public readonly record struct HotkeyGesture(HotkeyModifiers Modifiers, uint Virt
     /// <summary>Lookup from a normalized name or alias (<see cref="NormalizeName"/>) to its virtual-key code.</summary>
     private static readonly Dictionary<string, uint> CodesByName = BuildNameIndex(KeysByCode.Values);
 
+    /// <summary>
+    /// Every sentence <see cref="TryParse(string?, out HotkeyGesture, out string?)"/> and <see cref="Problem"/> can give,
+    /// as composite formats: Settings shows a problem in the interface language through
+    /// <c>UiText.TranslateFormatted</c>, while <c>--set-hotkeys</c> prints it in English for the installer.
+    /// </summary>
+    /// <remarks>
+    /// The problems are worded where they are decided (the methods above), so this list is their contract with the
+    /// catalogs: a new or changed sentence must be added here and to every catalog, or Settings shows it in English.
+    /// <c>TranslationTemplateTests</c> produce every sentence and check that one of these templates matches it. The specific
+    /// "Ctrl+Shift+V" sentence comes before the general "{1}V" one only for clarity: both translate it the same.
+    /// </remarks>
+    public static IReadOnlyList<string> ProblemTemplates { get; } =
+    [
+        "Type a shortcut, for example Win+V or Ctrl+Shift+V.",
+        "A '+' alone is not a shortcut. Name the + key as Plus (or NumPlus on the keypad), for example Ctrl+Alt+Plus.",
+        "\"{0}\" is not a modifier. Put only Ctrl, Alt, Shift or Win before the key.",
+        "{0} is in the shortcut twice.",
+        "{0} is a modifier: hold it with another key, for example Ctrl+Shift+V.",
+        "{0} is a modifier: hold it with another key, for example {1}V.",
+        "\"{0}\" is not a key name. Use names such as V, 5, F13, PageDown, Num5, NumPlus, VolumeUp or PrintScreen, or 0xNN for a virtual-key code.",
+        "Only Ctrl, Alt, Shift and Win can be held with the key.",
+        "Ctrl+Alt+Delete always goes to Windows. Pick another shortcut.",
+        "Win+L locks the PC, and Windows does not let any app take it. Pick another shortcut.",
+        "{0} switches between windows. Taking it would stop that. Pick another shortcut.",
+        "Ctrl+Esc opens Start. Pick another shortcut.",
+        "Ctrl+Shift+Esc opens Task Manager, which you need when an app stops responding. Pick another shortcut.",
+        "Alt+F4 closes windows. Taking it would stop that. Pick another shortcut.",
+        "{0} copies in every app, and BetterClipboard records those copies. Pick another shortcut.",
+        "Ctrl+X cuts in every app, and BetterClipboard records what you cut. Pick another shortcut.",
+        "Ctrl+V pastes in every app, and BetterClipboard pastes with Ctrl+V itself. Pick another shortcut, for example Ctrl+Shift+V.",
+        "{0} alone would stop that key from working in every other app. Hold Ctrl, Alt or Win with it.",
+        "{0} would stop that key from working with Shift in every other app. Hold Ctrl, Alt or Win with it.",
+        "{0} is a mouse button, not a key. Pick a key of the keyboard.",
+        "0xE8 cannot be used: BetterClipboard sends that code itself, to keep Start closed when it takes a shortcut.",
+        "0xE7 (VK_PACKET) carries typed characters, not a key press. Pick a key of the keyboard.",
+        "0xE5 (VK_PROCESSKEY) comes from an input method, not from a key. Pick a key of the keyboard.",
+        "{0} is not a key a shortcut can use. Pick a key of the keyboard.",
+    ];
+
     /// <summary>Whether the gesture includes the Windows key (such combos are usually owned by Explorer).</summary>
     public bool UsesWinKey => (Modifiers & HotkeyModifiers.Win) != 0;
 

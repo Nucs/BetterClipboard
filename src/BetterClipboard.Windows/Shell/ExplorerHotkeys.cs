@@ -1,4 +1,5 @@
 using System.Text;
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Windows.Input;
 
 namespace BetterClipboard.Windows.Shell;
@@ -25,8 +26,11 @@ public enum ExplorerReleaseAction
 /// <param name="Status">One or two sentences for the card: what is released now, and anything that does nothing.</param>
 public sealed record ExplorerReleasePlan(ExplorerReleaseAction Action, IReadOnlyList<char> Keys, string Status)
 {
-    /// <summary>The keys as shortcut names, e.g. "Win+V and Win+C", for buttons and confirmations.</summary>
+    /// <summary>The keys as shortcut names in English, e.g. "Win+V and Win+C", for the log.</summary>
     public string KeyNames => ExplorerHotkeys.Names(Keys);
+
+    /// <summary>The keys as shortcut names in the interface language ("Win+V 和 Win+C"), for buttons and confirmations.</summary>
+    public string DisplayKeyNames => ExplorerHotkeys.Names(Keys, localized: true);
 }
 
 /// <summary>
@@ -140,58 +144,72 @@ public static class ExplorerHotkeys
         var released = releasable.Where(k => IsReleased(disabledHotkeys, k)).ToArray();
         var missing = releasable.Where(k => !IsReleased(disabledHotkeys, k)).ToArray();
         bool strayV = IsReleased(disabledHotkeys, 'V') && !releasable.Contains('V');
+
+        // Settings shows the status, so it follows the interface language. Every sentence is whole, once for one key and
+        // once for several: an English "is" or "them" put into a translated template once showed inside Chinese text.
         string strayNote = strayV
-            ? " Win+V is released from Explorer too, but it is not one of your shortcuts, so it does nothing at the moment."
+            ? UiText.Translate(" Win+V is released from Explorer too, but it is not one of your shortcuts, so it does nothing at the moment.")
             : string.Empty;
 
         if (releasable.Count == 0)
         {
             return strayV
                 ? new ExplorerReleasePlan(ExplorerReleaseAction.GiveBack, ['V'],
-                    "None of your shortcuts is a Win+letter one." + strayNote)
+                    UiText.Translate("None of your shortcuts is a Win+letter one.") + strayNote)
                 : new ExplorerReleasePlan(ExplorerReleaseAction.None, [],
-                    "None of your shortcuts is a Win+letter one, so there is nothing to release.");
+                    UiText.Translate("None of your shortcuts is a Win+letter one, so there is nothing to release."));
         }
 
         if (missing.Length > 0)
         {
-            var text = BetterClipboard.Core.Localization.UiText.Format($"{Names(missing)} {IsAre(missing)} not released: BetterClipboard takes {ItThem(missing)} over with the keyboard hook while it runs.");
+            var missingNames = Names(missing, localized: true);
+            var text = missing.Length == 1
+                ? UiText.Format($"{missingNames} is not released: BetterClipboard takes it over with the keyboard hook while it runs.")
+                : UiText.Format($"{missingNames} are not released: BetterClipboard takes them over with the keyboard hook while it runs.");
             if (released.Length > 0)
             {
-                text += BetterClipboard.Core.Localization.UiText.Format($" {Names(released)} {IsAre(released)} released.");
+                var releasedNames = Names(released, localized: true);
+                text += released.Length == 1
+                    ? UiText.Format($" {releasedNames} is released.")
+                    : UiText.Format($" {releasedNames} are released.");
             }
 
             return new ExplorerReleasePlan(ExplorerReleaseAction.Release, missing, text + strayNote);
         }
 
         char[] giveBack = strayV ? [.. releasable, 'V'] : [.. releasable];
-        return new ExplorerReleasePlan(ExplorerReleaseAction.GiveBack, giveBack,
-            BetterClipboard.Core.Localization.UiText.Format($"{Names(releasable)} {IsAre(releasable)} released from Explorer: Explorer does not register {ItThem(releasable)}, so BetterClipboard can.") + strayNote);
+        var releasableNames = Names(releasable, localized: true);
+        var status = releasable.Count == 1
+            ? UiText.Format($"{releasableNames} is released from Explorer: Explorer does not register it, so BetterClipboard can.")
+            : UiText.Format($"{releasableNames} are released from Explorer: Explorer does not register them, so BetterClipboard can.");
+        return new ExplorerReleasePlan(ExplorerReleaseAction.GiveBack, giveBack, status + strayNote);
     }
 
     /// <summary>Shortcut names for keys: "Win+V", "Win+V and Win+C", "Win+V, Win+C and Win+1".</summary>
     /// <param name="keys">Letters or digits.</param>
     /// <returns>The names joined for a sentence; empty for no keys.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="keys"/> is <see langword="null"/>.</exception>
-    public static string Names(IReadOnlyList<char> keys)
+    public static string Names(IReadOnlyList<char> keys) => Names(keys, localized: false);
+
+    /// <summary>
+    /// Shortcut names for keys, joined in English (the log's "Win+V and Win+C") or in the interface language (Chinese
+    /// "Win+V、Win+C 和 Win+1": the list separator and the "and" are catalog entries).
+    /// </summary>
+    /// <param name="keys">Letters or digits.</param>
+    /// <param name="localized">Whether to join them in the interface language.</param>
+    /// <returns>The names joined for a sentence; empty for no keys.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="keys"/> is <see langword="null"/>.</exception>
+    public static string Names(IReadOnlyList<char> keys, bool localized)
     {
         ArgumentNullException.ThrowIfNull(keys);
         var names = keys.Select(k => $"Win+{char.ToUpperInvariant(k)}").ToArray();
-        return names.Length switch
+        if (names.Length < 2)
         {
-            0 => string.Empty,
-            1 => names[0],
-            _ => $"{string.Join(", ", names[..^1])} and {names[^1]}",
-        };
+            return names.Length == 0 ? string.Empty : names[0];
+        }
+
+        return localized
+            ? UiText.Format($"{string.Join(UiText.Translate(", "), names[..^1])} and {names[^1]}")
+            : $"{string.Join(", ", names[..^1])} and {names[^1]}";
     }
-
-    /// <summary>"is" or "are" for a list of keys.</summary>
-    /// <param name="keys">The keys.</param>
-    /// <returns>The verb.</returns>
-    private static string IsAre(IReadOnlyCollection<char> keys) => keys.Count == 1 ? "is" : "are";
-
-    /// <summary>"it" or "them" for a list of keys.</summary>
-    /// <param name="keys">The keys.</param>
-    /// <returns>The pronoun.</returns>
-    private static string ItThem(IReadOnlyCollection<char> keys) => keys.Count == 1 ? "it" : "them";
 }

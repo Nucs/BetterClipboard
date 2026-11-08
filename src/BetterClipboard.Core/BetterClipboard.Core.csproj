@@ -18,6 +18,17 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="BetterClipboard.Core.Tests" />
-    <EmbeddedResource Include="Localization\*.json" />
+  </ItemGroup>
+
+  <!--
+    The interface languages, embedded in this assembly so a release is one build for every language and no copy can
+    lose a language file: one catalog per language (Localization/{tag}.json, its names and flag in a "$language" header)
+    and the flags those headers name (Localization/Flags/{flag}.svg, drawn by tools/make_flags.py). UiText finds every
+    catalog by its resource name, so a new language needs no code. LogicalName pins the names UiText looks for, whatever
+    MSBuild would derive from the folders.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Localization\*.json" LogicalName="BetterClipboard.Core.Localization.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Localization\Flags\*.svg" LogicalName="BetterClipboard.Core.Localization.Flags.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

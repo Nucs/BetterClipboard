@@ -124,4 +124,28 @@ public sealed class AppPaths
         Directory.CreateDirectory(DataDirectory);
         Directory.CreateDirectory(LogDirectory);
     }
+
+    /// <summary>
+    /// Whether this data folder ever held a history: anything in <see cref="StoresDirectory"/> (a store of any machine
+    /// or user, a quarantined one included) or a v0.1 plaintext database. False only before the app's very first start
+    /// here, which is what the first-start language picker asks (see <c>Localization.LanguageChoice.ShouldAsk</c>):
+    /// installers may write <see cref="SettingsPath"/> before that start, but none of them creates a store.
+    /// </summary>
+    /// <remarks>
+    /// Must be read before the store is opened, which creates it. A folder that cannot be read counts as holding a
+    /// history: when in doubt, the picker is not shown again to someone who already uses the app.
+    /// </remarks>
+    /// <returns>Whether a history was kept here before.</returns>
+    public bool HasHistory()
+    {
+        try
+        {
+            return File.Exists(LegacyDatabasePath)
+                || (Directory.Exists(StoresDirectory) && Directory.EnumerateFileSystemEntries(StoresDirectory).Any());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
 }

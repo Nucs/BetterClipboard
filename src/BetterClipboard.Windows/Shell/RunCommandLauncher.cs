@@ -28,6 +28,21 @@ public sealed record RunCommandResult(RunCommandOutcome Outcome, int Win32Error)
     public static readonly RunCommandResult Started = new(RunCommandOutcome.Started, 0);
 
     /// <summary>
+    /// Every sentence <see cref="Describe"/> gives, as composite formats: the panel's footer shows a refusal in the
+    /// interface language through <c>UiText.TranslateFormatted</c>, the log keeps the English. A changed sentence must
+    /// change here and in every catalog; <c>TranslationTemplateTests</c> check that each outcome matches one.
+    /// </summary>
+    public static IReadOnlyList<string> DescriptionTemplates { get; } =
+    [
+        "Started.",
+        "Cancelled at the administrator prompt.",
+        "Windows cannot find it.",
+        "No app is set to open it.",
+        "Access is denied.",
+        "Windows could not run it (error {0}).",
+    ];
+
+    /// <summary>
     /// A short, content-free explanation for the panel and the log (it never repeats the command, which may hold a
     /// secret typed into Win+R).
     /// </summary>
