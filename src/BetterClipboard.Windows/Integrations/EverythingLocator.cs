@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Win32;
 
 namespace BetterClipboard.Windows.Integrations;
@@ -26,6 +27,22 @@ public static class EverythingLocator
     /// <summary>The uninstall registry path below HKLM/HKCU.</summary>
     private const string UninstallPath = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall";
 
+    /// <summary>{0}: the variable that pins an isolated run to its own Everything instance.</summary>
+    private const string NotLookedFor = "not looked for ({0} is set)";
+
+    /// <summary>Why nothing was found when the uninstall entries cannot be read.</summary>
+    private const string RegistryUnreadable = "the registry could not be read";
+
+    /// <summary>{0}: the uninstall entry's key name that led to the executable.</summary>
+    private const string InstalledVia = "installed ({0})";
+
+    /// <summary>
+    /// Every <see cref="EverythingInstallation.DetectedBy"/> wording, as composite formats: Settings shows it in the
+    /// interface language through <c>UiText.TranslateFormatted</c>, the log keeps the English. A new wording must be one
+    /// of these constants and have an entry in every catalog (the tests check the catalogs).
+    /// </summary>
+    public static IReadOnlyList<string> DetectedByTemplates { get; } = [NotLookedFor, RegistryUnreadable, InstalledVia, EverythingInstallation.NotInstalled];
+
     /// <summary>
     /// Looks for an installed Everything. Blocking (registry reads and, once per Everything build, a signature
     /// check): call it off the UI thread.
@@ -35,7 +52,7 @@ public static class EverythingLocator
     {
         if (EverythingClient.IsInstanceOverridden)
         {
-            return EverythingInstallation.NotFound with { DetectedBy = $"not looked for ({EverythingClient.InstanceVariable} is set)" };
+            return EverythingInstallation.NotFound with { DetectedBy = string.Format(CultureInfo.InvariantCulture, NotLookedFor, EverythingClient.InstanceVariable) };
         }
 
         try
@@ -44,7 +61,7 @@ public static class EverythingLocator
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
-            return EverythingInstallation.NotFound with { DetectedBy = "the registry could not be read" };
+            return EverythingInstallation.NotFound with { DetectedBy = RegistryUnreadable };
         }
     }
 
@@ -68,7 +85,7 @@ public static class EverythingLocator
             {
                 if (fileExists(candidate) && isTrusted(candidate))
                 {
-                    return new EverythingInstallation(true, candidate, entry.DisplayVersion, $"installed ({entry.KeyName})");
+                    return new EverythingInstallation(true, candidate, entry.DisplayVersion, string.Format(CultureInfo.InvariantCulture, InstalledVia, entry.KeyName));
                 }
             }
         }
@@ -173,6 +190,9 @@ public static class EverythingLocator
 /// <param name="DetectedBy">How it was found (or why not), for the Settings status.</param>
 public sealed record EverythingInstallation(bool IsInstalled, string? ExecutablePath, string? Version, string DetectedBy)
 {
+    /// <summary>The <see cref="DetectedBy"/> of <see cref="NotFound"/> (one of <see cref="EverythingLocator.DetectedByTemplates"/>).</summary>
+    public const string NotInstalled = "not installed";
+
     /// <summary>No installed Everything was found.</summary>
-    public static EverythingInstallation NotFound { get; } = new(false, null, null, "not installed");
+    public static EverythingInstallation NotFound { get; } = new(false, null, null, NotInstalled);
 }

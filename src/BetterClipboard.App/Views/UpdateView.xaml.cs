@@ -160,7 +160,7 @@ public sealed partial class UpdateView : UserControl
 
         // A failed installation is an error; a failed check (usually no connection) only means the list may be old.
         ProblemBar.Severity = install is not null ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
-        ProblemBar.Message = problem.Message;
+        ProblemBar.Message = UpdateText.ProblemText(problem);
         ProblemBar.IsOpen = true;
     }
 

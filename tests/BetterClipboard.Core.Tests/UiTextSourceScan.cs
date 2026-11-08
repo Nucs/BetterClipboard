@@ -53,7 +53,10 @@ internal sealed partial class UiTextSourceScan
     /// <summary>The (one, other) English forms of every <c>UiText.Plural</c> call, with where.</summary>
     public List<(string One, string Other, string Where)> Plurals { get; } = [];
 
-    /// <summary>Every string literal in the C# sources and every attribute value in the XAML: what "used" means.</summary>
+    /// <summary>
+    /// Every string literal in the C# sources, except the forms passed to <c>UiText.Plural</c> (keys of a plural string), and
+    /// every attribute value in the XAML: what "used" means for a plain catalog entry.
+    /// </summary>
     public HashSet<string> AllLiterals { get; } = new(StringComparer.Ordinal);
 
     /// <summary>Collects one XAML file's Tr uses and attribute values.</summary>
@@ -86,11 +89,11 @@ internal sealed partial class UiTextSourceScan
     private void ScanCSharp(string relative, string source)
     {
         var lexer = new Lexer(source);
-        foreach (var literal in lexer.Literals)
-        {
-            AllLiterals.Add(literal.Value);
-        }
 
+        // The forms passed to UiText.Plural are keys of a plural string ("{0:N0} items#one"), not of a plain string with
+        // the same text: counting them as "used" would keep a plain entry they replaced alive forever. So the file's
+        // literals join AllLiterals only after its calls are read, without the plural forms.
+        var pluralForms = new HashSet<Literal>();
         foreach (Match call in UiTextCall().Matches(source))
         {
             int open = call.Index + call.Length - 1;
@@ -115,9 +118,19 @@ internal sealed partial class UiTextSourceScan
                     if (forms.Count == 2)
                     {
                         Plurals.Add((forms[0]!.Value, forms[1]!.Value, where));
+                        pluralForms.Add(forms[0]!);
+                        pluralForms.Add(forms[1]!);
                     }
 
                     break;
+            }
+        }
+
+        foreach (var literal in lexer.Literals)
+        {
+            if (!pluralForms.Contains(literal))
+            {
+                AllLiterals.Add(literal.Value);
             }
         }
     }

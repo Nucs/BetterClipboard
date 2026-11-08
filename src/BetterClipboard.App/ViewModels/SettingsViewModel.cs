@@ -24,8 +24,11 @@ namespace BetterClipboard.App.ViewModels;
 /// </remarks>
 public sealed partial class SettingsViewModel : ObservableObject
 {
-    /// <summary>The shortcut box's hint while it listens and holds nothing recorded yet (<see cref="HotkeyHint"/>).</summary>
-    private const string ListeningHint = "Listening: press the shortcut, or type it. Enter adds it.";
+    /// <summary>
+    /// The shortcut box's hint while it listens and holds nothing recorded yet (<see cref="HotkeyHint"/>), in the interface
+    /// language (read each time: the language is set before Settings opens, but this class's statics may load earlier).
+    /// </summary>
+    private static string ListeningHint => UiText.Translate("Listening: press the shortcut, or type it. Enter adds it.");
 
     private readonly AppController controller;
     private bool loading;
@@ -469,15 +472,22 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         var installation = everything.Installation;
         var status = everything.Status;
+        // The installation's and the trust check's reasons are worded in English for the log; shown, they are translated.
+        var detectedBy = UiText.TranslateFormatted(installation.DetectedBy, EverythingLocator.DetectedByTemplates);
+        var trust = UiText.TranslateFormatted(status.Trust?.Reason, EverythingOwnerVerifier.ReasonTemplates);
         var installed = installation.IsInstalled
             ? UiText.Format($"Installed: {installation.ExecutablePath}{(installation.Version is { } version ? $" ({version})" : string.Empty)}.")
-            : UiText.Format($"Not installed ({installation.DetectedBy}).");
+            : installation.DetectedBy == EverythingInstallation.NotInstalled
+                ? UiText.Translate("Not installed.") // not "Not installed (not installed)."
+                : UiText.Format($"Not installed ({detectedBy}).");
         var running = status.State switch
         {
-            EverythingState.Ready => UiText.Format($"Running: Everything {status.Version}, {status.Trust?.Reason}{(status.IsBusy ? ", updating its index" : string.Empty)}. The tab lists the files you open in it, live."),
+            EverythingState.Ready => status.IsBusy
+                ? UiText.Format($"Running: Everything {status.Version}, {trust}, updating its index. The tab lists the files you open in it, live.")
+                : UiText.Format($"Running: Everything {status.Version}, {trust}. The tab lists the files you open in it, live."),
             EverythingState.Loading => UiText.Format($"Running: Everything {status.Version}, still loading its index — until it is ready the tab shows the history it saved last."),
             EverythingState.NotResponding => UiText.Translate("Everything is running but not responding — the tab shows the history it saved last."),
-            EverythingState.Untrusted => UiText.Format($"A program answering as Everything was ignored: {status.Trust?.Reason}."),
+            EverythingState.Untrusted => UiText.Format($"A program answering as Everything was ignored: {trust}."),
             _ => installation.IsInstalled
                 ? UiText.Translate("Not running — the tab shows the history Everything saved last, and can start it.")
                 : UiText.Translate("Not running. Install or start Everything (voidtools) and the panel gets its tab (checked whenever the panel or Settings opens)."),
@@ -522,7 +532,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        var found = shareX.ExecutablePath is { } exe ? UiText.Format($"ShareX found: {exe} (via {shareX.DetectedBy}).") : UiText.Format($"ShareX found (via {shareX.DetectedBy}).");
+        var via = UiText.TranslateFormatted(shareX.DetectedBy, ShareXLocator.DetectedByTemplates);
+        var found = shareX.ExecutablePath is { } exe ? UiText.Format($"ShareX found: {exe} (via {via}).") : UiText.Format($"ShareX found (via {via}).");
         if (!ImportShareXScreenshots)
         {
             ShareXStatus = UiText.Format($"{found}\nOff — screenshots are not imported; copies made by ShareX are still recorded and shown in its tab.");
@@ -597,7 +608,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             {
                 // A hand-edited entry, or one an older version accepted (Ctrl+V): the app skipped it, and the row says why
                 // instead of hiding it.
-                rows.Add(new HotkeyItemViewModel(text, UiText.Format($"{problem} It is skipped: remove it."), IsActive: false));
+                var reason = UiText.TranslateFormatted(problem, HotkeyGesture.ProblemTemplates);
+                rows.Add(new HotkeyItemViewModel(text, UiText.Format($"{reason} It is skipped: remove it."), IsActive: false));
                 continue;
             }
 
@@ -610,7 +622,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             var registration = registrations.FirstOrDefault(r => r.Gesture == gesture);
             rows.Add(registration is null
                 ? new HotkeyItemViewModel(gesture.ToString(), UiText.Translate("Registering…"), IsActive: true)
-                : new HotkeyItemViewModel(gesture.ToString(), UiText.Translate(registration.DescribeState()), registration.IsActive));
+                : new HotkeyItemViewModel(gesture.ToString(), UiText.TranslateFormatted(registration.DescribeState(), HotkeyRegistration.StateTemplates), registration.IsActive));
         }
 
         // The last shortcut cannot go: without one, only the tray icon would open BetterClipboard.
@@ -667,7 +679,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     {
         if (!HotkeyGesture.TryParse(text, out var gesture, out var problem))
         {
-            HotkeyError = problem ?? UiText.Translate("Not a valid shortcut. Press the keys in the box, or type them, for example Ctrl+Shift+V.");
+            // The problem is worded in English (the installer prints it too); Settings shows its translation.
+            HotkeyError = problem is not null
+                ? UiText.TranslateFormatted(problem, HotkeyGesture.ProblemTemplates)
+                : UiText.Translate("Not a valid shortcut. Press the keys in the box, or type them, for example Ctrl+Shift+V.");
             return false;
         }
 
@@ -731,7 +746,7 @@ public sealed partial class SettingsViewModel : ObservableObject
         var problem = HotkeyGesture.Problem(gesture.Modifiers, gesture.VirtualKey);
         if (problem is not null)
         {
-            HotkeyError = problem;
+            HotkeyError = UiText.TranslateFormatted(problem, HotkeyGesture.ProblemTemplates);
             HotkeyHint = ListeningHint;
         }
         else if (current.Contains(gesture))
@@ -929,7 +944,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             $"Since start: {s.Read:N0} clipboard change read the moment Windows announced it",
             $"Since start: {s.Read:N0} clipboard changes read the moment Windows announced them");
         text += s.Superseded == 0
-            ? " — none overwritten before they could be read."
+            ? UiText.Translate(" — none overwritten before they could be read.")
             : UiText.Format($" — {s.Superseded:N0} replaced by a newer one within a fraction of a millisecond (usually one app updating the same copy twice).");
         if (s.LockedOut > 0)
         {

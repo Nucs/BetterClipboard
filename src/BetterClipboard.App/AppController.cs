@@ -272,6 +272,7 @@ public sealed partial class AppController
         settings.Load();
         // Read the persisted selection before any view model or XAML markup resolves its labels.
         Core.Localization.UiText.Language = settings.Current.InterfaceLanguage;
+        ApplyLanguageToWindowsText(UiText.Current);
         rules = CaptureRules.FromSettings(settings.Current);
         settings.Changed += OnSettingsChanged;
 
@@ -399,6 +400,7 @@ public sealed partial class AppController
 
             // Applied before saving: the settings change below raises events that may word things already.
             UiText.Language = chosen.Tag;
+            ApplyLanguageToWindowsText(chosen);
             Settings.Update(s => s with { InterfaceLanguage = chosen.Tag });
             AppLog.Info($"Interface language chosen at the first start: {chosen.Tag} (Windows suggested {suggested.Tag}).");
 
@@ -848,7 +850,7 @@ public sealed partial class AppController
         // The state of Windows' own history in words: translated for Settings, English for the log.
         static string Describe(string status, bool translate) => status switch
         {
-            "Success" => "read",
+            "Success" => translate ? UiText.Translate("read") : "read",
             "ClipboardHistoryDisabled" => translate ? UiText.Translate("turned off in Windows") : "turned off in Windows",
             "AccessDenied" => translate ? UiText.Translate("access denied") : "access denied",
             _ => status,
@@ -1394,9 +1396,47 @@ public sealed partial class AppController
         return items;
     }
 
+    /// <summary>
+    /// Makes the text WinUI words itself — a text box's Cut, Copy and Paste, the parts of its controls BetterClipboard
+    /// never names — speak the interface language too, not Windows' display language: the process's preferred UI
+    /// languages pick WinUI's <c>.mui</c> files (<see cref="ProcessLanguages"/>), and the Windows App SDK's language
+    /// override picks the controls' resources.
+    /// </summary>
+    /// <remarks>
+    /// Called before any window is built (settings read at start, or the first start's language picker), because text
+    /// WinUI has already loaded keeps its language: like the interface itself, a change in Settings shows after a
+    /// restart. Failures only leave that text in Windows' language, so they are logged and nothing else.
+    /// </remarks>
+    /// <param name="language">The interface language in effect.</param>
+    private static void ApplyLanguageToWindowsText(UiLanguage language)
+    {
+        var names = language.WindowsLanguageNames;
+        if (names.Count == 0)
+        {
+            return;
+        }
+
+        if (!ProcessLanguages.TryPrefer(names, out int error))
+        {
+            AppLog.Warn($"Windows did not take the interface language {language.Tag} for WinUI's own text (error {error}).");
+        }
+
+        try
+        {
+            Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = names[0];
+        }
+        catch (Exception ex)
+        {
+            // The override is the Windows App SDK's; an unpackaged app that cannot set it still has the .mui choice above.
+            AppLog.Warn($"Setting the Windows App SDK's language override to {names[0]} failed: {ex.Message}");
+        }
+
+        AppLog.Info($"Interface language: {language.Tag} (WinUI's own text: {string.Join(", ", names)}).");
+    }
+
     /// <summary>Tray hover text reflecting capture state and shortcut.</summary>
     /// <param name="current">Current settings.</param>
     /// <returns>The tooltip.</returns>
     private string TrayTooltip(AppSettings current) =>
-        current.IsCapturePaused ? "BetterClipboard — paused" : UiText.Format($"BetterClipboard — {current.OpenHotkey} to open");
+        current.IsCapturePaused ? UiText.Translate("BetterClipboard — paused") : UiText.Format($"BetterClipboard — {current.OpenHotkey} to open");
 }

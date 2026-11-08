@@ -63,6 +63,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <param name="pick">The pick.</param>
     /// <param name="syntheticId">A negative id, unique within the list.</param>
     /// <returns>The card model.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="pick"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="syntheticId"/> is not negative.</exception>
     public static ClipItemViewModel ForPick(EverythingPick pick, long syntheticId)
     {
@@ -169,7 +170,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
         : Entry.HasRunHistory ? UiText.Translate("Win+R command")
         : ShellCommandLabel is { } shellLabel ? shellLabel
         : PromptLabel is { } promptLabel ? promptLabel
-        : Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
+        : Entry.IsPathText ? (Entry.PathCount == 1 ? UiText.Translate("Path") : UiText.Translate("Paths")) : Kind switch
     {
         ClipKind.RichText => UiText.Translate("Formatted text"),
         ClipKind.Link => UiText.Translate("Link"),
@@ -197,8 +198,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// </summary>
     public FontFamily BodyFontFamily => Pick is null && (IsShellCommandCard || (Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)))) ? MonoFont : UiFont;
 
-    /// <summary>Accessible name for screen readers.</summary>
-    public string AutomationName => $"{KindLabel}: {Preview}";
+    /// <summary>
+    /// Accessible name for screen readers: the kind, then the preview, joined the interface language's way (a
+    /// full-width colon in Chinese). The preview is the user's content and goes in as a value, never translated.
+    /// </summary>
+    public string AutomationName => UiText.Format($"{KindLabel}: {Preview}");
 
     /// <summary>
     /// Replaces the snapshot after an update (pin/recency change) without recreating the card.
@@ -237,7 +241,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
             return (string.Empty, string.Empty);
         }
 
-        return (string.Join("\u2009", groups.Select(g => g.Glyph)), "In " + string.Join(", ", groups.Select(g => g.Name)));
+        // Group names are the user's own; only the words around them and the list separator follow the interface language.
+        var names = string.Join(UiText.Translate(", "), groups.Select(g => g.Name));
+        return (string.Join("\u2009", groups.Select(g => g.Glyph)), UiText.Format($"In {names}"));
     }
 
     /// <summary>
@@ -300,7 +306,8 @@ public sealed partial class ClipItemViewModel : ObservableObject
         var parts = new List<string>(3);
         if (!string.IsNullOrWhiteSpace(Entry.SourceAppName))
         {
-            parts.Add(Entry.SourceAppName!);
+            // Stored in English (the tabs filter by it); a name BetterClipboard made up is shown in the interface language.
+            parts.Add(SourceNames.Display(Entry.SourceAppName));
         }
         else if (Entry.Origin == ClipOrigin.Captured)
         {
@@ -331,7 +338,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
         }
         else if (Entry.HasRichFormats && Kind == ClipKind.RichText)
         {
-            parts.Add("formatted");
+            parts.Add(UiText.Translate("formatted"));
         }
 
         return string.Join(" · ", parts);

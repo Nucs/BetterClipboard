@@ -858,6 +858,24 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll")]
     internal static partial uint GetCurrentThreadId();
 
+    /// <summary><c>MUI_LANGUAGE_NAME</c>: the language list holds names (<c>zh-CN</c>), not hexadecimal ids.</summary>
+    internal const uint MUI_LANGUAGE_NAME = 0x8;
+
+    /// <summary>
+    /// Sets the languages Windows' resource loader prefers for this process (the <c>.mui</c> files of every DLL it
+    /// loads strings from, WinUI's own included).
+    /// </summary>
+    /// <param name="dwFlags"><see cref="MUI_LANGUAGE_NAME"/>.</param>
+    /// <param name="pwszLanguagesBuffer">
+    /// The names, each followed by a NUL; the marshaller adds the final NUL that ends the list. <see langword="null"/>
+    /// clears the process's preference.
+    /// </param>
+    /// <param name="pulNumLanguages">How many languages Windows accepted.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetProcessPreferredUILanguages(uint dwFlags, string? pwszLanguagesBuffer, out uint pulNumLanguages);
+
     /// <summary><c>PROCESS_QUERY_LIMITED_INFORMATION</c>: enough for the image path, allowed even for most elevated processes.</summary>
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
 

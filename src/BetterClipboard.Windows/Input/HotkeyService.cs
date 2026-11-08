@@ -45,9 +45,22 @@ public sealed record HotkeyRegistration(HotkeyGesture Gesture, HotkeyMode Mode, 
     };
 
     /// <summary>
+    /// Every sentence <see cref="DescribeState"/> gives, as composite formats: Settings shows the state in the interface
+    /// language through <c>UiText.TranslateFormatted</c> (the error code is a placeholder, so it survives translation).
+    /// A changed sentence must change here and in every catalog; <c>TranslationTemplateTests</c> check that each state matches.
+    /// </summary>
+    public static IReadOnlyList<string> StateTemplates { get; } =
+    [
+        "Registered.",
+        "Owned by Windows or another app: taken over with a keyboard hook while BetterClipboard runs.",
+        "Used by another app. Turn on the takeover below, or pick another shortcut.",
+        "Could not be registered (error {0}).",
+    ];
+
+    /// <summary>
     /// The same status without the shortcut's name, for a row that shows the name next to it (Settings' shortcut list).
     /// </summary>
-    /// <returns>A short sentence.</returns>
+    /// <returns>A short sentence, in English (<see cref="StateTemplates"/> translates it).</returns>
     public string DescribeState() => Mode switch
     {
         HotkeyMode.RegisteredHotKey => "Registered.",

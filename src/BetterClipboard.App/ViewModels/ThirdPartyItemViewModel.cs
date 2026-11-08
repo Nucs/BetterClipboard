@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Presentation;
 
 namespace BetterClipboard.App.ViewModels;
@@ -37,6 +38,11 @@ public sealed record ThirdPartyItemViewModel(string Name, string Credit, string 
     public static ThirdPartyItemViewModel From(ThirdPartyProject project)
     {
         ArgumentNullException.ThrowIfNull(project);
-        return new ThirdPartyItemViewModel(project.Name, project.Credit, project.Use, project.LinkText, project.Link);
+        // The catalog is English (its tests compare it with THIRD-PARTY-NOTICES.md); the row shows it in the interface
+        // language. Names, makers and SPDX ids stay as their owners write them; only words are translated.
+        var credit = project.Role == ThirdPartyRole.Integration
+            ? UiText.Format($"{project.Maker} · separate app")
+            : $"{project.Maker} · {UiText.Translate(project.License ?? string.Empty)}";
+        return new ThirdPartyItemViewModel(project.Name, credit, UiText.Translate(project.Use), project.LinkText, project.Link);
     }
 }

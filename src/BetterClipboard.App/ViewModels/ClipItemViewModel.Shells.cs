@@ -86,8 +86,11 @@ public sealed partial class ClipItemViewModel
     private static string CommandCaption(ShellCommand command)
     {
         var times = UiText.Plural(command.Count, $"typed once", $"typed {command.Count:N0} times");
+
+        // The shell's name is BetterClipboard's own words ("Command Prompt", "PowerShell in VS Code"): shown translated.
+        var source = SourceNames.Display(command.Source);
         return command.LastSeen is { } seen
-            ? $"{command.Source} · {RelativeTimeFormatter.Format(seen, DateTimeOffset.UtcNow)} · {times}"
-            : $"{command.Source} · {times}";
+            ? $"{source} · {RelativeTimeFormatter.Format(seen, DateTimeOffset.UtcNow)} · {times}"
+            : $"{source} · {times}";
     }
 }

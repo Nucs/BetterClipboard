@@ -493,7 +493,7 @@ public sealed class UpdateService : IAsyncDisposable
         {
             // A bug must not stop the schedule or reach the pool unobserved.
             AppLog.Error("Update check failed unexpectedly.", ex);
-            problem = new UpdateProblem(UpdateFailure.BadResponse, "The check for updates failed unexpectedly. The log has the details.");
+            problem = new UpdateProblem(UpdateFailure.BadResponse, UpdateMessages.CheckFailedUnexpectedly);
         }
 
         lock (gate)
@@ -539,13 +539,13 @@ public sealed class UpdateService : IAsyncDisposable
             var checksums = await client.GetTextAsync(offer.Checksums, MaxChecksumListBytes, cancellationToken).ConfigureAwait(false);
             if (!Sha256Sums.TryFind(checksums, offer.Package.Name, out var expected))
             {
-                throw new UpdateException(UpdateFailure.Verification, $"The release's checksum list has no entry for {offer.Package.Name}, so the update cannot be verified. Nothing was installed.");
+                throw new UpdateException(UpdateFailure.Verification, UpdateMessages.Format(UpdateMessages.ChecksumMissing, offer.Package.Name));
             }
 
             // GitHub computes its own digest when a file is uploaded: a second witness that must agree with the list.
             if (offer.Package.Sha256 is { } digest && !string.Equals(digest, expected, StringComparison.OrdinalIgnoreCase))
             {
-                throw new UpdateException(UpdateFailure.Verification, $"The release's two checksums for {offer.Package.Name} disagree, so the update cannot be trusted. Nothing was installed.");
+                throw new UpdateException(UpdateFailure.Verification, UpdateMessages.Format(UpdateMessages.ChecksumsDisagree, offer.Package.Name));
             }
 
             var package = Path.Combine(options.WorkDirectory, offer.Package.Name);
@@ -564,7 +564,7 @@ public sealed class UpdateService : IAsyncDisposable
             if (!string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase))
             {
                 TryDelete(package);
-                throw new UpdateException(UpdateFailure.Verification, "The download does not match the release's checksum, so it was deleted. Nothing was installed. Try again; if it happens again, download the release from GitHub.");
+                throw new UpdateException(UpdateFailure.Verification, UpdateMessages.DownloadMismatch);
             }
 
             AppLog.Info("Update package verified: its SHA-256 matches the release's checksum list.");
@@ -596,7 +596,7 @@ public sealed class UpdateService : IAsyncDisposable
         }
         catch (TimeoutException)
         {
-            problem = new UpdateProblem(UpdateFailure.Installer, $"The installer did not finish in {InstallerTimeout.TotalMinutes:0} minutes. Details: {options.InstallerLogPath}");
+            problem = new UpdateProblem(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.InstallerTimedOut, InstallerTimeout.TotalMinutes, options.InstallerLogPath));
             AppLog.Warn($"Update to {offer.Release.Version}: the installer did not finish in time.");
         }
         catch (OperationCanceledException)
@@ -609,7 +609,7 @@ public sealed class UpdateService : IAsyncDisposable
         catch (Exception ex)
         {
             AppLog.Error($"Update to {offer.Release.Version} failed unexpectedly.", ex);
-            problem = new UpdateProblem(UpdateFailure.Installer, "The update failed unexpectedly. The installed version is unchanged. The log has the details.");
+            problem = new UpdateProblem(UpdateFailure.Installer, UpdateMessages.UpdateFailedUnexpectedly);
         }
 
         Set(s => s with { Phase = UpdatePhase.Idle, InstallProblem = problem, DownloadedBytes = 0 });
@@ -630,12 +630,12 @@ public sealed class UpdateService : IAsyncDisposable
     {
         if (result is { Succeeded: false, Error.Length: > 0 })
         {
-            return $"The installer could not update BetterClipboard: {result.Error}";
+            return UpdateMessages.Format(UpdateMessages.InstallerReported, result.Error);
         }
 
         return File.Exists(options.InstallerLogPath)
-            ? $"The installer ended without updating BetterClipboard (code {exitCode}). The installed version is unchanged. Details: {options.InstallerLogPath}"
-            : $"The installer ended before it could start (code {exitCode}), so the installed version is unchanged. If this PC blocks PowerShell scripts, get the new version from the download page.";
+            ? UpdateMessages.Format(UpdateMessages.InstallerEnded, exitCode, options.InstallerLogPath)
+            : UpdateMessages.Format(UpdateMessages.InstallerNeverStarted, exitCode);
     }
 
     /// <summary>

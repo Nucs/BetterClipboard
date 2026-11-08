@@ -27,6 +27,7 @@ public static class CliExitCodes
     /// <summary>Maps a response to an exit code.</summary>
     /// <param name="response">The response.</param>
     /// <returns>The exit code.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="response"/> is <see langword="null"/>.</exception>
     public static int For(CliResponse response)
     {
         ArgumentNullException.ThrowIfNull(response);
@@ -96,6 +97,7 @@ public static class CliOutput
     /// <param name="items">Items.</param>
     /// <param name="now">Clock.</param>
     /// <returns>The table.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="items"/> is <see langword="null"/>.</exception>
     public static string RenderTable(IReadOnlyList<CliItem> items, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(items);
@@ -158,6 +160,7 @@ public static class CliOutput
     /// <summary>Renders grep results as <c>id:line: text</c>.</summary>
     /// <param name="items">Items with <see cref="CliItem.Matches"/>.</param>
     /// <returns>The lines.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="items"/> is <see langword="null"/>.</exception>
     public static string RenderMatches(IReadOnlyList<CliItem> items)
     {
         ArgumentNullException.ThrowIfNull(items);
@@ -176,6 +179,7 @@ public static class CliOutput
     /// <summary>Renders <c>status</c>.</summary>
     /// <param name="status">Status.</param>
     /// <returns>Key: value lines.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="status"/> is <see langword="null"/>.</exception>
     public static string RenderStatus(CliStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);

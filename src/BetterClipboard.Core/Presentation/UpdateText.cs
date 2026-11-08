@@ -65,6 +65,20 @@ public static class UpdateText
     /// <summary>The title while nothing is known yet (no check ran, none failed): only what the dialog is about.</summary>
     private const string NeutralTitle = "Updates";
 
+    /// <summary>
+    /// A failure's message in the interface language. The update system words it once, in English, for the log as well
+    /// (<see cref="UpdateMessages"/>); what came from outside the app inside it (the installer's own report, a network or
+    /// file system reason) stays as it came.
+    /// </summary>
+    /// <param name="problem">The failure.</param>
+    /// <returns>The message to show.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="problem"/> is <see langword="null"/>.</exception>
+    public static string ProblemText(UpdateProblem problem)
+    {
+        ArgumentNullException.ThrowIfNull(problem);
+        return UiText.TranslateFormatted(problem.Message, UpdateMessages.Templates);
+    }
+
     /// <summary>Ends a title with a full stop, unless it already ends a sentence (an ellipsis counts).</summary>
     /// <param name="title">A title from <see cref="Title"/>.</param>
     /// <returns>The title as a sentence.</returns>
@@ -157,12 +171,13 @@ public static class UpdateText
 
         if (snapshot.CheckProblem is { } check && snapshot.Phase != UpdatePhase.Checking)
         {
-            lines.Add(UiText.Format($"The last check failed: {check.Message}"));
+            // The message was worded in English for the log too; it is translated from its template here.
+            lines.Add(UiText.Format($"The last check failed: {ProblemText(check)}"));
         }
 
         if (snapshot.InstallProblem is { } install)
         {
-            lines.Add(install.Message);
+            lines.Add(ProblemText(install));
         }
 
         if (!snapshot.AutomaticChecks && snapshot.LastChecked is not null)
@@ -222,7 +237,7 @@ public static class UpdateText
         double done = Math.Max(0, downloaded) / Megabyte;
         return total > 0
             ? UiText.Format(culture, $"{done:0.0} of {total / Megabyte:0.0} MB")
-            : UiText.Format(culture, $"{done:0.0} MB");
+            : string.Format(culture, "{0:0.0} MB", done);
     }
 
     /// <summary>Why this copy does not check by itself, and what does instead.</summary>

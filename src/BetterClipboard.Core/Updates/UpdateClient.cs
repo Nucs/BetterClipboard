@@ -116,8 +116,8 @@ public sealed class UpdateClient : IDisposable
                 return null;
             }
 
-            ThrowForStatus(response, "the release list");
-            var body = await ReadBoundedAsync(response.Content, MaxFeedBytes, "The release list", timeout.Token).ConfigureAwait(false);
+            ThrowForStatus(response, UpdateMessages.TheReleaseList);
+            var body = await ReadBoundedAsync(response.Content, MaxFeedBytes, UpdateMessages.ReleaseListSubject, timeout.Token).ConfigureAwait(false);
             IReadOnlyList<ReleaseInfo> releases;
             try
             {
@@ -125,12 +125,12 @@ public sealed class UpdateClient : IDisposable
             }
             catch (FormatException ex)
             {
-                throw new UpdateException(UpdateFailure.BadResponse, "The release list from the server could not be read.", ex);
+                throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.ReleaseListUnreadable, ex);
             }
 
             return new ReleaseFeed(releases, response.Headers.ETag?.ToString(), body);
         }
-        catch (Exception ex) when (TranslateTransportFailure(ex, cancellationToken, "the release list") is { } translated)
+        catch (Exception ex) when (TranslateTransportFailure(ex, cancellationToken, UpdateMessages.TheReleaseList) is { } translated)
         {
             throw translated;
         }
@@ -193,7 +193,7 @@ public sealed class UpdateClient : IDisposable
         EnsureTrusted(asset);
         if (asset.Size > MaxPackageBytes)
         {
-            throw new UpdateException(UpdateFailure.BadResponse, $"{asset.Name} is larger than an update can be.");
+            throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.PackageTooLarge, asset.Name));
         }
 
         var partial = targetPath + ".part";
@@ -205,7 +205,7 @@ public sealed class UpdateClient : IDisposable
             ThrowForStatus(response, asset.Name);
             if (asset.Size > 0 && response.Content.Headers.ContentLength is { } announced && announced != asset.Size)
             {
-                throw new UpdateException(UpdateFailure.BadResponse, $"{asset.Name} has another size on the server than the release states.");
+                throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.PackageSizeDiffers, asset.Name));
             }
 
             long limit = asset.Size > 0 ? asset.Size : MaxPackageBytes;
@@ -243,7 +243,7 @@ public sealed class UpdateClient : IDisposable
                     received += read;
                     if (received > limit)
                     {
-                        throw new UpdateException(UpdateFailure.BadResponse, $"{asset.Name} is larger on the server than the release states.");
+                        throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.PackageLargerThanStated, asset.Name));
                     }
 
                     hash.AppendData(buffer.AsSpan(0, read));
@@ -275,7 +275,7 @@ public sealed class UpdateClient : IDisposable
 
             if (asset.Size > 0 && received != asset.Size)
             {
-                throw new UpdateException(UpdateFailure.Network, $"The download of {asset.Name} ended early ({received:N0} of {asset.Size:N0} bytes).");
+                throw new UpdateException(UpdateFailure.Network, UpdateMessages.Format(UpdateMessages.DownloadEndedEarly, asset.Name, received, asset.Size));
             }
 
             string sha256 = Convert.ToHexStringLower(hash.GetHashAndReset());
@@ -347,7 +347,7 @@ public sealed class UpdateClient : IDisposable
     {
         if (!Source.IsTrustedDownload(asset.DownloadUrl))
         {
-            throw new UpdateException(UpdateFailure.BadResponse, $"The release list names a download address for {asset.Name} that is not one of this project's release downloads, so it was not used.");
+            throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.UntrustedAddress, asset.Name));
         }
     }
 
@@ -367,13 +367,15 @@ public sealed class UpdateClient : IDisposable
         int status = (int)response.StatusCode;
         if (status is 403 or 429 && TryReadRateLimit(response, out var retryAfter))
         {
-            var when = retryAfter is { } at ? $" Try again after {at.ToLocalTime().ToString("t", CultureInfo.CurrentCulture)}." : " Try again later.";
-            throw new UpdateException(UpdateFailure.RateLimited, "GitHub limits how often this network address may ask for releases." + when, retryAfter: retryAfter);
+            var message = retryAfter is { } at
+                ? UpdateMessages.Format(UpdateMessages.RateLimitedUntil, at.ToLocalTime().ToString("t", CultureInfo.CurrentCulture))
+                : UpdateMessages.RateLimited;
+            throw new UpdateException(UpdateFailure.RateLimited, message, retryAfter: retryAfter);
         }
 
         throw status >= 500
-            ? new UpdateException(UpdateFailure.Server, $"The server could not answer the request for {what} right now (error {status}).")
-            : new UpdateException(UpdateFailure.BadResponse, $"The server refused the request for {what} (error {status}).");
+            ? new UpdateException(UpdateFailure.Server, UpdateMessages.Format(UpdateMessages.ServerUnavailable, what, status))
+            : new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.ServerRefused, what, status));
     }
 
     /// <summary>
@@ -417,7 +419,7 @@ public sealed class UpdateClient : IDisposable
     {
         if (content.Headers.ContentLength is > 0 and var length && length > maxBytes)
         {
-            throw new UpdateException(UpdateFailure.BadResponse, $"{what} is larger than expected and was not read.");
+            throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.TooLargeToRead, what));
         }
 
         await using var stream = await content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -428,7 +430,7 @@ public sealed class UpdateClient : IDisposable
         {
             if (memory.Length + read > maxBytes)
             {
-                throw new UpdateException(UpdateFailure.BadResponse, $"{what} is larger than expected and was not read.");
+                throw new UpdateException(UpdateFailure.BadResponse, UpdateMessages.Format(UpdateMessages.TooLargeToRead, what));
             }
 
             memory.Write(buffer, 0, read);
@@ -453,10 +455,10 @@ public sealed class UpdateClient : IDisposable
 
         // Not the caller's cancellation: the request's own time limit (or the stall limit) ran out.
         OperationCanceledException when !callerToken.IsCancellationRequested =>
-            new UpdateException(UpdateFailure.Network, $"The server did not answer in time ({what}).", exception),
+            new UpdateException(UpdateFailure.Network, UpdateMessages.Format(UpdateMessages.ServerTimedOut, what), exception),
         OperationCanceledException => null,
         HttpRequestException or IOException =>
-            new UpdateException(UpdateFailure.Network, $"The server could not be reached ({Describe(exception)}).", exception),
+            new UpdateException(UpdateFailure.Network, UpdateMessages.Format(UpdateMessages.ServerUnreachable, Describe(exception)), exception),
         _ => null,
     };
 
@@ -484,7 +486,7 @@ public sealed class UpdateClient : IDisposable
     /// <param name="exception">The file operation's exception.</param>
     /// <returns>The exception to throw.</returns>
     private static UpdateException StorageFailure(Exception exception) =>
-        new(UpdateFailure.Storage, $"The update could not be saved on this PC: {exception.Message}", exception);
+        new(UpdateFailure.Storage, UpdateMessages.Format(UpdateMessages.NotSaved, exception.Message), exception);
 
     /// <summary>Deletes a partial download, ignoring a failure (the next download overwrites it anyway).</summary>
     /// <param name="path">The file.</param>

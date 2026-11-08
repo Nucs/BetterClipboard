@@ -95,10 +95,29 @@ A catalog is one JSON object:
   display language: its own tag, a name in `alsoFor`, or the nearest parent culture with a catalog (`zh-SG` →
   `zh-Hans`, `en-GB` → `en`). Traditional Chinese (`zh-TW`, `zh-HK`) gets English, not Simplified Chinese.
 - **Fallback:** a string, or a plural form, a catalog lacks shows in English.
+- **Whole phrases, not pieces.** A count is a plural string (`UiText.Plural(n, $"{n:N0} file", $"{n:N0} files")`), and a
+  sentence that differs for one and for several is a plural string too. Never put a translated template around an
+  English word passed in as a value: `$"{names} {isAre} released"` showed "is" inside Chinese text. Lists are joined
+  with the catalog's `", "` (Chinese `、`) and `"{0} and {1}"`.
+- **Text a component words in English for the log, shown translated.** Some reasons and statuses are made once, in
+  English, by code that also logs them or prints them for the installer: why a shortcut cannot be used
+  (`HotkeyGesture.ProblemTemplates`), a shortcut's state, why Everything was not trusted or how it and ShareX were found,
+  why an update failed (`UpdateMessages`), why a Win+R command did not run. The interface translates the finished
+  English back through its template list: `UiText.TranslateFormatted(text, templates)` finds the template whose shape
+  matches, translates it, and carries the matched parts over unchanged (a part is translated only when it is itself in
+  the list, like "the release list"). Each list is the component's contract with the catalogs.
+- **Names BetterClipboard makes up for a copy's source** ("Command Prompt", "Snipping Tool", "Screenshots folder") are
+  stored in English, because the tabs filter by them, and translated where they are shown (`SourceNames.Display`).
+- **Dates** use the interface language's day and month names (`UiText.DateCulture`): an English Windows with the
+  Chinese interface shows "周四 14:02", not "Thu 14:02". The two date patterns, `d MMM` and `d MMM yyyy`, are catalog
+  entries: Chinese writes `M月d日` and `yyyy年M月d日`.
+- **WinUI's own text** (a text box's Cut, Copy and Paste) comes from WinUI's `.mui` files, which Windows picks by the
+  process's preferred UI languages. The app sets them to the interface language at start, before any window is built
+  (`ProcessLanguages`, plus the Windows App SDK's `PrimaryLanguageOverride`), so they follow it too.
 
 **Footgun:** a key is the English text, so editing the English in the code makes a new key, and every translation of
-the old text is lost. `LocalizationTests.CodeAndCatalogsAgree` fails until `en.json` follows; use `catalog.py rename`,
-which moves the string in every catalog and XAML file and marks each translation for review, then change the C#.
+the old text is lost. The tests fail until `en.json` follows (below); use `catalog.py rename`, which moves the string in
+every catalog and XAML file and marks each translation for review, then change the C#.
 
 ## Plural rules
 
@@ -140,10 +159,12 @@ python tools/localization/catalog.py check
 python tools/localization/catalog.py migrate
 ```
 
-- `add` puts a string in `en.json` and the translations named (`add --hash` keeps it under a hash key and prints it).
+- `add` puts a string in `en.json` and the translations named (`add --hash` keeps it under a hash key and prints it);
+  `add-file strings.json` adds many from a JSON object `{"English": {"zh-Hans": "中文"}}` (easier than quoting
+  apostrophes and Chinese on a command line).
 - `add-plural` puts English's one and other form in `en.json`, and any language's forms as `TAG#CATEGORY="…"`.
 - `rename` changes a string's or a plural string's English everywhere (catalogs and XAML), keeping each translation and
-  marking it for review. `remove` deletes a string no code uses any more.
+  marking it for review. `remove` deletes a string no code uses any more (refused while XAML still names it).
 - `missing` is a translator's to-do list: the strings and forms a language lacks, and its review marks.
 - `check` reports broken entries (exit 1): keys that are not their text, forms a language does not have, values English
   does not pass, review marks of nothing. Missing strings are counted, not errors.
@@ -153,13 +174,29 @@ python tools/localization/catalog.py migrate
 Files keep their layout: `$language`, then `$review`, then the keys in ordinal order, two-space indent, UTF-8 without
 escapes, LF and a final newline.
 
+**The tests keep the catalogs and the code in step** (`dotnet test --solution BetterClipboard.sln`):
+
+- `LocalizationTests.CodeAndCatalogsAgree`: every XAML `Text=` and `Key=`, every literal handed to `UiText.Translate` /
+  `Format`, and every `UiText.Plural` pair is in `en.json` as written, and every plain entry is still used.
+- `TranslationCoverageTests.EveryTextTheCodeTranslatesHasAnEntry`: also every constant handed to `Translate` /
+  `Format`. Before these tests, 213 texts showed in English in the Chinese interface without anything failing.
+- `TranslationCoverageTests.EveryEntryIsStillUsed`, `CoreTemplateLists_HaveEntries` and `TranslationTemplateTests`
+  (Windows): every entry is still used, every template list is in the catalogs, and every text those components make
+  matches one of their templates.
+- `LocalizationTests` and `PluralRulesTests`: every catalog well formed (keys, plural forms, placeholders), each
+  language's plural rules and their samples, and how many strings each language lacks (printed, never a failure).
+
 ## Adding a language
 
 1. Create `{tag}.json` (the tag is what the settings store: `es`, `ru`, `he`, `zh-Hant`, `pt-BR`) with its `$language`
    header: own name, English name, flag code, `plurals` copied from CLDR's chart; `alsoFor` only for a bare name
    Windows uses that is not a parent of the tag.
 2. Translate strings: `catalog.py missing {tag}` lists them. Keep every `{0}`-style placeholder that carries content;
-   a translation may leave a value out, never add one. Give every plural string each form its rules name.
+   a translation may leave a value out, never add one. Give every plural string each form its rules name. Three kinds
+   of string need care:
+   - `d MMM` and `d MMM yyyy` are .NET custom date patterns, not words: write the language's own order (`M月d日`).
+   - The group icons' names (`Star`, `Work`, …) become a new group's default name: keep them distinct (a test checks).
+   - A string that starts with a space continues a sentence; drop the space where the language writes none.
 3. When no shipped language uses its flag yet, draw the flag in `tools/make_flags.py` (3:2, no `<use>`, `<text>` or CSS)
    and run it.
 4. Run `dotnet test --solution BetterClipboard.sln`: `LocalizationTests` check the header, the flag, the plural rules
@@ -169,10 +206,20 @@ Nothing else: once at most one string in ten is missing, the first-start picker 
 the new language by themselves. Until then it ships but is not offered, and the app's log says how many strings it
 lacks.
 
-**Right to left:** not built, by decision (2026-11-08): a Hebrew or Arabic catalog shows its words, and the windows
-keep their left-to-right layout.
+## English on purpose
+
+Some words stay English in every language:
+
+- **Names:** BetterClipboard, Everything, ShareX, PowerShell, Claude Code, Codex, Win+R, Win+PrtScn, and the short tab
+  names Pwsh, Cmd, Claude and Codex.
+- **Keys and shortcuts** (`Ctrl+Shift+V`, `PageDown`, `Enter` in a menu), as Windows itself writes them, and the search
+  box's `Aa`, `W` and `.*`.
+- **Text from outside the app,** shown as it came: Windows' own error messages, .NET's reason for a regular expression
+  that does not parse ("Not enough )'s."), the network stack's reason for a failed update, and the installer's report
+  (a PowerShell script's English).
+- **What is stored:** a copy's text, a file list's preview, group names, and the source names of other apps.
 
 ## Known gaps
 
-Some UI text is still English in the Chinese interface (strings not looked up by the code yet: the "Capturing" chip,
-some status lines), and the work to close them runs on its own (CLAUDE.md §2.37 and §6).
+- Right-to-left layout is not built, by decision (2026-11-08): a Hebrew or Arabic catalog shows its words, and the
+  windows keep their left-to-right layout.

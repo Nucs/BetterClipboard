@@ -181,7 +181,7 @@ public sealed partial class AppController
         if (result.Succeeded)
         {
             AppLog.Info($"The update to {Version} was installed.");
-            tray?.ShowNotification(UiText.Format($"BetterClipboard was updated to {Version}"), "The update button in the panel shows what is new.");
+            tray?.ShowNotification(UiText.Format($"BetterClipboard was updated to {Version}"), UiText.Translate("The update button in the panel shows what is new."));
             return;
         }
 

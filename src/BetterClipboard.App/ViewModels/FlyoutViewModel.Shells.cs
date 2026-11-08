@@ -1,4 +1,5 @@
 using BetterClipboard.Core.Localization;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Shells;
 using BetterClipboard.Core.Storage;
 
@@ -130,7 +131,7 @@ public sealed partial class FlyoutViewModel
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
             EmptyTitle = UiText.Translate("No matches");
-            EmptyMessage = UiText.Format($"No command you typed in {(powerShell ? "PowerShell" : "Command Prompt")} {DescribeSearch()}.");
+            EmptyMessage = UiText.Format($"No command you typed in {(powerShell ? ShellSources.PowerShellName : SourceNames.Display(ShellSources.CmdName))} {DescribeSearch()}.");
         }
         else if (powerShell)
         {

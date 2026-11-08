@@ -166,7 +166,7 @@
                             <TextBox
                                 x:Name="HotkeyBox"
                                 MinWidth="190"
-                                AutomationProperties.HelpText="Press the keys of the shortcut, or type its name, then press Enter."
+                                AutomationProperties.HelpText="{loc:Tr Text='Press the keys of the shortcut, or type its name, then press Enter.'}"
                                 AutomationProperties.Name="{loc:Tr Text='Add a shortcut that opens BetterClipboard'}"
                                 GotFocus="HotkeyBox_GotFocus"
                                 KeyDown="HotkeyBox_KeyDown"

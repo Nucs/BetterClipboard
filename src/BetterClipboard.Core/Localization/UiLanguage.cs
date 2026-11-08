@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 
 namespace BetterClipboard.Core.Localization;
 
@@ -21,6 +22,16 @@ public sealed class UiLanguage
 {
     /// <summary>The flag's SVG document, kept private so no caller can change what every other caller draws.</summary>
     private readonly byte[] flagSvg;
+
+    /// <summary>
+    /// Cached <see cref="Culture"/>. Computed on first use, not in the constructor: the class is built while
+    /// <see cref="UiText"/> initializes, and most languages never format a date. Two threads racing here compute the
+    /// same culture, so the race is harmless and the instance stays effectively immutable.
+    /// </summary>
+    private CultureInfo? culture;
+
+    /// <summary>Cached <see cref="WindowsLanguageNames"/>, computed on first use like <see cref="culture"/>.</summary>
+    private IReadOnlyList<string>? windowsLanguageNames;
 
     /// <summary>
     /// Creates a language from its parsed catalog; only <see cref="UiText"/> does, from the embedded resources.
@@ -95,6 +106,25 @@ public sealed class UiLanguage
     /// </summary>
     public PluralRules Plurals { get; }
 
+    /// <summary>
+    /// The .NET culture of the tag (<c>zh-Hans</c>, <c>en</c>): its day and month names and time patterns are the
+    /// language's own, so dates in the panel read "周三 14:02" in Chinese even on an English Windows
+    /// (<see cref="UiText.DateCulture"/>). The invariant culture when this .NET has no culture of that name (never for
+    /// the shipped tags; a guard for a catalog added under an unusual name).
+    /// </summary>
+    public CultureInfo Culture => culture ??= ResolveCulture(Tag);
+
+    /// <summary>
+    /// The names Windows' resource loader is given for this language, most specific first (<c>zh-CN</c>, then
+    /// <c>zh-Hans</c>): WinUI ships the text of its own controls (a text box's Cut, Copy and Paste) in folders named by
+    /// region (<c>zh-CN\Microsoft.ui.xaml.dll.mui</c>), and a bare script tag finds none of them.
+    /// </summary>
+    /// <remarks>
+    /// The specific name comes from .NET's own mapping (<see cref="CultureInfo.CreateSpecificCulture"/>), so a new catalog
+    /// needs no list of its own here. Empty when .NET knows no culture of that name.
+    /// </remarks>
+    public IReadOnlyList<string> WindowsLanguageNames => windowsLanguageNames ??= ResolveWindowsLanguageNames(Tag);
+
     /// <summary>How many entries the catalog holds (its UI strings plus one per plural form).</summary>
     public int Count => Strings.Count;
 
@@ -113,4 +143,37 @@ public sealed class UiLanguage
     /// <summary>The tag, for logs and debugging.</summary>
     /// <returns>The tag.</returns>
     public override string ToString() => Tag;
+
+    /// <summary>The culture of a tag, or the invariant culture when .NET has none of that name.</summary>
+    /// <param name="tag">A catalog tag.</param>
+    /// <returns>The culture (shared, read-only).</returns>
+    private static CultureInfo ResolveCulture(string tag)
+    {
+        try
+        {
+            return CultureInfo.GetCultureInfo(tag);
+        }
+        catch (CultureNotFoundException)
+        {
+            // Only reachable for a catalog named after no culture .NET knows; its words still show, its dates use the
+            // invariant names.
+            return CultureInfo.InvariantCulture;
+        }
+    }
+
+    /// <summary>The specific culture's name, then the tag itself, without repeats.</summary>
+    /// <param name="tag">A catalog tag.</param>
+    /// <returns>The names; empty when .NET knows no culture of that name.</returns>
+    private static IReadOnlyList<string> ResolveWindowsLanguageNames(string tag)
+    {
+        try
+        {
+            var specific = CultureInfo.CreateSpecificCulture(tag).Name;
+            return string.Equals(specific, tag, StringComparison.OrdinalIgnoreCase) || specific.Length == 0 ? [tag] : [specific, tag];
+        }
+        catch (CultureNotFoundException)
+        {
+            return [];
+        }
+    }
 }

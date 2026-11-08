@@ -58,7 +58,8 @@ public static class ForgottenText
         var parts = new List<string>(3);
         if (!string.IsNullOrWhiteSpace(item.SourceAppName))
         {
-            parts.Add(UiText.Format($"from {item.SourceAppName}"));
+            // Stored in English; a name BetterClipboard made up ("Command Prompt") is shown in the interface language.
+            parts.Add(UiText.Format($"from {SourceNames.Display(item.SourceAppName)}"));
         }
 
         parts.Add(UiText.Format($"forgotten {RelativeTimeFormatter.Format(item.ForgottenUtc, now, zone, culture)}"));

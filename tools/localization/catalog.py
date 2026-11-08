@@ -17,13 +17,16 @@ Commands:
       Adds a string to en.json, and a translation to each catalog named.
   python tools/localization/catalog.py add --hash "English text" [zh-Hans="中文"]...
       The same under a hash key, which it prints (for {loc:Tr Key=...}).
+  python tools/localization/catalog.py add-file strings.json
+      Adds many strings at once from a UTF-8 JSON object {"English text": {"zh-Hans": "中文"}, ...}: the same rules as
+      add for each one. Quoting many strings with apostrophes or Chinese on a command line is error-prone; a file is not.
   python tools/localization/catalog.py add-plural "{0:N0} item" "{0:N0} items" [zh-Hans#other="{0:N0} 项"]...
       Adds a plural string: English's one and other forms, and any language's forms as TAG#CATEGORY="text".
   python tools/localization/catalog.py rename "Old English text" "New English text"
       Changes a string's (or a plural string's) English text in every catalog and in XAML, keeping each translation
       and marking it for review. Change the C# literal by hand.
   python tools/localization/catalog.py remove "English text"
-      Deletes a string (or a plural string, by its other form) from every catalog, once no code uses it.
+      Deletes a string (or a plural string, by its other form) from every catalog; refuses while XAML still names it.
   python tools/localization/catalog.py reviewed TAG "Key" | --all
       Confirms translations marked for review.
   python tools/localization/catalog.py missing TAG
@@ -58,29 +61,59 @@ TR_KEY = re.compile(r"\{loc:Tr Key=(T[0-9a-f]{12})\}")
 
 
 def key_of(english: str) -> str:
-    """The hash key of an English text (only for strings kept under a hash key)."""
+    """The hash key of an English text (only for strings kept under a hash key).
+
+    Args:
+        english: The English text, exactly as the code and en.json hold it.
+
+    Returns:
+        "T" followed by the first 12 hex digits of the text's UTF-8 SHA-256.
+    """
     return "T" + hashlib.sha256(english.encode("utf-8")).hexdigest()[:12]
 
 
 def plural_parts(key: str):
-    """(other form, category) when the key is a plural form, else None."""
+    """Splits a plural form's key into its plural string and its category.
+
+    Args:
+        key: A catalog key.
+
+    Returns:
+        (English other form, category) when the key ends in "#" and a CLDR category, else None.
+    """
     head, sep, tail = key.rpartition("#")
     return (head, tail) if sep and head and tail in CATEGORIES else None
 
 
 def categories_of(catalog: dict) -> list[str]:
-    """The plural categories a language uses, in CLDR's order, from its header's rules ("other" always)."""
+    """The plural categories a language uses, in CLDR's order, from its header's rules.
+
+    Args:
+        catalog: A parsed catalog.
+
+    Returns:
+        The categories its "plurals" names, plus "other", which every language has.
+    """
     rules = catalog.get(METADATA, {}).get("plurals", {})
     return [c for c in CATEGORIES if c in rules or c == "other"]
 
 
 def load() -> dict[str, dict]:
-    """Every catalog by tag (file name without .json)."""
+    """Reads every catalog.
+
+    Returns:
+        The parsed catalogs, keyed by tag (the file name without .json: "en", "zh-Hans").
+    """
     return {path.stem: json.loads(path.read_text(encoding="utf-8")) for path in sorted(CATALOGS.glob("*.json"))}
 
 
 def save(tag: str, catalog: dict) -> None:
-    """Writes one catalog in the canonical layout: header, review marks, then the keys in ordinal order."""
+    """Writes one catalog in the canonical layout: header, review marks, then the keys in ordinal order.
+
+    Args:
+        tag: The catalog's tag, which names its file.
+        catalog: Its strings by key, plus the "$language" header and the optional "$review" list.
+    """
     ordered = {}
     if METADATA in catalog:
         ordered[METADATA] = catalog[METADATA]
@@ -94,12 +127,26 @@ def save(tag: str, catalog: dict) -> None:
 
 
 def strings_of(catalog: dict) -> dict[str, str]:
-    """A catalog's UI strings without its "$" properties."""
+    """A catalog's UI strings, without its "$" properties.
+
+    Args:
+        catalog: A parsed catalog.
+
+    Returns:
+        Its strings by key.
+    """
     return {k: v for k, v in catalog.items() if not k.startswith("$")}
 
 
 def placeholders(text: str) -> set[int]:
-    """The argument indices a composite format string uses ("{0:N0} of {1}" -> {0, 1})."""
+    """The argument indices a composite format string uses ("{0:N0} of {1}" -> {0, 1}).
+
+    Args:
+        text: A composite format string.
+
+    Returns:
+        The indices of its placeholders; doubled braces are literal and not counted.
+    """
     found = set()
     for _, field, _, _ in string.Formatter().parse(text.replace("{{", "").replace("}}", "")):
         if field is None:
@@ -111,17 +158,29 @@ def placeholders(text: str) -> set[int]:
 
 
 def xaml_files():
-    """Every XAML file of the app (build output skipped)."""
+    """Every XAML file of the app's sources.
+
+    Returns:
+        A generator of paths under src. Build output is skipped, and so is a folder whose name ends in .xaml (a published
+        app has one named Microsoft.UI.Xaml).
+    """
     for path in sorted(SOURCES.rglob("*.xaml")):
-        if "bin" not in path.parts and "obj" not in path.parts:
+        if "bin" not in path.parts and "obj" not in path.parts and path.is_file():
             yield path
 
 
 def xaml_text(english: str) -> str | None:
-    """
-    {loc:Tr Text='...'} for an English text, XML-escaped: Text=&quot;...&quot; when it holds an apostrophe (WinUI's
-    XAML compiler takes no backslash escapes in a markup extension's quoted value). None when no quoting can carry it
-    (both quote marks, a backslash or a brace): such a text keeps a hash key.
+    """The {loc:Tr Text=...} markup for an English text, XML-escaped.
+
+    WinUI's XAML compiler takes no backslash escapes in a markup extension's quoted value, so a text with an apostrophe is
+    quoted with XML-escaped double quotes (Text=&quot;...&quot;).
+
+    Args:
+        english: The English text.
+
+    Returns:
+        The markup, or None when no quoting can carry the text (both quote marks, a backslash or a brace): such a text
+        keeps a hash key.
     """
     if "\\" in english or "{" in english or "}" in english or ("'" in english and '"' in english):
         return None
@@ -132,14 +191,12 @@ def xaml_text(english: str) -> str | None:
     return "{loc:Tr Text='" + value.replace('"', "&quot;") + "'}"
 
 
-def xaml_unescape(value: str) -> str:
-    """The English text of a Text= value as written in the file, without its quotes (the reverse of xaml_text)."""
-    return (value.replace("&#10;", "\n").replace("&#13;", "\r").replace("&#9;", "\t").replace("&quot;", '"')
-            .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&"))
-
-
 def rewrite_xaml(replace) -> None:
-    """Applies a text replacement to every XAML file, printing the files it changed."""
+    """Applies a text replacement to every XAML file, printing the files it changed.
+
+    Args:
+        replace: A function from a file's text to its new text.
+    """
     for path in xaml_files():
         content = path.read_bytes().decode("utf-8")
         updated = replace(content)
@@ -148,8 +205,36 @@ def rewrite_xaml(replace) -> None:
             print(f"{path.relative_to(ROOT)}: updated")
 
 
+def xaml_uses(english: str) -> list[Path]:
+    """The XAML files that name a text, by its English text or by its hash key.
+
+    Args:
+        english: The English text.
+
+    Returns:
+        The files that would show a missing label if the string went away.
+    """
+    markup = xaml_text(english)
+    key = f"Key={key_of(english)}}}"
+    uses = []
+    for path in xaml_files():
+        text = path.read_bytes().decode("utf-8")
+        if (markup and markup in text) or key in text:
+            uses.append(path)
+    return uses
+
+
 def parse_translations(args: list[str], catalogs: dict, plural: bool) -> dict | None:
-    """TAG="text" (or TAG#CATEGORY="text") arguments by tag; None (after a message) when one names no catalog."""
+    """Reads TAG="text" (or, for a plural string, TAG#CATEGORY="text") command-line arguments.
+
+    Args:
+        args: The arguments.
+        catalogs: The catalogs, to check the tags against.
+        plural: Whether each tag carries a category.
+
+    Returns:
+        {tag: {category or "": text}}, or None (after a message) when an argument names no translation catalog.
+    """
     result: dict[str, dict] = {}
     for arg in args:
         name, sep, text = arg.partition("=")
@@ -161,8 +246,42 @@ def parse_translations(args: list[str], catalogs: dict, plural: bool) -> dict | 
     return result
 
 
+def add_one(catalogs: dict, english: str, translations: dict[str, str], hashed: bool) -> int:
+    """Adds one string to the loaded catalogs (the caller saves them).
+
+    Args:
+        catalogs: The loaded catalogs, changed in place.
+        english: The English text.
+        translations: A translation per catalog tag; a catalog not named lacks the string (it shows in English there).
+        hashed: Whether to keep it under a hash key instead of its English text.
+
+    Returns:
+        0, or 2 when the text cannot be a key as it is.
+    """
+    key = key_of(english) if hashed else english
+    if plural_parts(key) or key.startswith("$") or (not hashed and HASH_KEY.fullmatch(key)):
+        print(f"{english!r} cannot be a key as it is (it looks like a plural form, a hash key or a header)", file=sys.stderr)
+        return 2
+    for tag, catalog in catalogs.items():
+        text = english if tag == "en" else translations.get(tag)
+        if text is None:
+            continue
+        if catalog.get(key, text) != text:
+            print(f"{tag}: {key!r} already holds another text; left as it is", file=sys.stderr)
+            continue
+        catalog[key] = text
+    return 0
+
+
 def add(args: list[str]) -> int:
-    """add [--hash] "English" [TAG="text"]...: adds one string; returns an exit code."""
+    """The add command: add [--hash] "English" [TAG="text"]...
+
+    Args:
+        args: The command's arguments.
+
+    Returns:
+        A process exit code: 0, or 2 for a usage error or a text that cannot be a key.
+    """
     hashed = bool(args) and args[0] == "--hash"
     args = args[1:] if hashed else args
     if not args:
@@ -172,25 +291,52 @@ def add(args: list[str]) -> int:
     translations = parse_translations(args[1:], catalogs, plural=False)
     if translations is None:
         return 2
-    key = key_of(english) if hashed else english
-    if plural_parts(key) or key.startswith("$") or (not hashed and HASH_KEY.fullmatch(key)):
-        print(f"{english!r} cannot be a key as it is (it looks like a plural form, a hash key or a header)", file=sys.stderr)
+    code = add_one(catalogs, english, {tag: forms[""] for tag, forms in translations.items()}, hashed)
+    if code == 0:
+        for tag, catalog in catalogs.items():
+            save(tag, catalog)
+        print(key_of(english) if hashed else "added")
+    return code
+
+
+def add_file(path: str) -> int:
+    """The add-file command: adds every string of a JSON file {"English": {"tag": "translation"}}.
+
+    Args:
+        path: The UTF-8 JSON file.
+
+    Returns:
+        A process exit code: 0, or 2 when the file's shape is wrong, a string names an unknown catalog, or a text cannot
+        be a key (nothing is saved then).
+    """
+    entries = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(entries, dict) or not all(isinstance(v, dict) for v in entries.values()):
+        print('The file must hold one object: {"English text": {"zh-Hans": "..."}, ...}', file=sys.stderr)
         return 2
+    catalogs = load()
+    for english, translations in entries.items():
+        unknown = sorted((set(translations) - set(catalogs)) | ({"en"} & set(translations)))
+        if unknown:
+            print(f"{english!r}: no translation catalog named {', '.join(unknown)}", file=sys.stderr)
+            return 2
+        if add_one(catalogs, english, translations, hashed=False) != 0:
+            return 2
     for tag, catalog in catalogs.items():
-        text = english if tag == "en" else translations.get(tag, {}).get("")
-        if text is None:
-            continue
-        if catalog.get(key, text) != text:
-            print(f"{tag}: {key!r} already holds another text; left as it is", file=sys.stderr)
-            continue
-        catalog[key] = text
         save(tag, catalog)
-    print(key if hashed else "added")
+    print(f"added {len(entries)} string(s)")
     return 0
 
 
 def add_plural(args: list[str]) -> int:
-    """add-plural "one" "other" [TAG#CATEGORY="text"]...: adds one plural string; returns an exit code."""
+    """The add-plural command: add-plural "one" "other" [TAG#CATEGORY="text"]...
+
+    Args:
+        args: The command's arguments.
+
+    Returns:
+        A process exit code: 0, or 2 for a usage error, a one form with values the other form lacks, or a form a
+        language does not have.
+    """
     if len(args) < 2:
         print(__doc__, file=sys.stderr)
         return 2
@@ -218,7 +364,15 @@ def add_plural(args: list[str]) -> int:
 
 
 def rename(old: str, new: str) -> int:
-    """Moves a string (or a plural string's forms) to its new English text everywhere; returns an exit code."""
+    """The rename command: moves a string (or a plural string's forms) to its new English text everywhere.
+
+    Args:
+        old: The English text the catalogs hold now (for a plural string, its other form).
+        new: The new English text (the C# literal is changed by hand).
+
+    Returns:
+        A process exit code: 0, or 2 when en.json lacks the old text or already has the new one.
+    """
     catalogs = load()
     english = catalogs["en"]
     family = [k for k in english if (plural_parts(k) or ("", ""))[0] == old]
@@ -268,13 +422,25 @@ def rename(old: str, new: str) -> int:
 
 
 def remove(english: str) -> int:
-    """Deletes a string (or a plural string's forms, or a hash-keyed string) from every catalog; returns an exit code."""
+    """The remove command: deletes a string (or a plural string's forms, or a hash-keyed string) from every catalog.
+
+    Args:
+        english: The English text (for a plural string, its other form).
+
+    Returns:
+        A process exit code: 0, or 2 when en.json lacks it or a XAML file still names it (its label would show the bare
+        key once the entry is gone).
+    """
     catalogs = load()
     keys = {k for k in catalogs["en"] if k == english or (plural_parts(k) or ("", ""))[0] == english}
     if key_of(english) in catalogs["en"] and catalogs["en"][key_of(english)] == english:
         keys.add(key_of(english))
     if not keys:
         print(f"en.json has no string {english!r}", file=sys.stderr)
+        return 2
+    uses = xaml_uses(english)
+    if uses:
+        print(f"{uses[0].relative_to(ROOT)} still names it; change it first", file=sys.stderr)
         return 2
     for tag, catalog in catalogs.items():
         if any(k in catalog for k in keys) or any(m in keys for m in catalog.get(REVIEW, [])):
@@ -287,7 +453,15 @@ def remove(english: str) -> int:
 
 
 def reviewed(tag: str, key: str) -> int:
-    """Clears one review mark (or all with --all) in a catalog; returns an exit code."""
+    """The reviewed command: clears one review mark, or all of a catalog's with --all.
+
+    Args:
+        tag: The catalog's tag.
+        key: The reviewed entry's key, or "--all".
+
+    Returns:
+        A process exit code: 0, or 2 when the catalog does not exist or the key is not marked.
+    """
     catalogs = load()
     if tag not in catalogs:
         print(f"No catalog {tag}", file=sys.stderr)
@@ -307,7 +481,15 @@ def reviewed(tag: str, key: str) -> int:
 
 
 def missing_entries(english: dict, catalog: dict) -> list[str]:
-    """The keys a language lacks: plain strings, and each form its own rules need of each plural string."""
+    """The keys a language lacks.
+
+    Args:
+        english: The English catalog.
+        catalog: The language's catalog.
+
+    Returns:
+        Its missing plain strings, then each form its own rules need of each plural string it lacks.
+    """
     needed = []
     families = set()
     for key in strings_of(english):
@@ -322,7 +504,14 @@ def missing_entries(english: dict, catalog: dict) -> list[str]:
 
 
 def missing(tag: str) -> int:
-    """Prints a language's to-do list; returns an exit code."""
+    """The missing command: prints a language's to-do list (missing strings and forms, then review marks).
+
+    Args:
+        tag: The language's tag.
+
+    Returns:
+        A process exit code: 0, or 2 when there is no translation catalog of that tag.
+    """
     catalogs = load()
     if tag not in catalogs or tag == "en":
         print(f"No translation catalog {tag}", file=sys.stderr)
@@ -338,12 +527,21 @@ def missing(tag: str) -> int:
 
 
 def check() -> int:
-    """Reports broken entries (exit 1) and each language's missing strings and review marks; rewrites nothing."""
+    """The check command: reports broken entries and each language's missing strings and review marks.
+
+    Returns:
+        A process exit code: 1 when an entry is broken (missing strings are counted, not errors), else 0.
+    """
     catalogs = load()
     english = catalogs["en"]
     problems = 0
 
     def problem(message: str) -> None:
+        """Prints one broken entry and counts it.
+
+        Args:
+            message: What is wrong.
+        """
         nonlocal problems
         problems += 1
         print(message)
@@ -399,15 +597,20 @@ def check() -> int:
 
 
 def migrate() -> int:
-    """Converts hash keys to English-text keys in every catalog and XAML file; returns an exit code."""
+    """The migrate command: converts hash keys to English-text keys in every catalog and XAML file.
+
+    A text that is already a key, reads like a plural form, a header or a hash key, or that XAML cannot quote, stays
+    under its hash key: hash keys are allowed for exactly such texts. Running it again changes nothing.
+
+    Returns:
+        A process exit code: always 0.
+    """
     catalogs = load()
     english = catalogs["en"]
     moves = {k: v for k, v in strings_of(english).items() if HASH_KEY.fullmatch(k) and key_of(v) == k}
     in_xaml = set()
     for path in xaml_files():
         in_xaml.update(TR_KEY.findall(path.read_bytes().decode("utf-8")))
-    # A text that is already a key, reads like a plural form, a header or a hash key, or that XAML cannot quote, stays
-    # under its hash key: the hash keys are allowed for exactly such texts.
     kept = [k for k, v in moves.items()
             if v in english or plural_parts(v) or v.startswith("$") or HASH_KEY.fullmatch(v) or (k in in_xaml and xaml_text(v) is None)]
     for key in kept:
@@ -430,10 +633,19 @@ def migrate() -> int:
 
 
 def main(argv: list[str]) -> int:
-    """Command dispatch (see the module summary)."""
+    """Dispatches one command (see the module summary).
+
+    Args:
+        argv: The command line without the script's name.
+
+    Returns:
+        The command's exit code, or 2 (after the usage text) for an unknown command.
+    """
     command, args = (argv[0], argv[1:]) if argv else ("", [])
     if command == "add":
         return add(args)
+    if command == "add-file" and len(args) == 1:
+        return add_file(args[0])
     if command == "add-plural":
         return add_plural(args)
     if command == "rename" and len(args) == 2:

@@ -30,6 +30,32 @@ namespace BetterClipboard.Windows.Integrations;
 /// </remarks>
 public sealed class EverythingIntegration : IDisposable
 {
+    /// <summary>The picks are not live because Everything is loading its index (a problem, see <see cref="ProblemTemplates"/>).</summary>
+    public const string LoadingProblem = "Everything is still loading its index";
+
+    /// <summary>The picks are not live because Everything's window does not answer.</summary>
+    public const string NotRespondingProblem = "Everything is not responding";
+
+    /// <summary>The picks are not live because the window's owner failed the owner check.</summary>
+    public const string UntrustedProblem = "the program answering as Everything is not voidtools Everything";
+
+    /// <summary>The picks query passed its deadline.</summary>
+    public const string TimedOutProblem = "Everything did not answer in time (it may be updating its index)";
+
+    /// <summary>Everything's reply could not be decoded.</summary>
+    public const string UnreadableProblem = "Everything's answer could not be read";
+
+    /// <summary>Everything did not take the query (the client's <see cref="EverythingUnavailableException"/>, without its period).</summary>
+    public const string NotAcceptedProblem = "Everything did not accept the query (it may have exited or be hung)";
+
+    /// <summary>
+    /// Every <see cref="EverythingPicksResult.Problem"/>, worded once in English (the log, and the tests, read them): the
+    /// panel shows a problem in the interface language through <c>UiText.TranslateFormatted</c>, so a new problem must be
+    /// one of these constants and have an entry in every catalog (the tests check the catalogs).
+    /// </summary>
+    public static IReadOnlyList<string> ProblemTemplates { get; } =
+        [LoadingProblem, NotRespondingProblem, UntrustedProblem, TimedOutProblem, UnreadableProblem, NotAcceptedProblem];
+
     /// <summary>Deadline for the picks query; Everything answers in milliseconds unless it is updating its index.</summary>
     public static readonly TimeSpan QueryTimeout = TimeSpan.FromSeconds(3);
 
@@ -150,9 +176,9 @@ public sealed class EverythingIntegration : IDisposable
         var current = Status;
         string? problem = current.State switch
         {
-            EverythingState.Loading => "Everything is still loading its index",
-            EverythingState.NotResponding => "Everything is not responding",
-            EverythingState.Untrusted => "the program answering as Everything is not voidtools Everything",
+            EverythingState.Loading => LoadingProblem,
+            EverythingState.NotResponding => NotRespondingProblem,
+            EverythingState.Untrusted => UntrustedProblem,
             _ => null,
         };
 
@@ -170,7 +196,7 @@ public sealed class EverythingIntegration : IDisposable
             }
             catch (TimeoutException)
             {
-                problem = "Everything did not answer in time (it may be updating its index)";
+                problem = TimedOutProblem;
             }
             catch (EverythingUnavailableException ex)
             {
@@ -179,7 +205,7 @@ public sealed class EverythingIntegration : IDisposable
             catch (FormatException ex)
             {
                 AppLog.Warn($"Everything sent a reply that could not be read: {ex.Message}");
-                problem = "Everything's answer could not be read";
+                problem = UnreadableProblem;
             }
         }
 
@@ -194,6 +220,7 @@ public sealed class EverythingIntegration : IDisposable
     /// </summary>
     /// <param name="path">An absolute path.</param>
     /// <returns><see langword="true"/> when Everything took the request or was started.</returns>
+    /// <exception cref="ArgumentException"><paramref name="path"/> is empty or white space (<see cref="ArgumentNullException"/> when <see langword="null"/>).</exception>
     public bool ShowInEverything(string path)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
