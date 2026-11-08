@@ -51,7 +51,8 @@ you send to Claude Code and Codex.
   only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were ([Use](#use)).
 - **A panel that fits you.** It opens in the tab you used last, also after a restart. Drag any empty spot to move it,
   and drag an edge to resize it: it opens at that size from then on. Tabs that don't fit scroll sideways with the ‹ ›
-  arrows, the mouse wheel or a drag. The mouse selects the item it is over.
+  arrows, the mouse wheel or a drag. Right-click a tab to move it left or right or to hide it; *Show all hidden* brings
+  hidden tabs back, and your order is kept ([Tabs](#tabs)). The mouse selects the item it is over.
 - **Pins and groups.** Pin what you reuse: pinned items are listed on top, and the panel still opens on your newest copy
   just below them, so `Win+V` `Enter` pastes what you copied last and `↑` reaches the pins. Make groups with your own
   icons, drag cards onto them, and show one group or several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group
@@ -231,6 +232,7 @@ desktop, the screen with the mouse).
 | `Ctrl+F` | Back to the search box |
 | `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
 | `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), delete, forget forever |
+| Right-click a tab (or `Menu` on a tab you clicked) | Tab menu: *Move left*, *Move right*, *Hide*, *Show all hidden*. A right-click on the tabs' empty space offers *Show all hidden* too (see [Tabs](#tabs)). |
 | `Esc` | Clear the search, then close — focus returns to where you were |
 | Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens where *Panel position* says again next time. |
 | Drag an edge | Resize the panel. It opens at that size from then on. |
@@ -290,9 +292,18 @@ The tray icon opens the panel and Settings:
 Every tab after Files has its own switch in *Settings › Integrations*. All of them are on by default; turn one off
 and its tab goes away. [Tabs for other apps](#tabs-for-other-apps) tells what each one reads.
 
+**Arrange the tabs** by right-clicking one:
+- *Move left* and *Move right* move it one place among the tabs you see. All always stays first and can't be moved.
+- *Hide* takes the tab out of the row. Only the tab goes: its switch in *Settings › Integrations* stays on, and
+  BetterClipboard keeps gathering for it. Hiding the tab you are in switches to All. All can't be hidden.
+- *Show all hidden* brings every hidden tab back, with how many there are. A right-click on the row's empty space
+  offers it too.
+
+Your order and your hidden tabs are kept, also after a restart. `←` and `→` skip hidden tabs.
+
 **The panel opens in the tab you used last**, also after a restart. `←` and `→` go through the tabs in a circle. If
-the tab you used last is not there (its app is gone, or its switch is off), the panel opens in All, and returns to
-your tab when it is back. The search text and the groups you opened are not kept: each Win+V starts with an empty
+the tab you used last is not there (its app is gone, its switch is off, or you hid it), the panel opens in All, and
+returns to your tab when it is back. The search text and the groups you opened are not kept: each Win+V starts with an empty
 search over your whole history.
 
 ### Search

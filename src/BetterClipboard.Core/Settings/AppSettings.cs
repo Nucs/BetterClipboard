@@ -266,6 +266,43 @@ public sealed record AppSettings
     public Storage.ClipFilter LastTabFilter => ParseTab(LastTab);
 
     /// <summary>
+    /// The panel's tabs in the order the user arranged them (right-click a tab › <i>Move left</i> / <i>Move right</i>), as
+    /// the names of their <see cref="Storage.ClipFilter"/>s; empty while they stand in the panel's own order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written whole after a move (every tab, also those not shown right now), and empty again once the order equals the
+    /// default (<see cref="Presentation.TabArrangement.ToStored"/>), so a later version's default order still reaches users
+    /// who never moved a tab. The panel completes the list with tabs it lacks and keeps "All" first
+    /// (<see cref="Presentation.TabArrangement.Arrange"/>), so any list here shows every tab once.
+    /// </para>
+    /// <para>
+    /// Names, read leniently like <see cref="LastTab"/> (<see cref="Normalize"/> keeps the known ones, spelled as their
+    /// filter, each once): a tab name a version does not know only drops that entry. Footgun: a version from before this
+    /// member drops it when it saves the file, and the tabs are back in their default order.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> TabOrder { get; init; } = [];
+
+    /// <summary>
+    /// The tabs the user took out of the row (right-click a tab › <i>Hide</i>; <i>Show all hidden</i> empties the list), as
+    /// <see cref="Storage.ClipFilter"/> names. Never "All": it always stays.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hiding only takes a tab out of the row (the owner's choice, 2026-11-08): what feeds a hidden tab keeps working — the
+    /// Settings switches of the tabs of other apps stay on, Command Prompt windows are still read, prompts still archived —
+    /// so a tab shown again has everything. A hidden tab is skipped by the Left and Right keys and by the moves; when it is
+    /// the tab the user last chose (<see cref="LastTab"/>), the panel opens in "All" until it is shown again.
+    /// </para>
+    /// <para>
+    /// Read leniently like <see cref="TabOrder"/>. Same footgun: a version from before this member drops it when it saves
+    /// the file, and every tab shows again.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> HiddenTabs { get; init; } = [];
+
+    /// <summary>
     /// The panel search box's "Aa" toggle: words match only with the same upper and lower case
     /// (<see cref="Storage.SearchOptions.MatchCase"/>). Off by default.
     /// </summary>
@@ -598,6 +635,37 @@ public sealed record AppSettings
     }
 
     /// <summary>
+    /// Reads a tab name as stored in <see cref="TabOrder"/> or <see cref="HiddenTabs"/>: the name of a
+    /// <see cref="Storage.ClipFilter"/> member, ignoring case and surrounding spaces — and, unlike <see cref="ParseTab"/>,
+    /// tells an unknown name apart instead of reading it as "All".
+    /// </summary>
+    /// <remarks>
+    /// Names only, compared one by one, for the reason <see cref="ParseTab"/> gives: <see cref="Enum.TryParse{TEnum}(string,
+    /// bool, out TEnum)"/> would also accept numbers and comma-separated lists, which this app never writes.
+    /// </remarks>
+    /// <param name="name">The stored name; may be <see langword="null"/> or anything a hand-edited file holds.</param>
+    /// <param name="filter">The tab's filter; <see cref="Storage.ClipFilter.All"/> when the name is unknown.</param>
+    /// <returns><see langword="true"/> when the name is a tab's (never an exception).</returns>
+    public static bool TryParseTab(string? name, out Storage.ClipFilter filter)
+    {
+        var trimmed = name?.Trim();
+        if (!string.IsNullOrEmpty(trimmed))
+        {
+            foreach (var candidate in Enum.GetValues<Storage.ClipFilter>())
+            {
+                if (string.Equals(candidate.ToString(), trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    filter = candidate;
+                    return true;
+                }
+            }
+        }
+
+        filter = Storage.ClipFilter.All;
+        return false;
+    }
+
+    /// <summary>
     /// Builds the normalized <see cref="HotkeyHistory"/>: the current shortcuts that are missing go first, then the history
     /// in its order, without blanks and repeats, capped at <see cref="MaxHotkeyHistory"/>.
     /// </summary>
@@ -632,6 +700,32 @@ public sealed record AppSettings
         }
 
         return merged.ToArray();
+    }
+
+    /// <summary>
+    /// Normalizes a stored list of tab names (<see cref="TabOrder"/>, <see cref="HiddenTabs"/>): every name a tab answers to,
+    /// spelled as its <see cref="Storage.ClipFilter"/>, in the stored order, each once.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent, since <see cref="Normalize"/> runs on every load and save. Names no tab answers to — a tab of a newer
+    /// version, a typo in a hand-edited file, a blank — are dropped rather than kept for later: a version that knows such a
+    /// tab puts it back in its default place (<see cref="Presentation.TabArrangement.Arrange"/>), so dropping costs at most
+    /// that tab's place, never a broken file.
+    /// </remarks>
+    /// <param name="names">The stored names (may be <see langword="null"/> or hold <see langword="null"/>, from a hand-edited file).</param>
+    /// <returns>The known names, canonical and distinct.</returns>
+    private static string[] NormalizeTabNames(IReadOnlyList<string>? names)
+    {
+        var result = new List<string>();
+        foreach (var name in names ?? [])
+        {
+            if (TryParseTab(name, out var filter) && !result.Contains(filter.ToString()))
+            {
+                result.Add(filter.ToString());
+            }
+        }
+
+        return result.ToArray();
     }
 
     /// <summary>Removes every whitespace character from a shortcut text, for <see cref="SameHotkeyText"/>.</summary>
@@ -689,6 +783,10 @@ public sealed record AppSettings
 
             // Canonical, so the file never keeps a name no tab answers to ("pinned" becomes "Pinned", a typo becomes "All").
             LastTab = ParseTab(LastTab).ToString(),
+
+            // Known names only, each once; "All" always stays, so it is never hidden (a hand-edited file cannot hide it).
+            TabOrder = NormalizeTabNames(TabOrder),
+            HiddenTabs = NormalizeTabNames(HiddenTabs).Where(name => name != DefaultTab).ToArray(),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

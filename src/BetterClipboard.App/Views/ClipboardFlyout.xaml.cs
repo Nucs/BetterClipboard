@@ -197,6 +197,10 @@ public sealed partial class ClipboardFlyout : Window
         // The filter tabs scroll sideways when they do not fit (arrows, wheel, drags): ClipboardFlyout.TabStrip.cs.
         InitializeTabStrip();
 
+        // The tabs in the order the user arranged, without those hidden, and their right-click menu:
+        // ClipboardFlyout.TabArrangement.cs. Before the bar loads, so the first frame already shows the user's order.
+        InitializeTabArrangement();
+
         // The update button left of Pause, and the dialog it opens: ClipboardFlyout.Update.cs.
         InitializeUpdateButton();
 
@@ -814,7 +818,13 @@ public sealed partial class ClipboardFlyout : Window
                 break;
             case VirtualKey.Application:
             case VirtualKey.F10 when shift:
-                if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
+                if (FindTab(e.OriginalSource as DependencyObject) is { } focusedTab)
+                {
+                    // A tab has the keyboard (after a click on it): the key is for the tab's menu, the keyboard's way to
+                    // the right-click one (ClipboardFlyout.TabArrangement.cs). Opened below the tab, like a context menu.
+                    ShowTabMenu(focusedTab, focusedTab, new global::Windows.Foundation.Point(8, focusedTab.ActualHeight));
+                }
+                else if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
                 {
                     var menu = ShowItemMenu(forMenu, container, new global::Windows.Foundation.Point(24, 24));
 
@@ -1082,6 +1092,13 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="args">Change data.</param>
     private void Filters_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
+        if (rearrangingTabs)
+        {
+            // The bar's items are being moved (ClipboardFlyout.TabArrangement.cs): a selection lost and found again on
+            // the way is no change of tab, and the move selects the shown tab again itself.
+            return;
+        }
+
         if (sender.SelectedItem?.Tag is string tag && Enum.TryParse<ClipFilter>(tag, out var filter))
         {
             ViewModel.Filter = filter;
@@ -1704,12 +1721,13 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the Everything tab only while the setting is on and Everything is installed or running. If it disappears
-    /// while selected, falls back to "All" so the list never stays filtered by an invisible tab.
+    /// Shows the Everything tab only while the setting is on and Everything is installed or running, and the user did not
+    /// hide the tab (ClipboardFlyout.TabArrangement.cs). If it disappears while selected, falls back to "All" so the list
+    /// never stays filtered by an invisible tab.
     /// </summary>
     private void UpdateEverythingTab()
     {
-        bool available = controller.IsEverythingTabAvailable;
+        bool available = controller.IsEverythingTabAvailable && !IsTabHidden(ClipFilter.Everything);
         EverythingFilter.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         if (!available && ViewModel.Filter == ClipFilter.Everything)
         {
@@ -2416,14 +2434,15 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the ShareX tab only while ShareX is installed. If it disappears while selected, falls back to
-    /// "All" so the list never stays filtered by an invisible tab.
+    /// Shows the ShareX tab only while ShareX is installed and the user did not hide the tab
+    /// (ClipboardFlyout.TabArrangement.cs). If it disappears while selected, falls back to "All" so the list never stays
+    /// filtered by an invisible tab.
     /// </summary>
     private void UpdateShareXTab()
     {
-        bool installed = controller.ShareX.IsInstalled;
-        ShareXFilter.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
-        if (!installed && ViewModel.Filter == ClipFilter.ShareX)
+        bool shown = controller.ShareX.IsInstalled && !IsTabHidden(ClipFilter.ShareX);
+        ShareXFilter.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        if (!shown && ViewModel.Filter == ClipFilter.ShareX)
         {
             SelectFilter(ClipFilter.All);
         }
@@ -2446,11 +2465,12 @@ public sealed partial class ClipboardFlyout : Window
     /// Shows the Run tab only while Settings › Win+R history is on and the history holds a command run with Win+R
     /// (<see cref="AppController.IsRunTabAvailable"/>). If it disappears while selected — switched off, or its last entry
     /// deleted from the open tab — falls back to "All" so the list never stays filtered by an invisible tab. The tab strip
-    /// scrolls when the tabs no longer fit (its arrows follow the strip's new width by themselves).
+    /// scrolls when the tabs no longer fit (its arrows follow the strip's new width by themselves). A tab the user hid
+    /// (ClipboardFlyout.TabArrangement.cs) stays out, whatever the history holds.
     /// </summary>
     private void UpdateRunTab()
     {
-        bool available = controller.IsRunTabAvailable;
+        bool available = controller.IsRunTabAvailable && !IsTabHidden(ClipFilter.Run);
         var visibility = available ? Visibility.Visible : Visibility.Collapsed;
         if (RunFilter.Visibility == visibility)
         {

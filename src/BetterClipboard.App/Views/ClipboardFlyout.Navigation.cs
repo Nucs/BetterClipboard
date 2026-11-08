@@ -194,11 +194,12 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Whether a tab shows right now, by the same conditions the <c>Update…Tab</c> methods apply to the tabs of other
-    /// apps; the six built-in tabs always show.
+    /// apps; the six built-in tabs always show. A tab the user hid (right-click › <i>Hide</i>, every tab but All) does
+    /// not, whatever its conditions: a summon then opens in All (ClipboardFlyout.TabArrangement.cs).
     /// </summary>
     /// <param name="filter">The tab's filter.</param>
     /// <returns><see langword="true"/> when the panel has that tab and it is visible (or about to be made visible).</returns>
-    private bool IsTabAvailable(ClipFilter filter) => filter switch
+    private bool IsTabAvailable(ClipFilter filter) => !IsTabHidden(filter) && filter switch
     {
         ClipFilter.ShareX => controller.ShareX.IsInstalled,
         ClipFilter.Snipping => controller.IsSnippingTabAvailable,
