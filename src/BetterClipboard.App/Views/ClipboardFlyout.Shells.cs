@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.App.ViewModels;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Shells;
@@ -91,14 +92,14 @@ public sealed partial class ClipboardFlyout
     private MenuFlyout ShowCommandMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position)
     {
         var menu = new MenuFlyout();
-        menu.Items.Add(MenuItem("Paste", "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
-        menu.Items.Add(MenuItem("Copy only", "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
-        menu.Items.Add(MenuItem("Pin (keep in history)", "\uE718", "Ctrl+P", () => _ = TogglePinAsync(item)));
+        menu.Items.Add(MenuItem(UiText.Translate("Paste"), "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
+        menu.Items.Add(MenuItem(UiText.Translate("Copy only"), "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
+        menu.Items.Add(MenuItem(UiText.Translate("Pin (keep in history)"), "\uE718", "Ctrl+P", () => _ = TogglePinAsync(item)));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(BuildGroupsSubMenu(item));
         menu.Items.Add(new MenuFlyoutSeparator());
-        menu.Items.Add(MenuItem("Hide until typed again", "\uED1A", "Del", () => DeleteItem(item)));
-        menu.Items.Add(MenuItem("Forget forever…", "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
+        menu.Items.Add(MenuItem(UiText.Translate("Hide until typed again"), "\uED1A", "Del", () => DeleteItem(item)));
+        menu.Items.Add(MenuItem(UiText.Translate("Forget forever…"), "\uE733", null, () => DispatcherQueue.TryEnqueue(() => ShowForgetFlyout(item))));
         menu.Opened += Popup_Opened;
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });

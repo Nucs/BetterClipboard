@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
@@ -27,8 +28,8 @@ public sealed partial class ClipItemViewModel
     /// <summary>"PowerShell command" or "Command Prompt command" for a shell command card; <see langword="null"/> otherwise.</summary>
     private string? ShellCommandLabel => (Command?.Shell, Entry.Origin) switch
     {
-        (ShellKind.PowerShell, _) or (null, ClipOrigin.PowerShell) => "PowerShell command",
-        (ShellKind.Cmd, _) or (null, ClipOrigin.Cmd) => "Command Prompt command",
+        (ShellKind.PowerShell, _) or (null, ClipOrigin.PowerShell) => UiText.Translate("PowerShell command"),
+        (ShellKind.Cmd, _) or (null, ClipOrigin.Cmd) => UiText.Translate("Command Prompt command"),
         _ => null,
     };
 
@@ -84,7 +85,7 @@ public sealed partial class ClipItemViewModel
     /// <returns>The caption.</returns>
     private static string CommandCaption(ShellCommand command)
     {
-        var times = command.Count == 1 ? "typed once" : $"typed {command.Count:N0} times";
+        var times = command.Count == 1 ? "typed once" : UiText.Format($"typed {command.Count:N0} times");
         return command.LastSeen is { } seen
             ? $"{command.Source} · {RelativeTimeFormatter.Format(seen, DateTimeOffset.UtcNow)} · {times}"
             : $"{command.Source} · {times}";

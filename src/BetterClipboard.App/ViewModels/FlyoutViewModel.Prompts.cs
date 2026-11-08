@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Prompts;
 using BetterClipboard.Core.Storage;
@@ -50,7 +51,7 @@ public sealed partial class FlyoutViewModel
     /// <summary>The search placeholder of a prompt tab.</summary>
     /// <param name="agent">The tab's agent.</param>
     /// <returns>E.g. "Search prompts you sent to Claude Code…".</returns>
-    public static string PromptSearchPlaceholder(PromptAgent agent) => $"Search prompts you sent to {PromptAgents.NameOf(agent)}…";
+    public static string PromptSearchPlaceholder(PromptAgent agent) => UiText.Format($"Search prompts you sent to {PromptAgents.NameOf(agent)}…");
 
     /// <summary>
     /// Loads a prompt tab's first page (called by <see cref="ReloadAsync"/> inside its error handling: an invalid or too slow
@@ -154,28 +155,28 @@ public sealed partial class FlyoutViewModel
         var reader = controller.PromptsReader(agent);
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
-            EmptyTitle = "No matches";
-            EmptyMessage = $"No prompt you sent to {name} {DescribeSearch()}.";
+            EmptyTitle = UiText.Translate("No matches");
+            EmptyMessage = UiText.Format($"No prompt you sent to {name} {DescribeSearch()}.");
         }
         else if (reader is { IsImporting: true })
         {
             var (done, total) = reader.ImportProgress;
-            EmptyTitle = $"Reading {name}'s prompts…";
+            EmptyTitle = UiText.Format($"Reading {name}'s prompts…");
             EmptyMessage = total > 0
-                ? $"First import: {done:N0} of {total:N0} files read. Prompts appear here as they are stored."
-                : "First import: prompts appear here as they are stored.";
+                ? UiText.Format($"First import: {done:N0} of {total:N0} files read. Prompts appear here as they are stored.")
+                : UiText.Translate("First import: prompts appear here as they are stored.");
         }
         else if (agent == PromptAgent.ClaudeCode)
         {
-            EmptyTitle = "No Claude Code prompts yet";
-            EmptyMessage = "Every prompt you type in Claude Code shows up here the moment Claude Code saves it — pastes included — with "
-                + "every older one Claude Code still has. BetterClipboard keeps them after Claude Code prunes its history.";
+            EmptyTitle = UiText.Translate("No Claude Code prompts yet");
+            EmptyMessage = UiText.Translate("Every prompt you type in Claude Code shows up here the moment Claude Code saves it — pastes included — with ")
+                + UiText.Translate("every older one Claude Code still has. BetterClipboard keeps them after Claude Code prunes its history.");
         }
         else
         {
-            EmptyTitle = "No Codex prompts yet";
-            EmptyMessage = "Every prompt you send in Codex (the app, the CLI, the IDE extension) shows up here, with every older one in "
-                + "Codex's session files. Prompts written by agents and codex exec runs are left out.";
+            EmptyTitle = UiText.Translate("No Codex prompts yet");
+            EmptyMessage = UiText.Translate("Every prompt you send in Codex (the app, the CLI, the IDE extension) shows up here, with every older one in ")
+                + UiText.Translate("Codex's session files. Prompts written by agents and codex exec runs are left out.");
         }
     }
 
@@ -186,20 +187,20 @@ public sealed partial class FlyoutViewModel
         var reader = controller.PromptsReader(CurrentAgent);
         if (reader is { IsImporting: true } && reader.ImportProgress is { Total: > 0 } progress)
         {
-            return $"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompts so far";
+            return UiText.Format($"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompts so far");
         }
 
         int keptShown = Items.Count(i => i.Prompt is null);
-        var kept = keptShown > 0 ? $" · {keptShown:N0} kept" : string.Empty;
+        var kept = keptShown > 0 ? UiText.Format($" · {keptShown:N0} kept") : string.Empty;
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
             int matching = Items.Count(i => i.Prompt is not null);
-            return $"{matching:N0}{(hasMore ? "+" : string.Empty)} matching of {lastPromptStats.Distinct:N0} prompts{kept}";
+            return UiText.Format($"{matching:N0}{(hasMore ? "+" : string.Empty)} matching of {lastPromptStats.Distinct:N0} prompts{kept}");
         }
 
         var stats = lastPromptStats;
         return stats.Sends == stats.Distinct
-            ? $"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")}{kept}"
-            : $"{stats.Distinct:N0} prompts ({stats.Sends:N0} sent){kept}";
+            ? UiText.Format($"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")}{kept}")
+            : UiText.Format($"{stats.Distinct:N0} prompts ({stats.Sends:N0} sent){kept}");
     }
 }

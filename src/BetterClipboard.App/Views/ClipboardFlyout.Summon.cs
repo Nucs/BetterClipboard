@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Diagnostics;
 using BetterClipboard.App.Interop;
 using BetterClipboard.Core.Diagnostics;
@@ -362,7 +363,7 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        string list = reloaded ? $", its list reloaded after {toList.TotalMilliseconds:0} ms" : ", its list ready";
+        string list = reloaded ? UiText.Format($", its list reloaded after {toList.TotalMilliseconds:0} ms") : ", its list ready";
         AppLog.Info($"Panel on screen {toScreen.TotalMilliseconds:0} ms after the shortcut{list}{(summonLogged ? " (slow)" : " (first summon)")}.");
         summonLogged = true;
     }

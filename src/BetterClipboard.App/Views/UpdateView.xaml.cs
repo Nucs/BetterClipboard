@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Updates;
 using Microsoft.UI.Dispatching;
@@ -197,7 +198,7 @@ public sealed partial class UpdateView : UserControl
         }
         else if (snapshot.Phase is UpdatePhase.Downloading or UpdatePhase.Verifying)
         {
-            secondary = "Cancel";
+            secondary = UiText.Translate("Cancel");
             secondaryAction = () => CancelRequested?.Invoke(this, EventArgs.Empty);
         }
         else if (snapshot.Offer is { } offer)
@@ -207,27 +208,27 @@ public sealed partial class UpdateView : UserControl
             switch (snapshot.InstallKind)
             {
                 case UpdateInstallKind.Installer:
-                    primary = "Update and restart";
+                    primary = UiText.Translate("Update and restart");
                     primaryAction = () => InstallRequested?.Invoke(this, EventArgs.Empty);
-                    secondary = "Later";
+                    secondary = UiText.Translate("Later");
                     secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
                     break;
 
                 case UpdateInstallKind.Chocolatey:
-                    primary = "Copy command";
+                    primary = UiText.Translate("Copy command");
                     primaryTip = UpdateSource.ChocolateyCommand;
                     primaryAction = () => Copy(PrimaryButton, UpdateSource.ChocolateyCommand);
-                    secondary = "Later";
+                    secondary = UiText.Translate("Later");
                     secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
                     break;
 
                 case UpdateInstallKind.AllUsers:
                     // Only an administrator may replace a folder installed for every user: the command is for
                     // PowerShell as administrator, where the installer finds this copy and updates it in place.
-                    primary = "Copy command";
+                    primary = UiText.Translate("Copy command");
                     primaryTip = UpdateSource.AllUsersInstallCommand;
                     primaryAction = () => Copy(PrimaryButton, UpdateSource.AllUsersInstallCommand);
-                    secondary = "Later";
+                    secondary = UiText.Translate("Later");
                     secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
                     break;
 
@@ -235,23 +236,23 @@ public sealed partial class UpdateView : UserControl
                     // A copy extracted by hand: the new version comes from its release page, or the installer command
                     // installs it properly (and then it updates itself from here on).
                     var page = offer.Release.PageUrl ?? ReleasesPage;
-                    primary = "Download page";
+                    primary = UiText.Translate("Download page");
                     primaryTip = page.AbsoluteUri;
                     primaryAction = () => LinkRequested?.Invoke(this, page);
-                    secondary = "Copy install command";
+                    secondary = UiText.Translate("Copy install command");
                     secondaryTip = UpdateSource.InstallCommand;
                     secondaryAction = () => Copy(SecondaryButton, UpdateSource.InstallCommand);
-                    tertiary = "Later";
+                    tertiary = UiText.Translate("Later");
                     tertiaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
                     break;
             }
         }
         else
         {
-            primary = "Check now";
+            primary = UiText.Translate("Check now");
             primaryEnabled = snapshot.Phase != UpdatePhase.Checking;
             primaryAction = () => CheckRequested?.Invoke(this, EventArgs.Empty);
-            secondary = "Close";
+            secondary = UiText.Translate("Close");
             secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
         }
 
@@ -264,10 +265,10 @@ public sealed partial class UpdateView : UserControl
         ButtonRow.Visibility = primary is null && secondary is null && tertiary is null ? Visibility.Collapsed : Visibility.Visible;
 
         skipLinkSkips = !snapshot.IsSkipped;
-        SkipLink.Content = snapshot.IsSkipped ? "Stop skipping this version" : "Skip this version";
+        SkipLink.Content = snapshot.IsSkipped ? UiText.Translate("Stop skipping this version") : UiText.Translate("Skip this version");
         ToolTipService.SetToolTip(SkipLink, snapshot.IsSkipped
-            ? "Highlight the update button for this version again."
-            : "Do not highlight the update button for this version. The next version highlights it again.");
+            ? UiText.Translate("Highlight the update button for this version again.")
+            : UiText.Translate("Do not highlight the update button for this version. The next version highlights it again."));
         SkipLink.Visibility = canSkip ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -298,7 +299,7 @@ public sealed partial class UpdateView : UserControl
     private void Copy(Button button, string command)
     {
         CopyRequested?.Invoke(this, command);
-        button.Content = "Copied";
+        button.Content = UiText.Translate("Copied");
         copiedTimer ??= CreateCopiedTimer();
         copiedTimer.Stop();
         copiedTimer.Start();
@@ -347,7 +348,7 @@ public sealed partial class UpdateView : UserControl
 
             notesState = state;
             shownChangelog = null;
-            NotesHeading.Text = "Release notes";
+            NotesHeading.Text = UiText.Translate("Release notes");
             NotesPanel.Children.Clear();
             NotesPanel.Children.Add(CreateStateLine(state));
             return;
@@ -387,21 +388,21 @@ public sealed partial class UpdateView : UserControl
             var blocks = MarkdownParser.Parse(release.Notes);
             if (blocks.Count == 0)
             {
-                NotesPanel.Children.Add(SecondaryLine("This release has no notes."));
+                NotesPanel.Children.Add(SecondaryLine(UiText.Translate("This release has no notes.")));
                 continue;
             }
 
             int leftOut = MarkdownRenderer.Append(NotesPanel, blocks, styles, link => LinkRequested?.Invoke(this, link), MaxBlocksPerRelease);
             if (leftOut > 0)
             {
-                NotesPanel.Children.Add(SecondaryLine("These notes are long: the rest is on GitHub."));
+                NotesPanel.Children.Add(SecondaryLine(UiText.Translate("These notes are long: the rest is on GitHub.")));
             }
         }
 
         if (changelog.OlderReleasesLeftOut > 0)
         {
             int older = changelog.OlderReleasesLeftOut;
-            NotesPanel.Children.Add(SecondaryLine($"{older} older release{(older == 1 ? string.Empty : "s")} in between: see GitHub."));
+            NotesPanel.Children.Add(SecondaryLine(UiText.Format($"{older} older release{(older == 1 ? string.Empty : "s")} in between: see GitHub.")));
         }
 
         ScrollNotesToTop();
@@ -449,15 +450,15 @@ public sealed partial class UpdateView : UserControl
         {
             return SecondaryLine(state switch
             {
-                NotesState.Failed => "The release notes could not be loaded. Check again when you are online, or read them on GitHub.",
-                NotesState.NotLoaded => "Check now loads the release notes from GitHub.",
-                _ => "No release notes are published yet.",
+                NotesState.Failed => UiText.Translate("The release notes could not be loaded. Check again when you are online, or read them on GitHub."),
+                NotesState.NotLoaded => UiText.Translate("Check now loads the release notes from GitHub."),
+                _ => UiText.Translate("No release notes are published yet."),
             });
         }
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         row.Children.Add(new ProgressRing { Width = 16, Height = 16, IsActive = true });
-        row.Children.Add(SecondaryLine("Loading the release notes from GitHub…"));
+        row.Children.Add(SecondaryLine(UiText.Translate("Loading the release notes from GitHub…")));
         return row;
     }
 

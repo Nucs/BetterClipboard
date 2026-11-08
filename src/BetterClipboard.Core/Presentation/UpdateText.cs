@@ -1,3 +1,4 @@
+using BetterClipboard.Core.Localization;
 using System.Globalization;
 using BetterClipboard.Core.Updates;
 
@@ -26,15 +27,15 @@ public static class UpdateText
         {
             UpdatePhase.Downloading when offered is not null =>
                 snapshot.TotalBytes > 0
-                    ? string.Create(CultureInfo.InvariantCulture, $"Downloading BetterClipboard {offered}: {snapshot.DownloadFraction * 100:0} %")
-                    : $"Downloading BetterClipboard {offered}",
-            UpdatePhase.Verifying when offered is not null => $"Checking the download of BetterClipboard {offered}",
-            UpdatePhase.Installing when offered is not null => $"Installing BetterClipboard {offered}",
-            UpdatePhase.Checking when offered is null => "Checking for updates",
-            _ when offered is not null && snapshot.IsSkipped => $"BetterClipboard {offered} is available (you skipped it)",
-            _ when offered is not null => $"Update available: BetterClipboard {offered}",
-            _ when snapshot.LastChecked is not null => $"BetterClipboard {snapshot.CurrentVersion} is up to date",
-            _ => "Updates",
+                    ? UiText.Format(CultureInfo.InvariantCulture, $"Downloading BetterClipboard {offered}: {snapshot.DownloadFraction * 100:0} %")
+                    : UiText.Format($"Downloading BetterClipboard {offered}"),
+            UpdatePhase.Verifying when offered is not null => UiText.Format($"Checking the download of BetterClipboard {offered}"),
+            UpdatePhase.Installing when offered is not null => UiText.Format($"Installing BetterClipboard {offered}"),
+            UpdatePhase.Checking when offered is null => UiText.Translate("Checking for updates"),
+            _ when offered is not null && snapshot.IsSkipped => UiText.Format($"BetterClipboard {offered} is available (you skipped it)"),
+            _ when offered is not null => UiText.Format($"Update available: BetterClipboard {offered}"),
+            _ when snapshot.LastChecked is not null => UiText.Format($"BetterClipboard {snapshot.CurrentVersion} is up to date"),
+            _ => UiText.Translate("Updates"),
         };
     }
 
@@ -50,14 +51,14 @@ public static class UpdateText
         var offered = snapshot.Offer?.Release.Version.ToString();
         return snapshot.Phase switch
         {
-            UpdatePhase.Downloading when offered is not null => $"Downloading BetterClipboard {offered}…",
-            UpdatePhase.Verifying when offered is not null => "Checking the download…",
-            UpdatePhase.Installing when offered is not null => $"Installing BetterClipboard {offered}…",
-            _ when offered is not null => $"BetterClipboard {offered} is available",
-            UpdatePhase.Checking => "Checking for updates…",
-            _ when snapshot.LastChecked is not null => "BetterClipboard is up to date",
-            _ when snapshot.CheckProblem is not null => "Could not check for updates",
-            _ => NeutralTitle,
+            UpdatePhase.Downloading when offered is not null => UiText.Format($"Downloading BetterClipboard {offered}…"),
+            UpdatePhase.Verifying when offered is not null => UiText.Translate("Checking the download…"),
+            UpdatePhase.Installing when offered is not null => UiText.Format($"Installing BetterClipboard {offered}…"),
+            _ when offered is not null => UiText.Format($"BetterClipboard {offered} is available"),
+            UpdatePhase.Checking => UiText.Translate("Checking for updates…"),
+            _ when snapshot.LastChecked is not null => UiText.Translate("BetterClipboard is up to date"),
+            _ when snapshot.CheckProblem is not null => UiText.Translate("Could not check for updates"),
+            _ => UiText.Translate(NeutralTitle),
         };
     }
 
@@ -68,7 +69,7 @@ public static class UpdateText
     /// <param name="title">A title from <see cref="Title"/>.</param>
     /// <returns>The title as a sentence.</returns>
     private static string AsSentence(string title) =>
-        title.Length == 0 || title[^1] is '.' or '!' or '?' or '…' ? title : title + ".";
+        title.Length == 0 || title[^1] is '.' or '!' or '?' or '…' or '。' or '！' or '？' ? title : title + ".";
 
     /// <summary>
     /// The lines under the dialog's title: what the state means for the user and what the buttons will do.
@@ -88,45 +89,45 @@ public static class UpdateText
             case UpdatePhase.Downloading:
                 return Progress(snapshot.DownloadedBytes, snapshot.TotalBytes, culture);
             case UpdatePhase.Verifying:
-                return "Comparing the download with the release's SHA-256 checksum.";
+                return UiText.Translate("Comparing the download with the release's SHA-256 checksum.");
             case UpdatePhase.Installing:
-                return "BetterClipboard closes and starts again by itself in a moment. Your history is kept.";
+                return UiText.Translate("BetterClipboard closes and starts again by itself in a moment. Your history is kept.");
         }
 
         if (snapshot.Offer is { } offer)
         {
-            var released = offer.Release.PublishedAt is { } at ? $" Released {RelativeTimeFormatter.Format(at, now, zone, culture)}." : string.Empty;
-            var have = $"You have {snapshot.CurrentVersion}.{released}";
+            var released = offer.Release.PublishedAt is { } at ? UiText.Format($" Released {RelativeTimeFormatter.Format(at, now, zone, culture)}.") : string.Empty;
+            var have = UiText.Format($"You have {snapshot.CurrentVersion}.{released}");
             return snapshot.InstallKind switch
             {
-                UpdateInstallKind.Installer => $"{have} Updating downloads it from GitHub, checks it, and restarts BetterClipboard. Your history is kept.",
-                UpdateInstallKind.Chocolatey => $"{have} This copy was installed with Chocolatey, which updates it: {UpdateSource.ChocolateyCommand}",
-                UpdateInstallKind.AllUsers => $"{have} This copy is installed for every user of this PC, so an administrator updates it: copy the command and run it in PowerShell as administrator.",
-                _ => $"{have} This copy was not installed with the installer, so it does not replace itself. Get the new version from the download page, or install it with the command.",
+                UpdateInstallKind.Installer => UiText.Format($"{have} Updating downloads it from GitHub, checks it, and restarts BetterClipboard. Your history is kept."),
+                UpdateInstallKind.Chocolatey => UiText.Format($"{have} This copy was installed with Chocolatey, which updates it: {UpdateSource.ChocolateyCommand}"),
+                UpdateInstallKind.AllUsers => UiText.Format($"{have} This copy is installed for every user of this PC, so an administrator updates it: copy the command and run it in PowerShell as administrator."),
+                _ => UiText.Format($"{have} This copy was not installed with the installer, so it does not replace itself. Get the new version from the download page, or install it with the command."),
             };
         }
 
-        var checkedText = snapshot.LastChecked is { } last ? $"Checked {RelativeTimeFormatter.Format(last, now, zone, culture)}." : string.Empty;
+        var checkedText = snapshot.LastChecked is { } last ? UiText.Format($"Checked {RelativeTimeFormatter.Format(last, now, zone, culture)}.") : string.Empty;
         if (snapshot.Phase == UpdatePhase.Checking)
         {
-            return $"Version {snapshot.CurrentVersion}. Asking GitHub for the list of releases.";
+            return UiText.Format($"Version {snapshot.CurrentVersion}. Asking GitHub for the list of releases.");
         }
 
         if (snapshot.LastChecked is not null)
         {
             // A build that is newer than every release (installed before its release) says so, or "up to date" would puzzle.
             var newer = snapshot.Latest is { } latest && snapshot.CurrentVersion > latest.Version
-                ? $"Version {snapshot.CurrentVersion}, newer than the latest release ({latest.Version})."
-                : $"Version {snapshot.CurrentVersion} is the latest release.";
+                ? UiText.Format($"Version {snapshot.CurrentVersion}, newer than the latest release ({latest.Version}).")
+                : UiText.Format($"Version {snapshot.CurrentVersion} is the latest release.");
             return $"{newer} {checkedText}";
         }
 
         if (!snapshot.AutomaticChecks)
         {
-            return $"Version {snapshot.CurrentVersion}. {AutomaticChecksOff(snapshot.InstallKind)}";
+            return UiText.Format($"Version {snapshot.CurrentVersion}. {AutomaticChecksOff(snapshot.InstallKind)}");
         }
 
-        return $"Version {snapshot.CurrentVersion}. BetterClipboard has not checked for updates yet.";
+        return UiText.Format($"Version {snapshot.CurrentVersion}. BetterClipboard has not checked for updates yet.");
     }
 
     /// <summary>
@@ -146,17 +147,17 @@ public static class UpdateText
         // a sentence of its own. The bare "Updates" (nothing known yet) says nothing and is left out.
         var title = Title(snapshot);
         var detail = Detail(snapshot, now, zone, culture);
-        var lines = new List<string>(5) { title == NeutralTitle ? detail : $"{AsSentence(title)} {detail}".Trim() };
+        var lines = new List<string>(5) { title == UiText.Translate(NeutralTitle) ? detail : $"{AsSentence(title)} {detail}".Trim() };
 
         // Without this line a skipped version looks forgotten: it is offered, yet nothing is highlighted for it.
         if (snapshot.IsSkipped && !snapshot.IsInstalling)
         {
-            lines.Add("You skipped this version, so the update button is not highlighted for it.");
+            lines.Add(UiText.Translate("You skipped this version, so the update button is not highlighted for it."));
         }
 
         if (snapshot.CheckProblem is { } check && snapshot.Phase != UpdatePhase.Checking)
         {
-            lines.Add($"The last check failed: {check.Message}");
+            lines.Add(UiText.Format($"The last check failed: {check.Message}"));
         }
 
         if (snapshot.InstallProblem is { } install)
@@ -183,9 +184,9 @@ public static class UpdateText
         ArgumentNullException.ThrowIfNull(changelog);
         return changelog.Kind switch
         {
-            ChangelogKind.NewerReleases => "What is new",
-            ChangelogKind.CurrentRelease => "What is new in this version",
-            ChangelogKind.LatestRelease => "The latest release",
+            ChangelogKind.NewerReleases => UiText.Translate("What is new"),
+            ChangelogKind.CurrentRelease => UiText.Translate("What is new in this version"),
+            ChangelogKind.LatestRelease => UiText.Translate("The latest release"),
             _ => string.Empty,
         };
     }
@@ -220,8 +221,8 @@ public static class UpdateText
         const double Megabyte = 1024d * 1024d;
         double done = Math.Max(0, downloaded) / Megabyte;
         return total > 0
-            ? string.Create(culture, $"{done:0.0} of {total / Megabyte:0.0} MB")
-            : string.Create(culture, $"{done:0.0} MB");
+            ? UiText.Format(culture, $"{done:0.0} of {total / Megabyte:0.0} MB")
+            : UiText.Format(culture, $"{done:0.0} MB");
     }
 
     /// <summary>Why this copy does not check by itself, and what does instead.</summary>
@@ -229,8 +230,8 @@ public static class UpdateText
     /// <returns>One sentence.</returns>
     private static string AutomaticChecksOff(UpdateInstallKind kind) => kind switch
     {
-        UpdateInstallKind.Chocolatey => "Chocolatey updates this copy, so BetterClipboard does not check by itself.",
-        UpdateInstallKind.AllUsers => "This copy is installed for every user of this PC and an administrator updates it, so BetterClipboard does not check by itself. Check now still asks GitHub.",
-        _ => "Automatic checks are off: BetterClipboard asks GitHub only when you press Check now.",
+        UpdateInstallKind.Chocolatey => UiText.Translate("Chocolatey updates this copy, so BetterClipboard does not check by itself."),
+        UpdateInstallKind.AllUsers => UiText.Translate("This copy is installed for every user of this PC and an administrator updates it, so BetterClipboard does not check by itself. Check now still asks GitHub."),
+        _ => UiText.Translate("Automatic checks are off: BetterClipboard asks GitHub only when you press Check now."),
     };
 }
