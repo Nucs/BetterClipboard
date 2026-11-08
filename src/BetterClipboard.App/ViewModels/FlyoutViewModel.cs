@@ -1197,13 +1197,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
             if (Filter == ClipFilter.Run)
             {
                 // The number that matters here: how many commands are kept, against Windows' own 26.
-                StatusText = UiText.Format($"{stats.RunCount:N0} command{(stats.RunCount == 1 ? string.Empty : "s")} kept");
+                StatusText = UiText.Plural(stats.RunCount, $"{stats.RunCount:N0} command kept", $"{stats.RunCount:N0} commands kept");
                 return;
             }
 
             StatusText = stats.PinnedCount > 0
-                ? UiText.Format($"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned")
-                : UiText.Format($"{stats.Count:N0} items");
+                ? UiText.Plural(stats.Count, $"{stats.Count:N0} item · {stats.PinnedCount:N0} pinned", $"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned")
+                : UiText.Plural(stats.Count, $"{stats.Count:N0} item", $"{stats.Count:N0} items");
         }
         catch (Exception ex)
         {

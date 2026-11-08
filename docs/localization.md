@@ -5,33 +5,41 @@ download, and no language file next to the program that a copy could lose. This 
 language, fixes a translation, or adds a new piece of UI text.
 
 The first version came from [pull request #1](https://github.com/Nucs/BetterClipboard/pull/1) by Johnson-Tang2019
-(Simplified Chinese); the language picker, the flags and the English-only rules for logs and `bclip` came after it.
+(Simplified Chinese); the language picker, the flags, the English-only rules for logs and `bclip`, the English-text
+keys, plurals and partial languages came after it.
 
 ## What the user sees
 
-- **The first start asks.** On the app's very first start in a data folder, a small window lists every language as
-  *own name · flag · English name* (`简体中文 · 🇨🇳 · Chinese (Simplified)`), with the one that fits Windows' display
+- **The first start asks.** On the app's very first start in a data folder, a small window lists every offered language
+  as *own name · flag · English name* (`简体中文 · 🇨🇳 · Chinese (Simplified)`), with the one that fits Windows' display
   language selected. The heading switches to the language under the selection. A green check (or `Enter`, `Esc`, a
   double click, or closing the window) keeps the selection. The picker runs before any other window exists, so the
   whole app opens in that language at once.
-- **Settings › App › Language** changes it later: *Use Windows setting* (with the language it picks now) or any shipped
-  language, each with its flag. A change applies at the next start, because windows read their labels when they are
-  built.
+- **Settings › App › Language** changes it later: *Use Windows setting* (with the language it picks now) or any offered
+  language, each with its flag. The choice is saved at once; a **Restart now** button appears next to the list while
+  the chosen language differs from the one on screen, and restarts BetterClipboard (the new process waits for the old
+  one, then opens Settings in the new language). Windows read their labels when they are built, so a restart is what
+  applies a language everywhere at once.
 - **Who is asked:** only a first start: the data folder holds no history yet. Updating from a version without
   languages never asks (a history exists), and neither does a start whose settings already name a language (an
   administrator's pre-seeded `settings.json`). The installer may write `settings.json` before the first start (with
   `-Hotkey` or `-NoUpdateCheck`), so the settings file is not the signal; the history store is.
+- **A language may be partly translated.** Every string a catalog lacks shows in English. A language that lacks more
+  than one string in ten is not offered at all (not in the picker, not in Settings, not picked for Windows' language),
+  so a half-done translation can be merged without putting half-English screens in front of people. No percentage is
+  ever shown.
 
 ## Where the text lives
 
 ```text
 src/BetterClipboard.Core/Localization/
-├── en.json            the English catalog: the source of every string
+├── en.json            the English catalog: the list of every UI string
 ├── zh-Hans.json       one catalog per language, named by its tag
 ├── Flags/us.svg       the flags the catalogs name (drawn by tools/make_flags.py)
 ├── Flags/cn.svg
-├── UiText.cs          finds the catalogs, picks the language, looks strings up
-├── UiLanguage.cs      one language: names, flag, strings
+├── UiText.cs          finds the catalogs, picks the language, looks strings up, words plurals
+├── UiLanguage.cs      one language: names, flag, plural rules, strings
+├── PluralRules.cs     CLDR's plural rules: which form a count takes
 └── LanguageChoice.cs  when the first start asks, and what it suggests
 ```
 
@@ -46,33 +54,70 @@ A catalog is one JSON object:
     "name": "简体中文",
     "englishName": "Chinese (Simplified)",
     "flag": "cn",
-    "alsoFor": [ "zh" ]
+    "alsoFor": [ "zh" ],
+    "plurals": { "other": "@integer 0~15, 100, 1000, … @decimal 0.0~1.5, …" }
   },
-  "T8e2d0664dbbb": "选择语言",
+  "$review": [ "Restart now" ],
+  "Choose your language": "选择语言",
+  "{0:N0} items#other": "{0:N0} 项",
   "…": "…"
 }
 ```
 
-- `$language` is the header: the language's own name, its English name, its flag (the lowercase two-letter country
-  code that names `Flags/{flag}.svg`), and optionally `alsoFor`, Windows display-language names that pick this catalog
-  by their exact name (`zh` for `zh-Hans`). Other `$` properties are reserved and skipped.
-- Every other property is one UI string. Its key is `T` plus the first 12 hex digits of the SHA-256 of its English text.
+- **`$language`** is the header: the language's own name, its English name, its flag (the lowercase two-letter country
+  code that names `Flags/{flag}.svg`), optionally `alsoFor` (Windows display-language names that pick this catalog by
+  their exact name: `zh` for `zh-Hans`), and `plurals` (below). Other `$` properties are reserved and skipped.
+- **`$review`** lists translations whose English changed since they were written (`catalog.py rename` adds them, a
+  reviewer clears them with `catalog.py reviewed`). The app uses them meanwhile; the list is for people.
+- **Every other property is one UI string, keyed by its English text.** `en.json` maps each text to itself: it is the
+  list of every string, which the tests check against the code and which says how much of each language is translated.
+- **Plural strings** have one key per form: the English *other* form, `#`, and the CLDR category
+  (`{0:N0} items#one`, `{0:N0} items#few`). `en.json` holds English's `#one` and `#other`; each other catalog holds the
+  forms its own `plurals` name, always including `#other`.
+- **Hash keys** (`T` plus the first 12 hex digits of the SHA-256 of the English text) are allowed for a text better
+  kept out of the code: one XAML cannot quote (it holds both kinds of quote mark, a backslash or a brace) or a very long
+  one. `en.json` maps the hash key to the English text.
 
 ## How a string is looked up
 
-- **XAML** names the key: `Text="{loc:Tr Key=T8e2d0664dbbb}"` (`App/Localization/TrExtension.cs`). Resolved once, when
-  the window is built.
+- **XAML** names the English text: `Text="{loc:Tr Text='Choose your language'}"`, or with an apostrophe in the text
+  `Description="{loc:Tr Text=&quot;Windows' own clipboard history&quot;}"` — WinUI's XAML compiler takes no backslash
+  escapes inside a markup extension's quoted value. A hash key is `{loc:Tr Key=T…}`
+  (`App/Localization/TrExtension.cs`). Resolved once, when the window is built.
 - **C#** names the English text: `UiText.Translate("Choose your language")`, or for a sentence with values
-  `UiText.Format($"Add to {group.Name}")`. `UiText` maps the English text back to its key. The sentence is translated
-  before the values go in, so a group name, a path or a command is never translated.
-- **The language:** an explicit choice in the settings (`InterfaceLanguage`), else the catalog that fits Windows'
+  `UiText.Format($"Add to {group.Name}")`. The sentence is translated before the values go in, so a group name, a path
+  or a command is never translated.
+- **Counts:** `UiText.Plural(n, $"{n:N0} item", $"{n:N0} items")`. English's own rule picks between the two forms in
+  the code; another language's catalog gives the form its rules pick (Russian has four, Chinese one). Both forms must
+  use the same values in the same order (the one form may leave some out: `$"opened once"`). Two counts in one sentence
+  are two plurals: word the inner one first and pass it in as a value.
+- **The language:** an explicit choice in the settings (`InterfaceLanguage`), else the offered catalog that fits Windows'
   display language: its own tag, a name in `alsoFor`, or the nearest parent culture with a catalog (`zh-SG` →
   `zh-Hans`, `en-GB` → `en`). Traditional Chinese (`zh-TW`, `zh-HK`) gets English, not Simplified Chinese.
-- **Fallback:** a string a catalog lacks shows in English; a key no catalog has shows as the key (the tests catch it).
+- **Fallback:** a string, or a plural form, a catalog lacks shows in English.
 
-**Footgun:** changing an English text in C# without updating the catalogs breaks its key: the string then shows in
-English in every language. Change English texts with `catalog.py rename` (below), which moves the key in every catalog
-and XAML file and keeps the translations for review; then change the C# literal.
+**Footgun:** a key is the English text, so editing the English in the code makes a new key, and every translation of
+the old text is lost. `LocalizationTests.CodeAndCatalogsAgree` fails until `en.json` follows; use `catalog.py rename`,
+which moves the string in every catalog and XAML file and marks each translation for review, then change the C#.
+
+## Plural rules
+
+Each catalog's header carries its language's cardinal plural rules in CLDR's own syntax, copied from the
+[CLDR plural rules chart](https://www.unicode.org/cldr/charts/latest/supplemental/language_plural_rules.html)
+(Unicode CLDR data, Unicode License v3), samples included:
+
+```json
+"plurals": {
+  "one": "i = 1 and v = 0 @integer 1",
+  "other": "@integer 0, 2~16, 100, 1000, 10000, 100000, 1000000, … @decimal 0.0~1.5, …"
+}
+```
+
+- Every category except `other` has a condition; `other` takes none (it is whatever no rule takes) but may carry its
+  samples. A language with only `other` (Chinese, Japanese, Korean) writes `"plurals": { "other": "@integer …" }` or
+  `{}`; the header must still have `plurals`.
+- `UiText` evaluates the conditions for whole counts (`n` and `i` are the count, the decimal operands are 0).
+- The tests check that every `@integer` sample lands in its category, which catches a rule copied wrong.
 
 ## Never translated
 
@@ -82,38 +127,52 @@ and XAML file and keeps the translations for review; then change the C# literal.
   `RelativeTimeFormatter` for English (`localized: false`).
 - **What the user copied, names they gave** (groups), file names, paths and commands, and identifiers.
 
-## Adding a string
+## The catalog tool
 
 ```bash
 python tools/localization/catalog.py add "Choose your language" zh-Hans="选择语言"
+python tools/localization/catalog.py add-plural "{0:N0} item" "{0:N0} items" zh-Hans#other="{0:N0} 项"
+python tools/localization/catalog.py rename "Old English text" "New English text"
+python tools/localization/catalog.py remove "English text"
+python tools/localization/catalog.py missing zh-Hans
+python tools/localization/catalog.py reviewed zh-Hans "Restart now"      # or --all
+python tools/localization/catalog.py check
+python tools/localization/catalog.py migrate
 ```
 
-It adds the string to every catalog with its key and prints the key (for XAML). A catalog not named gets the English
-text until someone translates it. `python tools/localization/catalog.py key "English text"` prints a key;
-`python tools/localization/catalog.py rename "Old text" "New text"` changes a string's English wording everywhere;
-`python tools/localization/catalog.py check` reports keys that do not match their English text and catalogs that miss
-keys.
+- `add` puts a string in `en.json` and the translations named (`add --hash` keeps it under a hash key and prints it).
+- `add-plural` puts English's one and other form in `en.json`, and any language's forms as `TAG#CATEGORY="…"`.
+- `rename` changes a string's or a plural string's English everywhere (catalogs and XAML), keeping each translation and
+  marking it for review. `remove` deletes a string no code uses any more.
+- `missing` is a translator's to-do list: the strings and forms a language lacks, and its review marks.
+- `check` reports broken entries (exit 1): keys that are not their text, forms a language does not have, values English
+  does not pass, review marks of nothing. Missing strings are counted, not errors.
+- `migrate` turns hash keys into English-text keys in the catalogs and XAML. It is for merging work written with the
+  hash keys of the first version; running it again changes nothing.
+
+Files keep their layout: `$language`, then `$review`, then the keys in ordinal order, two-space indent, UTF-8 without
+escapes, LF and a final newline.
 
 ## Adding a language
 
-1. Copy `en.json` to `{tag}.json` (the tag is what the settings store: `he`, `ja`, `zh-Hant`, `pt-BR`).
-2. Fill its `$language` header: own name, English name, flag code; `alsoFor` only for a bare name Windows uses that is
-   not a parent of the tag.
-3. Translate every string. Keep every `{0}`-style placeholder that carries content; English plural endings passed as
-   separate values (`{1}` = "s") may be left out where the language has no such endings, never added.
-4. When no shipped language uses its flag yet, draw the flag in `tools/make_flags.py` (3:2, no `<use>`, `<text>` or CSS)
+1. Create `{tag}.json` (the tag is what the settings store: `es`, `ru`, `he`, `zh-Hant`, `pt-BR`) with its `$language`
+   header: own name, English name, flag code, `plurals` copied from CLDR's chart; `alsoFor` only for a bare name
+   Windows uses that is not a parent of the tag.
+2. Translate strings: `catalog.py missing {tag}` lists them. Keep every `{0}`-style placeholder that carries content;
+   a translation may leave a value out, never add one. Give every plural string each form its rules name.
+3. When no shipped language uses its flag yet, draw the flag in `tools/make_flags.py` (3:2, no `<use>`, `<text>` or CSS)
    and run it.
-5. Run `dotnet test --solution BetterClipboard.sln`: `LocalizationTests` check the header, the flag, every key and every
-   placeholder.
+4. Run `dotnet test --solution BetterClipboard.sln`: `LocalizationTests` check the header, the flag, the plural rules
+   and their samples, every key and every placeholder, and print how many strings each language lacks.
 
-Nothing else: the first-start picker and *Settings › App › Language* list the new language by themselves.
+Nothing else: once at most one string in ten is missing, the first-start picker and *Settings › App › Language* list
+the new language by themselves. Until then it ships but is not offered, and the app's log says how many strings it
+lacks.
 
-**Not built yet:** right-to-left layout. A Hebrew or Arabic catalog would show its words, but the windows would still
-lay out left to right.
+**Right to left:** not built, by decision (2026-11-08): a Hebrew or Arabic catalog shows its words, and the windows
+keep their left-to-right layout.
 
 ## Known gaps
 
-Some UI text is still English in the Chinese interface: about 40 translated strings are not looked up by the code
-yet (the search box's placeholder, the footer's key hints, a few status lines), a few sentences carry English words
-inside a Chinese template, and WinUI's own control text (a text box's Cut/Copy/Paste menu) follows Windows' language.
-The list is in CLAUDE.md's roadmap (§6).
+Some UI text is still English in the Chinese interface (strings not looked up by the code yet: the "Capturing" chip,
+some status lines), and the work to close them runs on its own (CLAUDE.md §2.37 and §6).

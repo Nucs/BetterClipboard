@@ -28,14 +28,16 @@ public static class ForgottenText
         culture ??= CultureInfo.CurrentUICulture;
         return item.Kind switch
         {
-            ClipKind.Files => item.FileCount is { } files ? Count(files, UiText.Translate("file"), UiText.Translate("files"), culture) : UiText.Translate("Files"),
+            ClipKind.Files => item.FileCount is { } files ? UiText.Plural(culture, files, $"{files:N0} file", $"{files:N0} files") : UiText.Translate("Files"),
             ClipKind.Image => item.ImageWidth is > 0 && item.ImageHeight is > 0
                 ? UiText.Format(culture, $"Image · {item.ImageWidth} × {item.ImageHeight}")
                 : UiText.Translate("Image"),
 
             // Rich text without plain text (HTML/RTF only) has no characters to count.
             ClipKind.RichText when item.TextLength is null => UiText.Translate("Formatted content"),
-            _ => item.TextLength is { } length ? $"{KindName(item.Kind)} · {Count(length, "character", "characters", culture)}" : KindName(item.Kind),
+            _ => item.TextLength is { } length
+                ? $"{KindName(item.Kind)} · {UiText.Plural(culture, length, $"{length:N0} character", $"{length:N0} characters")}"
+                : KindName(item.Kind),
         };
     }
 
@@ -62,7 +64,7 @@ public static class ForgottenText
         parts.Add(UiText.Format($"forgotten {RelativeTimeFormatter.Format(item.ForgottenUtc, now, zone, culture)}"));
         parts.Add(item.BlockedCount == 0 || item.LastBlockedUtc is not { } last
             ? UiText.Translate("not copied since")
-            : UiText.Format($"kept out {Count(item.BlockedCount, "time", "times", culture)}, last {RelativeTimeFormatter.Format(last, now, zone, culture)}"));
+            : KeptOut(item.BlockedCount, RelativeTimeFormatter.Format(last, now, zone, culture), culture));
 
         var text = string.Join(" · ", parts);
         return char.ToUpper(text[0], culture) + text[1..];
@@ -81,12 +83,14 @@ public static class ForgottenText
         _ => UiText.Translate("Text"),
     };
 
-    /// <summary>"1 file" / "3 files" with grouped digits ("1,234 characters").</summary>
-    /// <param name="count">The count.</param>
-    /// <param name="singular">Noun for exactly one.</param>
-    /// <param name="plural">Noun otherwise (zero included).</param>
+    /// <summary>
+    /// "kept out 3 times, last just now": one whole phrase per plural form, because a language words the count, the
+    /// noun and the clause around them together (a noun translated alone once showed "3 times" inside Chinese text).
+    /// </summary>
+    /// <param name="count">How often the copy was kept out.</param>
+    /// <param name="last">When it was last kept out, already worded.</param>
     /// <param name="culture">Number formatting.</param>
     /// <returns>The phrase.</returns>
-    private static string Count(long count, string singular, string plural, CultureInfo culture) =>
-        UiText.Format(culture, $"{count:N0} {(count == 1 ? singular : plural)}");
+    private static string KeptOut(long count, string last, CultureInfo culture) =>
+        UiText.Plural(culture, count, $"kept out {count:N0} time, last {last}", $"kept out {count:N0} times, last {last}");
 }

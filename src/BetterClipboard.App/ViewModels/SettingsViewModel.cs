@@ -237,11 +237,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial int ThemeIndex { get; set; }
 
     /// <summary>
-    /// Index into <see cref="LanguageOptions"/>: 0 is "Use Windows setting", then every shipped language. A change is
-    /// saved at once and shows fully after a restart (windows read their labels when they are built).
+    /// Index into <see cref="LanguageOptions"/>: 0 is "Use Windows setting", then every offered language. A change is
+    /// saved at once and applies with a restart (windows read their labels when they are built), which
+    /// <see cref="IsLanguageRestartPending"/> offers.
     /// </summary>
     [ObservableProperty]
     public partial int LanguageIndex { get; set; }
+
+    /// <summary>
+    /// Whether the saved language differs from the one on screen, so Settings shows <em>Restart now</em> next to the
+    /// list: choosing the language already shown (or "Use Windows setting" when Windows picks it) offers no restart.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsLanguageRestartPending { get; set; }
 
     /// <summary>
     /// The Language card's choices: "Use Windows setting" (with the language it picks now), then every language this
@@ -493,6 +501,15 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
+    /// The status lines' "3 screenshots added since BetterClipboard started", shared by the ShareX and the Snipping
+    /// cards so both read the same and a language words it once.
+    /// </summary>
+    /// <param name="count">Screenshots added this session (more than zero; the callers show nothing for none).</param>
+    /// <returns>The line, starting with a line break.</returns>
+    private static string ScreenshotsAdded(int count) =>
+        UiText.Plural(count, $"\n{count:N0} screenshot added since BetterClipboard started.", $"\n{count:N0} screenshots added since BetterClipboard started.");
+
+    /// <summary>
     /// Re-reads the ShareX integration state. Folders are listed as watched only while really watched, so
     /// a folder that does not exist yet (ShareX creates it with the first screenshot) is visible as such.
     /// </summary>
@@ -517,7 +534,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ? UiText.Format($"Watching: {string.Join("; ", watched)}")
             : UiText.Format($"Waiting for ShareX to create its screenshots folder ({string.Join("; ", shareX.WatchFolders)}).");
         int imported = controller.ShareXImportedThisSession;
-        var count = imported > 0 ? UiText.Format($"\n{imported:N0} screenshot{(imported == 1 ? string.Empty : "s")} added since BetterClipboard started.") : string.Empty;
+        var count = imported > 0 ? ScreenshotsAdded(imported) : string.Empty;
         ShareXStatus = $"{found}\n{folders}{count}";
     }
 
@@ -544,7 +561,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             ? UiText.Translate("Watching Windows' Win+R list.")
             : UiText.Format($"Watching Windows' Win+R list: Windows remembers {windows:N0} of its {RunMru.Capacity} commands.");
         int recorded = controller.RunHistoryRecordedThisSession;
-        var count = recorded > 0 ? UiText.Format($"\n{recorded:N0} run{(recorded == 1 ? string.Empty : "s")} recorded since BetterClipboard started.") : string.Empty;
+        var count = recorded > 0
+            ? UiText.Plural(recorded, $"\n{recorded:N0} run recorded since BetterClipboard started.", $"\n{recorded:N0} runs recorded since BetterClipboard started.")
+            : string.Empty;
         RunHistoryStatus = remembered + count;
     }
 
@@ -606,7 +625,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         IsHotkeyActive = broken == 0;
         HotkeyStatus = broken == 0
             ? UiText.Translate("Any of these opens BetterClipboard. The first one is shown in the tray.")
-            : UiText.Format($"Any of these opens BetterClipboard. {broken} of {rows.Count} {(rows.Count == 1 ? "does" : "do")} not work right now: see below.");
+            : UiText.Plural(
+                broken,
+                $"Any of these opens BetterClipboard. {broken} of {rows.Count} does not work right now: see below.",
+                $"Any of these opens BetterClipboard. {broken} of {rows.Count} do not work right now: see below.");
     }
 
     /// <summary>Re-reads Windows-side state (clipboard history toggle, Explorer hotkey release).</summary>
@@ -815,7 +837,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         try
         {
             var stats = await controller.History.GetStatsAsync();
-            StatsText = UiText.Format($"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups") +
+            StatsText = UiText.Plural(
+                            stats.Count,
+                            $"{stats.Count:N0} item · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups",
+                            $"{stats.Count:N0} items · {FormatBytes(stats.TotalBytes)} · {stats.PinnedCount:N0} pinned · {stats.GroupedCount:N0} in groups") +
                         (stats.ForgottenCount > 0 ? UiText.Format($" · {stats.ForgottenCount:N0} forgotten") : string.Empty);
         }
         catch (Exception ex)
@@ -846,8 +871,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ForgottenSummary = items.Count switch
             {
                 0 => UiText.Translate("Nothing is forgotten. To forget something, right-click it in the panel (or press the Menu key) and choose Forget forever."),
-                1 => UiText.Translate("1 item is never recorded:"),
-                _ => UiText.Format($"{items.Count:N0} items are never recorded:"),
+                _ => UiText.Plural(items.Count, $"{items.Count:N0} item is never recorded:", $"{items.Count:N0} items are never recorded:"),
             };
         }
         catch (Exception ex)
@@ -900,7 +924,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             return UiText.Translate("Not watching the clipboard.");
         }
 
-        var text = UiText.Format($"Since start: {s.Read:N0} clipboard change{(s.Read == 1 ? "" : "s")} read the moment Windows announced them");
+        var text = UiText.Plural(
+            s.Read,
+            $"Since start: {s.Read:N0} clipboard change read the moment Windows announced it",
+            $"Since start: {s.Read:N0} clipboard changes read the moment Windows announced them");
         text += s.Superseded == 0
             ? " — none overwritten before they could be read."
             : UiText.Format($" — {s.Superseded:N0} replaced by a newer one within a fraction of a millisecond (usually one app updating the same copy twice).");
@@ -911,7 +938,7 @@ public sealed partial class SettingsViewModel : ObservableObject
 
         if (s.Recovered > 0)
         {
-            text += UiText.Format($" The watchdog recovered {s.Recovered:N0} change{(s.Recovered == 1 ? "" : "s")} Windows never announced.");
+            text += UiText.Plural(s.Recovered, $" The watchdog recovered {s.Recovered:N0} change Windows never announced.", $" The watchdog recovered {s.Recovered:N0} changes Windows never announced.");
         }
 
         return text;
@@ -1212,13 +1239,33 @@ public sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    /// <summary>Persists the UI language without restarting or interrupting clipboard capture.</summary>
+    /// <summary>
+    /// Persists the UI language without restarting or interrupting clipboard capture, and offers the restart that applies
+    /// it (<see cref="IsLanguageRestartPending"/>).
+    /// </summary>
     /// <param name="value">An index into <see cref="LanguageOptions"/> (-1 while the combo box has no selection: ignored).</param>
     partial void OnLanguageIndexChanged(int value)
     {
         if (value >= 0 && value < LanguageOptions.Count)
         {
             Update(s => s with { InterfaceLanguage = LanguageOptions[value].Selection });
+            IsLanguageRestartPending = !ReferenceEquals(
+                UiText.Resolve(LanguageOptions[value].Selection, CultureInfo.CurrentUICulture.Name),
+                UiText.Current);
+        }
+    }
+
+    /// <summary>
+    /// Settings' <em>Restart now</em>: restarts BetterClipboard so the chosen language applies everywhere
+    /// (<see cref="AppController.RestartAsync"/>). The new process opens Settings again, in the new language.
+    /// </summary>
+    /// <returns>A task completing when the restart was started, or failed (then this process keeps running).</returns>
+    public async Task RestartForLanguageAsync()
+    {
+        if (!await controller.RestartAsync())
+        {
+            // The log has the reason; the card keeps offering the restart, so the user can try again or restart by hand.
+            IsLanguageRestartPending = true;
         }
     }
 

@@ -47,7 +47,7 @@ public sealed partial class SettingsViewModel
                         ? UiText.Format($"Snipping Tool {version} saves to a folder you chose, which is not watched: its snips arrive as clipboard copies; Win+PrtScn screenshots arrive from the Screenshots folder.")
                         : UiText.Format($"Snipping Tool {version} saves every snip here, and copies it to the clipboard (both become one entry).");
         int imported = controller.SnippingImportedThisSession;
-        var count = imported > 0 ? UiText.Format($"\n{imported:N0} screenshot{(imported == 1 ? string.Empty : "s")} added since BetterClipboard started.") : string.Empty;
+        var count = imported > 0 ? ScreenshotsAdded(imported) : string.Empty;
         SnippingStatus = $"{folder}\n{snippingTool}{count}";
     }
 

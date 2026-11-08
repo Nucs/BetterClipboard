@@ -1948,7 +1948,7 @@ public sealed partial class ClipboardFlyout : Window
             Tag = group.Id,
             AllowDrop = true,
         };
-        string count = group.ItemCount == 1 ? "1 item" : UiText.Format($"{group.ItemCount:N0} items");
+        string count = UiText.Plural(group.ItemCount, $"{group.ItemCount:N0} item", $"{group.ItemCount:N0} items");
 
         // The tooltip is where a mouse user meets the multi-selection; screen readers get it as help text (their
         // route is the icon menu's "Add to view", since an invoke is a plain click).

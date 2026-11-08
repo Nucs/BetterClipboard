@@ -159,11 +159,11 @@ public sealed partial class FlyoutViewModel
         if (CurrentShell == ShellKind.PowerShell)
         {
             var shown = live < total ? UiText.Format($"{live:N0} of {total:N0}") : $"{live:N0}";
-            return UiText.Format($"{shown} command{(total == 1 ? string.Empty : "s")} in PowerShell's history{kept}");
+            return UiText.Plural(total, $"{shown} command in PowerShell's history{kept}", $"{shown} commands in PowerShell's history{kept}");
         }
 
         int windows = controller.CmdOpenWindows;
-        var open = windows > 0 ? UiText.Format($" · {windows:N0} open window{(windows == 1 ? string.Empty : "s")}") : string.Empty;
-        return UiText.Format($"{live:N0} Command Prompt command{(live == 1 ? string.Empty : "s")}{open}{kept}");
+        var open = windows > 0 ? UiText.Plural(windows, $" · {windows:N0} open window", $" · {windows:N0} open windows") : string.Empty;
+        return UiText.Plural(live, $"{live:N0} Command Prompt command{open}{kept}", $"{live:N0} Command Prompt commands{open}{kept}");
     }
 }

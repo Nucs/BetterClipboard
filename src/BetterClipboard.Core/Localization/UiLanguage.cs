@@ -11,7 +11,8 @@ namespace BetterClipboard.Core.Localization;
 /// <para>
 /// A language is data, not code: adding one means adding its catalog (and its flag when no shipped language uses that
 /// flag yet) to <c>src/BetterClipboard.Core/Localization</c>. <see cref="UiText.Languages"/> finds it, the picker and
-/// Settings list it, and <c>LocalizationTests</c> check that it is complete. Nothing is read from disk at run time, so a
+/// Settings list it once enough of it is translated (<see cref="UiText.Languages"/>), and <c>LocalizationTests</c> check
+/// its structure and report what it still lacks. Nothing is read from disk at run time, so a
 /// release is one build for every language, and a copy can never miss a language file.
 /// </para>
 /// <para>Instances are immutable and shared by every thread.</para>
@@ -30,6 +31,7 @@ public sealed class UiLanguage
     /// <param name="flag">The flag's two-letter code (the SVG's file name).</param>
     /// <param name="flagSvg">The flag's SVG document; owned by the new instance from now on.</param>
     /// <param name="alsoFor">Extra Windows display-language names that pick this catalog by their exact name.</param>
+    /// <param name="plurals">The language's CLDR plural rules, from the header's <c>"plurals"</c>.</param>
     /// <param name="strings">The UI strings by key; owned by the new instance from now on.</param>
     internal UiLanguage(
         string tag,
@@ -38,6 +40,7 @@ public sealed class UiLanguage
         string flag,
         byte[] flagSvg,
         IReadOnlyList<string> alsoFor,
+        PluralRules plurals,
         IReadOnlyDictionary<string, string> strings)
     {
         Tag = tag;
@@ -46,6 +49,7 @@ public sealed class UiLanguage
         Flag = flag;
         this.flagSvg = flagSvg;
         AlsoFor = alsoFor;
+        Plurals = plurals;
         Strings = strings;
     }
 
@@ -84,10 +88,20 @@ public sealed class UiLanguage
     /// </summary>
     public IReadOnlyList<string> AlsoFor { get; }
 
-    /// <summary>How many UI strings the catalog holds (every key of the English catalog, when it is complete).</summary>
+    /// <summary>
+    /// The language's CLDR plural rules (the header's <c>"plurals"</c>): which form of a plural string a count takes, and
+    /// so which forms (<c>#one</c>, <c>#few</c>, …) a complete catalog gives every plural string
+    /// (<see cref="PluralRules.Categories"/>).
+    /// </summary>
+    public PluralRules Plurals { get; }
+
+    /// <summary>How many entries the catalog holds (its UI strings plus one per plural form).</summary>
     public int Count => Strings.Count;
 
-    /// <summary>The catalog's UI strings by key ("T" + 12 hex digits of the English text's SHA-256).</summary>
+    /// <summary>
+    /// The catalog's UI strings by key: mostly the English text itself, a <c>T</c> + 12-hex-digit hash key where the
+    /// English is kept out of the code, and <c>{english}#{category}</c> for each form of a plural string.
+    /// </summary>
     internal IReadOnlyDictionary<string, string> Strings { get; }
 
     /// <summary>Looks up one UI string of this catalog, without falling back to English.</summary>

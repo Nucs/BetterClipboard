@@ -84,8 +84,8 @@ you send to Claude Code and Codex.
   is kept ([Updates](#updates)).
 - **In your language.** English and Simplified Chinese (简体中文), both in every download. The first start shows the
   languages with their flags, with Windows' language already selected: one click on the green check and the whole app
-  speaks it. *Settings › App › Language* changes it later (after a restart). What you copy, file names and the names you
-  give groups are never translated.
+  speaks it. *Settings › App › Language* changes it later: pick a language and press *Restart now*. What you copy, file
+  names and the names you give groups are never translated.
 - **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (next to the
   text cursor or the mouse, or in the middle of the main screen or of the screen you are typing on — with several
   monitors, at any scale), and a page that credits every app it works with and every component it ships, with their
@@ -262,8 +262,9 @@ The tray icon opens the panel and Settings:
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
   remembers — including its pinned items.
 - **Integrations:** one switch for each tab of another app (see [Tabs for other apps](#tabs-for-other-apps)).
-- **App:** the interface language (Windows' or one you pick, applied at the next start), start with Windows (for you
-  alone, also when BetterClipboard was installed for every user), theme, the command line, the data folder.
+- **App:** the interface language (Windows' or one you pick; *Restart now* next to the list applies it), start with
+  Windows (for you alone, also when BetterClipboard was installed for every user), theme, the command line, the data
+  folder.
 - **Updates:** the switch for the daily check, *Check now*, and the update dialog ([Updates](#updates)).
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
@@ -660,7 +661,9 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   the app again. It writes its outcome to a file, which the app reads at its next start to tell you how it went.
   Only the install folder is touched.
 - **Languages.** Each interface language is one catalog embedded in the program, with its flag, so one build holds
-  every language and no copy can miss a language file. Logs and `bclip`'s output stay English. See
+  every language and no copy can miss a language file. Strings are found by their English text, counts take the form
+  each language needs (CLDR's plural rules), and a string a translation lacks shows in English; a language is offered
+  once nearly all of it is translated. Logs and `bclip`'s output stay English. See
   [docs/localization.md](docs/localization.md).
 
 Data lives in `%LOCALAPPDATA%\BetterClipboard` (`stores\<id>\history.db` + `history.key`, `settings.json`,

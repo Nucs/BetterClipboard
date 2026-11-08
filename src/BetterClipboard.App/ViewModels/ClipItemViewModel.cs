@@ -291,7 +291,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
         if (Pick is { } pick)
         {
             // When it was last opened, and how often: Everything keeps one row per file, not one per opening.
-            var times = pick.RunCount == 1 ? "opened once" : UiText.Format($"opened {pick.RunCount:N0} times");
+            var times = UiText.Plural(pick.RunCount, $"opened once", $"opened {pick.RunCount:N0} times");
             return pick.LastOpened is { } opened
                 ? $"Everything · {RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow)} · {times}"
                 : $"Everything · {times}";
@@ -319,13 +319,15 @@ public sealed partial class ClipItemViewModel : ObservableObject
         else if (Kind == ClipKind.Files)
         {
             int count = Entry.Preview.Split('\n').Length;
-            parts.Add(Entry.Preview.Contains(" more", StringComparison.Ordinal) ? "many files" : UiText.Format($"{count} file{(count == 1 ? "" : "s")}"));
+            parts.Add(Entry.Preview.Contains(" more", StringComparison.Ordinal)
+                ? UiText.Translate("many files")
+                : UiText.Plural(count, $"{count:N0} file", $"{count:N0} files"));
         }
         else if (Entry.IsPathText)
         {
             // Tells why a text card shows up in the Files tab (and wins over "formatted" for a path copied
             // from a web page).
-            parts.Add(Entry.PathCount == 1 ? "path" : UiText.Format($"{Entry.PathCount} paths"));
+            parts.Add(UiText.Plural(Entry.PathCount, $"path", $"{Entry.PathCount:N0} paths"));
         }
         else if (Entry.HasRichFormats && Kind == ClipKind.RichText)
         {

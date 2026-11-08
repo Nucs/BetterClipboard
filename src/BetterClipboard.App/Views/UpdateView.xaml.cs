@@ -402,7 +402,7 @@ public sealed partial class UpdateView : UserControl
         if (changelog.OlderReleasesLeftOut > 0)
         {
             int older = changelog.OlderReleasesLeftOut;
-            NotesPanel.Children.Add(SecondaryLine(UiText.Format($"{older} older release{(older == 1 ? string.Empty : "s")} in between: see GitHub.")));
+            NotesPanel.Children.Add(SecondaryLine(UiText.Plural(older, $"{older} older release in between: see GitHub.", $"{older} older releases in between: see GitHub.")));
         }
 
         ScrollNotesToTop();

@@ -285,6 +285,29 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// "Restart now" next to the language list: restarts BetterClipboard so the chosen language applies to every window.
+    /// No confirmation: the button only shows after the user picked another language, and a restart loses nothing (the
+    /// new process opens Settings again).
+    /// </summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private async void RestartForLanguage_Click(object sender, RoutedEventArgs e)
+    {
+        // A second click while the old process drains its queue must not start a second new process.
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+        }
+
+        await ViewModel.RestartForLanguageAsync();
+        if (sender is Button again)
+        {
+            // Reached only when the restart did not happen (otherwise this process is exiting): let the user try again.
+            again.IsEnabled = true;
+        }
+    }
+
     /// <summary>"Allow all again", after confirmation.</summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
@@ -353,7 +376,7 @@ public sealed partial class SettingsWindow : Window
         try
         {
             if (await ConfirmAsync(
-                    UiText.Format($"Delete {count:N0} stored {name} prompt{(count == 1 ? string.Empty : "s")}?"),
+                    UiText.Plural(count, $"Delete {count:N0} stored {name} prompt?", $"Delete {count:N0} stored {name} prompts?"),
                     UiText.Format($"BetterClipboard's copy is deleted; {name}'s own files are not changed. Prompts {name} no longer has are gone for good.")
                     + (on ? UiText.Format($" The switch is on, so what {name} still has is read again right away — turn it off first to keep them out.") : string.Empty),
                     UiText.Translate("Delete")))

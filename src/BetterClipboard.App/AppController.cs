@@ -262,7 +262,7 @@ public sealed partial class AppController
     {
         paths.EnsureCreated();
         AppLog.Initialize(paths.LogDirectory);
-        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}).");
+        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{(options.RestartAfter is null ? string.Empty : ", restarted from Settings")}).");
 
         // Before the store is opened (which creates it): no history yet means the app's very first start in this folder,
         // when the language picker may ask (LanguageChoice.ShouldAsk).
@@ -836,7 +836,7 @@ public sealed partial class AppController
             // shown in Settings, so it follows the interface language.
             AppLog.Info($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows " +
                         $"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus, translate: false)}; pinned on disk: {result.PinnedOnDisk}).");
-            return UiText.Format($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows ") +
+            return UiText.Plural(created, $"Imported {created} new item from Windows ", $"Imported {created} new items from Windows ") +
                    UiText.Format($"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus, translate: true)}; pinned on disk: {result.PinnedOnDisk}).");
         }
         catch (Exception ex)
@@ -894,6 +894,53 @@ public sealed partial class AppController
     /// <summary>Opens the data folder in Explorer.</summary>
     public void OpenDataFolder() =>
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{paths.DataDirectory}\"") { UseShellExecute = true })?.Dispose();
+
+    /// <summary>
+    /// Restarts BetterClipboard: Settings' <em>Restart now</em>, after the interface language changed (XAML words a window
+    /// once, when it is built, so a new language needs new windows). Starts a new process that waits for this one
+    /// (<see cref="StartupOptions.RestartSwitch"/>), then exits this one the usual way, queued captures drained. The new
+    /// process opens Settings, in the new language.
+    /// </summary>
+    /// <returns>
+    /// Whether the new process started. When it did not, this one keeps running and the failure is logged: a restart that
+    /// left no BetterClipboard behind would silently stop recording copies.
+    /// </returns>
+    /// <remarks>
+    /// Capture pauses for the second or two between the two processes: a copy made in that moment is not recorded (it is
+    /// still on the clipboard, and Windows' own history has it).
+    /// </remarks>
+    public async Task<bool> RestartAsync()
+    {
+        if (exiting)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var self = Process.GetCurrentProcess();
+            var target = new RestartTarget(self.Id, self.StartTime.ToUniversalTime().Ticks);
+
+            // ShellExecute, so the new process inherits none of this one's handles (a script that redirected this one's
+            // output must not wait for the restarted app); it still inherits this process's environment, so an isolated
+            // instance (BETTERCLIPBOARD_DATA_DIR) comes back as itself, and its rights.
+            var start = new ProcessStartInfo(ExecutablePath, $"{StartupOptions.RestartSwitch} {target.ToArgument()}")
+            {
+                UseShellExecute = true,
+                WorkingDirectory = AppContext.BaseDirectory,
+            };
+            Process.Start(start)?.Dispose();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            AppLog.Error("Restarting failed: the new BetterClipboard process did not start, so this one keeps running.", ex);
+            return false;
+        }
+
+        AppLog.Info("Restarting (Settings' Restart now).");
+        await ExitAsync();
+        return true;
+    }
 
     /// <summary>
     /// Stops everything (draining queued captures) and ends the process.

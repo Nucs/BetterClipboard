@@ -113,5 +113,5 @@ public static class GroupViewText
     /// <param name="culture">Number formatting (defaults to the current UI culture).</param>
     /// <returns>The phrase.</returns>
     private static string Count(int count, CultureInfo? culture) =>
-        UiText.Format(culture ?? CultureInfo.CurrentUICulture, $"{count:N0} groups");
+        UiText.Plural(culture ?? CultureInfo.CurrentUICulture, count, $"{count:N0} group", $"{count:N0} groups");
 }

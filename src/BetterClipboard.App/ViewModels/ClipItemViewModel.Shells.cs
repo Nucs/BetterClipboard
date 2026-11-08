@@ -85,7 +85,7 @@ public sealed partial class ClipItemViewModel
     /// <returns>The caption.</returns>
     private static string CommandCaption(ShellCommand command)
     {
-        var times = command.Count == 1 ? "typed once" : UiText.Format($"typed {command.Count:N0} times");
+        var times = UiText.Plural(command.Count, $"typed once", $"typed {command.Count:N0} times");
         return command.LastSeen is { } seen
             ? $"{command.Source} · {RelativeTimeFormatter.Format(seen, DateTimeOffset.UtcNow)} · {times}"
             : $"{command.Source} · {times}";

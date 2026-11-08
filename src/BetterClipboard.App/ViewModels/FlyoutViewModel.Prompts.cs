@@ -163,7 +163,10 @@ public sealed partial class FlyoutViewModel
             var (done, total) = reader.ImportProgress;
             EmptyTitle = UiText.Format($"Reading {name}'s prompts…");
             EmptyMessage = total > 0
-                ? UiText.Format($"First import: {done:N0} of {total:N0} files read. Prompts appear here as they are stored.")
+                ? UiText.Plural(
+                    total,
+                    $"First import: {done:N0} of {total:N0} file read. Prompts appear here as they are stored.",
+                    $"First import: {done:N0} of {total:N0} files read. Prompts appear here as they are stored.")
                 : UiText.Translate("First import: prompts appear here as they are stored.");
         }
         else if (agent == PromptAgent.ClaudeCode)
@@ -187,7 +190,10 @@ public sealed partial class FlyoutViewModel
         var reader = controller.PromptsReader(CurrentAgent);
         if (reader is { IsImporting: true } && reader.ImportProgress is { Total: > 0 } progress)
         {
-            return UiText.Format($"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompts so far");
+            return UiText.Plural(
+                lastPromptStats.Distinct,
+                $"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompt so far",
+                $"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompts so far");
         }
 
         int keptShown = Items.Count(i => i.Prompt is null);
@@ -195,12 +201,16 @@ public sealed partial class FlyoutViewModel
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
             int matching = Items.Count(i => i.Prompt is not null);
-            return UiText.Format($"{matching:N0}{(hasMore ? "+" : string.Empty)} matching of {lastPromptStats.Distinct:N0} prompts{kept}");
+            var more = hasMore ? "+" : string.Empty;
+            return UiText.Plural(
+                lastPromptStats.Distinct,
+                $"{matching:N0}{more} matching of {lastPromptStats.Distinct:N0} prompt{kept}",
+                $"{matching:N0}{more} matching of {lastPromptStats.Distinct:N0} prompts{kept}");
         }
 
         var stats = lastPromptStats;
         return stats.Sends == stats.Distinct
-            ? UiText.Format($"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")}{kept}")
-            : UiText.Format($"{stats.Distinct:N0} prompts ({stats.Sends:N0} sent){kept}");
+            ? UiText.Plural(stats.Distinct, $"{stats.Distinct:N0} prompt{kept}", $"{stats.Distinct:N0} prompts{kept}")
+            : UiText.Plural(stats.Distinct, $"{stats.Distinct:N0} prompt ({stats.Sends:N0} sent){kept}", $"{stats.Distinct:N0} prompts ({stats.Sends:N0} sent){kept}");
     }
 }
