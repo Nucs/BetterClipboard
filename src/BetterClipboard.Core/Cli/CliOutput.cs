@@ -103,7 +103,8 @@ public static class CliOutput
         foreach (var item in items)
         {
             var id = item.Id.ToString(CultureInfo.InvariantCulture) + (item.Pinned ? "*" : string.Empty);
-            var age = RelativeTimeFormatter.Format(item.LastUsed, now, culture: CultureInfo.InvariantCulture);
+            // English whatever the interface language: scripts and AI agents read this table (localized: false).
+            var age = RelativeTimeFormatter.Format(item.LastUsed, now, culture: CultureInfo.InvariantCulture, localized: false);
             var source = item.Source ?? string.Empty;
             var kind = item.Paths is > 0 ? "path" : item.Kind;
             builder.Append(CultureInfo.InvariantCulture, $"{id,7}  {kind,-9} {Cut(age, 14),-14} {Cut(source, 18),-18} {OneLine(item.Preview, PreviewWidth)}").Append('\n');
@@ -130,7 +131,8 @@ public static class CliOutput
         var builder = new StringBuilder();
         foreach (var prompt in prompts)
         {
-            var age = RelativeTimeFormatter.Format(prompt.LastSent, now, culture: CultureInfo.InvariantCulture);
+            // English whatever the interface language, like the history table.
+            var age = RelativeTimeFormatter.Format(prompt.LastSent, now, culture: CultureInfo.InvariantCulture, localized: false);
             var project = ProjectFolder(prompt.Project);
             var sends = prompt.Sends > 1 ? "×" + prompt.Sends.ToString(CultureInfo.InvariantCulture) : string.Empty;
             builder.Append(CultureInfo.InvariantCulture, $"{prompt.Id,7}  {prompt.Agent,-6} {Cut(age, 14),-14} {Cut(project, 18),-18} {sends,-5} {OneLine(prompt.Preview, PreviewWidth - 6)}").Append('\n');

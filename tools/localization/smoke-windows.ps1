@@ -8,13 +8,23 @@
     Folder containing the published BetterClipboard.exe.
 .PARAMETER OutputDirectory
     Folder for UI label snapshots and screenshots from the disposable runner's desktop.
+.PARAMETER ConfirmDisposableMachine
+    Runs outside GitHub Actions too. Only on a machine nobody uses (a claude-desktops VM): the script opens windows,
+    and its screenshots copy the whole screen, whatever else is on it.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string]$PublishDirectory,
-    [Parameter(Mandatory = $true)][string]$OutputDirectory
+    [Parameter(Mandatory = $true)][string]$OutputDirectory,
+    [switch]$ConfirmDisposableMachine
 )
 $ErrorActionPreference = 'Stop'
+
+# The screenshots below copy the whole screen: on someone's own PC that captures their windows. Like
+# tools/release/test-chocolatey.ps1, refuse anywhere but a CI runner unless the machine is declared disposable.
+if ($env:GITHUB_ACTIONS -ne 'true' -and -not $ConfirmDisposableMachine) {
+    throw 'This UI smoke test opens windows and copies the whole screen: run it on a CI runner, or pass -ConfirmDisposableMachine on a machine nobody uses.'
+}
 $exe = (Resolve-Path (Join-Path $PublishDirectory 'BetterClipboard.exe')).Path
 New-Item -ItemType Directory -Path $OutputDirectory -Force | Out-Null
 $output = (Resolve-Path $OutputDirectory).Path

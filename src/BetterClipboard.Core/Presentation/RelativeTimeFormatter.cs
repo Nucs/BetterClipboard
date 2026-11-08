@@ -20,8 +20,13 @@ public static class RelativeTimeFormatter
     /// <param name="now">The reference "now".</param>
     /// <param name="zone">Time zone for calendar-day decisions (defaults to local).</param>
     /// <param name="culture">Culture for day/month names and time patterns (defaults to current UI culture).</param>
+    /// <param name="localized">
+    /// Whether the words ("just now", "min ago", "Yesterday") follow the interface language (<see cref="UiText"/>). The
+    /// panel and Settings want that; <c>bclip</c> passes <see langword="false"/>: its output is read by scripts and AI
+    /// agents and stays English whatever the app's or Windows' language.
+    /// </param>
     /// <returns>The short description.</returns>
-    public static string Format(DateTimeOffset timestamp, DateTimeOffset now, TimeZoneInfo? zone = null, CultureInfo? culture = null)
+    public static string Format(DateTimeOffset timestamp, DateTimeOffset now, TimeZoneInfo? zone = null, CultureInfo? culture = null, bool localized = true)
     {
         zone ??= TimeZoneInfo.Local;
         culture ??= CultureInfo.CurrentUICulture;
@@ -30,12 +35,12 @@ public static class RelativeTimeFormatter
         // Future timestamps (clock skew between machines/imports) read as "just now" rather than "-3 min".
         if (delta < TimeSpan.FromSeconds(45))
         {
-            return UiText.Translate("just now");
+            return localized ? UiText.Translate("just now") : "just now";
         }
 
         if (delta < TimeSpan.FromMinutes(60))
         {
-            return UiText.Format($"{Math.Max(1, (int)Math.Round(delta.TotalMinutes))} min ago");
+            return Phrase($"{Math.Max(1, (int)Math.Round(delta.TotalMinutes))} min ago");
         }
 
         var local = TimeZoneInfo.ConvertTime(timestamp, zone);
@@ -43,12 +48,12 @@ public static class RelativeTimeFormatter
         var time = local.ToString(culture.DateTimeFormat.ShortTimePattern, culture);
         if (local.Date == localNow.Date)
         {
-            return UiText.Format($"{(int)delta.TotalHours} h ago");
+            return Phrase($"{(int)delta.TotalHours} h ago");
         }
 
         if (local.Date == localNow.Date.AddDays(-1))
         {
-            return UiText.Format($"Yesterday {time}");
+            return Phrase($"Yesterday {time}");
         }
 
         if (localNow.Date - local.Date < TimeSpan.FromDays(7))
@@ -59,5 +64,10 @@ public static class RelativeTimeFormatter
         return local.Year == localNow.Year
             ? local.ToString("d MMM", culture)
             : local.ToString("d MMM yyyy", culture);
+
+        // The English wording is also the catalog's key: translated for the UI, kept as it is for bclip. Both format the
+        // numbers with the current culture, as the interpolation did before translation existed.
+        string Phrase(FormattableString english) =>
+            localized ? UiText.Format(english) : english.ToString(CultureInfo.CurrentCulture);
     }
 }

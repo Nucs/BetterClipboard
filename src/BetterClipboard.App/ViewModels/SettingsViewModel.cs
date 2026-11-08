@@ -1,3 +1,4 @@
+using System.Globalization;
 using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Integrations;
@@ -227,9 +228,23 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int ThemeIndex { get; set; }
 
-    /// <summary>Index of the interface language: system, English, or Simplified Chinese; requires an app restart.</summary>
+    /// <summary>
+    /// Index into <see cref="LanguageOptions"/>: 0 is "Use Windows setting", then every shipped language. A change is
+    /// saved at once and shows fully after a restart (windows read their labels when they are built).
+    /// </summary>
     [ObservableProperty]
     public partial int LanguageIndex { get; set; }
+
+    /// <summary>
+    /// The Language card's choices: "Use Windows setting" (with the language it picks now), then every language this
+    /// build ships with its flag and names (<see cref="UiText.Languages"/>): a new catalog appears here without code.
+    /// Built once per window, on the UI thread.
+    /// </summary>
+    public IReadOnlyList<LanguageOptionViewModel> LanguageOptions { get; } =
+    [
+        new LanguageOptionViewModel(UiText.Translate("Use Windows setting"), UiText.MatchSystem(CultureInfo.CurrentUICulture.Name)),
+        .. UiText.Languages.Select(language => new LanguageOptionViewModel(language)),
+    ];
 
     /// <summary>
     /// Start with Windows: whether this copy starts when this user signs in (<see cref="SignInStartup.StartsThisCopy"/>),
@@ -386,7 +401,10 @@ public sealed partial class SettingsViewModel : ObservableObject
             IgnoredAppsText = string.Join(Environment.NewLine, settings.IgnoredApps);
             PlacementIndex = (int)settings.Placement;
             ThemeIndex = (int)settings.Theme;
-            LanguageIndex = settings.InterfaceLanguage switch { "en" => 1, "zh-Hans" => 2, _ => 0 };
+            // A saved tag this build does not ship (a newer version's language) shows as "Use Windows setting", which is
+            // also what it means here (UiText.Resolve).
+            LanguageIndex = Math.Max(0, LanguageOptions.ToList().FindIndex(option =>
+                !option.IsSystem && string.Equals(option.Selection, settings.InterfaceLanguage, StringComparison.OrdinalIgnoreCase)));
             RefreshLaunchAtStartup(settings);
             EnableCommandLine = settings.EnableCommandLine;
             ImportShareXScreenshots = settings.ImportShareXScreenshots;
@@ -1166,11 +1184,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>Persists the UI language without restarting or interrupting clipboard capture.</summary>
-    /// <param name="value">System (0), English (1), or Simplified Chinese (2).</param>
+    /// <param name="value">An index into <see cref="LanguageOptions"/> (-1 while the combo box has no selection: ignored).</param>
     partial void OnLanguageIndexChanged(int value)
     {
-        if (value is >= 0 and <= 2)
-            Update(s => s with { InterfaceLanguage = value switch { 1 => "en", 2 => "zh-Hans", _ => "system" } });
+        if (value >= 0 && value < LanguageOptions.Count)
+        {
+            Update(s => s with { InterfaceLanguage = LanguageOptions[value].Selection });
+        }
     }
 
     /// <summary>

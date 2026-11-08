@@ -1,5 +1,6 @@
 using BetterClipboard.Core.Localization;
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Security.Cryptography;
 using BetterClipboard.App.Views;
@@ -65,6 +66,13 @@ public sealed partial class AppController
     private TrayIcon? tray;
     private ClipboardFlyout? flyout;
     private SettingsWindow? settingsWindow;
+
+    /// <summary>
+    /// The first start's language picker while it is open (<see cref="AskForLanguageAsync"/>); <see langword="null"/>
+    /// otherwise. While it is open, every way to open the panel or Settings brings it to the front instead: those
+    /// windows would read their labels before the language is chosen. UI thread only.
+    /// </summary>
+    private LanguageWindow? languageWindow;
     private volatile CaptureRules rules = new();
     private ForegroundContext? pasteTarget;
 
@@ -158,10 +166,12 @@ public sealed partial class AppController
     public AppPaths Paths => paths;
 
     /// <summary>Settings store (valid after <see cref="Start"/>).</summary>
-    public SettingsStore Settings => settings ?? throw new InvalidOperationException(UiText.Translate("Not started."));
+    /// <exception cref="InvalidOperationException">Read before <see cref="Start"/> (a bug; the message goes to the log, so it stays English).</exception>
+    public SettingsStore Settings => settings ?? throw new InvalidOperationException("Not started.");
 
     /// <summary>History service (valid after <see cref="Start"/>).</summary>
-    public ClipHistoryService History => history ?? throw new InvalidOperationException(UiText.Translate("Not started."));
+    /// <exception cref="InvalidOperationException">Read before <see cref="Start"/> (a bug; the message goes to the log, so it stays English).</exception>
+    public ClipHistoryService History => history ?? throw new InvalidOperationException("Not started.");
 
     /// <summary>
     /// How the encrypted history store was opened (store id, folder, migration/quarantine flags) — for the
@@ -254,6 +264,10 @@ public sealed partial class AppController
         AppLog.Initialize(paths.LogDirectory);
         AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}).");
 
+        // Before the store is opened (which creates it): no history yet means the app's very first start in this folder,
+        // when the language picker may ask (LanguageChoice.ShouldAsk).
+        bool historyExisted = paths.HasHistory();
+
         settings = new SettingsStore(paths.SettingsPath);
         settings.Load();
         // Read the persisted selection before any view model or XAML markup resolves its labels.
@@ -340,11 +354,72 @@ public sealed partial class AppController
             _ = ImportWindowsHistoryAsync();
         }
 
+        // The first start asks for the interface language before any other window is built: the panel and Settings read
+        // their labels when they are built, so waiting for the choice spares a restart. Capture, shortcuts and the tray
+        // already run meanwhile; a Win+V or a tray click brings the picker to the front.
+        if (LanguageChoice.ShouldAsk(historyExisted, settings.Current.InterfaceLanguage))
+        {
+            _ = AskForLanguageAsync(showSettingsAfter: !options.Background);
+            return;
+        }
+
         // The panel is otherwise built on the first Win+V, and keys typed during those few hundred milliseconds went to the
         // app underneath: build and render it now, once the startup work has settled (ClipboardFlyout.WarmUp).
         _ = WarmUpFlyoutAsync();
 
         if (!options.Background)
+        {
+            ShowSettings();
+        }
+    }
+
+    /// <summary>
+    /// The first start's language picker (<see cref="LanguageWindow"/>): shows it with the language that fits Windows
+    /// selected, saves the choice as an explicit language, applies it before any other window exists, then continues the
+    /// startup that waited for it (the panel's warm-up, and Settings for a start that shows it).
+    /// </summary>
+    /// <param name="showSettingsAfter">Whether this start opens Settings (a plain launch, such as the installer's).</param>
+    /// <returns>A task completing once startup continued; failures are logged, never thrown (the app then follows Windows' language).</returns>
+    private async Task AskForLanguageAsync(bool showSettingsAfter)
+    {
+        try
+        {
+            var suggested = LanguageChoice.Suggest(CultureInfo.CurrentUICulture.Name);
+            languageWindow = new LanguageWindow(this, suggested);
+            languageWindow.Present();
+            var chosen = await languageWindow.Choice;
+            languageWindow = null;
+
+            // Closed by an exit from the tray: the tray and the settings are being disposed, so nothing is saved (the
+            // next start follows Windows, and does not ask again: the history exists by then).
+            if (exiting)
+            {
+                return;
+            }
+
+            // Applied before saving: the settings change below raises events that may word things already.
+            UiText.Language = chosen.Tag;
+            Settings.Update(s => s with { InterfaceLanguage = chosen.Tag });
+            AppLog.Info($"Interface language chosen at the first start: {chosen.Tag} (Windows suggested {suggested.Tag}).");
+
+            // The tray icon was made before the choice; word its tooltip again.
+            tray?.SetTooltip(TrayTooltip(Settings.Current));
+        }
+        catch (Exception ex)
+        {
+            // Never stuck behind a broken picker: continue in Windows' language, and ask again at the next start only if
+            // no history exists by then (it normally does).
+            languageWindow = null;
+            AppLog.Error("The language picker failed; the interface follows Windows' language.", ex);
+        }
+
+        if (exiting)
+        {
+            return;
+        }
+
+        _ = WarmUpFlyoutAsync();
+        if (showSettingsAfter)
         {
             ShowSettings();
         }
@@ -385,6 +460,14 @@ public sealed partial class AppController
             return;
         }
 
+        // The first start's language picker is still open: the panel would be built with its labels in a language not
+        // chosen yet. Bring the picker forward instead.
+        if (languageWindow is not null)
+        {
+            languageWindow.Present();
+            return;
+        }
+
         pasteTarget = context;
 
         // Everything may have started or exited since the last look; the tab follows when the refresh lands (ms).
@@ -406,6 +489,14 @@ public sealed partial class AppController
     {
         if (exiting)
         {
+            return;
+        }
+
+        // Same as for the panel: Settings waits for the first start's language choice (the picker opens it afterwards on
+        // a plain launch).
+        if (languageWindow is not null)
+        {
+            languageWindow.Present();
             return;
         }
 
@@ -737,10 +828,13 @@ public sealed partial class AppController
             var importer = new WindowsHistoryImporter();
             var result = await Task.Run(() => importer.ReadAllAsync());
             int created = await History.ImportAsync(result.Captures);
-            var summary = UiText.Format($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows ") +
-                          UiText.Format($"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus)}; pinned on disk: {result.PinnedOnDisk}).");
-            AppLog.Info(summary);
-            return summary;
+
+            // The log stays English whatever the interface language (the developer reads it); the returned summary is
+            // shown in Settings, so it follows the interface language.
+            AppLog.Info($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows " +
+                        $"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus, translate: false)}; pinned on disk: {result.PinnedOnDisk}).");
+            return UiText.Format($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows ") +
+                   UiText.Format($"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus, translate: true)}; pinned on disk: {result.PinnedOnDisk}).");
         }
         catch (Exception ex)
         {
@@ -748,11 +842,12 @@ public sealed partial class AppController
             return UiText.Translate("Import failed: ") + ex.Message;
         }
 
-        static string Describe(string status) => status switch
+        // The state of Windows' own history in words: translated for Settings, English for the log.
+        static string Describe(string status, bool translate) => status switch
         {
             "Success" => "read",
-            "ClipboardHistoryDisabled" => UiText.Translate("turned off in Windows"),
-            "AccessDenied" => UiText.Translate("access denied"),
+            "ClipboardHistoryDisabled" => translate ? UiText.Translate("turned off in Windows") : "turned off in Windows",
+            "AccessDenied" => translate ? UiText.Translate("access denied") : "access denied",
             _ => status,
         };
     }
@@ -855,6 +950,9 @@ public sealed partial class AppController
 
         flyout?.CloseForExit();
         settingsWindow?.Close();
+
+        // An exit from the tray while the first start's picker is open closes it, which keeps its selected language.
+        languageWindow?.Close();
         AppLog.Shutdown();
         Application.Current.Exit();
     }
@@ -895,7 +993,7 @@ public sealed partial class AppController
 
             // Ids and flags only — never the key, the binding or the identifiers they come from.
             AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
-                        UiText.Format($"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext})."));
+                        $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
             if (opened.QuarantinedDirectory is not null)
             {
                 AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
@@ -1192,9 +1290,10 @@ public sealed partial class AppController
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    // FirstPipeInstance failed: someone else holds the name. Never share it.
+                    // FirstPipeInstance failed: someone else holds the name. Never share it. Settings shows the error in the
+                    // interface language; the log keeps it in English.
                     CommandLineError = UiText.Format($"The bclip pipe is already in use by another program ({ex.Message}).");
-                    AppLog.Warn(CommandLineError);
+                    AppLog.Warn($"The bclip pipe is already in use by another program ({ex.Message}).");
                     await server.DisposeAsync();
                 }
             }

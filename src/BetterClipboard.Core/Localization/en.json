@@ -1,4 +1,9 @@
 {
+  "$language": {
+    "name": "English",
+    "englishName": "English",
+    "flag": "us"
+  },
   "T00a57b01f388": "Delete history permanently. Clearing keeps pinned items and items in groups; 'Everything' removes them too (the groups stay, empty). Forgotten items stay forgotten either way.",
   "T00afc4e6b88a": "Keeps every prompt you send in Claude Code, encrypted, in a Claude tab: newest first, searchable, one card per prompt with how often you sent it. Read from Claude Code's prompt history (pastes included) the moment Claude Code saves it, only the new bytes; Claude Code prunes its history after its cleanup period, BetterClipboard keeps it. Claude Code's files are never changed. Pause capturing skips prompts sent while paused; off stops reading and keeps what is stored.",
   "T00b2964c53be": "Recording shortcuts does not work right now. Type the shortcut instead, for example Ctrl+Alt+F9.",
@@ -10,6 +15,7 @@
   "T05c45b490733": "Snipping Tool {0} saves every snip here, and copies it to the clipboard (both become one entry).",
   "T0615570f9ea1": "Claude",
   "T063543517b31": "Next to the text cursor",
+  "T06b4e63f0b21": "You can change it later in Settings.",
   "T06d2f900bb11": "The components inside BetterClipboard, each under its own license.",
   "T07099251df76": "{0:N0} in {1}",
   "T08dbe40b4edf": "Items you forget forever (in the panel: right-click an item › Forget forever) are deleted and never recorded again, whichever app copies them. Line endings and spaces around the text don't matter; everything else has to match. Only a fingerprint of each is kept, encrypted with your history, plus its kind, length and source app so you can tell them apart here.",
@@ -25,6 +31,7 @@
   "T10439120c604": "Nothing in {0} yet",
   "T1047f7f08345": "Open the full history (the clipboard icon above), then drag cards onto their icons.",
   "T10d32300fa47": "Snipping Tool {0} saves to a folder you chose, which is not watched: its snips arrive as clipboard copies; Win+PrtScn screenshots arrive from the Screenshots folder.",
+  "T11a6767d5674": "Done",
   "T1254829bd999": "Release notes",
   "T126302aaab73": "Clear shortcuts used before",
   "T12a739efb455": "{0:N0}{1} matching of {2:N0} prompts{3}",
@@ -306,6 +313,7 @@
   "T8d525e5f158b": "Copied",
   "T8d52e6c55d1e": "No screenshots yet",
   "T8db3ca984b1d": "Pin (keep in history)",
+  "T8e2d0664dbbb": "Choose your language",
   "T8f17e33840aa": "{0:N0} of {1:N0}",
   "T8fd6d61b5073": "No PowerShell history yet",
   "T9024c197d849": "Links",

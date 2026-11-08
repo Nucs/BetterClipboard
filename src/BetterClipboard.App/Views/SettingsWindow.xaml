@@ -659,10 +659,44 @@
                     Description="{loc:Tr Key=T150509e23a7b}"
                     Glyph="&#xE774;"
                     Header="{loc:Tr Key=Ta4fe65264ef7}">
-                    <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.LanguageIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="{loc:Tr Key=T8b0b9e548a7a}" />
-                        <ComboBoxItem Content="English" />
-                        <ComboBoxItem Content="简体中文" />
+                    <!--
+                      "Use Windows setting" (a globe, and the language it picks now), then every shipped language with
+                      its flag, own name and English name (SettingsViewModel.LanguageOptions): a new catalog shows up
+                      here by itself. ItemsSource comes before SelectedIndex, so the index never meets an empty list.
+                    -->
+                    <ComboBox
+                        MinWidth="240"
+                        AutomationProperties.Name="{loc:Tr Key=Ta4fe65264ef7}"
+                        ItemsSource="{x:Bind ViewModel.LanguageOptions}"
+                        SelectedIndex="{x:Bind ViewModel.LanguageIndex, Mode=TwoWay}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LanguageOptionViewModel">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Grid
+                                        Width="24"
+                                        Height="16"
+                                        VerticalAlignment="Center">
+                                        <!--  E774 = Globe, for "Use Windows setting".  -->
+                                        <FontIcon
+                                            FontSize="14"
+                                            Glyph="&#xE774;"
+                                            Visibility="{x:Bind IsSystem}" />
+                                        <Image
+                                            Source="{x:Bind Flag}"
+                                            Stretch="Uniform"
+                                            Visibility="{x:Bind HasFlag}" />
+                                    </Grid>
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Language="{x:Bind LanguageTag}"
+                                        Text="{x:Bind Name}" />
+                                    <TextBlock
+                                        VerticalAlignment="Center"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        Text="{x:Bind EnglishName}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
                     </ComboBox>
                 </controls:SettingsCard>
                 <controls:SettingsCard
