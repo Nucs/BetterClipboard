@@ -233,19 +233,20 @@ public sealed class LocalizationTests
 
     /// <summary>
     /// Every shipped flag is a 3:2 SVG drawn only with what Direct2D's SVG renderer (WinUI's SvgImageSource) draws:
-    /// no use, text, style, image or filter elements.
+    /// no use, text, style, image or filter elements. Languages not offered yet count too: a partial catalog is offered
+    /// the moment enough of it is translated, with no other change that would bring its flag under test.
     /// </summary>
     [Fact]
     public void EveryFlagIsADrawableSvg()
     {
         XNamespace svg = "http://www.w3.org/2000/svg";
         string[] unsupported = ["use", "text", "style", "image", "filter", "foreignObject"];
-        foreach (var language in UiText.Languages)
+        foreach (var language in UiText.AllShipped)
         {
             var document = XDocument.Parse(Encoding.UTF8.GetString(language.FlagSvg.Span));
             Assert.Equal(svg + "svg", document.Root!.Name);
             Assert.Equal("0 0 900 600", (string?)document.Root.Attribute("viewBox"));
-            Assert.Empty(document.Descendants().Where(e => unsupported.Contains(e.Name.LocalName)));
+            Assert.DoesNotContain(document.Descendants(), e => unsupported.Contains(e.Name.LocalName));
             Assert.NotEmpty(document.Descendants(svg + "path"));
         }
     }

@@ -3872,7 +3872,11 @@ On the owner's "Pull main and merge to main your changes" (2026-11-08) the two w
   without knowing interpolation holes, so a hole holding a string of its own (`main`'s new
   `$"… {(local ? "a local build" : …)} …"`) made it read the rest of `AppController.Updates.cs` inside out and miss its
   literals; it skips strings with the hole-aware reader now. The shared working tree's uncommitted AI work (§2.35) was
-  kept, its `{loc:Tr Key=T…}` lines rewritten to the English-text keys so its labels still resolve.
+  kept, its `{loc:Tr Key=T…}` lines rewritten to the English-text keys so its labels still resolve. Its own texts do
+  not go through the catalogs yet (plain English in `ClipboardFlyout.AI.cs` and its XAML), so the guards pass with it
+  (built with this merge in a scratch checkout: 0 errors, Core 1,493 and Windows 380 passed) and its panel shows English
+  in Simplified Chinese until those texts go through `UiText.Translate` / `{loc:Tr Text=…}` with catalog entries
+  (`catalog.py add`, [`docs/localization.md`](docs/localization.md)).
 
 **Verified** (rows in §5): on the branch, Core 1,363 (57 new: `PluralRulesTests` 50, with CLDR samples of English,
 Russian, Hebrew, Spanish and Arabic; `LocalizationTests` 7 new) and Windows 371, all green, and the app on a disposable
