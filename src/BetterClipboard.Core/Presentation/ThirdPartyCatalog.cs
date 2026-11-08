@@ -8,9 +8,9 @@ namespace BetterClipboard.Core.Presentation;
 public enum ThirdPartyRole
 {
     /// <summary>
-    /// A separate app BetterClipboard reads from while its setting is on (ShareX, Everything, PowerShell, Claude Code, Codex). It is never
-    /// shipped, so no license is credited, and its link is where to get the app from its makers rather than from a
-    /// download mirror.
+    /// A separate app BetterClipboard reads from while its setting is on (ShareX, Everything, Notepad++, PowerShell, Claude Code,
+    /// Codex). It is never shipped, so no license is credited, and its link is where to get the app from its makers rather
+    /// than from a download mirror.
     /// </summary>
     Integration,
 
@@ -132,6 +132,17 @@ public static class ThirdPartyCatalog
             License: null,
             Use: "The files and folders you open from Everything, in the panel's Everything tab.",
             Link: new("https://www.voidtools.com/"),
+            Packages: []),
+
+        // The Notepad++ tab (CLAUDE.md §2.41) reads Notepad++'s session and backup files and asks a running Notepad++ which
+        // files it has open; Notepad++ is neither shipped nor changed.
+        new(
+            Name: "Notepad++",
+            Role: ThirdPartyRole.Integration,
+            Maker: "Don Ho",
+            License: null,
+            Use: "The text of its unsaved tabs, and every file you open in it, in the panel's Notepad++ tab.",
+            Link: new("https://notepad-plus-plus.org/"),
             Packages: []),
 
         // The Pwsh tab reads the history file PSReadLine (PowerShell's line editor) writes for Windows PowerShell and

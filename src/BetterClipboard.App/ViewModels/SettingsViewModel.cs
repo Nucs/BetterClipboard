@@ -428,6 +428,8 @@ public sealed partial class SettingsViewModel : ObservableObject
             EnableCommandLine = settings.EnableCommandLine;
             ImportShareXScreenshots = settings.ImportShareXScreenshots;
             ImportWindowsScreenshots = settings.ImportWindowsScreenshots;
+            KeepNotepadPlusPlusTabs = settings.KeepNotepadPlusPlusTabs;
+            RecordNotepadPlusPlusFiles = settings.RecordNotepadPlusPlusFiles;
             ShowEverythingTab = settings.ShowEverythingTab;
             ShowPowerShellTab = settings.ShowPowerShellTab;
             ShowCmdTab = settings.ShowCmdTab;
@@ -440,6 +442,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RefreshCommandLineStatus();
             RefreshShareXStatus();
             RefreshSnippingStatus();
+            RefreshNotepadPlusPlusStatus();
             RefreshEverythingStatus();
             RefreshRunHistoryStatus();
             RefreshShellHistoryStatus();

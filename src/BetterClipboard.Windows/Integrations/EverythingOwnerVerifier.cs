@@ -144,11 +144,12 @@ public static class EverythingOwnerVerifier
     }
 
     /// <summary>
-    /// <c>WinVerifyTrust</c> with the Authenticode policy: no UI, no revocation check, chain from local caches only.
+    /// <c>WinVerifyTrust</c> with the Authenticode policy: no UI, no revocation check, chain from local caches only. Shared
+    /// with <see cref="NotepadPlusPlusOwnerVerifier"/>.
     /// </summary>
     /// <param name="path">File to verify.</param>
     /// <returns>0 when valid and trusted; the error code otherwise.</returns>
-    private static int VerifySignature(string path)
+    internal static int VerifySignature(string path)
     {
         // The path must stay valid for the whole call: pinned unmanaged copy, freed in finally.
         nint pathPointer = Marshal.StringToHGlobalUni(path);
@@ -180,10 +181,13 @@ public static class EverythingOwnerVerifier
         }
     }
 
-    /// <summary>The certificate subject's organization (<c>O=</c>, OID 2.5.4.10), or <see langword="null"/>.</summary>
+    /// <summary>
+    /// The certificate subject's organization (<c>O=</c>, OID 2.5.4.10), or <see langword="null"/>. Shared with
+    /// <see cref="NotepadPlusPlusOwnerVerifier"/>.
+    /// </summary>
     /// <param name="certificate">The signer certificate.</param>
     /// <returns>The organization.</returns>
-    private static string? Organization(X509Certificate2 certificate)
+    internal static string? Organization(X509Certificate2 certificate)
     {
         foreach (var rdn in certificate.SubjectName.EnumerateRelativeDistinguishedNames())
         {

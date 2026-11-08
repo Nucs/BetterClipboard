@@ -32,6 +32,7 @@ public sealed class TranslationTemplateTests
             ["Everything " + nameof(EverythingLocator.DetectedByTemplates)] = EverythingLocator.DetectedByTemplates,
             ["ShareX " + nameof(ShareXLocator.DetectedByTemplates)] = ShareXLocator.DetectedByTemplates,
             [nameof(EverythingIntegration.ProblemTemplates)] = EverythingIntegration.ProblemTemplates,
+            ["Notepad++ " + nameof(NotepadPlusPlusClient.ProblemTemplates)] = NotepadPlusPlusClient.ProblemTemplates,
         };
 
         var missing = lists.SelectMany(list => list.Value.Where(text => !HasEntry(text)).Select(text => $"{list.Key}: {text}")).ToList();
@@ -152,6 +153,33 @@ public sealed class TranslationTemplateTests
             _ => true);
         Assert.Equal("已安装（Everything）", UiText.TranslateFormatted(found.DetectedBy, EverythingLocator.DetectedByTemplates, chinese));
         Assert.Equal("未找到", UiText.TranslateFormatted(ShareXInstallation.NotFound.DetectedBy, ShareXLocator.DetectedByTemplates, chinese));
+    }
+
+    /// <summary>
+    /// Why a running Notepad++ cannot be asked which files it opens (CLAUDE.md §2.41) translates — the owner check's
+    /// reasons, a nested "unknown organization", the client's own and the watcher's fallback — and a name part (a program's
+    /// file name, an organization) stays as it was. The reasons shared with Everything's owner check share its entries.
+    /// </summary>
+    [Fact]
+    public void NotepadPlusPlusProblems_Translate()
+    {
+        var chinese = Chinese();
+        string notNotepadPlusPlus = NotepadPlusPlusOwnerVerifier.VerifyFile(@"C:\BC-TEST\missing\impostor.exe").Reason;
+        Assert.Equal("its process is impostor.exe, not notepad++.exe", notNotepadPlusPlus);
+        Assert.Equal("其进程为 impostor.exe，而不是 notepad++.exe", UiText.TranslateFormatted(notNotepadPlusPlus, NotepadPlusPlusClient.ProblemTemplates, chinese));
+        Assert.Equal("其签名者为 未知组织，而不是 Notepad++",
+            UiText.TranslateFormatted("it is signed by an unknown organization, not Notepad++", NotepadPlusPlusClient.ProblemTemplates, chinese));
+        Assert.Equal("其签名者为 Contoso，而不是 Notepad++",
+            UiText.TranslateFormatted("it is signed by Contoso, not Notepad++", NotepadPlusPlusClient.ProblemTemplates, chinese));
+        Assert.Equal("无法向它询问", UiText.TranslateFormatted(NotepadPlusPlusClient.CouldNotBeAsked, NotepadPlusPlusClient.ProblemTemplates, chinese));
+        Assert.Equal("无法打开其进程（Access is denied.）",
+            UiText.TranslateFormatted("its process could not be opened (Access is denied.)", NotepadPlusPlusClient.ProblemTemplates, chinese));
+
+        // Every template of the list translates into something else: none of them is English in the Chinese status line.
+        var untranslated = NotepadPlusPlusClient.ProblemTemplates
+            .Where(template => UiText.TranslateFormatted(template, NotepadPlusPlusClient.ProblemTemplates, chinese) == template)
+            .ToList();
+        Assert.True(untranslated.Count == 0, "Still English in Chinese:\n" + string.Join("\n", untranslated));
     }
 
     /// <summary>The client's own "did not accept the query" message is the integration's problem plus a period, so it translates once trimmed.</summary>

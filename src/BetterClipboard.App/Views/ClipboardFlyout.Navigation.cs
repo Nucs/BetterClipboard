@@ -203,6 +203,7 @@ public sealed partial class ClipboardFlyout
     {
         ClipFilter.ShareX => controller.ShareX.IsInstalled,
         ClipFilter.Snipping => controller.IsSnippingTabAvailable,
+        ClipFilter.NotepadPlusPlus => controller.IsNotepadPlusPlusTabAvailable,
         ClipFilter.Run => controller.IsRunTabAvailable,
         ClipFilter.PowerShell => controller.IsPowerShellTabAvailable,
         ClipFilter.Cmd => controller.IsCmdTabAvailable,
@@ -286,6 +287,7 @@ public sealed partial class ClipboardFlyout
     {
         UpdateShareXTab();
         UpdateSnippingTab();
+        UpdateNotepadPlusPlusTab();
         UpdateEverythingTab();
         UpdateRunTab();
         UpdateShellTabs();

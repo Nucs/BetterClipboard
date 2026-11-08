@@ -739,9 +739,11 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         // Windows already remembered (RunDialogHistory) are an import, like Windows' own clipboard history. A file
         // pasted, copied or kept from the Everything tab is a new event too: pause means nothing new is recorded. So is
         // a command pasted, copied or kept from a shell tab (Pwsh, Cmd), and a prompt from a prompt tab (Claude, Codex). A
-        // screenshot Snipping Tool or Win+PrtScn just saved is a new event exactly like a ShareX one.
+        // screenshot Snipping Tool or Win+PrtScn just saved is a new event exactly like a ShareX one. So are a file just opened
+        // in Notepad++ and a Notepad++ tab's new text.
         bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX or ClipOrigin.RunDialog or ClipOrigin.Everything
-            or ClipOrigin.PowerShell or ClipOrigin.Cmd or ClipOrigin.ClaudeCode or ClipOrigin.Codex or ClipOrigin.WindowsScreenshot;
+            or ClipOrigin.PowerShell or ClipOrigin.Cmd or ClipOrigin.ClaudeCode or ClipOrigin.Codex or ClipOrigin.WindowsScreenshot
+            or ClipOrigin.NotepadPlusPlusFile or ClipOrigin.NotepadPlusPlusTab;
         if (isNewEvent && rules.IsPaused)
         {
             return null;

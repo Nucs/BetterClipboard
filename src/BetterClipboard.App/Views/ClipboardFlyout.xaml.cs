@@ -181,6 +181,7 @@ public sealed partial class ClipboardFlyout : Window
         controller.HistoryChanged += OnHistoryChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
         controller.SnippingStatusChanged += OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged += OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
@@ -548,6 +549,7 @@ public sealed partial class ClipboardFlyout : Window
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.SnippingStatusChanged -= OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged -= OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.PromptsStatusChanged -= OnPromptsStatusChanged;

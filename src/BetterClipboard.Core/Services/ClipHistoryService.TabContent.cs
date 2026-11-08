@@ -5,8 +5,9 @@ using BetterClipboard.Core.Storage;
 namespace BetterClipboard.Core.Services;
 
 /// <summary>
-/// Whether the panel's tabs that show only with something in them have it: the Run tab (an entry with a Win+R run time)
-/// and the Snipping tab (a picture it lists). The worker keeps both answers current from every change it makes.
+/// Whether the panel's tabs that show only with something in them have it: the Run tab (an entry with a Win+R run time),
+/// the Snipping tab (a picture it lists) and the Notepad++ tab (anything it lists). The worker keeps the answers current from
+/// every change it makes.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -42,9 +43,17 @@ public sealed partial class ClipHistoryService
     private readonly TabWitness snippingTab = new(ClipFilter.Snipping, ClipKind.Image);
 
     /// <summary>
-    /// Raised on the worker thread when <see cref="HasRunHistory"/> (with <see cref="ClipFilter.Run"/>) or
-    /// <see cref="HasSnippingImages"/> (with <see cref="ClipFilter.Snipping"/>) changed — also right after <see cref="Start"/>
-    /// for a store that already has such entries. Same handler rules as <see cref="Changed"/> (marshal to the UI and return).
+    /// The Notepad++ tab, counting every kind: a tab's text, an opened file's path, or anything copied in Notepad++. Its filter
+    /// has no index of its own, so a lookup scans (see <see cref="ClipStore.FindNewestInFilter"/>); it runs only at the
+    /// worker's start, after an import while the tab is empty, and when the witness went.
+    /// </summary>
+    private readonly TabWitness notepadPlusPlusTab = new(ClipFilter.NotepadPlusPlus, null);
+
+    /// <summary>
+    /// Raised on the worker thread when <see cref="HasRunHistory"/> (with <see cref="ClipFilter.Run"/>),
+    /// <see cref="HasSnippingImages"/> (with <see cref="ClipFilter.Snipping"/>) or <see cref="HasNotepadPlusPlusEntries"/> (with
+    /// <see cref="ClipFilter.NotepadPlusPlus"/>) changed — also right after <see cref="Start"/> for a store that already has such
+    /// entries. Same handler rules as <see cref="Changed"/> (marshal to the UI and return).
     /// </summary>
     public event EventHandler<ClipFilter>? TabContentChanged;
 
@@ -62,12 +71,18 @@ public sealed partial class ClipHistoryService
     public bool HasSnippingImages => snippingTab.Present;
 
     /// <summary>
+    /// Whether the history holds at least one entry the Notepad++ tab lists — a tab's text, an opened file's path, or a copy
+    /// made in Notepad++. <see langword="false"/> until the worker has looked (<see cref="Start"/>); readable from any thread.
+    /// </summary>
+    public bool HasNotepadPlusPlusEntries => notepadPlusPlusTab.Present;
+
+    /// <summary>
     /// Looks up each tab that has no witness yet: at the worker's start (every tab), and after an import, which adds entries
     /// without an event of its own. Worker thread only.
     /// </summary>
     private void FindMissingTabContent()
     {
-        foreach (var tab in (ReadOnlySpan<TabWitness>)[runTab, snippingTab])
+        foreach (var tab in (ReadOnlySpan<TabWitness>)[runTab, snippingTab, notepadPlusPlusTab])
         {
             if (tab.Id is null)
             {
@@ -78,14 +93,14 @@ public sealed partial class ClipHistoryService
     }
 
     /// <summary>
-    /// Follows one change of the history in both tabs' witnesses (see the class remarks), and tells
+    /// Follows one change of the history in every tab's witness (see the class remarks), and tells
     /// <see cref="TabContentChanged"/> when a tab gained its first entry or lost its last. Worker thread only, after the
     /// change was stored.
     /// </summary>
     /// <param name="change">The change, as raised to <see cref="Changed"/>.</param>
     private void TrackTabContent(ClipChangedEventArgs change)
     {
-        foreach (var tab in (ReadOnlySpan<TabWitness>)[runTab, snippingTab])
+        foreach (var tab in (ReadOnlySpan<TabWitness>)[runTab, snippingTab, notepadPlusPlusTab])
         {
             try
             {

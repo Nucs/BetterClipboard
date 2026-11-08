@@ -91,6 +91,14 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// <c>ClipStore.Prompts.cs</c>. Added idempotently like the groups. "Forget forever" deletes archived prompts too.
 /// </para>
 /// <para>
+/// <b>Tracked documents.</b> <c>tracked_documents</c> maps a document an integration follows (a Notepad++ "new" tab, by its
+/// backup file) to the entry holding its text, with the content hash last recorded and the copy's loss bookkeeping
+/// (<see cref="Documents.TrackedDocumentRule"/>); <see cref="RecordDocument"/> updates the entry in place or starts a new
+/// copy, and moves the mapping, in one transaction (<c>ClipStore.Documents.cs</c>). <c>clips.source_title</c> (the tab's
+/// name) and <c>clips.edited_utc</c> (when the text was last replaced in place) are nullable columns. All three are added
+/// idempotently like the groups; an older build ignores them, and a row it bumps keeps them.
+/// </para>
+/// <para>
 /// <b>Threading.</b> Every public method opens its own pooled connection, so the store may be used from
 /// any thread. WAL journaling lets the UI read while the history worker writes. Writers are expected to
 /// be serialized by <see cref="Services.ClipHistoryService"/>; concurrent writers are still correct
@@ -131,7 +139,7 @@ public sealed partial class ClipStore
         "c.origin, c.source_app_name, c.source_app_path, c.size_bytes, c.format_names, c.image_width, " +
         "c.image_height, (c.thumbnail IS NOT NULL) AS has_thumbnail, " +
         "(SELECT group_concat(cg.group_id) FROM clip_groups cg WHERE cg.clip_id = c.id) AS group_ids, " +
-        "coalesce(c.path_count, 0) AS path_count, c.run_last_utc";
+        "coalesce(c.path_count, 0) AS path_count, c.run_last_utc, c.source_title, c.edited_utc";
 
     /// <summary>
     /// <c>meta</c> flag of the path verdicts' rules (see <see cref="BackfillPathCounts"/>): a new
@@ -332,6 +340,12 @@ public sealed partial class ClipStore
     }
 
     /// <summary>Creates or upgrades the schema inside one transaction (see <see cref="Initialize"/>).</summary>
+    /// <remarks>
+    /// Every additive object (groups, the forget list, path counts, run times, the prompt archive, source titles and edit
+    /// times, tracked documents) is ensured at every start, so an older store gains them and a newer build's file still opens.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The database's schema version is newer than this build supports.</exception>
+    /// <exception cref="SqliteException">The schema could not be read or changed; the migration transaction rolls back.</exception>
     private void InitializeSchema()
     {
         using var connection = Open();
@@ -360,6 +374,8 @@ public sealed partial class ClipStore
         EnsurePathCountColumn(connection);
         EnsureRunColumn(connection);
         EnsurePromptsSchema(connection);
+        EnsureSourceTitleAndEditedColumns(connection);
+        EnsureTrackedDocumentsSchema(connection);
         transaction.Commit();
         ApplyDataFixups(connection);
         BackfillPathCounts(connection);
@@ -583,6 +599,35 @@ public sealed partial class ClipStore
 
         using var connection = Open();
         using var transaction = connection.BeginTransaction();
+        var result = UpsertCore(connection, capture, classified, image, bumpIfExists);
+        if (result is null)
+        {
+            // A suppressed import: UpsertCore wrote nothing (it checks before any write for origins that can be suppressed).
+            transaction.Rollback();
+            return null;
+        }
+
+        transaction.Commit();
+        return result;
+    }
+
+    /// <summary>
+    /// The body of <see cref="Upsert"/> on a connection whose transaction the caller owns, so a tracked document's new copy
+    /// and its mapping commit together (<see cref="RecordDocument"/>).
+    /// </summary>
+    /// <param name="connection">Open connection inside the caller's transaction.</param>
+    /// <param name="capture">The raw capture.</param>
+    /// <param name="classified">Its classification.</param>
+    /// <param name="image">Image analysis for image clips, or <see langword="null"/>.</param>
+    /// <param name="bumpIfExists">Whether a duplicate is treated as a fresh copy (see <see cref="Upsert"/>).</param>
+    /// <returns>
+    /// The result (read inside the transaction), or <see langword="null"/> for a suppressed import — in which case nothing
+    /// was written, so the caller may still commit other work of its own.
+    /// </returns>
+    /// <exception cref="SqliteException">A read or write failed.</exception>
+    /// <exception cref="InvalidOperationException">The row just written cannot be read back inside its own transaction (a corrupt database).</exception>
+    private static UpsertResult? UpsertCore(SqliteConnection connection, ClipCapture capture, ClassifiedClip classified, ImageAnalysis? image, bool bumpIfExists)
+    {
         long when = capture.CapturedAtUtc.ToUnixTimeMilliseconds();
         var hash = classified.ContentHash;
         var preview = classified.Kind == ClipKind.Image ? ContentClassifier.DescribeImage(image?.Width, image?.Height) : classified.Preview;
@@ -607,9 +652,9 @@ public sealed partial class ClipStore
         }
 
         // Everything picks, shell commands and archived prompts are stored only when the user pastes, copies or keeps one
-        // in the panel: as explicit as a copy.
+        // in the panel: as explicit as a copy. So is a file opened in Notepad++ (as explicit as copying its path).
         if (capture.Origin is ClipOrigin.Captured or ClipOrigin.RunDialog or ClipOrigin.Everything or ClipOrigin.PowerShell or ClipOrigin.Cmd
-            or ClipOrigin.ClaudeCode or ClipOrigin.Codex)
+            or ClipOrigin.ClaudeCode or ClipOrigin.Codex or ClipOrigin.NotepadPlusPlusFile)
         {
             using var untomb = Command(connection, "DELETE FROM deleted_hashes WHERE content_hash = $hash;");
             untomb.Parameters.AddWithValue("$hash", hash);
@@ -617,8 +662,8 @@ public sealed partial class ClipStore
         }
         else if (existingId is null && IsSuppressedImport(connection, hash, when))
         {
-            // An import must never undo the user's explicit delete/clear.
-            transaction.Rollback();
+            // An import must never undo the user's explicit delete/clear. Nothing was written yet: the caller ends its
+            // transaction (Upsert rolls back; RecordDocument still records the document's mapping).
             return null;
         }
 
@@ -631,14 +676,16 @@ public sealed partial class ClipStore
                 """
                 INSERT INTO clips (kind, preview, search_text, content_hash, created_utc, last_used_utc, use_count,
                                    is_pinned, pinned_utc, origin, source_app_name, source_app_path, size_bytes,
-                                   format_names, image_width, image_height, thumbnail, path_count, run_last_utc)
+                                   format_names, image_width, image_height, thumbnail, path_count, run_last_utc,
+                                   source_title)
                 VALUES ($kind, $preview, $search, $hash, $when, $when, 1, $pinned, $pinnedUtc, $origin, $srcName,
-                        $srcPath, $size, $formats, $width, $height, $thumb, $paths, $run)
+                        $srcPath, $size, $formats, $width, $height, $thumb, $paths, $run, $title)
                 RETURNING id;
                 """);
             insert.Parameters.AddWithValue("$kind", (int)classified.Kind);
             insert.Parameters.AddWithValue("$paths", classified.PathCount);
             insert.Parameters.AddWithValue("$run", (object?)runAt ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$title", (object?)capture.SourceTitle ?? DBNull.Value);
             insert.Parameters.AddWithValue("$preview", preview);
             insert.Parameters.AddWithValue("$search", classified.SearchText);
             insert.Parameters.AddWithValue("$hash", hash);
@@ -672,12 +719,14 @@ public sealed partial class ClipStore
                     size_bytes = $size, format_names = $formats,
                     image_width = coalesce($width, image_width), image_height = coalesce($height, image_height),
                     thumbnail = coalesce($thumb, thumbnail),
-                    run_last_utc = CASE WHEN $run IS NULL THEN run_last_utc ELSE max(coalesce(run_last_utc, 0), $run) END
+                    run_last_utc = CASE WHEN $run IS NULL THEN run_last_utc ELSE max(coalesce(run_last_utc, 0), $run) END,
+                    source_title = coalesce($title, source_title)
                 WHERE id = $id;
                 """);
             update.Parameters.AddWithValue("$kind", (int)classified.Kind);
             update.Parameters.AddWithValue("$paths", classified.PathCount);
             update.Parameters.AddWithValue("$run", (object?)runAt ?? DBNull.Value);
+            update.Parameters.AddWithValue("$title", (object?)capture.SourceTitle ?? DBNull.Value);
             update.Parameters.AddWithValue("$preview", preview);
             update.Parameters.AddWithValue("$search", classified.SearchText);
             update.Parameters.AddWithValue("$when", when);
@@ -726,7 +775,7 @@ public sealed partial class ClipStore
             }
         }
 
-        transaction.Commit();
+        // Read inside the caller's transaction: the connection sees its own uncommitted rows.
         var entry = GetEntry(connection, id) ?? throw new InvalidOperationException($"Clip {id} vanished inside its own transaction.");
         return new UpsertResult(entry, isNew, changed);
     }
@@ -1899,6 +1948,13 @@ public sealed partial class ClipStore
         // explorer.exe and is matched once the file has merged into it.
         ClipFilter.Snipping => $"(c.origin = {(int)ClipOrigin.WindowsScreenshot} OR c.source_app_path LIKE '%\\{WindowsScreenshots.SnippingToolExecutableName}' " +
                                $"OR c.source_app_name IN ('{WindowsScreenshots.SnippingToolName}', '{WindowsScreenshots.WinPrtScnName}'))",
+
+        // The Notepad++ tab: unsaved tabs' text and opened files' paths (both integration origins), and every copy made in
+        // Notepad++ (its executable describes itself as "Notepad++"). A capture of either origin that bumped an older row
+        // keeps that row's origin but takes the source name.
+        ClipFilter.NotepadPlusPlus => $"(c.origin IN ({(int)ClipOrigin.NotepadPlusPlusTab}, {(int)ClipOrigin.NotepadPlusPlusFile}) " +
+                                      $"OR c.source_app_path LIKE '%\\{NotepadPlusPlus.NotepadPlusPlusSources.ExecutableName}' " +
+                                      $"OR c.source_app_name = '{NotepadPlusPlus.NotepadPlusPlusSources.DisplayName}')",
         _ => null,
     };
 
@@ -2126,6 +2182,8 @@ public sealed partial class ClipStore
         GroupIds = reader.IsDBNull(16) ? [] : ParseIds(reader.GetString(16)),
         PathCount = reader.GetInt32(17),
         LastRunUtc = reader.IsDBNull(18) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(18)),
+        SourceTitle = reader.IsDBNull(19) ? null : reader.GetString(19),
+        EditedUtc = reader.IsDBNull(20) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(20)),
     };
 
     /// <summary>Parses <c>group_concat</c>'s comma list (unspecified order) into ascending ids.</summary>

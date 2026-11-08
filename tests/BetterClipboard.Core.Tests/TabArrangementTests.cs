@@ -14,7 +14,7 @@ public sealed class TabArrangementTests : IDisposable
 {
     /// <summary>The panel's default order, as the XAML declares the tabs (checked against it by <see cref="Xaml_DeclaresOneTabPerFilter_InTheTestedOrder"/>).</summary>
     private static readonly string[] Defaults =
-        ["All", "Pinned", "Text", "Images", "Links", "Files", "ShareX", "Snipping", "Run", "PowerShell", "Cmd", "ClaudeCode", "Codex", "Everything"];
+        ["All", "Pinned", "Text", "Images", "Links", "Files", "ShareX", "Snipping", "NotepadPlusPlus", "Run", "PowerShell", "Cmd", "ClaudeCode", "Codex", "Everything"];
 
     private readonly TempDirectory temp = TestData.NewTempDirectory();
 
@@ -27,11 +27,11 @@ public sealed class TabArrangementTests : IDisposable
     /// </summary>
     public static TheoryData<string> ShownPatterns => new()
     {
-        "11111111111111",
-        "11111100000000",
-        "10101010101010",
-        "11000011110011",
-        "10000000000001",
+        "111111111111111",
+        "111111000000000",
+        "101010100101010",
+        "110000111110011",
+        "100000000000001",
     };
 
     /// <summary>No stored order (a new install, or the default restored) shows the tabs in the default order.</summary>
@@ -46,7 +46,7 @@ public sealed class TabArrangementTests : IDisposable
     [Fact]
     public void Arrange_KeepsAFullStoredOrder()
     {
-        string[] stored = ["All", "Files", "Pinned", "Codex", "Text", "Images", "Links", "ShareX", "Snipping", "Run", "PowerShell", "Cmd", "ClaudeCode", "Everything"];
+        string[] stored = ["All", "Files", "Pinned", "Codex", "Text", "Images", "Links", "ShareX", "Snipping", "NotepadPlusPlus", "Run", "PowerShell", "Cmd", "ClaudeCode", "Everything"];
         Assert.Equal(stored, TabArrangement.Arrange(Defaults, stored));
     }
 
@@ -57,12 +57,12 @@ public sealed class TabArrangementTests : IDisposable
     [Fact]
     public void Arrange_PutsAMissingTabAfterItsDefaultPredecessor()
     {
-        // Stored by a version without the Snipping and Everything tabs, Files moved to the front.
+        // Stored by a version without the Snipping, Notepad++ and Everything tabs, Files moved to the front.
         string[] stored = ["All", "Files", "Pinned", "Text", "Images", "Links", "ShareX", "Run", "PowerShell", "Cmd", "ClaudeCode", "Codex"];
 
         var arranged = TabArrangement.Arrange(Defaults, stored);
 
-        Assert.Equal(["All", "Files", "Pinned", "Text", "Images", "Links", "ShareX", "Snipping", "Run", "PowerShell", "Cmd", "ClaudeCode", "Codex", "Everything"], arranged);
+        Assert.Equal(["All", "Files", "Pinned", "Text", "Images", "Links", "ShareX", "Snipping", "NotepadPlusPlus", "Run", "PowerShell", "Cmd", "ClaudeCode", "Codex", "Everything"], arranged);
     }
 
     /// <summary>

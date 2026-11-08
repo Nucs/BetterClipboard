@@ -164,10 +164,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// which a screen reader would otherwise announce as plain text inside the Files tab; for a pick, where it
     /// comes from ("File opened in Everything"); and "Win+R command" for a command run with Win+R, so a screen
     /// reader announces that Ctrl+Enter runs it. A shell command names its shell ("PowerShell command"), a prompt its agent
-    /// ("Claude Code prompt").
+    /// ("Claude Code prompt"), and an unsaved Notepad++ tab's text says so ("Notepad++ tab"; its name is in the caption).
     /// </summary>
     public string KindLabel => Pick is { } pick ? (pick.IsFolder ? UiText.Translate("Folder opened in Everything") : UiText.Translate("File opened in Everything"))
         : Entry.HasRunHistory ? UiText.Translate("Win+R command")
+        : Entry.Origin == ClipOrigin.NotepadPlusPlusTab ? UiText.Translate("Notepad++ tab")
         : ShellCommandLabel is { } shellLabel ? shellLabel
         : PromptLabel is { } promptLabel ? promptLabel
         : Entry.IsPathText ? (Entry.PathCount == 1 ? UiText.Translate("Path") : UiText.Translate("Paths")) : Kind switch
@@ -303,7 +304,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
                 : $"Everything · {times}";
         }
 
-        var parts = new List<string>(3);
+        var parts = new List<string>(4);
         if (!string.IsNullOrWhiteSpace(Entry.SourceAppName))
         {
             // Stored in English (the tabs filter by it); a name BetterClipboard made up is shown in the interface language.
@@ -315,9 +316,24 @@ public sealed partial class ClipItemViewModel : ObservableObject
             parts.Add(UiText.Translate("Unknown app"));
         }
 
+        // The document inside the app, when an integration knows it: a Notepad++ tab's name ("Notepad++ · new 3 · …").
+        // Its own statement, after the app's: chained to the app's if/else, a known app without a title read
+        // "Notepad++ · Unknown app" (found in the live check, 2026-11-08).
+        if (!string.IsNullOrWhiteSpace(Entry.SourceTitle))
+        {
+            parts.Add(Entry.SourceTitle!);
+        }
+
         // Imported items (Windows never records their producer) show no source at all rather than a
         // placeholder label repeated on every card.
         parts.Add(RelativeTimeFormatter.Format(Entry.LastUsedUtc, DateTimeOffset.UtcNow));
+
+        // A text replaced in place keeps the card's place (its time above); the edit is a time of its own. Shown only while it
+        // is the newer of the two: a later copy of the same text moves the card, and then says it all.
+        if (Entry.EditedUtc is { } edited && edited > Entry.LastUsedUtc)
+        {
+            parts.Add(UiText.Format($"edited {RelativeTimeFormatter.Format(edited, DateTimeOffset.UtcNow)}"));
+        }
 
         if (Kind == ClipKind.Image && Entry.ImageWidth is > 0 && Entry.ImageHeight is > 0)
         {

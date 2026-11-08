@@ -1077,6 +1077,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 ? UiText.Translate("Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up here the moment Windows saves it.")
                 : UiText.Translate("Turn on “Snipping Tool and Win+PrtScn” in Settings to collect Windows' screenshots here.");
         }
+        else if (Filter == ClipFilter.NotepadPlusPlus)
+        {
+            // Seen only for a moment: the tab shows only while the history holds something it lists.
+            EmptyTitle = UiText.Translate("Nothing from Notepad++ yet");
+            EmptyMessage = UiText.Translate("Unsaved “new” tabs show up here once they rest for a minute, and every file the moment you open it in Notepad++.");
+        }
         else if (Filter == ClipFilter.Files)
         {
             EmptyTitle = UiText.Translate("No files or paths yet");

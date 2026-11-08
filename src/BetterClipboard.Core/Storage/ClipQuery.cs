@@ -95,6 +95,17 @@ public enum ClipFilter
     /// first stored by an earlier copy keeps that row's origin but takes the source name.
     /// </remarks>
     Snipping = 13,
+
+    /// <summary>
+    /// The panel's Notepad++ tab: the text of unsaved Notepad++ tabs (<see cref="Model.ClipOrigin.NotepadPlusPlusTab"/>), the
+    /// paths of files opened in Notepad++ (<see cref="Model.ClipOrigin.NotepadPlusPlusFile"/>), and whatever Notepad++ put on
+    /// the clipboard (source <c>notepad++.exe</c>, whose file description is "Notepad++").
+    /// </summary>
+    /// <remarks>
+    /// Also matched by the source name "Notepad++": an opened file or a tab's text that bumped a row first stored by an
+    /// earlier copy keeps that row's origin but takes the source.
+    /// </remarks>
+    NotepadPlusPlus = 14,
 }
 
 /// <summary>

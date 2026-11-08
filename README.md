@@ -36,6 +36,8 @@ you send to Claude Code and Codex.
     in BetterClipboard is not imported again.
   - **ShareX:** every screenshot that [ShareX](https://getsharex.com) saves, the moment it is saved.
   - **Snipping:** every screenshot that Snipping Tool's auto-save and `Win+PrtScn` save.
+  - **Notepad++:** the text of [Notepad++](https://notepad-plus-plus.org/)'s unsaved "new" tabs, kept up to date as
+    you edit them, and the full path of every file you open in Notepad++.
   - **Run:** every command you run with `Win+R`, also after Windows' list of 26 forgets it. `Ctrl+Enter` runs one again
     (`Ctrl+Shift+Enter`: as administrator).
   - **Pwsh:** PowerShell's whole command history, also the old commands that its Up arrow no longer reaches.
@@ -43,7 +45,7 @@ you send to Claude Code and Codex.
   - **Claude and Codex:** every prompt you send to Claude Code and Codex, kept for good.
   - **Everything:** the files you open from [Everything](https://www.voidtools.com/), to paste as a file or as a path.
 
-  The last seven are tabs for other apps. Each one has its own switch and is on by default, BetterClipboard only reads
+  The last eight are tabs for other apps. Each one has its own switch and is on by default, BetterClipboard only reads
   its source, and the tab of an app you don't have stays hidden ([Tabs for other apps](#tabs-for-other-apps)).
 - **Instant search** in any language, Hebrew, CJK and emoji included, with VS Code's toggles: match case (`Alt+C`),
   whole word (`Alt+W`) and regular expression (`Alt+E`) ([Search](#search)). Win+V has no search.
@@ -268,7 +270,8 @@ The tray icon opens the panel and Settings:
 - **Privacy:** pause, ignored apps, *Forgotten forever*, capture reliability, clear history.
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
   remembers — including its pinned items.
-- **Integrations:** one switch for each tab of another app (see [Tabs for other apps](#tabs-for-other-apps)).
+- **Integrations:** one switch for each tab of another app, two for Notepad++ (its unsaved tabs, and the files you
+  open in it) (see [Tabs for other apps](#tabs-for-other-apps)).
 - **App:** the interface language (Windows' or one you pick; *Restart now* next to the list applies it), start with
   Windows (for you alone, also when BetterClipboard was installed for every user), theme, the command line, the data
   folder.
@@ -292,6 +295,7 @@ The tray icon opens the panel and Settings:
 | Files | Files you copied in Explorer, and text that is nothing but paths | Always |
 | ShareX | Screenshots that ShareX saved, and everything you copied from ShareX | When ShareX is installed |
 | Snipping | Screenshots that Snipping Tool and Win+PrtScn saved | When your history has a screenshot from them |
+| Notepad++ | The text of Notepad++'s unsaved tabs, the files you opened in Notepad++, and what you copied in it | When your history has something from Notepad++ |
 | Run | Commands you ran with Win+R | When your history has a Win+R command |
 | Pwsh | PowerShell's own command history | When PowerShell has a history file |
 | Cmd | Commands typed in Command Prompt windows | Always |
@@ -468,10 +472,10 @@ of opening File Explorer.
 
 ## Tabs for other apps
 
-BetterClipboard also keeps what other tools on your PC forget or bury: screenshots, Win+R commands, shell
-history, the prompts you send to AI coding agents, and the files you open in Everything. Each source has its own
-tab and its own switch in *Settings › Integrations*. All of them are on by default, and the tab of an app you don't
-have stays hidden. BetterClipboard only reads these sources; it never changes their files or lists.
+BetterClipboard also keeps what other tools on your PC forget or bury: screenshots, Notepad++'s unsaved tabs, Win+R
+commands, shell history, the prompts you send to AI coding agents, and the files you open in Everything. Each source
+has its own tab and its own switch in *Settings › Integrations*. All of them are on by default, and the tab of an app
+you don't have stays hidden. BetterClipboard only reads these sources; it never changes their files or lists.
 [Privacy](#privacy) sums up what each one reads.
 
 <p align="center">
@@ -519,6 +523,31 @@ tab shows once your history has a screenshot from them, and goes when you delete
 - **Only fresh screenshots.** A picture you copy or move into the folder later is not imported.
 - **Snipping Tool's own settings** show in *Settings › Integrations*: whether it auto-saves, and whether it
   saves to a folder of its own (BetterClipboard does not watch that folder).
+
+### Notepad++
+
+[Notepad++](https://notepad-plus-plus.org/) keeps the text of its unsaved "new" tabs in backup files, and forgets it
+when you close such a tab. BetterClipboard keeps it in the **Notepad++** tab, with the full path of every file you
+open in Notepad++ and whatever you copy in it. The tab shows once your history has something from Notepad++. Two
+switches in *Settings › Integrations*: *Notepad++ unsaved tabs* and *Files opened in Notepad++*.
+
+- **Unsaved tabs, kept up to date.** A tab is read from Notepad++'s backup once you stop typing in it for a minute
+  (at the latest five minutes after its first change, if you keep typing). A small change updates the tab's item
+  where it is, and the card says when it was edited. Once more than a fifth of the text is gone (deleted or
+  rewritten, added up over the edits), the old version stays as an item of its own and the new text becomes a new
+  item. Typing more never splits a tab. The card names the tab ("new 3"), also after you rename it.
+- **Files you open, as if you copied their path.** Opening a file in Notepad++ puts its full path in your history;
+  opening it again later moves that item from its old date to the top. BetterClipboard asks a running Notepad++
+  which files it has open. The files Notepad++ restores from its last session at start do not count; the files you
+  start it with (a double-click in Explorer) do.
+- **The first time,** the unsaved tabs Notepad++ remembers then are imported. Files opened before are not.
+- **Never in Notepad++'s way.** Its files are read without locking them, and nothing of Notepad++ is ever changed.
+  BetterClipboard asks only a Notepad++ signed by its makers. *Pause capturing*, *Ignored apps* (add `notepad++`)
+  and the size limit apply.
+- **Deleting a tab's item** is respected: that text does not come back, and the tab's next change is a new item.
+- **Not seen:** a file opened again while it is still open in Notepad++ (Notepad++ only switches to its tab); unsaved
+  tabs while Notepad++'s *Settings › Preferences › Backup › Enable session snapshot and periodic backup* is off
+  (*Settings › Integrations* says so); a Notepad++ running as administrator while BetterClipboard does not.
 
 ### Win+R history
 
@@ -591,7 +620,7 @@ the network cannot connect, and each command is logged by name only, never with 
 
 | Command | What it does |
 |---|---|
-| `bclip list [-n 20] [-f FILTER] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line. `FILTER` is `pinned`, `text`, `images`, `links` or `files` (copied paths included, as kind `path`), or a tab: `sharex`, `snipping`, `run`, `pwsh`, `cmd`, `claude`, `codex`, `everything` |
+| `bclip list [-n 20] [-f FILTER] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line. `FILTER` is `pinned`, `text`, `images`, `links` or `files` (copied paths included, as kind `path`), or a tab: `sharex`, `snipping`, `notepad++`, `run`, `pwsh`, `cmd`, `claude`, `codex`, `everything` |
 | `bclip search <words…>` | Items containing all the words (substring, any language) |
 | `bclip grep [-i] <regex>` | Matching lines as `id:line: text`, like `grep -n` |
 | `bclip get [ID \| -r N] [--format text\|html\|rtf\|files\|png] [-o FILE]` | An item's content, byte for byte (default: the latest); images need `-o file.png` |
@@ -650,6 +679,9 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   - the agents' history files: a reader that keeps a checkpoint per file and reads only the bytes added since. A
     folder watcher alone is not enough: Windows reports no writes to a file that another app keeps open, so a
     short check every 5 seconds backs it up;
+  - Notepad++'s unsaved tabs: a folder watcher on its backup folder; a tab is read only once it rests for a minute;
+  - files opened in Notepad++: a notification when its window title changes, and every 5 seconds one question for how
+    many documents it has open; BetterClipboard asks which ones only when the title or the count changed;
   - PowerShell's history file and Everything's list of opened files: read only when you open their tab;
   - Command Prompt windows: read by a short-lived helper process, so that a window that closes during the read
     can never take BetterClipboard down with it.
@@ -723,6 +755,8 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 | Windows' own clipboard history | Imports what Win+V still remembers, its pinned items included, at each start | On | *Import from Windows › Import automatically every time BetterClipboard starts* |
 | ShareX's screenshot folders | Keeps each screenshot ShareX saves | On, while ShareX is installed | *ShareX screenshots* |
 | Windows' Screenshots folder | Keeps each screenshot Snipping Tool or Win+PrtScn saves there | On | *Snipping Tool and Win+PrtScn* |
+| Notepad++'s session and backup files | Keeps the text of its unsaved tabs, read once a tab rests for a minute | On, while Notepad++ is installed | *Notepad++ unsaved tabs* |
+| A running Notepad++ | Asks it which files it has open (its plugin messages), and keeps the path of each file you open | On, while Notepad++ runs | *Files opened in Notepad++* |
 | Windows' Win+R list | Keeps every command the list records | On | *Win+R history* |
 | PowerShell's history file | Lists its commands in the Pwsh tab; keeps a command only when you paste, copy, pin or group it | On | *Pwsh tab (PowerShell history)* |
 | Command Prompt windows you opened | Reads their command history every 30 seconds and keeps it, since Command Prompt forgets it when the window closes | On | *Cmd tab (Command Prompt history)* |

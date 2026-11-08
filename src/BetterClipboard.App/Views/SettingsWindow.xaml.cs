@@ -76,6 +76,7 @@ public sealed partial class SettingsWindow : Window
         controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
         controller.SnippingStatusChanged += OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged += OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
@@ -144,6 +145,7 @@ public sealed partial class SettingsWindow : Window
         controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.SnippingStatusChanged -= OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged -= OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged -= OnShellHistoryStatusChanged;
@@ -331,6 +333,11 @@ public sealed partial class SettingsWindow : Window
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
     private void OnSnippingStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshSnippingStatus();
+
+    /// <summary>Notepad++ was found or went, a tab version or an opened file was recorded, or a switch changed: refresh both cards.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Unused.</param>
+    private void OnNotepadPlusPlusStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshNotepadPlusPlusStatus();
 
     /// <summary>Everything started, stopped, finished loading or was found installed, or the tab was switched: refresh its card.</summary>
     /// <param name="sender">Controller.</param>

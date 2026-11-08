@@ -30,6 +30,12 @@ public sealed class ClipCapture
     public ClipOrigin Origin { get; init; } = ClipOrigin.Captured;
 
     /// <summary>
+    /// The document inside <see cref="Source"/> the content came from, when an integration knows it (a Notepad++ tab's name);
+    /// stored as <see cref="ClipEntry.SourceTitle"/>. A bump keeps an earlier title when this is <see langword="null"/>.
+    /// </summary>
+    public string? SourceTitle { get; init; }
+
+    /// <summary>
     /// Request to pin the stored entry (used when importing items the user pinned in Win+V). Pinning is
     /// only ever added by a capture, never removed — an import cannot unpin something the user pinned here.
     /// </summary>

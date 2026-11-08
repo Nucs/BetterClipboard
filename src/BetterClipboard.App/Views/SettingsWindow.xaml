@@ -557,6 +557,38 @@
                             TextWrapping="Wrap" />
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <!--
+                    Notepad++ (CLAUDE.md §2.41; ViewModel: SettingsViewModel.NotepadPlusPlus.cs): two cards, one per half. E70B =
+                    QuickNote (an unsaved tab's text), E8E5 = OpenFile (a file opened), both checked by rendering.
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text=&quot;Keeps the text of Notepad++'s unsaved “new” tabs in your history, read from Notepad++'s own backup files once a tab has rested for a minute. A small change updates the tab's entry where it is; once more than a fifth of its text is gone, the old version stays as its own entry. Notepad++'s files are never changed.&quot;}"
+                    Glyph="&#xE70B;"
+                    Header="{loc:Tr Text='Notepad++ unsaved tabs'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.KeepNotepadPlusPlusTabs, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.NotepadPlusPlusTabsStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Records the full path of every file you open in Notepad++, as if you had copied it; opening it again moves it to the top. BetterClipboard asks a running Notepad++ which files it has open; the files it restores from its last session do not count.'}"
+                    Glyph="&#xE8E5;"
+                    Header="{loc:Tr Text='Files opened in Notepad++'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.RecordNotepadPlusPlusFiles, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            IsTextSelectionEnabled="True"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.NotepadPlusPlusFilesStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='While voidtools Everything is installed or running, the panel gets an Everything tab: the files and folders you open from Everything, newest first, next to everything copied from it. BetterClipboard only reads from Everything. A file is kept in your history only when you paste, copy or pin it there.'}"
                     Glyph="&#xE721;"

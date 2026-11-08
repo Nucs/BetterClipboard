@@ -450,6 +450,30 @@ public sealed record AppSettings
     /// </remarks>
     public bool KeepCodexPrompts { get; init; } = true;
 
+    /// <summary>
+    /// Keep the text of Notepad++'s unsaved tabs ("new 3") in the history, updated as it changes, and show the panel's
+    /// Notepad++ tab (CLAUDE.md §2.41).
+    /// </summary>
+    /// <remarks>
+    /// On by default, like the other integrations: Notepad++ already keeps this text in plain files (its backup folder), the
+    /// encrypted copy adds no exposure and keeps what Notepad++ forgets when a tab is closed. Read only from Notepad++'s
+    /// own files, once a tab's text has rested (never on every 7-second save). A change that loses more than a fifth of the
+    /// text keeps the old version as its own entry (<see cref="Documents.TrackedDocumentRule"/>). Off stops reading and
+    /// forgets which entry belongs to which tab; the entries stay. "Ignored apps" matches "notepad++".
+    /// </remarks>
+    public bool KeepNotepadPlusPlusTabs { get; init; } = true;
+
+    /// <summary>
+    /// Record the full path of every file opened in Notepad++, as if it was copied: opening it again moves its one entry to
+    /// now (CLAUDE.md §2.41).
+    /// </summary>
+    /// <remarks>
+    /// On by default. Asks a running, signed Notepad++ through its plugin messages which documents it has open (reading paths
+    /// through a buffer BetterClipboard places in Notepad++'s process); nothing in Notepad++ changes. The files it restores
+    /// from its last session are not openings. Not for a Notepad++ running as administrator (Windows blocks the messages).
+    /// </remarks>
+    public bool RecordNotepadPlusPlusFiles { get; init; } = true;
+
     /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
     /// <remarks>
     /// Starts out holding <see cref="KnownPasswordManagers.All"/>: <see cref="Normalize"/> merges every

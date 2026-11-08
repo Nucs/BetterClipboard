@@ -348,6 +348,16 @@
                         ToolTipService.ToolTip="{loc:Tr Text='Screenshots saved by Snipping Tool (Win+Shift+S, PrtScn) and Win+PrtScn, and everything Snipping Tool copied'}"
                         Visibility="Collapsed" />
                     <!--
+                        Only while one of Settings' Notepad++ switches is on and the history holds something this tab lists (code-behind:
+                        UpdateNotepadPlusPlusTab, ClipboardFlyout.NotepadPlusPlus.cs). The label is Notepad++'s own name, in every language.
+                    -->
+                    <SelectorBarItem
+                        x:Name="NotepadPlusPlusFilter"
+                        Tag="NotepadPlusPlus"
+                        Text="Notepad++"
+                        ToolTipService.ToolTip="{loc:Tr Text='Unsaved Notepad++ tabs and the files you open in Notepad++'}"
+                        Visibility="Collapsed" />
+                    <!--
                         Only while Settings › Win+R history is on and the history holds a command run with Win+R (code-behind:
                         UpdateRunTab). Entering it rescans Windows' Win+R list first (the live watch normally has everything
                         already).

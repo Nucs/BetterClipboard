@@ -295,6 +295,10 @@ public sealed partial class AppController
             {
                 SnippingStatusChanged?.Invoke(this, EventArgs.Empty);
             }
+            else if (tab == ClipFilter.NotepadPlusPlus)
+            {
+                NotepadPlusPlusStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
         });
         history.Start();
         _ = history.PruneAsync();
@@ -311,6 +315,10 @@ public sealed partial class AppController
         // Windows' own screenshots (the Snipping tab): the Screenshots folder is looked up on the pool, then watched
         // (AppController.Snipping.cs).
         StartSnipping();
+
+        // Notepad++ (its tab): the unsaved tabs from its own files, read once they rest; the files it opens, asked from a
+        // running Notepad++ (AppController.NotepadPlusPlus.cs).
+        StartNotepadPlusPlus();
 
         // Everything is only talked to while its tab is wanted; the first lookup (window, registry) runs on the pool.
         if (settings.Current.ShowEverythingTab)
@@ -523,6 +531,9 @@ public sealed partial class AppController
 
         // Same for Everything: its card shows the install and the running state as of now.
         _ = everything?.RefreshAsync(forceInstallation: true);
+
+        // Same for Notepad++: a copy installed or started meanwhile shows in its cards at once.
+        RefreshNotepadPlusPlus();
     }
 
     /// <summary>
@@ -978,6 +989,9 @@ public sealed partial class AppController
         // Same for the Screenshots folder watch (the Snipping tab).
         await DisposeSnippingAsync();
 
+        // Same for Notepad++: a tab's version must only be recorded while the history runs (the next start catches up).
+        await DisposeNotepadPlusPlusAsync();
+
         // Same for the Win+R watch: its snapshot must only move past runs that were really stored, and a rescan
         // in flight is cancelled (the next start finds those runs again).
         if (runHistory is not null)
@@ -1152,6 +1166,13 @@ public sealed partial class AppController
             if (!exiting)
             {
                 await ApplyPromptSettingsAsync(next);
+            }
+
+            // Idempotent too: Notepad++'s tabs start (first activation: an import) or stop (forgetting which entry is which
+            // tab), and the opened-files watch starts or stops; the Notepad++ tab follows.
+            if (!exiting)
+            {
+                await ApplyNotepadPlusPlusSettingsAsync(next);
             }
 
             if (next.ShowEverythingTab != (everything is not null) && !exiting)
