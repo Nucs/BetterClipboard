@@ -148,8 +148,9 @@ public sealed partial class AppController
     public event EventHandler? EverythingStatusChanged;
 
     /// <summary>
-    /// Raised on the UI thread when the Win+R history watch started or stopped, Windows' list was read, or a run
-    /// was recorded (the flyout shows or hides its Run tab; Settings refreshes its status line).
+    /// Raised on the UI thread when the Win+R history watch started or stopped, Windows' list was read, a run was
+    /// recorded, or the history gained its first Win+R command or lost its last (the flyout shows or hides its Run tab;
+    /// Settings refreshes its status line).
     /// </summary>
     public event EventHandler? RunHistoryStatusChanged;
 
@@ -211,10 +212,12 @@ public sealed partial class AppController
     public bool IsEverythingTabAvailable => Settings.Current.ShowEverythingTab && everything?.IsAvailable == true;
 
     /// <summary>
-    /// Whether the panel shows its Run tab: the <see cref="AppSettings.RecordRunHistory"/> setting. Unlike the ShareX
-    /// tab it does not wait for anything to be found — Win+R exists on every Windows.
+    /// Whether the panel shows its Run tab: the <see cref="AppSettings.RecordRunHistory"/> setting is on and the history
+    /// holds at least one command run with Win+R (<see cref="ClipHistoryService.HasRunHistory"/>) — an empty tab would only
+    /// take room in the strip. It appears with the first run (or the first import of Windows' list) and goes with the
+    /// last entry deleted; <see cref="RunHistoryStatusChanged"/> tells the panel either way.
     /// </summary>
-    public bool IsRunTabAvailable => settings?.Current.RecordRunHistory == true;
+    public bool IsRunTabAvailable => settings?.Current.RecordRunHistory == true && history?.HasRunHistory == true;
 
     /// <summary>Whether Windows' Win+R history is being watched right now (the setting on and started).</summary>
     public bool IsRunHistoryWatching => runHistory?.IsWatching == true;
@@ -263,6 +266,20 @@ public sealed partial class AppController
         history.Changed += (_, e) => ui.TryEnqueue(() => HistoryChanged?.Invoke(this, e));
         history.GroupsChanged += (_, _) => ui.TryEnqueue(() => GroupsChanged?.Invoke(this, EventArgs.Empty));
         history.ForgottenChanged += (_, _) => ui.TryEnqueue(() => ForgottenChanged?.Invoke(this, EventArgs.Empty));
+
+        // The Run and Snipping tabs show only with something in them: the worker tells when a tab got its first entry or
+        // lost its last (also right after it starts, for a history that has some), through each tab's own status event.
+        history.TabContentChanged += (_, tab) => ui.TryEnqueue(() =>
+        {
+            if (tab == ClipFilter.Run)
+            {
+                RunHistoryStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+            else if (tab == ClipFilter.Snipping)
+            {
+                SnippingStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+        });
         history.Start();
         _ = history.PruneAsync();
 

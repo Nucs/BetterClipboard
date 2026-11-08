@@ -163,6 +163,10 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
             {
                 store.Prune(rulesProvider().Retention, time.GetUtcNow());
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
+
+                // The batch raised no event per entry: a tab that had nothing may have something now (the first import
+                // of Windows' Win+R list fills the Run tab this way).
+                FindMissingTabContent();
             }
 
             return created;
@@ -659,10 +663,16 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         shutdown.Dispose();
     }
 
-    /// <summary>Worker loop: executes queued work items strictly in order.</summary>
+    /// <summary>
+    /// Worker loop: first looks up which of the tabs that show only with something in them have it
+    /// (<see cref="HasRunHistory"/>, <see cref="HasSnippingImages"/>), then executes queued work items strictly in order.
+    /// </summary>
     /// <returns>A task completing when the queue is completed and drained, or cancelled.</returns>
     private async Task RunAsync()
     {
+        // Before the first work item, so every change after it starts from a known answer (logs its own failures).
+        FindMissingTabContent();
+
         await foreach (var work in queue.Reader.ReadAllAsync(shutdown.Token).ConfigureAwait(false))
         {
             // Work items capture their own exceptions (see EnqueueAsync/TryEnqueueCapture); this catch is
@@ -836,6 +846,10 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         {
             AppLog.Error("A history change subscriber threw.", ex);
         }
+
+        // Every change passes here, on the worker, after it was stored: whether the Run and Snipping tabs have anything
+        // follows it before the work item completes (ClipHistoryService.TabContent.cs).
+        TrackTabContent(args);
     }
 
     /// <summary>Raises <see cref="GroupsChanged"/>, shielding the worker from subscriber exceptions.</summary>

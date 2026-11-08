@@ -338,8 +338,8 @@
                         ToolTipService.ToolTip="{loc:Tr Key=T9840e0764aa8}"
                         Visibility="Collapsed" />
                     <!--
-                        Only while Settings › Snipping Tool and Win+PrtScn is on (code-behind: UpdateSnippingTab,
-                        ClipboardFlyout.Snipping.cs). Its Tag is the ClipFilter name.
+                        Only while Settings › Snipping Tool and Win+PrtScn is on and the history holds a picture this tab lists
+                        (code-behind: UpdateSnippingTab, ClipboardFlyout.Snipping.cs). Its Tag is the ClipFilter name.
                     -->
                     <SelectorBarItem
                         x:Name="SnippingFilter"
@@ -348,8 +348,9 @@
                         ToolTipService.ToolTip="{loc:Tr Key=T9d6d809ea7b5}"
                         Visibility="Collapsed" />
                     <!--
-                        Only while Settings › Win+R history is on (code-behind: UpdateRunTab). Entering it rescans Windows'
-                        Win+R list first (the live watch normally has everything already).
+                        Only while Settings › Win+R history is on and the history holds a command run with Win+R (code-behind:
+                        UpdateRunTab). Entering it rescans Windows' Win+R list first (the live watch normally has everything
+                        already).
                     -->
                     <SelectorBarItem
                         x:Name="RunFilter"

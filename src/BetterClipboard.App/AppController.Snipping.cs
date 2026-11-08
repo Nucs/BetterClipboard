@@ -20,15 +20,18 @@ public sealed partial class AppController
 
     /// <summary>
     /// Raised on the UI thread when the Screenshots folder watch started or stopped, the folder or Snipping Tool changed,
-    /// or a screenshot was imported (the flyout shows or hides its Snipping tab; Settings refreshes its status line).
+    /// a screenshot was imported, or the history gained its first picture for the Snipping tab or lost its last (the flyout
+    /// shows or hides its Snipping tab; Settings refreshes its status line).
     /// </summary>
     public event EventHandler? SnippingStatusChanged;
 
     /// <summary>
-    /// Whether the panel shows its Snipping tab: the setting. Like the Run tab it waits for nothing — Win+PrtScn exists on
-    /// every Windows, and an empty tab explains how it fills.
+    /// Whether the panel shows its Snipping tab: the setting is on and the history holds at least one picture the tab lists
+    /// (<see cref="Core.Services.ClipHistoryService.HasSnippingImages"/>: a screenshot from the folder, or a picture Snipping
+    /// Tool copied) — an empty tab would only take room in the strip. Text Snipping Tool copied is listed there, but does
+    /// not make the tab show. <see cref="SnippingStatusChanged"/> tells the panel when it appears or goes.
     /// </summary>
-    public bool IsSnippingTabAvailable => settings?.Current.ImportWindowsScreenshots == true;
+    public bool IsSnippingTabAvailable => settings?.Current.ImportWindowsScreenshots == true && history?.HasSnippingImages == true;
 
     /// <summary>What was found about the Screenshots folder and Snipping Tool (<see cref="WindowsScreenshotsLocation.None"/> until located).</summary>
     public WindowsScreenshotsLocation SnippingLocation => snipping?.Location ?? WindowsScreenshotsLocation.None;
@@ -89,7 +92,9 @@ public sealed partial class AppController
     /// </summary>
     private void RefreshSnippingIfWaiting()
     {
-        if (snipping is { IsWatching: false } integration && IsSnippingTabAvailable)
+        // The setting, not IsSnippingTabAvailable: while the folder does not exist there are no screenshots either, so the
+        // tab is away exactly when this look is needed.
+        if (snipping is { IsWatching: false } integration && Settings.Current.ImportWindowsScreenshots)
         {
             _ = integration.RefreshAsync();
         }

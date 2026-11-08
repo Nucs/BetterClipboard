@@ -264,8 +264,8 @@ The tray icon opens the panel and Settings:
 | Links | Copied URLs | Always |
 | Files | Files you copied in Explorer, and text that is nothing but paths | Always |
 | ShareX | Screenshots that ShareX saved, and everything you copied from ShareX | When ShareX is installed |
-| Snipping | Screenshots that Snipping Tool and Win+PrtScn saved | Always |
-| Run | Commands you ran with Win+R | Always |
+| Snipping | Screenshots that Snipping Tool and Win+PrtScn saved | When your history has a screenshot from them |
+| Run | Commands you ran with Win+R | When your history has a Win+R command |
 | Pwsh | PowerShell's own command history | When PowerShell has a history file |
 | Cmd | Commands typed in Command Prompt windows | Always |
 | Claude | Prompts you sent to Claude Code | When Claude Code has prompts |
@@ -472,7 +472,8 @@ ShareX. Paste one with `Enter` like any other item.
 ### Snipping Tool and Win+PrtScn
 
 Windows saves your screenshots in *Pictures › Screenshots*: Snipping Tool's auto-save (`Win+Shift+S`, `PrtScn`)
-and `Win+PrtScn`. Each one is in your history the moment Windows finishes writing it, in the **Snipping** tab.
+and `Win+PrtScn`. Each one is in your history the moment Windows finishes writing it, in the **Snipping** tab. The
+tab shows once your history has a screenshot from them, and goes when you delete the last one.
 
 - **One item per picture.** Snipping Tool also copies each snip to the clipboard. The copy and the saved file
   become one item.
@@ -486,7 +487,8 @@ and `Win+PrtScn`. Each one is in your history the moment Windows finishes writin
 ### Win+R history
 
 Windows remembers only your last 26 Win+R commands. BetterClipboard keeps every command you run with `Win+R`, in
-the **Run** tab, starting with the 26 that Windows remembers today.
+the **Run** tab, starting with the 26 that Windows remembers today. The tab shows once there is a command in it:
+if Windows remembers none, with the first one you run.
 
 - `Enter` pastes a command. `Ctrl+Enter` runs it again, the way the Run dialog does; `Ctrl+Shift+Enter` runs it
   as administrator. Both are also in the item's menu.

@@ -1107,6 +1107,53 @@ public sealed partial class ClipStore
     }
 
     /// <summary>
+    /// The entry a tab lists that was used last, optionally only among entries of one kind — or <see langword="null"/>
+    /// when the tab lists nothing of the sort. It answers "does this tab have anything?" for the tabs that show only then
+    /// (<see cref="Services.ClipHistoryService.HasRunHistory"/>,
+    /// <see cref="Services.ClipHistoryService.HasSnippingImages"/>), and the id it returns serves as the witness of that
+    /// answer: the entry least likely to be pruned next.
+    /// </summary>
+    /// <remarks>
+    /// What it costs depends on the tab, so call it when something happened, never once per copy. The Run tab's filter is
+    /// answered from its partial index (<c>ix_clips_run</c>) in microseconds. With a <paramref name="kind"/>, the rows of
+    /// that kind are walked newest first through <c>ix_clips_kind</c> and the walk stops at the first match; without any
+    /// match it visits every row of the kind (measured: 37 ms for 2,000 pictures in an encrypted store of 12,000 BC-TEST
+    /// entries, 2026-11-08). Any other filter scans the whole table, whose filter columns may lie behind a long search text
+    /// in overflow pages (150 ms for the same store).
+    /// </remarks>
+    /// <param name="filter">The tab's filter; <see cref="ClipFilter.All"/> stands for any entry.</param>
+    /// <param name="kind">Only entries of this kind; <see langword="null"/> for every kind.</param>
+    /// <returns>The entry's id, or <see langword="null"/> when the tab lists no such entry.</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public long? FindNewestInFilter(ClipFilter filter, ClipKind? kind = null)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+
+        // Ordered by last use, the order both indexes above keep: SQLite walks them without sorting and stops at LIMIT 1.
+        command.CommandText = $"SELECT c.id FROM clips c WHERE {TabCondition(command, filter, kind)} ORDER BY c.last_used_utc DESC LIMIT 1;";
+        return command.ExecuteScalar() is long id ? id : null;
+    }
+
+    /// <summary>
+    /// Whether an entry exists and is one a tab lists, optionally only when it is of one kind: a single primary-key lookup,
+    /// cheap enough to ask about every entry a change names.
+    /// </summary>
+    /// <param name="id">The entry's id; an id that does not exist (deleted meanwhile) answers <see langword="false"/>.</param>
+    /// <param name="filter">The tab's filter; <see cref="ClipFilter.All"/> stands for any entry.</param>
+    /// <param name="kind">Only when the entry is of this kind; <see langword="null"/> for every kind.</param>
+    /// <returns><see langword="true"/> when the tab lists the entry.</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public bool IsInFilter(long id, ClipFilter filter, ClipKind? kind = null)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT EXISTS (SELECT 1 FROM clips c WHERE c.id = $id AND {TabCondition(command, filter, kind)});";
+        command.Parameters.AddWithValue("$id", id);
+        return (long)command.ExecuteScalar()! != 0;
+    }
+
+    /// <summary>
     /// Forgets an entry forever: puts its <see cref="ForgetFingerprint"/> on the "never record again" list and
     /// deletes it — together with stored look-alikes, the same text with other line endings or surrounding
     /// whitespace, which the cards show identically and which the fingerprint keeps out from now on anyway.
@@ -1854,6 +1901,26 @@ public sealed partial class ClipStore
                                $"OR c.source_app_name IN ('{WindowsScreenshots.SnippingToolName}', '{WindowsScreenshots.WinPrtScnName}'))",
         _ => null,
     };
+
+    /// <summary>
+    /// The condition (over alias <c>c</c>) "a tab lists it, and it is of a kind", for <see cref="FindNewestInFilter"/> and
+    /// <see cref="IsInFilter"/>. The kind comes first and as a bound value, so SQLite can serve it from <c>ix_clips_kind</c>.
+    /// </summary>
+    /// <param name="command">The command the condition goes into; <c>$kind</c> is bound on it when a kind is given.</param>
+    /// <param name="filter">The tab's filter; <see cref="ClipFilter.All"/> adds no condition of its own.</param>
+    /// <param name="kind">Only entries of this kind; <see langword="null"/> for every kind.</param>
+    /// <returns>The condition, never empty.</returns>
+    private static string TabCondition(SqliteCommand command, ClipFilter filter, ClipKind? kind)
+    {
+        string condition = FilterPredicate(filter) ?? "1";
+        if (kind is { } only)
+        {
+            command.Parameters.AddWithValue("$kind", (int)only);
+            condition = $"c.kind = $kind AND {condition}";
+        }
+
+        return condition;
+    }
 
     /// <summary>
     /// One-time data fix-ups for rows written by earlier builds, each guarded by a <c>meta</c> flag so it

@@ -2424,8 +2424,9 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// The Win+R history was switched on or off, read, or recorded a run (UI thread): show or hide the Run tab, and prepare
-    /// the hidden panel for it when it is the tab the user last chose and has just come (back).
+    /// The Win+R history was switched on or off, read, or recorded a run, or the history gained its first Win+R command or
+    /// lost its last (UI thread): show or hide the Run tab, and prepare the hidden panel for it when it is the tab the user
+    /// last chose and has just come (back).
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
@@ -2436,9 +2437,10 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the Run tab only while Settings › Win+R history is on. If it disappears while selected, falls back to
-    /// "All" so the list never stays filtered by an invisible tab. The tab strip scrolls when the tabs no longer fit
-    /// (its arrows follow the strip's new width by themselves).
+    /// Shows the Run tab only while Settings › Win+R history is on and the history holds a command run with Win+R
+    /// (<see cref="AppController.IsRunTabAvailable"/>). If it disappears while selected — switched off, or its last entry
+    /// deleted from the open tab — falls back to "All" so the list never stays filtered by an invisible tab. The tab strip
+    /// scrolls when the tabs no longer fit (its arrows follow the strip's new width by themselves).
     /// </summary>
     private void UpdateRunTab()
     {
