@@ -1,5 +1,7 @@
 # <img src="src/BetterClipboard.App/Assets/AppIcon.png" width="40" height="40" align="top" alt="BetterClipboard icon"> BetterClipboard
 
+**ENG** / [简体中文](docs/translations/README.zh-CN.md)
+
 **The Win+V clipboard history Windows should have shipped.** Same shortcut, same panel by your cursor —
 but it remembers everything, survives restarts, searches instantly, and keeps it all encrypted on your PC.
 It also keeps what other tools forget: your screenshots, your Win+R commands, your shell history and the prompts
@@ -80,6 +82,10 @@ you send to Claude Code and Codex.
   decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
   checked against the release's SHA-256 and installed in place: BetterClipboard restarts by itself, and your history
   is kept ([Updates](#updates)).
+- **In your language.** English and Simplified Chinese (简体中文), both in every download. The first start shows the
+  languages with their flags, with Windows' language already selected: one click on the green check and the whole app
+  speaks it. *Settings › App › Language* changes it later (after a restart). What you copy, file names and the names you
+  give groups are never translated.
 - **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (text
   cursor, mouse or screen center), and a page that credits every app it works with and every component it ships, with
   their official links.
@@ -100,6 +106,9 @@ your architecture, **verifies its SHA-256**, installs per user into `%LOCALAPPDA
 taskbar blinks, and open folder windows close). See [Taking over Win+V](#taking-over-winv). Running it again updates in
 place, and so does the app's own update button ([Updates](#updates)); your history is never touched. It runs from any
 folder, also one you cannot write to, and leaves your PowerShell in that folder when it is done.
+
+At its first start, BetterClipboard asks for your language: English or 简体中文, each with its flag, with Windows'
+language already selected. Press the green check (or `Enter`) and everything opens in that language.
 
 Once a day, the installed app asks GitHub whether a newer release exists. Nothing about you, your PC or your clipboard
 is sent, and nothing is installed without your approval ([Privacy](#privacy)). `-NoUpdateCheck` installs with that
@@ -247,8 +256,8 @@ The tray icon opens the panel and Settings:
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
   remembers — including its pinned items.
 - **Integrations:** one switch for each tab of another app (see [Tabs for other apps](#tabs-for-other-apps)).
-- **App:** start with Windows (for you alone, also when BetterClipboard was installed for every user), theme, the
-  command line, the data folder.
+- **App:** the interface language (Windows' or one you pick, applied at the next start), start with Windows (for you
+  alone, also when BetterClipboard was installed for every user), theme, the command line, the data folder.
 - **Updates:** the switch for the daily check, *Check now*, and the update dialog ([Updates](#updates)).
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
@@ -577,7 +586,8 @@ kept from those tabs. The prompts themselves are in `bclip prompts`.
 
 Add `--json` to any command for structured output (ids, kinds, times, source app, formats, grep matches).
 Exit codes: `0` ok · `1` nothing found or timed out · `2` bad usage · `3` BetterClipboard unreachable or the
-command line is off · `4` other error. `bclip help <command>` shows every option.
+command line is off · `4` other error. `bclip help <command>` shows every option. `bclip` always answers in English,
+whatever the app's or Windows' language: scripts and agents rely on its output.
 
 ```powershell
 bclip get                                 # what did I just copy?
@@ -643,6 +653,9 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   (queued copies are saved first), swaps the folder by renames — a failed swap puts the old folder back — and starts
   the app again. It writes its outcome to a file, which the app reads at its next start to tell you how it went.
   Only the install folder is touched.
+- **Languages.** Each interface language is one catalog embedded in the program, with its flag, so one build holds
+  every language and no copy can miss a language file. Logs and `bclip`'s output stay English. See
+  [docs/localization.md](docs/localization.md).
 
 Data lives in `%LOCALAPPDATA%\BetterClipboard` (`stores\<id>\history.db` + `history.key`, `settings.json`,
 `logs\`, `updates\`). Logs never contain clipboard content.
@@ -692,7 +705,7 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 | Claude Code and Codex | Keeps the prompts you sent them, read from their own history files | On | *Claude Code prompts*, *Codex prompts* |
 
 - **Nothing private in the logs:** they record what happened (counts, versions, errors), never what you copied,
-  ran, typed or sent.
+  ran, typed or sent. They are always in English.
 - **The command line is off by default.** While *Command line (bclip)* is on, any program running as you can read
   the history through it (see [Command line](#command-line-for-scripts-and-ai-agents)).
 - **Windows' own features:** an item you paste goes onto the clipboard like any copy, so Windows' clipboard history
@@ -735,6 +748,8 @@ pwsh tools/release/package.ps1 -Version 0.1.0     # the exact release zips and .
 
 Set `BETTERCLIPBOARD_DATA_DIR` to a scratch folder when experimenting so your real history stays clean.
 Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) from a `v*` tag.
+Translations live in the build itself, one file per language: [docs/localization.md](docs/localization.md) explains how
+to add one or fix a string.
 
 ## Code signing policy
 
