@@ -235,7 +235,13 @@ never content; `--watch` for live copies, `--save` keeps BC-TEST copies only, `-
 with Windows' RichEdit and GDI, §2.33),
 [`preview_lab`](tools/probes/preview_lab) (a WinUI 3 app: RTF in a read-only `RichEditBox`, HTML in a WebView2 with
 scripts off and every request blocked; times, memory, requests; it opens a window, so it runs only inside a
-claude-desktops Windows desktop, §2.33).
+claude-desktops Windows desktop, §2.33),
+[`probe_dpi_move.cs`](tools/probes/probe_dpi_move.cs) (what Windows suggests when a program moves a window onto a monitor
+with another scale; a cloaked tool window, never seen, so it runs on a PC in use; needs two monitors with different
+scales, §2.38),
+[`dpi_move_lab`](tools/probes/dpi_move_lab) (a WinUI 3 app: whether a window set up like the panel keeps the bounds
+`AppWindow.MoveAndResize` gave it on such a monitor, and with `--fix` whether asking again holds; cloaked and never
+activated, so it runs on a PC in use, §2.38).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -405,8 +411,9 @@ installer can leave Win+V to Windows (§2.25).
 
 Hotkey → `ForegroundContext.Capture()` on the input thread (target HWND + Win32 caret via
 `GetGUIThreadInfo` + cursor + a Stopwatch timestamp, `CapturedAt`) → UI at **High** dispatcher priority: the panel,
-already drawn with its list current while it was cloaked, is moved to the caret, activated and uncloaked in one frame
-(§2.27; focus to the search box; keystrokes must never leak into the app below); only a list that is not current is
+already drawn with its list current while it was cloaked, is moved to the caret (or where *Settings › Shortcut › Panel
+position* says: next to the mouse, or centered on the main or the current screen, §2.38), activated and uncloaked in one
+frame (§2.27; focus to the search box; keystrokes must never leak into the app below); only a list that is not current is
 reloaded afterwards → Enter/click → `ReplayFormats.Prepare` (plain text strips formats; file lists as plain text become
 paths; a stored "cut" drop effect is rewritten to "copy") → write clipboard while still foreground → **re-activate the
 target while we still own the foreground, then conceal** (`Conceal` hides the window once, which hands the foreground
@@ -2580,7 +2587,9 @@ closing across summons; the first summon right after a start.
 - keys typed within ~15 ms of Win+V still reach the app below (activation is the floor; a key buffer in the LL hook
   would close it, §6);
 - not verified on a real GPU, a high-refresh monitor or a multi-monitor mixed-DPI setup (the size-change path is the one
-  a monitor with another scale takes);
+  a monitor with another scale takes). Update 2026-11-08 (§2.38): on mixed scales a window set up like the panel came out
+  at the wrong size — WinUI rescales a window the program moves onto such a monitor — and `MoveAndResizeExactly` now
+  asks again;
 - a summon that comes while a concealed refresh is still queued (a Win+V a few ms after a copy) shows the previous list
   for a moment, then patches it.
 
@@ -3669,6 +3678,116 @@ and its toggles). Its strings are English only until they get catalog entries.
 - Right-to-left layout for a future Hebrew or Arabic catalog.
 - The deferred translation gaps (§6).
 
+### 2.38 Where the panel opens: next to the text cursor, next to the mouse, or centered on the main or the current screen (built 2026-11-08)
+
+User request (2026-11-08): "Add setting that chooses where the BetterClipboard menu will appear 1. Near cursor (like now,
+default like now) 2. center of main screen 3. center of current screen (supporting multiple monitors)". (§2.37 is left to
+the localization branch, `feat/localization`.)
+- **One question asked** (the term had two readings, see the memory note on asking): which monitor counts as current when
+  the window the user types in and the mouse are on different monitors. The owner chose **"Where I'm typing"**, over
+  "Where the mouse is" and "Both, as two choices".
+- **What existed:** *Settings › Pasting › Panel position* already had "Next to the text cursor" (the default), "Next to
+  the mouse" and "Center of the screen" (the monitor of the foreground window, else the mouse's). Neither CLAUDE.md nor
+  the README's Settings list named it beyond "where the panel opens", and the owner did not find it. "Next to the mouse"
+  stays: removing a choice someone may use would be a regression.
+
+**What the user gets.**
+- **Settings › Shortcut › Panel position**, moved there from *Pasting*, right under the shortcuts: four choices.
+  - *Next to the text cursor*: the default, unchanged.
+  - *Next to the mouse*: unchanged.
+  - *Center of the main screen* (new): the middle of the main display's work area, whatever was in front.
+  - *Center of the current screen*: the screen the user is typing on (the rule below).
+- The card's description says what "current" means: "The current screen is the one you are typing on, or the one with
+  the mouse when you are on the desktop."
+- **A centered panel is centered as a whole, groups column included** (`FlyoutPositioner.Place`). The column opened or
+  closed while the panel shows still grows or shrinks it on the left, so the list stays put; the next summon centers it
+  again. Before, a centered panel centered the list and hung the column on its left.
+- **Centered on the main screen, the warm-up puts the cloaked window exactly where every summon will** (`WarmUpBounds`):
+  the first Win+V then needs no move and no resize ("Panel on screen 62 ms after the shortcut … (first summon)" on the
+  test desktop).
+- **Every placement keeps the remembered size across monitors with different scales** (the fix below).
+
+**"The current screen", the owner's rule** (`FlyoutPositioner.ChooseScreen`, pure):
+1. The caret's monitor, while the caret lies inside the window the user was in (its middle point, `CaretMiddle`). Why
+   "inside": some apps park their caret in a hidden helper window at the screen's corner, which would pull the panel to
+   the main monitor. A caret on the desktop (renaming an icon) counts, because the desktop's window spans every monitor.
+2. Else the monitor showing most of that window (`MonitorFromWindow`), when the window marks a screen: visible, not
+   minimized, and not the desktop (`Progman`, `WorkerW`: `MonitorLookup.IsDesktopWindowClass`). The desktop's window
+   spans every monitor, and "the monitor showing most of it" was arbitrary: before, a click on the second monitor's
+   desktop could put the panel on the first.
+3. Else the mouse's monitor: after a click on the desktop, from the tray, with nothing active.
+- The facts about the window come from `MonitorLookup.DescribeTarget` (`TargetWindowFacts`: bounds, marks a screen), read
+  at the summon only for this placement. The choice is a `PanelScreen` (a point, a window, or the main monitor), looked up
+  by `MonitorLookup.FromScreen`; the main monitor is `MonitorFromPoint((0, 0), MONITOR_DEFAULTTOPRIMARY)`, since its
+  top-left corner is the screen origin by definition.
+- Next to the text cursor and next to the mouse keep their old monitor rule exactly (the point below the caret's left
+  end, else the mouse).
+
+**Stored as before, plus one member** (`AppSettings`).
+- `Placement` keeps its three names (`NearCaret`, `NearCursor`, `CenterScreen`); the new `CenterOnMainScreen` (bool, off by
+  default) tells the two centered choices apart. `SettingsViewModel.PlacementIndex` maps the list's four entries onto
+  the two members (`PlacementIndexOf`, `OnPlacementIndexChanged`; both are written in one update).
+- **Why not a fourth enum member:** the placement is written by name (`JsonStringEnumConverter`), and a name an older
+  version does not know makes it throw while reading and set the **whole** settings file aside as corrupt (§2.28's
+  footgun). With a member of its own, an older version reads `CenterScreen` and centers on the current screen.
+  `PanelPositionSettingsTests.Placement_KeepsItsThreeReleasedNames` fails if a member is ever added; the enum's remarks
+  say why.
+- Verified on the test desktop: with "Center of the main screen" chosen, 0.2.9 started with every setting, logged no
+  "unreadable" warning, set nothing aside, and centered the panel its own way. 0.2.9 rewrites the file only when a setting
+  changes, so the choice was still there after updating back. Footgun: once an older version saves the file, the member
+  is dropped, and the next newer version centers on the current screen until the main screen is chosen again.
+
+**Monitors with different scales: the panel came out 25 % too large or 20 % too small** (found 2026-11-08 on the
+owner's PC: two monitors at 100 %, one at 125 %).
+- **Windows' part** ([`probe_dpi_move.cs`](tools/probes/probe_dpi_move.cs), a cloaked tool window): a
+  per-monitor-v2 window moved by `SetWindowPos` onto a monitor with another scale gets `WM_DPICHANGED` **inside** the
+  move, suggesting the asked rectangle scaled once more by the ratio of the two scales. Asked 500 × 700 on the 125 %
+  monitor, suggested 625 × 875; asked 400 × 560 back on 100 %, suggested 320 × 448. The top-left corner is kept.
+- **WinUI's part** ([`dpi_move_lab`](tools/probes/dpi_move_lab), a WinUI 3 window set up like the panel, cloaked,
+  never activated): it takes the suggestion. `AppWindow.MoveAndResize` to the 125 % monitor left 625 × 875 right after the
+  call and 300 ms later; back on the main monitor, 320 × 448. Asking a second time held exactly, both ways.
+- **So every summon that moved the panel onto a monitor with another scale opened it at the wrong size** **[inferred
+  from the lab: the panel makes the same calls]**, in every placement since the panel existed: next to a caret on the
+  125 % monitor after a summon on a 100 % one, and back. Too large, it also runs off the work area, since the corner is
+  kept: the owner's remembered 729 × 754 DIPs would become about 1,140 × 1,180 pixels on a monitor whose work area is
+  1,020 pixels high (computed, not seen). Nobody reported it; the right monitor may rarely be used for Win+V.
+- **The fix** (`ClipboardFlyout.MoveAndResizeExactly`, ClipboardFlyout.Placement.cs): move and resize, compare the bounds,
+  ask once more when they differ. On the second call the window is already on its monitor, so nothing rescales it. Used
+  by `PresentAsync` (both of its moves) and the warm-up. The first correction of a session is logged, content-free:
+  "The panel came out 625x875 instead of 500x700 (moved to a monitor with another scale?); its bounds were set again:
+  500x700." Bounds that still differ come from a limit (the minimum size on a smaller work area), which a third call
+  would not change.
+- The size the user remembers is never touched: `WindowSizeHook.UserResized` fires only for a resize the user made with
+  a border, never for these programmatic moves (§2.23).
+
+**Pieces.**
+- Core: `AppSettings.CenterOnMainScreen`, `FlyoutPlacement` remarks (never add a member).
+- Windows: `Input/FlyoutPositioner.ChooseScreen` and `Place`; `PanelScreen`, `PanelScreenKind`, `TargetWindowFacts`;
+  `MonitorLookup.FromScreen`, `Main`, `DescribeTarget`, `IsDesktopWindowClass`; `NativeMethods.IsWindowVisible`,
+  `GetWindowRect`, `GetClassName`.
+- App: `Views/ClipboardFlyout.Placement.cs` (new: `SummonBounds`, `MoveAndResizeExactly`); `ShowAt(context, placement,
+  centerOnMainScreen)`; `WarmUpBounds`; `PresentAsync`; `AppController.ShowFlyout`; `SettingsViewModel.PlacementIndex`;
+  the card in `SettingsWindow.xaml`.
+- Strings: three new catalog keys in English and Simplified Chinese ("Center of the main screen" `Ted615dd586a6` 主屏幕中央,
+  "Center of the current screen" `T4b75609443c3` 当前屏幕中央, the new description `T88640766017a`); the unused "Center of
+  the screen" `T13e9b2fec983` and "Where the clipboard panel opens." `T6173999ce066` are gone. The keys follow PR #1's
+  scheme ("T" + the first 12 hex digits of the English text's SHA-256).
+
+**Verified** (rows in §5): 35 new tests (Core 8, Windows 27), three mutations caught; the whole suite 1,636 (1,633
+passed, 3 opt-in skipped); a Windows 11 test desktop (one monitor, 1600 × 900) for every choice, the column, the warm-up,
+a restart, the way to 0.2.9 and back, and the Chinese card; the lab and the probe on the owner's three real monitors,
+invisibly.
+
+**Limits / not built:**
+- **Not run on several monitors in the app itself:** the test desktops have one monitor, and a summon on the owner's PC
+  would have put a panel over their work (they were busy in Chrome). The rule is unit-tested on the owner's layout
+  (negative coordinates of the left monitor, the 125 % right one), the real lookups are tested on this PC's three
+  monitors, and the scale fix with the same calls in the lab.
+- A remembered position ("where I last dragged it"), and a choice of a specific monitor, were not asked for.
+- A centered panel whose groups column is toggled while it shows is off-center by the column until the next summon.
+- The tray's *Open clipboard* and `--show-flyout` from a script use the mouse or the foreground window like any summon:
+  centered on the current screen, the tray's panel opens on the mouse's monitor.
+
 ---
 
 ## 3. Build · run · test
@@ -4525,6 +4644,16 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   with eight tabs, "Everythin" with nine) although every UIA rectangle lay inside the window. Zoom into a screenshot
   of the last tab; rectangles alone did not show it. (That widening is gone, §2.23. The remembered panel size is an
   outer size too — `FlyoutSizing` converts outer pixels, the same `AppWindow.Size` and `MoveAndResize` use.)
+- **A window the program moves onto a monitor with another scale is rescaled a second time** (§2.38). Windows answers
+  the move with `WM_DPICHANGED` inside it, suggesting the asked rectangle scaled once more, and WinUI takes the
+  suggestion: asked 500 × 700 on a 125 % monitor, the window came out 625 × 875. Move the panel with
+  `ClipboardFlyout.MoveAndResizeExactly` (it asks again when the bounds differ) wherever the move can change monitors;
+  `AppWindow.MoveAndResize` alone is fine only on the panel's own monitor (the groups column). Any other window that is
+  moved by code between monitors needs the same. `tools/probes/dpi_move_lab` checks it after a Windows App SDK update.
+- **Never add a member to an enum the settings file stores by name** (`FlyoutPlacement`, `AppTheme`). A version that does
+  not know the name throws while reading and sets the whole settings file aside as corrupt (§2.28). A new choice gets a
+  member of `AppSettings` of its own that refines the old value (`CenterOnMainScreen`, §2.38), or a name read leniently
+  (`LastTab`, §2.28). `PanelPositionSettingsTests.Placement_KeepsItsThreeReleasedNames` guards `FlyoutPlacement`.
 - **Items of an `ItemsView`/`SelectorBar` inside a scrolling viewer are virtualized.** The ItemsView template's
   `ItemsRepeater` has `HorizontalCacheLength="0"` and follows every scrolling ancestor's viewport, so items out of view
   are not realized: they have no size, the content width is an estimate, and UIA cannot see them (their rectangles read
@@ -4931,6 +5060,9 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **Where the panel opens** (2026-11-08, §2.38). A disposable claude-desktops Windows 11 Pro 25H2 desktop (26200, one monitor 1600×900 at 100 %, work area 1600×852, golden 20261025-1036; deleted afterwards), a self-contained package of a private worktree at `94ebf20` plus this change (`0.2.10-dev.placement`), installed with `install.ps1 -Package … -NoLaunch`. Settings: *Panel position* under *Shortcut*, right below the shortcut list, with the new description and four entries in order, *Next to the text cursor* selected on a fresh install; picking the mouse, the main screen and the current screen wrote `NearCursor`/false, `CenterScreen`/true and `CenterScreen`/false, and a reopened Settings showed each stored pair as its entry (the main screen, the current screen). Win+V from Notepad with its caret at Ln 7, Col 6: next to the caret, (352,251)-(752,811) as before. Next to the mouse with the pointer at (300,200): (284,209)-(684,769). Center of the main screen: (600,146)-(1000,706), the exact middle of the work area; with the groups column (Ctrl+G) it grew left to (556,146)-(1000,706) while shown, and the next summon centered it whole at (578,146)-(1022,706). Center of the current screen: centered from Notepad and after Win+D and a click on the desktop (the foreground was then `Progman`/the desktop). Restart in main-screen mode: the warm-up put the cloaked window at (600,146)-(1000,706), and the first Win+V took 62 ms with no resize. With the main screen chosen, v0.2.9 from GitHub over it: started with every setting (no "unreadable" warning, no `settings.json.corrupt-*`), centered the panel its own way, left the file as it was; after the new build again, Settings showed *Center of the main screen*. Chinese (`InterfaceLanguage` zh-Hans): 面板位置, the new description, 文本光标旁边 / 鼠标旁边 / 主屏幕中央 / 当前屏幕中央. The app's log over five starts: 77 lines, 0 WRN/ERR | claude-desktops MCP tools (`press_keys`, `click`, `move_mouse`, screenshots, `run_command`); a content-free helper reading the panel's window rectangle, its cloak, the foreground window, the mouse and the two settings (session 8cfb9b70's scratchpad, `vm/state.ps1`) | ✅ Not run in the app: several monitors (one monitor in the test desktops) |
+| **Moving a WinUI window onto a monitor with another scale** (2026-11-08, §2.38), on the owner's PC: three monitors, (-1920,6)-(0,1038) at 100 %, the main one at 100 %, (1920,0)-(3840,1020) at 125 %. `tools/probes/probe_dpi_move.cs` (a cloaked, non-activating Win32 tool window): `WM_DPICHANGED` came inside `SetWindowPos`, suggesting 625×875 for an asked 500×700 on the 125 % monitor and 320×448 for 400×560 back on the main one; with the suggestion taken (`--apply`) the window ended at those sizes. `tools/probes/dpi_move_lab` (a WinUI 3 window set up like the panel, cloaked before it was shown, never activated): `AppWindow.MoveAndResize` left 625×875 and 320×448, the same 300 ms later; with `--fix` (ask again when the bounds differ) 500×700 and 400×560 exactly, both ways, also 300 ms later. The foreground window was the same before and after every run | the probe and the lab, run on the owner's real monitors while they worked; nothing showed on screen | ✅ the cause and the fix; the app's own summon across these monitors was not run (it would have shown the panel over the owner's work) |
+| Panel placement, unit tests (2026-11-08, §2.38): `PanelPlacementTests` (Windows, 27: next to the caret and the mouse keep their rule; the main screen ignores what was captured; eight cases of the current screen on the owner's layout — the caret in the window, no caret, a caret parked outside, the desktop, a caret on the desktop, a minimized window, a window that closed, the tray; an unknown placement; centering with the column on the 125 % monitor, on the monitor with negative coordinates, shrunk to a small work area; the caret placement unchanged; the desktop's class names; the real main monitor and every real monitor's lookup; real windows: none, a dead handle, hidden, shown cloaked, minimized, and the desktop's window) and `PanelPositionSettingsTests` (Core, 8: defaults, a file from before, every stored pair round-trips under a name released versions know, the enum keeps its three names, an unknown placement falls back). Three mutations each failed a test: trusting any caret, counting the desktop as a screen, centering without the column. The whole suite at `94ebf20` plus this change: 1,636 = 1,633 passed + 3 opt-in skipped, 0 failed | the test executables, `dotnet test --solution`, a private worktree | ✅ |
 | **Interface languages, first-start picker, English-only logs and bclip** (2026-11-08, §2.37, branch `feat/localization` on `94ebf20`). A disposable claude-desktops Windows 11 desktop (Tiny11 25H2, 26200, en-US, 1600×900, no GPU; deleted afterwards) ran a self-contained x64 package of the branch (`0.2.10-dev.loc`). **First start, plain launch:** the picker before any other window: "Choose your language", *English* (US flag) selected, *简体中文* (China flag) with "Chinese (Simplified)", the round green check; `↓` switched the heading and hint to "选择语言" / "以后可以在设置中更改。"; `Enter` saved `zh-Hans` and Settings opened in Chinese at once (no restart); *设置 › 应用 › 语言* listed 跟随 Windows (globe, "English"), English and 简体中文 with their flags; Win+V opened the panel in Chinese (剪贴板, 全部 / 已固定 / 文本 / 图片 / 链接 / 文件 / 截图, "未知应用 · 刚刚", "1 项"). **Logs** English throughout ("Interface language chosen at the first start: zh-Hans (Windows suggested en)", the update and import lines); the panel's warm-up ran after the choice. **Second start:** no picker. **`bclip`** with the app in Chinese: `list` printed "just now", `status` and an app-side error ("History has fewer than 9 items.") English. **A data folder with a `settings.json` but no history** (as `install.ps1 -Hotkey` leaves it): the picker showed; a click on the check saved `en` and kept the pre-written `Alt+Win+V`; Settings in English. **A `--background` first start in the dark theme:** the picker showed (after the height fix: no empty band under the list); `Esc` kept English. 0 WRN/ERR in all three logs. Gaps seen, deferred by the owner: the search box's placeholder, the footer's key hints and the "Capturing" chip stay English | `create_desktop`, `desktop_call` (`launch`, `press_keys`, `click`, `find_elements`, `screenshot`, `run_command`), `record` (297 s), `tools/release/package.ps1` | ✅ |
 | Interface languages, unit tests (2026-11-08): `LocalizationTests` 54 cases (13 from PR #1, adapted to the catalogs' `$language` header). A planted `AppLog.Warn($"…{UiText.Translate(…)}…")` in a scratch file made `NoLogLineIsBuiltFromTranslatedText` fail; removed. `catalog.py` on a scratch copy: `rename` moved a string's key in both catalogs and both XAML references, `check` passed, an unknown text exited 2; its layout reproduced the PR's catalogs byte for byte before the first write. The whole suite on `94ebf20` + the branch: 1,642 tests, 1,639 passed, 3 skipped, 0 failed; a `--no-incremental` rebuild with 0 errors and no doc warnings | the test executables, `dotnet test --solution` | ✅ |
 | **PR #1 merged into the local `main`** (2026-11-08, `8c5814a`, not pushed). Before (2026-11-07), the PR head `29032d9` in a scratch worktree: 0 build errors, 1,577 tests (1,574 passed, 3 skipped, 0 failed); no network calls, no hidden Unicode, the workflow read-only. The merge with `0447913` (README icon) had no conflicts. The uncommitted AI work in the shared tree was carried forward (5 files backed up, set to `HEAD`, three-way merged back; 1 conflict resolved in `ClipboardFlyout.xaml`); `git status` listed the same files before and after, and main + PR + that work built in a scratch copy with 0 errors, 1,624 tests, 0 failed | `git merge-file`, a scratch worktree with the working files copied in | ✅ |
@@ -5068,6 +5200,12 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 ## 6. Roadmap / known gaps
 
+- **Where the panel opens** (2026-11-08, §2.38), next steps:
+  - see the app's own summon move between monitors with different scales: on the owner's PC (three monitors, one at
+    125 %) when they want to try it, or in a test desktop with two displays. The cause and the fix are proven with the
+    lab only; look for the log line "The panel came out … instead of …" once per session;
+  - the same check for the image viewer and the update dialog, windows of their own that follow the panel's monitor;
+  - optional, not asked for: "where I last left it", and a fixed monitor.
 - **Interface languages** (§2.37), deferred by the owner on 2026-11-08 ("Defer on gaps of translation"):
   - about 40 strings are translated but never looked up by the code: the search box's placeholder
     (`FlyoutViewModel.DefaultSearchPlaceholder`), the footer's key hints (`DefaultKeyHint`, `ShellKeyHint`,

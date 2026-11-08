@@ -86,9 +86,10 @@ you send to Claude Code and Codex.
   languages with their flags, with Windows' language already selected: one click on the green check and the whole app
   speaks it. *Settings › App › Language* changes it later (after a restart). What you copy, file names and the names you
   give groups are never translated.
-- **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (text
-  cursor, mouse or screen center), and a page that credits every app it works with and every component it ships, with
-  their official links.
+- **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (next to the
+  text cursor or the mouse, or in the middle of the main screen or of the screen you are typing on — with several
+  monitors, at any scale), and a page that credits every app it works with and every component it ships, with their
+  official links.
 
 ## Install
 
@@ -213,6 +214,10 @@ Press **Win+V**. The panel appears at once by your text cursor, in the tab you u
 — just type. Your newest copy is selected, so `Enter` pastes it. Pinned items are listed above it (*Settings › Pasting*
 can list them in time order instead), and `↑` reaches them.
 
+*Settings › Shortcut › Panel position* opens it next to the mouse instead, or in the middle of a screen: the main one,
+or the one you are typing on (with several monitors, the screen with the window you were in; after a click on the
+desktop, the screen with the mouse).
+
 | Key | Action |
 |---|---|
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
@@ -231,7 +236,7 @@ can list them in time order instead), and `↑` reaches them.
 | `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
 | `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), delete, forget forever |
 | `Esc` | Clear the search, then close — focus returns to where you were |
-| Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens by your cursor again next time. |
+| Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens where *Panel position* says again next time. |
 | Drag an edge | Resize the panel. It opens at that size from then on. |
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
@@ -248,10 +253,11 @@ released from Explorer (the installer's default).
 The tray icon opens the panel and Settings:
 
 - **Shortcut:** the keys that open the panel (add as many as you like: click the box and press them, or pick one from
-  its menu of suggestions and shortcuts used before), and releasing Win+letter shortcuts from Explorer
-  ([Choosing shortcuts](#choosing-shortcuts)).
+  its menu of suggestions and shortcuts used before), where the panel opens (next to the text cursor, next to the mouse,
+  in the middle of the main screen, or in the middle of the screen you are typing on), and releasing Win+letter
+  shortcuts from Explorer ([Choosing shortcuts](#choosing-shortcuts)).
 - **History:** how many items, for how many days, how large, and what to record.
-- **Pasting:** paste after choosing, move pasted items to the top, pinned items first, where the panel opens.
+- **Pasting:** paste after choosing, move pasted items to the top, pinned items first.
 - **Privacy:** pause, ignored apps, *Forgotten forever*, capture reliability, clear history.
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
   remembers — including its pinned items.

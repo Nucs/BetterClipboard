@@ -44,8 +44,10 @@ namespace BetterClipboard.App.Views;
 /// just sent is already there when the panel appears.
 /// </para>
 /// <para>
-/// <b>Presenting</b> (<see cref="PresentAsync"/>): move the window to the caret, activate it, uncloak it. A new size (another
-/// monitor scale, the groups column) waits for one rendered frame first, so DWM never shows the old picture stretched.
+/// <b>Presenting</b> (<see cref="PresentAsync"/>): move the window where the placement setting puts it (the caret by
+/// default, ClipboardFlyout.Placement.cs) — at exactly the bounds asked for, also on a monitor with another scale — activate
+/// it, uncloak it. A new size (another monitor scale, the groups column) waits for one rendered frame first, so DWM never
+/// shows the old picture stretched.
 /// </para>
 /// <para>
 /// <b>Fallbacks.</b> If DWM refuses to cloak the window (<see cref="cloaking"/> false), the panel hides and shows like any
@@ -239,13 +241,16 @@ public sealed partial class ClipboardFlyout
     {
         var sizeBefore = AppWindow.Size;
         bool wasShown = AppWindow.IsVisible;
-        AppWindow.MoveAndResize(rect);
+
+        // Exactly the bounds asked for: a move onto a monitor with another scale makes WinUI rescale the window a second
+        // time (ClipboardFlyout.Placement.cs has the measurements), and the panel would open 25 % too large or 20 % too small.
+        MoveAndResizeExactly(rect);
         if (!wasShown)
         {
             // Never shown yet (a summon before the warm-up), or hidden by the fallback path: show it — still cloaked when
             // cloaking — and re-apply the bounds, since a monitor with another DPI may have rescaled it on showing.
             AppWindow.Show(false);
-            AppWindow.MoveAndResize(rect);
+            MoveAndResizeExactly(rect);
         }
 
         presented = true;

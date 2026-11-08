@@ -254,6 +254,23 @@
                         </ItemsControl>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <!--
+                  Where the shortcut opens the panel (AppSettings.Placement + CenterOnMainScreen, mapped by
+                  SettingsViewModel.PlacementIndex). Right under the shortcuts since 2026-11-08: under Pasting it went
+                  unnoticed. Next to the text cursor, next to the mouse, centered on the main screen, centered on the
+                  screen the user is typing on (FlyoutPositioner.ChooseScreen).
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Key=T88640766017a}"
+                    Glyph="&#xE8A7;"
+                    Header="{loc:Tr Key=T894d7f01eb87}">
+                    <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.PlacementIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="{loc:Tr Key=T063543517b31}" />
+                        <ComboBoxItem Content="{loc:Tr Key=Tda7ca90ff4a1}" />
+                        <ComboBoxItem Content="{loc:Tr Key=Ted615dd586a6}" />
+                        <ComboBoxItem Content="{loc:Tr Key=T4b75609443c3}" />
+                    </ComboBox>
+                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Key=Ta7f11ff9cde7}"
                     Glyph="&#xEDA7;"
@@ -365,16 +382,6 @@
                     Glyph="&#xE840;"
                     Header="{loc:Tr Key=T4ab0ecb908e1}">
                     <ToggleSwitch OnContent="{loc:Tr Key=T130011756125}" OffContent="{loc:Tr Key=Tca7981b46ecf}" IsOn="{x:Bind ViewModel.PinnedOnTop, Mode=TwoWay}" />
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Key=T6173999ce066}"
-                    Glyph="&#xE8A7;"
-                    Header="{loc:Tr Key=T894d7f01eb87}">
-                    <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.PlacementIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="{loc:Tr Key=T063543517b31}" />
-                        <ComboBoxItem Content="{loc:Tr Key=Tda7ca90ff4a1}" />
-                        <ComboBoxItem Content="{loc:Tr Key=T13e9b2fec983}" />
-                    </ComboBox>
                 </controls:SettingsCard>
 
                 <!--  Privacy  -->
