@@ -139,7 +139,13 @@ public sealed partial class AppController
             service.Start();
             StartLocalBuildsWatcher(localBuilds);
             var snapshot = service.Current;
-            AppLog.Info($"Updates: this copy is {DescribeInstallKind(kind)}; automatic check {(snapshot.AutomaticChecks ? "on" : "off")}{(snapshot.IsDevBuild ? "; a development build (GitHub's latest release is always offered as the way back)" : string.Empty)}.");
+
+            // What the start already offers (from the cached release list or the dev-builds folder): the next check may be
+            // a day away, and without this line a lit update button has no trace in the log until then.
+            var offered = snapshot.Offer is { } offer
+                ? $"; offered from what is known: BetterClipboard {offer.Release.Version} ({(snapshot.IsLocalOffer ? "a local build" : snapshot.OffersOlderVersion ? "the way back to the latest release" : "an update")})"
+                : string.Empty;
+            AppLog.Info($"Updates: this copy is {DescribeInstallKind(kind)}; automatic check {(snapshot.AutomaticChecks ? "on" : "off")}{(snapshot.IsDevBuild ? "; a development build (GitHub's latest release is always offered as the way back)" : string.Empty)}{offered}.");
             if (last is not null)
             {
                 ReportLastUpdate(last);
