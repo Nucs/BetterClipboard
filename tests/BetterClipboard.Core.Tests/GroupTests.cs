@@ -69,6 +69,27 @@ public sealed class GroupStoreTests : IDisposable
     }
 
     /// <summary>
+    /// Explicit direction controls leave a name, on create and on rename: the default name of a group created in Hebrew
+    /// is its icon's translated name, which comes embedded right to left, and a pasted name can carry an override or an
+    /// isolate. Either would turn the direction of every text the name is set into. Letters and direction marks stay, and
+    /// a name of nothing but controls is blank.
+    /// </summary>
+    [Fact]
+    public void Groups_NamesLoseDirectionControls()
+    {
+        // By code point, so no invisible character sits in this file.
+        const char Rle = (char)0x202B, Pdf = (char)0x202C, Rlo = (char)0x202E, Lri = (char)0x2066, Pdi = (char)0x2069, Rlm = (char)0x200F;
+
+        var star = store.CreateGroup($"{Rle}כוכב{Pdf}", Star, TestData.Now);
+        Assert.Equal("כוכב", star.Name);
+        Assert.True(store.UpdateGroup(star.Id, $" {Lri}Work{Pdi}{Rlo} ", null));
+        Assert.Equal("Work", store.GetGroups().Single().Name);
+        Assert.True(store.UpdateGroup(star.Id, $"{Rlm}בית", null));
+        Assert.Equal($"{Rlm}בית", store.GetGroups().Single().Name);
+        Assert.Throws<ArgumentException>(() => store.CreateGroup($"{Rle}{Pdf}", Heart, TestData.Now));
+    }
+
+    /// <summary>
     /// Membership: entries report their groups, adding twice is a no-op, missing entries or groups are quiet
     /// no-ops, the group filter combines with kind filters and search, and counts follow.
     /// </summary>

@@ -134,10 +134,24 @@ public static class UpdateText
     }
 
     /// <summary>Ends a title with a full stop, unless it already ends a sentence (an ellipsis counts).</summary>
+    /// <remarks>
+    /// A right-to-left title comes embedded (<see cref="UiLanguage.IsRightToLeft"/>: U+202B … U+202C around it). Its
+    /// sentence ends before those invisible marks, so they are looked past, and the period goes in before them: added
+    /// after the closing mark, it would sit outside the embedding, at the right edge, where a Hebrew reader starts.
+    /// </remarks>
     /// <param name="title">A title from <see cref="Title"/>.</param>
     /// <returns>The title as a sentence.</returns>
-    private static string AsSentence(string title) =>
-        title.Length == 0 || title[^1] is '.' or '!' or '?' or '…' or '。' or '！' or '？' ? title : title + ".";
+    internal static string AsSentence(string title)
+    {
+        // Format characters (an embedding's marks, a direction mark) are invisible: the sentence ends at the last visible one.
+        int end = title.Length;
+        while (end > 0 && char.GetUnicodeCategory(title[end - 1]) == UnicodeCategory.Format)
+        {
+            end--;
+        }
+
+        return end == 0 || title[end - 1] is '.' or '!' or '?' or '…' or '。' or '！' or '？' ? title : title.Insert(end, ".");
+    }
 
     /// <summary>
     /// The lines under the dialog's title: what the state means for the user and what the buttons will do.
@@ -203,7 +217,9 @@ public static class UpdateText
             var newer = snapshot.Latest is { } latest && snapshot.CurrentVersion > latest.Version
                 ? UiText.Format($"Version {snapshot.CurrentVersion}, newer than the latest release ({latest.Version}).")
                 : UiText.Format($"Version {snapshot.CurrentVersion} is the latest release.");
-            return $"{newer} {checkedText}";
+
+            // Two sentences on one line: in a right-to-left language the line is ordered right to left as a whole.
+            return UiText.JoinLine(" ", [newer, checkedText]);
         }
 
         if (!snapshot.AutomaticChecks)
@@ -231,7 +247,13 @@ public static class UpdateText
         // a sentence of its own. The bare "Updates" (nothing known yet) says nothing and is left out.
         var title = Title(snapshot);
         var detail = Detail(snapshot, now, zone, culture);
-        var lines = new List<string>(5) { title == UiText.Translate(NeutralTitle) ? detail : $"{AsSentence(title)} {detail}".Trim() };
+        // Title and detail share one line, so a right-to-left language orders them as one (JoinLine). An empty piece is left
+        // out, which gives what trimming "title detail" gave before: no stray space inside a right-to-left embedding.
+        var lines = new List<string>(5)
+        {
+            title == UiText.Translate(NeutralTitle) ? detail
+                : UiText.JoinLine(" ", new[] { AsSentence(title), detail }.Where(part => part.Length > 0)).Trim(),
+        };
 
         // Without this line a skipped version looks forgotten: it is offered, yet nothing is highlighted for it.
         if (snapshot.IsSkipped && !snapshot.IsInstalling)

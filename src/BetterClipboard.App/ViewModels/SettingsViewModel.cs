@@ -504,8 +504,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         bool exists = File.Exists(AppController.CommandLinePath);
         bool onPath = exists && UserPath.Contains(AppController.CommandLineDirectory);
         CanAddCommandLineToPath = exists && !onPath;
+        // The path is the file's own; the words after it are the interface language's, one whole template each.
         var where = exists
-            ? $"{AppController.CommandLinePath}{(onPath ? " · on your PATH (new terminals run it as bclip)" : " · not on your PATH")}"
+            ? onPath
+                ? UiText.Format($"{AppController.CommandLinePath} · on your PATH (new terminals run it as bclip)")
+                : UiText.Format($"{AppController.CommandLinePath} · not on your PATH")
             : UiText.Translate("bclip.exe is not next to the app (development build) — release builds include it.");
         var state = controller.CommandLineError is { } error ? UiText.Format($"Could not start: {error}")
             : controller.IsCommandLineActive ? UiText.Translate("Serving bclip now.")

@@ -6,7 +6,8 @@ language, fixes a translation, or adds a new piece of UI text.
 
 The first version came from [pull request #1](https://github.com/Nucs/BetterClipboard/pull/1) by Johnson-Tang2019
 (Simplified Chinese); the language picker, the flags, the English-only rules for logs and `bclip`, the English-text
-keys, plurals and partial languages came after it.
+keys, plurals and partial languages came after it. Russian, Spanish and Hebrew, a description for translators on every
+English row, and right-to-left text in the left-to-right windows came on 2026-11-09.
 
 ## What the user sees
 
@@ -33,11 +34,13 @@ keys, plurals and partial languages came after it.
 
 ```text
 src/BetterClipboard.Core/Localization/
-├── en.json            the English catalog: the list of every UI string
+├── en.json            the English catalog: the list of every UI string, each row with its description
 ├── zh-Hans.json       one catalog per language, named by its tag
+├── ru.json, es.json   (Russian, Spanish)
+├── he.json            (Hebrew: "direction": "rtl")
 ├── Flags/us.svg       the flags the catalogs name (drawn by tools/make_flags.py)
-├── Flags/cn.svg
-├── UiText.cs          finds the catalogs, picks the language, looks strings up, words plurals
+├── Flags/cn.svg, ru.svg, es.svg, il.svg
+├── UiText.cs          finds the catalogs, picks the language, looks strings up, words plurals, embeds right-to-left text
 ├── UiLanguage.cs      one language: names, flag, plural rules, strings
 ├── PluralRules.cs     CLDR's plural rules: which form a count takes
 └── LanguageChoice.cs  when the first start asks, and what it suggests
@@ -66,7 +69,9 @@ A catalog is one JSON object:
 
 - **`$language`** is the header: the language's own name, its English name, its flag (the lowercase two-letter country
   code that names `Flags/{flag}.svg`), optionally `alsoFor` (Windows display-language names that pick this catalog by
-  their exact name: `zh` for `zh-Hans`), and `plurals` (below). Other `$` properties are reserved and skipped.
+  their exact name: `zh` for `zh-Hans`), optionally `direction` (`"rtl"` for a language written right to left, below;
+  `"ltr"` or nothing for every other, and any other value makes the app leave the catalog out), and `plurals` (below).
+  Other `$` properties are reserved and skipped.
 - **`$review`** lists translations whose English changed since they were written (`catalog.py rename` adds them, a
   reviewer clears them with `catalog.py reviewed`). The app uses them meanwhile; the list is for people.
 - **Every other property is one UI string, keyed by its English text.** `en.json` maps each text to itself: it is the
@@ -77,6 +82,60 @@ A catalog is one JSON object:
 - **Hash keys** (`T` plus the first 12 hex digits of the SHA-256 of the English text) are allowed for a text better
   kept out of the code: one XAML cannot quote (it holds both kinds of quote mark, a backslash or a brace) or a very long
   one. `en.json` maps the hash key to the English text.
+
+## Descriptions for translators
+
+Every row of `en.json` ends with a `//` comment: the string's description, written from the code that shows it.
+
+```json
+  "Add to {0}": "Add to {0}", // Card menu: adds the card to a group. {0} = the group's name (the user's own words).
+```
+
+- **What a description says:** where the string shows (a menu item, a Settings card's status line, a tooltip), what
+  each `{0}` holds and in which language it arrives (a name stays as the user wrote it; a status may be Windows'
+  English), how much room there is (a placeholder, a button, a tab label), and which words to keep (product names,
+  key names). A string that is only part of a sentence says which sentence and what comes before or after it.
+- **A plural string is described once:** its `#one` row carries the description (plus "This row: the form for a count
+  of 1."), its `#other` row a fixed note. A translation's own forms (`#few`, `#many`) need no description.
+- **Only `en.json` carries descriptions;** the translations are plain. The loader skips comments
+  (`UiText.CatalogParseOptions`), so the app never reads them.
+- **Kept complete:** `catalog.py check` fails on a row without a description, and so does
+  `LocalizationTests.EnglishCatalog_EveryRowHasItsDescription` (a comment on a line of its own, which the tool's layout
+  would drop, fails it too). `catalog.py add`, `add-file` and `add-plural` take the description with the string,
+  `describe` changes one, `rename` and `remove` carry it along, and `missing` prints each missing string with it.
+
+## Right-to-left languages in left-to-right windows
+
+Hebrew's catalog says `"direction": "rtl"`. The windows keep their left-to-right layout in every language: the owner's
+choice, confirmed 2026-11-09 ("Keep left-to-right"). The text carries its direction instead.
+
+- **Why the text needs it:** a left-to-right paragraph lays its runs out from the left. A Hebrew sentence with an English
+  name in the middle ("… ב-Claude Code …") would show its Hebrew stretches in the wrong order around the name, a
+  sentence that starts with a number ("5 פריטים") would read "items 5", and its final period would land at its start.
+- **What the app does:** when it loads a right-to-left catalog, `UiText` wraps each translation that holds right-to-left
+  text in a right-to-left embedding (U+202B before it, U+202C after it, both invisible). Inside, the sentence is
+  ordered right to left as a whole, with English names and numbers in their places, while it stays aligned left like
+  everything else. Every route to a string gets the wrapped text: XAML's labels, `Translate`, `Format`, `Plural`,
+  `TranslateFormatted`.
+- **What a translator does: write the text plainly,** with no direction marks. `catalog.py check` refuses embedding,
+  override and isolate characters in any catalog. The one exception is a template with no letter of its own, such as
+  `"{0} ({1})"`: a leading right-to-left mark (U+200F, which `catalog.py` writes as `\u200f`) asks for the embedding,
+  so the phrase and its parenthesis are ordered right to left as one line.
+- **Values without right-to-left text stay as they are:** the list separator `", "` (embedded, it would reorder English
+  items in a list), the date patterns, PowerShell's name with its host.
+- **Lines the code joins from pieces** (a card's caption "Notepad · 5 min ago · 3 lines", two sentences of the update
+  dialog) go through `UiText.JoinLine(" · ", parts)`: a plain join, except in a right-to-left language, where the whole
+  line is embedded so it reads from its first piece, at the right. A list that goes into a template (`"In {0}"`) needs
+  nothing more: the template's own embedding orders it.
+- **Footgun: code that looks at a translation's first or last character sees the marks.** `UpdateText.AsSentence`
+  skips them and puts its period inside the embedding; anything like it must too. A group's default name is its icon's
+  translated name, which comes embedded: the store drops direction controls from every group name (`ClipStore`), so a
+  name never turns the direction of the text it is set into.
+- **What stays left to right:** the layout (the tab strip's order, icons, buttons), the user's own copies (a copy is
+  shown as it is: one that starts with Latin letters reads left to right), and text a paragraph of several lines
+  shows aligned left, so its lines start ragged.
+- **Hebrew prefixes before a name:** a template that sets a name or a product after a prefix letter writes it with a
+  hyphen (`ב-{0}`, `ל-{0}`), the usual form before a name that may be English or Hebrew.
 
 ## How a string is looked up
 
@@ -149,8 +208,9 @@ Each catalog's header carries its language's cardinal plural rules in CLDR's own
 ## The catalog tool
 
 ```bash
-python tools/localization/catalog.py add "Choose your language" zh-Hans="选择语言"
-python tools/localization/catalog.py add-plural "{0:N0} item" "{0:N0} items" zh-Hans#other="{0:N0} 项"
+python tools/localization/catalog.py add "Choose your language" --description "First-start picker: heading." zh-Hans="选择语言"
+python tools/localization/catalog.py add-plural "{0:N0} item" "{0:N0} items" -d "Footer: how many items." zh-Hans#other="{0:N0} 项"
+python tools/localization/catalog.py describe "Choose your language" "First-start picker: heading over the languages."
 python tools/localization/catalog.py rename "Old English text" "New English text"
 python tools/localization/catalog.py remove "English text"
 python tools/localization/catalog.py missing zh-Hans
@@ -159,20 +219,27 @@ python tools/localization/catalog.py check
 python tools/localization/catalog.py migrate
 ```
 
-- `add` puts a string in `en.json` and the translations named (`add --hash` keeps it under a hash key and prints it);
-  `add-file strings.json` adds many from a JSON object `{"English": {"zh-Hans": "中文"}}` (easier than quoting
-  apostrophes and Chinese on a command line).
+- `add` puts a string in `en.json` with its description (`--description` or `-d`; without one it warns, and `check`
+  fails until `describe` gives one) and the translations named (`add --hash` keeps it under a hash key and prints it);
+  `add-file strings.json` adds many from a JSON object `{"English": {"$description": "…", "zh-Hans": "中文"}}` (easier
+  than quoting apostrophes and Chinese on a command line).
 - `add-plural` puts English's one and other form in `en.json`, and any language's forms as `TAG#CATEGORY="…"`.
+- `describe` sets or replaces a string's description (a plural string by its other form).
 - `rename` changes a string's or a plural string's English everywhere (catalogs and XAML), keeping each translation and
-  marking it for review. `remove` deletes a string no code uses any more (refused while XAML still names it).
-- `missing` is a translator's to-do list: the strings and forms a language lacks, and its review marks.
+  its description, and marking each translation for review. `remove` deletes a string no code uses any more (refused
+  while XAML still names it).
+- `missing` is a translator's to-do list: the strings and forms a language lacks, each with its description, and its
+  review marks.
 - `check` reports broken entries (exit 1): keys that are not their text, forms a language does not have, values English
-  does not pass, review marks of nothing. Missing strings are counted, not errors.
+  does not pass, review marks of nothing, `en.json` rows without a description, embedding or isolate characters in any
+  catalog, a `direction` other than `ltr` or `rtl`. Missing strings are counted, not errors.
 - `migrate` turns hash keys into English-text keys in the catalogs and XAML. It is for merging work written with the
   hash keys of the first version; running it again changes nothing.
 
-Files keep their layout: `$language`, then `$review`, then the keys in ordinal order, two-space indent, UTF-8 without
-escapes, LF and a final newline.
+Files keep their layout: `$language`, then `$review`, then the keys in ordinal order, two-space indent, UTF-8, LF and a
+final newline (what `json.dumps(indent=2, ensure_ascii=False)` writes), with two additions: a row's description follows
+its comma as `// text`, and invisible format characters (a right-to-left mark) are written as `\uXXXX` escapes, so a
+reviewer can see them.
 
 **The tests keep the catalogs and the code in step** (`dotnet test --solution BetterClipboard.sln`):
 
@@ -184,19 +251,25 @@ escapes, LF and a final newline.
   (Windows): every entry is still used, every template list is in the catalogs, and every text those components make
   matches one of their templates.
 - `LocalizationTests` and `PluralRulesTests`: every catalog well formed (keys, plural forms, placeholders), each
-  language's plural rules and their samples, and how many strings each language lacks (printed, never a failure).
+  language's plural rules and their samples, every `en.json` row described, and how many strings each language lacks
+  (printed, never a failure).
+- `RightToLeftTextTests`: every Hebrew string embedded exactly once (or one of the few without Hebrew), values kept
+  inside the embedding, English fallbacks and the other languages untouched, `JoinLine`, the header's `direction`.
 
 ## Adding a language
 
-1. Create `{tag}.json` (the tag is what the settings store: `es`, `ru`, `he`, `zh-Hant`, `pt-BR`) with its `$language`
-   header: own name, English name, flag code, `plurals` copied from CLDR's chart; `alsoFor` only for a bare name
-   Windows uses that is not a parent of the tag.
-2. Translate strings: `catalog.py missing {tag}` lists them. Keep every `{0}`-style placeholder that carries content;
-   a translation may leave a value out, never add one. Give every plural string each form its rules name. Three kinds
-   of string need care:
+1. Create `{tag}.json` (the tag is what the settings store: `zh-Hant`, `pt-BR`, `ar`) with its `$language` header: own
+   name, English name, flag code, `plurals` copied from CLDR's chart; `alsoFor` only for a bare name Windows uses that is
+   not a parent of the tag; `"direction": "rtl"` for a language written right to left (Arabic, Persian, Urdu).
+2. Translate strings: `catalog.py missing {tag}` lists them, each with its description. Keep every `{0}`-style
+   placeholder that carries content; a translation may leave a value out, never add one. Give every plural string each
+   form its rules name. Mind the room a description names (placeholders, buttons, tabs): the search box shows about
+   220 pixels of text, and Russian ran past it before it was shortened. Four kinds of string need care:
    - `d MMM` and `d MMM yyyy` are .NET custom date patterns, not words: write the language's own order (`M月d日`).
    - The group icons' names (`Star`, `Work`, …) become a new group's default name: keep them distinct (a test checks).
    - A string that starts with a space continues a sentence; drop the space where the language writes none.
+   - A language that inflects nouns (Russian) cannot always set a translated word into another template in the right
+     case: word such a template so the inserted piece stands in its basic form ("в группах: 4", not "в 4 группах").
 3. When no shipped language uses its flag yet, draw the flag in `tools/make_flags.py` (3:2, no `<use>`, `<text>` or CSS)
    and run it.
 4. Run `dotnet test --solution BetterClipboard.sln`: `LocalizationTests` check the header, the flag, the plural rules
@@ -221,5 +294,10 @@ Some words stay English in every language:
 
 ## Known gaps
 
-- Right-to-left layout is not built, by decision (2026-11-08): a Hebrew or Arabic catalog shows its words, and the
-  windows keep their left-to-right layout.
+- Right-to-left layout is not built, by decision (2026-11-08, confirmed 2026-11-09): the windows keep their
+  left-to-right layout, and right-to-left text is embedded so it reads in its own order (above). Its paragraphs are
+  aligned left.
+- Russian, Spanish and Hebrew were translated by Claude from the code and the descriptions (2026-11-09), with no
+  native speaker's review yet; corrections are welcome.
+- The footer's key hint is cut at its end where a long status shares its line (Russian in the Cmd tab: "Del скр…"),
+  as it is in English at narrow widths.

@@ -89,8 +89,10 @@ public sealed partial class ClipItemViewModel
 
         // The shell's name is BetterClipboard's own words ("Command Prompt", "PowerShell in VS Code"): shown translated.
         var source = SourceNames.Display(command.Source);
+
+        // One line of pieces: in a right-to-left language it reads from the shell's name, at the right.
         return command.LastSeen is { } seen
-            ? $"{source} · {RelativeTimeFormatter.Format(seen, DateTimeOffset.UtcNow)} · {times}"
-            : $"{source} · {times}";
+            ? UiText.JoinLine(" · ", [source, RelativeTimeFormatter.Format(seen, DateTimeOffset.UtcNow), times])
+            : UiText.JoinLine(" · ", [source, times]);
     }
 }

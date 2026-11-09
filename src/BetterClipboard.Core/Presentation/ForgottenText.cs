@@ -67,7 +67,9 @@ public static class ForgottenText
             ? UiText.Translate("not copied since")
             : KeptOut(item.BlockedCount, RelativeTimeFormatter.Format(last, now, zone, culture), culture));
 
-        var text = string.Join(" · ", parts);
+        // One line of pieces: in a right-to-left language it is ordered right to left as a whole. Its first character is
+        // then the embedding's invisible mark, which has no upper case, and right-to-left scripts have no case either.
+        var text = UiText.JoinLine(" · ", parts);
         return char.ToUpper(text[0], culture) + text[1..];
     }
 

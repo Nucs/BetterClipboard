@@ -15,7 +15,9 @@ namespace BetterClipboard.Core.Localization;
 /// <b>Where the text comes from.</b> Every interface language is one JSON catalog embedded in this assembly
 /// (<c>Localization/{tag}.json</c>, with its names, flag and plural rules in a <c>"$language"</c> header and its flag in
 /// <c>Localization/Flags/{flag}.svg</c>). <see cref="Languages"/> finds them all when the class is first used, so a new
-/// language needs no code, and a release is one build for every language.
+/// language needs no code, and a release is one build for every language. Every row of <c>en.json</c> ends with a
+/// <c>//</c> comment describing the string for translators (where it shows, what each placeholder holds, how long it may
+/// be); the loader skips comments (<see cref="CatalogParseOptions"/>), and the tests require one on every row.
 /// </para>
 /// <para>
 /// <b>Keys are the English text.</b> XAML writes <c>{loc:Tr Text='Paste'}</c>, C# <see cref="Translate(string)"/>,
@@ -26,6 +28,13 @@ namespace BetterClipboard.Core.Localization;
 /// <c>T</c> + the first 12 hex digits of the text's SHA-256 stands in for it (<c>{loc:Tr Key=T…}</c>).
 /// Footgun: changing an English text changes its key, so every translation of it is lost until
 /// <c>tools/localization/catalog.py rename</c> moves it (and marks it for review).
+/// </para>
+/// <para>
+/// <b>Right-to-left languages, left-to-right windows.</b> A catalog whose header says <c>"direction": "rtl"</c>
+/// (Hebrew) keeps the left-to-right layout of every window; each of its translations that holds right-to-left text is
+/// embedded right to left when it loads, and lines the code joins from pieces go through <see cref="JoinLine(string, IEnumerable{string})"/>,
+/// so sentences read in their own order (<see cref="UiLanguage.IsRightToLeft"/> says why). Catalogs never carry the
+/// embedding marks themselves.
 /// </para>
 /// <para>
 /// <b>Partial languages.</b> A catalog may lack strings: each one shows in English. A language whose catalog lacks
@@ -66,6 +75,26 @@ public static class UiText
 
     /// <summary>The separator between a plural string's English other form and its category in a key (<c>…#one</c>).</summary>
     private const char PluralSeparator = '#';
+
+    /// <summary>
+    /// U+202B RIGHT-TO-LEFT EMBEDDING: opens the right-to-left run a right-to-left language's text is wrapped in
+    /// (<see cref="UiLanguage.IsRightToLeft"/>). Invisible; never written into a catalog by hand.
+    /// </summary>
+    private const char RightToLeftEmbedding = '\u202B';
+
+    /// <summary>U+202C POP DIRECTIONAL FORMATTING: closes the run <see cref="RightToLeftEmbedding"/> opened. Invisible.</summary>
+    private const char PopDirectionalFormatting = '\u202C';
+
+    /// <summary>
+    /// How a catalog is parsed: <c>//</c> and <c>/* */</c> comments are skipped, because <c>en.json</c> ends every row
+    /// with its description (<c>"Paste": "Paste", // Card menu item…</c>); everything else is strict JSON, so a stray
+    /// trailing comma still fails the load (and the tests) instead of being silently accepted.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the loader and anything else that reads an embedded catalog (the tests do): a reader that forgot the
+    /// option would throw on <c>en.json</c>'s first description.
+    /// </remarks>
+    public static JsonDocumentOptions CatalogParseOptions { get; } = new() { CommentHandling = JsonCommentHandling.Skip };
 
     /// <summary>Every catalog this build ships, offered or not: English first, then the others by their English name.</summary>
     private static readonly IReadOnlyList<UiLanguage> ShippedLanguages = LoadLanguages();
@@ -226,7 +255,11 @@ public static class UiText
     /// <summary>Translates an application-owned English literal into a given language.</summary>
     /// <param name="english">Developer-authored English literal.</param>
     /// <param name="language">The language to translate into.</param>
-    /// <returns>The language's text; the literal itself when the language lacks it.</returns>
+    /// <returns>
+    /// The language's text (embedded right to left in a right-to-left language); the literal itself when the language
+    /// lacks it.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="english"/> or <paramref name="language"/> is <see langword="null"/>.</exception>
     public static string Translate(string english, UiLanguage language)
     {
         ArgumentNullException.ThrowIfNull(english);
@@ -250,6 +283,37 @@ public static class UiText
     /// <param name="message">Application-owned interpolation whose arguments are not translated.</param>
     /// <returns>Localized and formatted UI text.</returns>
     public static string Format(IFormatProvider? provider, FormattableString message) => string.Format(provider, Translate(message.Format), message.GetArguments());
+
+    /// <summary>
+    /// Joins the pieces of one line that the code puts together instead of a catalog template (a card's caption
+    /// "Notepad · 5 min ago · 3 lines", two sentences of the update dialog): a plain join, except in a right-to-left
+    /// language, where the whole line is embedded right to left so it reads from its first piece, at the right.
+    /// </summary>
+    /// <remarks>
+    /// Each translated piece is embedded on its own already (<see cref="UiLanguage.IsRightToLeft"/>), which keeps its own
+    /// words in order. Without the line's embedding the left-to-right paragraph would still lay the pieces out from the
+    /// left, so a Hebrew reader would meet the last piece first. Use it for lines, not for lists inside a sentence: a
+    /// list that goes into a template (<c>"In {0}"</c>) is ordered by the template's own embedding.
+    /// </remarks>
+    /// <param name="separator">What goes between the pieces (<c>" · "</c>, <c>" "</c>).</param>
+    /// <param name="parts">The pieces in reading order; joined as <see cref="string.Join(string?, IEnumerable{string?})"/> joins them.</param>
+    /// <returns>The line in <see cref="Current"/>'s direction.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parts"/> is <see langword="null"/>.</exception>
+    public static string JoinLine(string separator, IEnumerable<string> parts) => JoinLine(separator, parts, Current);
+
+    /// <summary><see cref="JoinLine(string, IEnumerable{string})"/> for a given language (the tests' route).</summary>
+    /// <param name="separator">What goes between the pieces.</param>
+    /// <param name="parts">The pieces in reading order.</param>
+    /// <param name="language">The language whose direction the line takes.</param>
+    /// <returns>The joined line, embedded right to left when <paramref name="language"/> is written so and the line is not empty.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="parts"/> or <paramref name="language"/> is <see langword="null"/>.</exception>
+    public static string JoinLine(string separator, IEnumerable<string> parts, UiLanguage language)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        ArgumentNullException.ThrowIfNull(language);
+        string line = string.Join(separator, parts);
+        return language.IsRightToLeft && line.Length > 0 ? EmbedRightToLeft(line) : line;
+    }
 
     /// <summary>
     /// Translates a text that was already formatted in English from one of the given templates: a reason or a status
@@ -480,6 +544,7 @@ public static class UiText
     /// <param name="other">The plural string's key (its English other form).</param>
     /// <param name="category">The form's category.</param>
     /// <returns>Whether the key is a plural form.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="key"/> is <see langword="null"/>.</exception>
     public static bool TryParsePluralKey(string key, [NotNullWhen(true)] out string? other, out PluralCategory category)
     {
         ArgumentNullException.ThrowIfNull(key);
@@ -660,7 +725,9 @@ public static class UiText
     /// <summary>
     /// Parses one embedded catalog: the <c>"$language"</c> header (names, flag, extra Windows names, plural rules) and
     /// the UI strings. Other <c>$</c> properties (<c>"$review"</c>, which <c>catalog.py</c> keeps, and later headers) are
-    /// skipped, so an older build reads a newer catalog.
+    /// skipped, so an older build reads a newer catalog. So are <c>//</c> comments: <c>en.json</c> ends every row with
+    /// the string's description for translators (where it shows, what each placeholder holds), which the app never
+    /// reads.
     /// </summary>
     /// <param name="assembly">This assembly.</param>
     /// <param name="resource">The catalog's manifest-resource name.</param>
@@ -675,7 +742,10 @@ public static class UiText
     {
         using Stream stream = assembly.GetManifestResourceStream(resource)
             ?? throw new InvalidDataException($"Missing UI catalog: {tag}");
-        using var document = JsonDocument.Parse(stream);
+
+        // Skip, not Allow: a comment is a translator's description, never a value, so the element tree must not carry it.
+        // Trailing commas stay an error, like any other malformed catalog.
+        using var document = JsonDocument.Parse(stream, CatalogParseOptions);
         if (document.RootElement.ValueKind != JsonValueKind.Object)
         {
             throw new InvalidDataException($"The {tag} catalog is not a JSON object.");
@@ -722,12 +792,99 @@ public static class UiText
             : [];
 
         var plurals = ReadPlurals(header, tag);
+        bool rightToLeft = ReadDirection(header, tag);
+        if (rightToLeft)
+        {
+            // Embedded once here, so every route to a string (XAML's labels, Translate, Format, Plural, the templates of
+            // TranslateFormatted) hands out the same, already embedded text. Values without right-to-left text (the list
+            // separator, date patterns, a template of placeholders only) stay as they are: embedding ", " would reorder
+            // the English items a list joins with it.
+            foreach (string key in strings.Keys.ToList())
+            {
+                if (HoldsRightToLeftText(strings[key]))
+                {
+                    strings[key] = EmbedRightToLeft(strings[key]);
+                }
+            }
+        }
+
         using Stream flagStream = assembly.GetManifestResourceStream(FlagResourcePrefix + flag + ".svg")
             ?? throw new InvalidDataException($"The {tag} catalog's flag {flag}.svg is not embedded.");
         using var buffer = new MemoryStream();
         flagStream.CopyTo(buffer);
-        return new UiLanguage(tag, name, englishName, flag, buffer.ToArray(), alsoFor, plurals, strings);
+        return new UiLanguage(tag, name, englishName, flag, buffer.ToArray(), alsoFor, plurals, strings, rightToLeft);
     }
+
+    /// <summary>
+    /// Reads the header's <c>"direction"</c>: <c>"rtl"</c> for a language written right to left, <c>"ltr"</c> or nothing
+    /// for every other. Anything else is refused rather than read as left to right, because a misspelt <c>"rlt"</c> would
+    /// otherwise put every Hebrew sentence on screen in scrambled order without a single error.
+    /// </summary>
+    /// <param name="header">The <c>"$language"</c> object.</param>
+    /// <param name="tag">The catalog's tag, for the message.</param>
+    /// <returns>Whether the language is written right to left.</returns>
+    /// <exception cref="InvalidDataException"><c>"direction"</c> is there but is neither <c>"ltr"</c> nor <c>"rtl"</c>.</exception>
+    internal static bool ReadDirection(JsonElement header, string tag)
+    {
+        if (!header.TryGetProperty("direction", out var direction))
+        {
+            return false;
+        }
+
+        return (direction.ValueKind == JsonValueKind.String ? direction.GetString() : null) switch
+        {
+            "ltr" => false,
+            "rtl" => true,
+            _ => throw new InvalidDataException($"The {tag} catalog's \"direction\" must be \"ltr\" or \"rtl\"."),
+        };
+    }
+
+    /// <summary>
+    /// Whether a text holds a strongly right-to-left character: a letter of a right-to-left script (Hebrew, Arabic,
+    /// Syriac, Thaana, N'Ko and the others of U+0590–U+08FF, their presentation forms, and the right-to-left blocks beyond
+    /// the BMP), or a right-to-left mark (U+200F) or Arabic letter mark (U+061C).
+    /// </summary>
+    /// <remarks>
+    /// The marks count so that a catalog can ask for the embedding where a template holds no letter of its own: Hebrew's
+    /// <c>"{0} ({1})"</c> starts with U+200F, so the phrase and its parenthesis are ordered right to left as one line.
+    /// Arabic-Indic digits are not strong (they take the direction around them) and do not count.
+    /// </remarks>
+    /// <param name="text">A catalog value.</param>
+    /// <returns><see langword="true"/> when the text has one such character.</returns>
+    internal static bool HoldsRightToLeftText(string text)
+    {
+        foreach (Rune rune in text.EnumerateRunes())
+        {
+            int value = rune.Value;
+            if (value is 0x200F or 0x061C)
+            {
+                return true;
+            }
+
+            if (Rune.IsLetter(rune)
+                && value is (>= 0x0590 and <= 0x08FF) or (>= 0xFB1D and <= 0xFDFF) or (>= 0xFE70 and <= 0xFEFF)
+                    or (>= 0x10800 and <= 0x10FFF) or (>= 0x1E800 and <= 0x1EFFF))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Wraps a text in a right-to-left embedding: U+202B RIGHT-TO-LEFT EMBEDDING before it and U+202C POP DIRECTIONAL
+    /// FORMATTING after it, both invisible. Inside, the bidirectional algorithm orders the text right to left as a whole,
+    /// whatever the left-to-right paragraph around it; the two marks always come as a pair, so the embedding never leaks
+    /// into the text that follows.
+    /// </summary>
+    /// <remarks>
+    /// An embedding, not an isolate (U+2067 … U+2069): every text engine Windows has honors embeddings, and the panel's
+    /// strings never need the isolate's one advantage (shielding the neighbors from the inside).
+    /// </remarks>
+    /// <param name="text">The text.</param>
+    /// <returns>The embedded text.</returns>
+    private static string EmbedRightToLeft(string text) => RightToLeftEmbedding + text + PopDirectionalFormatting;
 
     /// <summary>
     /// Reads the header's <c>"plurals"</c>: category name → CLDR rule. A header without it gets

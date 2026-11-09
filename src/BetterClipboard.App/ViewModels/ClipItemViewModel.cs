@@ -357,6 +357,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
             parts.Add(UiText.Translate("formatted"));
         }
 
-        return string.Join(" · ", parts);
+        // One line of pieces: in a right-to-left language it reads from the app's name, at the right.
+        return UiText.JoinLine(" · ", parts);
     }
 }

@@ -85,9 +85,10 @@ you send to Claude Code and Codex.
   decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
   checked against the release's SHA-256 and installed in place: BetterClipboard restarts by itself, and your history
   is kept ([Updates](#updates)).
-- **In your language.** English and Simplified Chinese (简体中文), both in every download. The first start shows the
-  languages with their flags, with Windows' language already selected: one click on the green check and the whole app
-  speaks it. *Settings › App › Language* changes it later: pick a language and press *Restart now*. What you copy, file
+- **In your language.** English, Simplified Chinese (简体中文), Russian (Русский), Spanish (Español) and Hebrew (עברית),
+  all in every download. The first start shows the languages with their flags, with Windows' language already
+  selected: one click on the green check and the whole app speaks it. *Settings › App › Language* changes it later:
+  pick a language and press *Restart now*. Hebrew reads right to left inside the usual layout. What you copy, file
   names and the names you give groups are never translated.
 - **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (next to the
   text cursor or the mouse, or in the middle of the main screen or of the screen you are typing on — with several
@@ -111,8 +112,9 @@ taskbar blinks, and open folder windows close). See [Taking over Win+V](#taking-
 place, and so does the app's own update button ([Updates](#updates)); your history is never touched. It runs from any
 folder, also one you cannot write to, and leaves your PowerShell in that folder when it is done.
 
-At its first start, BetterClipboard asks for your language: English or 简体中文, each with its flag, with Windows'
-language already selected. Press the green check (or `Enter`) and everything opens in that language.
+At its first start, BetterClipboard asks for your language: English, 简体中文, Русский, Español or עברית, each with its
+flag, with Windows' language already selected. Press the green check (or `Enter`) and everything opens in that
+language.
 
 Once a day, the installed app asks GitHub whether a newer release exists. Nothing about you, your PC or your clipboard
 is sent, and nothing is installed without your approval ([Privacy](#privacy)). `-NoUpdateCheck` installs with that
@@ -711,8 +713,9 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
 - **Languages.** Each interface language is one catalog embedded in the program, with its flag, so one build holds
   every language and no copy can miss a language file. Strings are found by their English text, counts take the form
   each language needs (CLDR's plural rules), and a string a translation lacks shows in English; a language is offered
-  once nearly all of it is translated. Logs and `bclip`'s output stay English. See
-  [docs/localization.md](docs/localization.md).
+  once nearly all of it is translated. Every English string carries a description for translators. A right-to-left
+  language keeps the left-to-right layout, and its text is embedded right to left so each sentence reads in its own
+  order. Logs and `bclip`'s output stay English. See [docs/localization.md](docs/localization.md).
 
 Data lives in `%LOCALAPPDATA%\BetterClipboard` (`stores\<id>\history.db` + `history.key`, `settings.json`,
 `logs\`, `updates\`). Logs never contain clipboard content.

@@ -43,7 +43,11 @@ public sealed class UiLanguage
     /// <param name="flagSvg">The flag's SVG document; owned by the new instance from now on.</param>
     /// <param name="alsoFor">Extra Windows display-language names that pick this catalog by their exact name.</param>
     /// <param name="plurals">The language's CLDR plural rules, from the header's <c>"plurals"</c>.</param>
-    /// <param name="strings">The UI strings by key; owned by the new instance from now on.</param>
+    /// <param name="strings">
+    /// The UI strings by key, right-to-left ones already embedded (<see cref="IsRightToLeft"/>); owned by the new instance
+    /// from now on.
+    /// </param>
+    /// <param name="rightToLeft">Whether the header says <c>"direction": "rtl"</c>.</param>
     internal UiLanguage(
         string tag,
         string name,
@@ -52,7 +56,8 @@ public sealed class UiLanguage
         byte[] flagSvg,
         IReadOnlyList<string> alsoFor,
         PluralRules plurals,
-        IReadOnlyDictionary<string, string> strings)
+        IReadOnlyDictionary<string, string> strings,
+        bool rightToLeft)
     {
         Tag = tag;
         Name = name;
@@ -62,6 +67,7 @@ public sealed class UiLanguage
         AlsoFor = alsoFor;
         Plurals = plurals;
         Strings = strings;
+        IsRightToLeft = rightToLeft;
     }
 
     /// <summary>
@@ -105,6 +111,23 @@ public sealed class UiLanguage
     /// (<see cref="PluralRules.Categories"/>).
     /// </summary>
     public PluralRules Plurals { get; }
+
+    /// <summary>
+    /// Whether the language is written right to left (the header's <c>"direction": "rtl"</c>; Hebrew). The windows keep
+    /// their left-to-right layout in every language (the owner's choice, 2026-11-09), so the text carries its direction
+    /// instead: each translation that holds right-to-left text is embedded in a right-to-left run (U+202B … U+202C) when
+    /// the catalog loads, and lines the code joins from several pieces are embedded as a whole
+    /// (<see cref="UiText.JoinLine(string, IEnumerable{string})"/>).
+    /// </summary>
+    /// <remarks>
+    /// Why: a left-to-right paragraph lays its runs out from the left. A Hebrew sentence with an English name in the
+    /// middle ("… ב-Claude Code …") would show its Hebrew stretches in the wrong order around the name, a sentence that
+    /// starts with a number ("5 פריטים") would read "items 5", and the final period would land at the sentence's start.
+    /// Inside the embedding the sentence is ordered right to left as a whole and stays aligned left with everything else.
+    /// Footgun: code that inspects a translation's first or last character sees the embedding's marks
+    /// (<c>UpdateText.AsSentence</c> skips them).
+    /// </remarks>
+    public bool IsRightToLeft { get; }
 
     /// <summary>
     /// The .NET culture of the tag (<c>zh-Hans</c>, <c>en</c>): its day and month names and time patterns are the

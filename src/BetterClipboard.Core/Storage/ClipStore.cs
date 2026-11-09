@@ -1798,19 +1798,39 @@ public sealed partial class ClipStore
         return new GroupRemoval(true, reset > 0);
     }
 
-    /// <summary>Validates and trims a group name.</summary>
+    /// <summary>
+    /// Validates and trims a group name, without its explicit direction controls (embeddings, overrides and isolates,
+    /// U+202A–U+202E and U+2066–U+2069).
+    /// </summary>
+    /// <remarks>
+    /// A name is set into other text (the panel's header, menus, sentences such as "Remove from {0}"), and one of those
+    /// controls in it would turn the direction of the text after it, in every language. A group created in a
+    /// right-to-left language gets its icon's translated name, which comes embedded (<c>UiText</c> wraps right-to-left
+    /// text), and a pasted name can carry them too. Direction marks (U+200E, U+200F) open nothing and stay.
+    /// </remarks>
     /// <param name="name">Raw name.</param>
     /// <returns>The trimmed name.</returns>
     /// <exception cref="ArgumentException">Blank or longer than <see cref="ClipGroup.MaxNameLength"/>.</exception>
     private static string ValidGroupName(string name)
     {
-        var trimmed = name?.Trim() ?? string.Empty;
+        var trimmed = WithoutDirectionControls(name ?? string.Empty).Trim();
         if (trimmed.Length == 0 || trimmed.Length > ClipGroup.MaxNameLength)
         {
             throw new ArgumentException($"A group name must be 1-{ClipGroup.MaxNameLength} characters.", nameof(name));
         }
 
         return trimmed;
+    }
+
+    /// <summary>A text without the explicit direction controls <see cref="ValidGroupName"/> drops.</summary>
+    /// <param name="text">The text.</param>
+    /// <returns>The text; the same instance when it holds none.</returns>
+    private static string WithoutDirectionControls(string text)
+    {
+        return text.Any(IsDirectionControl) ? string.Concat(text.Where(c => !IsDirectionControl(c))) : text;
+
+        // U+202A–U+202E: LRE, RLE, PDF, LRO, RLO. U+2066–U+2069: LRI, RLI, FSI, PDI.
+        static bool IsDirectionControl(char c) => c is (>= (char)0x202A and <= (char)0x202E) or (>= (char)0x2066 and <= (char)0x2069);
     }
 
     /// <summary>Validates a group icon.</summary>

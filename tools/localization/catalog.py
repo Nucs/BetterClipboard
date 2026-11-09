@@ -12,34 +12,52 @@ A language may lack strings (they show in English); one that lacks more than one
 app. When an English text changes, rename moves its translations and lists them in the catalog's "$review" until a
 reviewer confirms them with reviewed.
 
+Every row of en.json ends with a // comment: the string's description for translators (where it shows, what each
+{0} holds, how long it may be, words to keep). "check" fails while a row has none; add, add-file and add-plural take
+the description with the string, describe changes one, and rename and remove carry it along. A plural string is
+described once: its #one row carries the description, its #other row a fixed note.
+
 Commands:
-  python tools/localization/catalog.py add "English text" [zh-Hans="中文"]...
+  python tools/localization/catalog.py add "English text" [--description "Where it shows…"] [zh-Hans="中文"]...
       Adds a string to en.json, and a translation to each catalog named.
-  python tools/localization/catalog.py add --hash "English text" [zh-Hans="中文"]...
+  python tools/localization/catalog.py add --hash "English text" [--description "…"] [zh-Hans="中文"]...
       The same under a hash key, which it prints (for {loc:Tr Key=...}).
   python tools/localization/catalog.py add-file strings.json
-      Adds many strings at once from a UTF-8 JSON object {"English text": {"zh-Hans": "中文"}, ...}: the same rules as
-      add for each one. Quoting many strings with apostrophes or Chinese on a command line is error-prone; a file is not.
-  python tools/localization/catalog.py add-plural "{0:N0} item" "{0:N0} items" [zh-Hans#other="{0:N0} 项"]...
+      Adds many strings at once from a UTF-8 JSON object {"English text": {"$description": "…", "zh-Hans": "中文"}, ...}:
+      the same rules as add for each one. Quoting many strings with apostrophes or Chinese on a command line is
+      error-prone; a file is not.
+  python tools/localization/catalog.py add-plural "{0:N0} item" "{0:N0} items" [--description "…"] [zh-Hans#other="{0:N0} 项"]...
       Adds a plural string: English's one and other forms, and any language's forms as TAG#CATEGORY="text".
+  python tools/localization/catalog.py describe "English text" "Where it shows…"
+      Sets (or replaces) a string's description; for a plural string, name its other form.
   python tools/localization/catalog.py rename "Old English text" "New English text"
       Changes a string's (or a plural string's) English text in every catalog and in XAML, keeping each translation
-      and marking it for review. Change the C# literal by hand.
+      and its description, and marking the translations for review. Change the C# literal by hand.
   python tools/localization/catalog.py remove "English text"
       Deletes a string (or a plural string, by its other form) from every catalog; refuses while XAML still names it.
   python tools/localization/catalog.py reviewed TAG "Key" | --all
       Confirms translations marked for review.
   python tools/localization/catalog.py missing TAG
-      Lists the strings and plural forms a language lacks, and those marked for review: a translator's to-do list.
+      Lists the strings and plural forms a language lacks, each with its description, and those marked for review: a
+      translator's to-do list.
   python tools/localization/catalog.py check
-      Rewrites nothing. Reports broken entries (exit 1) and, per language, how many strings it lacks or has marked for
-      review (not errors). The tests check the code against the catalogs.
+      Rewrites nothing. Reports broken entries and en.json rows without a description (exit 1) and, per language, how
+      many strings it lacks or has marked for review (not errors). The tests check the code against the catalogs.
   python tools/localization/catalog.py migrate
       Converts hash keys to English-text keys in every catalog and every XAML file; running it again changes nothing.
       Use it after merging work written with the old hash keys.
 
-Files keep their layout: "$language" first, then "$review", then the keys in ordinal order, two-space indent, UTF-8
-without escapes, LF and a final newline (exactly what json.dumps(indent=2, ensure_ascii=False) writes).
+A right-to-left language says "direction": "rtl" in its header (Hebrew does). The windows keep their left-to-right
+layout, and the app embeds each of the language's translations that holds right-to-left text in a right-to-left run
+when it loads the catalog (U+202B ... U+202C), so its sentences read in their own order: write the text plainly,
+without direction marks. The one exception is a template with no letter of its own ("{0} ({1})"): a leading
+right-to-left mark (U+200F) asks for the embedding, so the whole line is ordered right to left. check refuses
+embedding, override and isolate controls in any catalog, and a direction other than "ltr" or "rtl".
+
+Files keep their layout: "$language" first, then "$review", then the keys in ordinal order, two-space indent, UTF-8,
+LF and a final newline (what json.dumps(indent=2, ensure_ascii=False) writes), with two additions: a row's description
+follows its comma as "// text", and invisible format characters (category Cf, such as that right-to-left mark) are
+written as \\uXXXX escapes, so a reviewer can see them.
 """
 
 import hashlib
@@ -47,6 +65,7 @@ import json
 import re
 import string
 import sys
+import unicodedata
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -54,7 +73,16 @@ CATALOGS = ROOT / "src" / "BetterClipboard.Core" / "Localization"
 SOURCES = ROOT / "src"
 METADATA = "$language"
 REVIEW = "$review"
+# In memory only: a catalog's descriptions by key, written back as the // comment of each row (never as a property).
+DESCRIPTIONS = "$descriptions"
+# The #other row of a plural string carries this note; its #one row carries the string's description plus ONE_NOTE.
+OTHER_NOTE = ("The same plural string's form for every other count; its text is the string's key. Each language gives "
+              "the forms its plural rules name (#one, #few, #many, #other…).")
+ONE_NOTE = " This row: the form for a count of 1."
 CATEGORIES = ("zero", "one", "two", "few", "many", "other")
+# Explicit direction controls: embeddings, overrides, isolates. The app wraps right-to-left text itself (UiText), so a
+# catalog never holds them; check refuses them.
+DIRECTION_CONTROLS = frozenset(chr(c) for c in (*range(0x202A, 0x202F), *range(0x2066, 0x206A)))
 ENGLISH_FORMS = ("one", "other")
 HASH_KEY = re.compile(r"T[0-9a-f]{12}")
 TR_KEY = re.compile(r"\{loc:Tr Key=(T[0-9a-f]{12})\}")
@@ -98,32 +126,144 @@ def categories_of(catalog: dict) -> list[str]:
     return [c for c in CATEGORIES if c in rules or c == "other"]
 
 
+def split_comment(line: str) -> tuple[str, str | None]:
+    """Splits one line of a catalog into its JSON and its // comment.
+
+    A "//" inside a string (a URL in a text) is part of the string: the scan follows the quotes. JSON strings never span
+    lines, so a line-by-line scan is exact.
+
+    Args:
+        line: One line of a catalog file, without its line break.
+
+    Returns:
+        (the JSON part with trailing spaces removed, the comment's text trimmed), or (the line, None) without a comment.
+    """
+    in_string = False
+    i = 0
+    while i < len(line):
+        c = line[i]
+        if in_string:
+            if c == "\\":
+                i += 2
+                continue
+            if c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c == "/" and line[i + 1:i + 2] == "/":
+            return line[:i].rstrip(), line[i + 2:].strip()
+        i += 1
+    return line, None
+
+
+def parse(text: str, name: str) -> dict:
+    """Parses a catalog file: JSON whose rows may end with a // comment (en.json's descriptions).
+
+    Args:
+        text: The file's text.
+        name: The file's name, for messages.
+
+    Returns:
+        The catalog's properties, plus DESCRIPTIONS ({key: text}) when any row has a comment. Comments on lines that are
+        not a top-level row (inside the header, or on a line of their own) are not kept: the canonical layout has none.
+
+    Raises:
+        ValueError: The text without its comments is not valid JSON (json.JSONDecodeError), or a top-level row's key
+            cannot be read.
+    """
+    code_lines = []
+    descriptions = {}
+    decoder = json.JSONDecoder()
+    for line in text.split("\n"):
+        code, comment = split_comment(line)
+        code_lines.append(code)
+        # A top-level row starts with exactly two spaces and a quote; the header's own rows are indented deeper.
+        if comment is not None and code.startswith('  "') and not code.startswith('   '):
+            try:
+                key, _ = decoder.raw_decode(code, 2)
+            except json.JSONDecodeError as error:
+                raise ValueError(f"{name}: a commented row's key cannot be read: {code[:60]!r}") from error
+            descriptions[key] = comment
+    catalog = json.loads("\n".join(code_lines))
+    if descriptions:
+        catalog[DESCRIPTIONS] = descriptions
+    return catalog
+
+
 def load() -> dict[str, dict]:
     """Reads every catalog.
 
     Returns:
-        The parsed catalogs, keyed by tag (the file name without .json: "en", "zh-Hans").
+        The parsed catalogs, keyed by tag (the file name without .json: "en", "zh-Hans"); each row's // comment is kept
+        under DESCRIPTIONS.
     """
-    return {path.stem: json.loads(path.read_text(encoding="utf-8")) for path in sorted(CATALOGS.glob("*.json"))}
+    return {path.stem: parse(path.read_text(encoding="utf-8"), path.name) for path in sorted(CATALOGS.glob("*.json"))}
+
+
+def dump_string(text: str) -> str:
+    """A JSON string literal as the catalogs write it: UTF-8 without \\u escapes, except for format characters.
+
+    Format characters (Unicode category Cf: U+200E/U+200F direction marks, zero-width joiners, bidi controls) are
+    invisible in every editor and diff; written as \\uXXXX they can be reviewed. JSON reads both forms the same.
+
+    Args:
+        text: The key or value.
+
+    Returns:
+        The literal, quotes included.
+    """
+    literal = json.dumps(text, ensure_ascii=False)
+    return "".join(f"\\u{ord(c):04x}" if unicodedata.category(c) == "Cf" else c for c in literal)
 
 
 def save(tag: str, catalog: dict) -> None:
     """Writes one catalog in the canonical layout: header, review marks, then the keys in ordinal order.
 
+    Without descriptions and format characters the output is byte for byte what json.dumps(indent=2,
+    ensure_ascii=False) writes; a row with a description gets " // text" after its comma.
+
     Args:
         tag: The catalog's tag, which names its file.
-        catalog: Its strings by key, plus the "$language" header and the optional "$review" list.
+        catalog: Its strings by key, plus the "$language" header, the optional "$review" list and DESCRIPTIONS.
+
+    Raises:
+        ValueError: A description holds a line break (it would end the comment and break the file).
     """
-    ordered = {}
+    lines = ["{"]
+    rows = []
     if METADATA in catalog:
-        ordered[METADATA] = catalog[METADATA]
+        rows.append((METADATA, json.dumps(catalog[METADATA], ensure_ascii=False, indent=2), None))
     review = sorted(set(catalog.get(REVIEW, [])))
     if review:
-        ordered[REVIEW] = review
+        rows.append((REVIEW, json.dumps(review, ensure_ascii=False, indent=2), None))
+    descriptions = catalog.get(DESCRIPTIONS, {})
     for name in sorted(k for k in catalog if not k.startswith("$")):
-        ordered[name] = catalog[name]
-    text = json.dumps(ordered, ensure_ascii=False, indent=2) + "\n"
+        rows.append((name, dump_string(catalog[name]), descriptions.get(name)))
+    for index, (name, value, description) in enumerate(rows):
+        # A nested value (the header, the review list) keeps json.dumps' own layout, indented one level more.
+        value = value.replace("\n", "\n  ")
+        row = f"  {dump_string(name)}: {value}{',' if index < len(rows) - 1 else ''}"
+        if description:
+            if "\n" in description or "\r" in description:
+                raise ValueError(f"{tag}: the description of {name[:60]!r} holds a line break")
+            row += f" // {description}"
+        lines.append(row)
+    lines.append("}")
+    text = "\n".join(lines) + "\n"
     (CATALOGS / f"{tag}.json").write_bytes(text.encode("utf-8"))
+
+
+def describe_plural(catalog: dict, family: str, description: str) -> None:
+    """Describes a plural string in a catalog: its #one row gets the description plus ONE_NOTE, its #other row OTHER_NOTE.
+
+    Args:
+        catalog: The catalog (en.json), changed in place.
+        family: The plural string's English other form (its key without "#category").
+        description: What the string is, where it shows and what its values hold.
+    """
+    descriptions = catalog.setdefault(DESCRIPTIONS, {})
+    descriptions[f"{family}#one"] = description.rstrip() + ONE_NOTE
+    descriptions[f"{family}#other"] = OTHER_NOTE
 
 
 def strings_of(catalog: dict) -> dict[str, str]:
@@ -160,9 +300,9 @@ def placeholders(text: str) -> set[int]:
 def xaml_files():
     """Every XAML file of the app's sources.
 
-    Returns:
-        A generator of paths under src. Build output is skipped, and so is a folder whose name ends in .xaml (a published
-        app has one named Microsoft.UI.Xaml).
+    Yields:
+        Each path under src, in sorted order. Build output is skipped, and so is a folder whose name ends in .xaml (a
+        published app has one named Microsoft.UI.Xaml).
     """
     for path in sorted(SOURCES.rglob("*.xaml")):
         if "bin" not in path.parts and "obj" not in path.parts and path.is_file():
@@ -246,7 +386,42 @@ def parse_translations(args: list[str], catalogs: dict, plural: bool) -> dict | 
     return result
 
 
-def add_one(catalogs: dict, english: str, translations: dict[str, str], hashed: bool) -> int:
+def take_description(args: list[str]) -> tuple[list[str], str | None, bool]:
+    """Takes "--description TEXT" (or "-d TEXT") out of a command's arguments.
+
+    Args:
+        args: The command's arguments.
+
+    Returns:
+        (the other arguments in order, the description or None, whether the option was well formed: False when it ends
+        the arguments without its text).
+    """
+    rest = []
+    description = None
+    i = 0
+    while i < len(args):
+        if args[i] in ("--description", "-d"):
+            if i + 1 >= len(args):
+                return rest, None, False
+            description = args[i + 1]
+            i += 2
+            continue
+        rest.append(args[i])
+        i += 1
+    return rest, description, True
+
+
+def warn_undescribed(key: str) -> None:
+    """Reminds that a new string still needs its description (check and the tests fail until it has one).
+
+    Args:
+        key: The string's key, or a plural string's other form.
+    """
+    print(f"note: {key[:60]!r} has no description yet; add one with: catalog.py describe {json.dumps(key, ensure_ascii=False)} \"…\"",
+          file=sys.stderr)
+
+
+def add_one(catalogs: dict, english: str, translations: dict[str, str], hashed: bool, description: str | None = None) -> int:
     """Adds one string to the loaded catalogs (the caller saves them).
 
     Args:
@@ -254,13 +429,18 @@ def add_one(catalogs: dict, english: str, translations: dict[str, str], hashed: 
         english: The English text.
         translations: A translation per catalog tag; a catalog not named lacks the string (it shows in English there).
         hashed: Whether to keep it under a hash key instead of its English text.
+        description: The string's description for en.json's // comment; None leaves an existing one (and a new string
+            undescribed, which check reports).
 
     Returns:
-        0, or 2 when the text cannot be a key as it is.
+        0, or 2 when the text cannot be a key as it is or the description holds a line break.
     """
     key = key_of(english) if hashed else english
     if plural_parts(key) or key.startswith("$") or (not hashed and HASH_KEY.fullmatch(key)):
         print(f"{english!r} cannot be a key as it is (it looks like a plural form, a hash key or a header)", file=sys.stderr)
+        return 2
+    if description is not None and ("\n" in description or "\r" in description):
+        print(f"{english!r}: a description is one line (it becomes a // comment)", file=sys.stderr)
         return 2
     for tag, catalog in catalogs.items():
         text = english if tag == "en" else translations.get(tag)
@@ -270,11 +450,15 @@ def add_one(catalogs: dict, english: str, translations: dict[str, str], hashed: 
             print(f"{tag}: {key!r} already holds another text; left as it is", file=sys.stderr)
             continue
         catalog[key] = text
+    if description is not None:
+        catalogs["en"].setdefault(DESCRIPTIONS, {})[key] = description.strip()
+    elif key not in catalogs["en"].get(DESCRIPTIONS, {}):
+        warn_undescribed(key)
     return 0
 
 
 def add(args: list[str]) -> int:
-    """The add command: add [--hash] "English" [TAG="text"]...
+    """The add command: add [--hash] "English" [--description "…"] [TAG="text"]...
 
     Args:
         args: The command's arguments.
@@ -284,14 +468,15 @@ def add(args: list[str]) -> int:
     """
     hashed = bool(args) and args[0] == "--hash"
     args = args[1:] if hashed else args
-    if not args:
+    args, description, well_formed = take_description(args)
+    if not args or not well_formed:
         print(__doc__, file=sys.stderr)
         return 2
     english, catalogs = args[0], load()
     translations = parse_translations(args[1:], catalogs, plural=False)
     if translations is None:
         return 2
-    code = add_one(catalogs, english, {tag: forms[""] for tag, forms in translations.items()}, hashed)
+    code = add_one(catalogs, english, {tag: forms[""] for tag, forms in translations.items()}, hashed, description)
     if code == 0:
         for tag, catalog in catalogs.items():
             save(tag, catalog)
@@ -300,10 +485,10 @@ def add(args: list[str]) -> int:
 
 
 def add_file(path: str) -> int:
-    """The add-file command: adds every string of a JSON file {"English": {"tag": "translation"}}.
+    """The add-file command: adds every string of a JSON file {"English": {"$description": "…", "tag": "translation"}}.
 
     Args:
-        path: The UTF-8 JSON file.
+        path: The UTF-8 JSON file. "$description" is optional per string (check reports strings left without one).
 
     Returns:
         A process exit code: 0, or 2 when the file's shape is wrong, a string names an unknown catalog, or a text cannot
@@ -311,15 +496,17 @@ def add_file(path: str) -> int:
     """
     entries = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(entries, dict) or not all(isinstance(v, dict) for v in entries.values()):
-        print('The file must hold one object: {"English text": {"zh-Hans": "..."}, ...}', file=sys.stderr)
+        print('The file must hold one object: {"English text": {"$description": "...", "zh-Hans": "..."}, ...}', file=sys.stderr)
         return 2
     catalogs = load()
     for english, translations in entries.items():
+        translations = dict(translations)
+        description = translations.pop("$description", None)
         unknown = sorted((set(translations) - set(catalogs)) | ({"en"} & set(translations)))
         if unknown:
             print(f"{english!r}: no translation catalog named {', '.join(unknown)}", file=sys.stderr)
             return 2
-        if add_one(catalogs, english, translations, hashed=False) != 0:
+        if add_one(catalogs, english, translations, hashed=False, description=description) != 0:
             return 2
     for tag, catalog in catalogs.items():
         save(tag, catalog)
@@ -328,16 +515,17 @@ def add_file(path: str) -> int:
 
 
 def add_plural(args: list[str]) -> int:
-    """The add-plural command: add-plural "one" "other" [TAG#CATEGORY="text"]...
+    """The add-plural command: add-plural "one" "other" [--description "…"] [TAG#CATEGORY="text"]...
 
     Args:
         args: The command's arguments.
 
     Returns:
-        A process exit code: 0, or 2 for a usage error, a one form with values the other form lacks, or a form a
-        language does not have.
+        A process exit code: 0, or 2 for a usage error, a one form with values the other form lacks, a form a language
+        does not have, or a description with a line break.
     """
-    if len(args) < 2:
+    args, description, well_formed = take_description(args)
+    if len(args) < 2 or not well_formed:
         print(__doc__, file=sys.stderr)
         return 2
     one, other, catalogs = args[0], args[1], load()
@@ -347,6 +535,9 @@ def add_plural(args: list[str]) -> int:
     if not placeholders(one) <= placeholders(other):
         print("The one form may only use values the other form uses", file=sys.stderr)
         return 2
+    if description is not None and ("\n" in description or "\r" in description):
+        print("A description is one line (it becomes a // comment)", file=sys.stderr)
+        return 2
     for tag, forms in translations.items():
         wrong = set(forms) - set(categories_of(catalogs[tag]))
         if wrong:
@@ -354,12 +545,46 @@ def add_plural(args: list[str]) -> int:
             return 2
     catalogs["en"][f"{other}#one"] = one
     catalogs["en"][f"{other}#other"] = other
+    if description is not None:
+        describe_plural(catalogs["en"], other, description.strip())
+    elif f"{other}#one" not in catalogs["en"].get(DESCRIPTIONS, {}):
+        warn_undescribed(other)
     save("en", catalogs["en"])
     for tag, forms in translations.items():
         for category, text in forms.items():
             catalogs[tag][f"{other}#{category}"] = text
         save(tag, catalogs[tag])
     print("added")
+    return 0
+
+
+def describe(english: str, description: str) -> int:
+    """The describe command: sets or replaces the description of a string, or of a plural string (by its other form).
+
+    Args:
+        english: The string's English text, its hash key, or a plural string's other form.
+        description: The new description, one line.
+
+    Returns:
+        A process exit code: 0, or 2 when en.json has no such string or the description is empty or holds a line break.
+    """
+    description = description.strip()
+    if not description or "\n" in description or "\r" in description:
+        print("A description is one non-empty line (it becomes a // comment)", file=sys.stderr)
+        return 2
+    catalogs = load()
+    english_catalog = catalogs["en"]
+    if any((plural_parts(k) or ("", ""))[0] == english for k in english_catalog):
+        describe_plural(english_catalog, english, description)
+    elif english in english_catalog and not english.startswith("$"):
+        english_catalog.setdefault(DESCRIPTIONS, {})[english] = description
+    elif english_catalog.get(key_of(english)) == english:
+        english_catalog.setdefault(DESCRIPTIONS, {})[key_of(english)] = description
+    else:
+        print(f"en.json has no string {english!r}", file=sys.stderr)
+        return 2
+    save("en", english_catalog)
+    print("described")
     return 0
 
 
@@ -391,6 +616,7 @@ def rename(old: str, new: str) -> int:
         return 2
     for tag, catalog in catalogs.items():
         moved = False
+        descriptions = catalog.get(DESCRIPTIONS, {})
         for source, target in moves.items():
             if source not in catalog:
                 continue
@@ -403,6 +629,9 @@ def rename(old: str, new: str) -> int:
                 catalog.setdefault(REVIEW, []).append(target)
                 moved = True
             catalog[target] = text
+            # The description describes the string, not its wording: it moves with it (review it if the meaning moved).
+            if source in descriptions:
+                descriptions[target] = descriptions.pop(source)
         save(tag, catalog)
         if moved:
             print(f"{tag}: translation kept and marked for review")
@@ -446,6 +675,7 @@ def remove(english: str) -> int:
         if any(k in catalog for k in keys) or any(m in keys for m in catalog.get(REVIEW, [])):
             for key in keys:
                 catalog.pop(key, None)
+                catalog.get(DESCRIPTIONS, {}).pop(key, None)
             catalog[REVIEW] = [m for m in catalog.get(REVIEW, []) if m not in keys]
             save(tag, catalog)
     print(f"removed {len(keys)} key(s)")
@@ -518,8 +748,13 @@ def missing(tag: str) -> int:
         return 2
     catalog = catalogs[tag]
     todo = missing_entries(catalogs["en"], catalog)
+    descriptions = catalogs["en"].get(DESCRIPTIONS, {})
     for key in todo:
-        print(f"missing: {key}")
+        # A plural string's description sits on its #one row (its #other row has the fixed note), and a form such as
+        # #few has no row of its own in en.json.
+        parts = plural_parts(key)
+        description = descriptions.get(f"{parts[0]}#one") if parts else descriptions.get(key)
+        print(f"missing: {key}" + (f"\n         // {description}" if description else ""))
     for key in sorted(set(catalog.get(REVIEW, []))):
         print(f"review:  {key}")
     print(f"{len(todo)} missing, {len(set(catalog.get(REVIEW, [])))} to review")
@@ -548,6 +783,14 @@ def check() -> int:
 
     if categories_of(english) != ["one", "other"]:
         problem("en: the header's plurals must name one (English has one and other)")
+    # Every row of en.json is described for translators; a description of no row is a leftover of an edit by hand.
+    descriptions = english.get(DESCRIPTIONS, {})
+    for key in strings_of(english):
+        if not descriptions.get(key, "").strip():
+            problem(f"en: {key[:60]!r} has no description (catalog.py describe)")
+    for key in descriptions:
+        if key not in english:
+            problem(f"en: the description of {key[:60]!r} belongs to no row")
     families: dict[str, set[str]] = {}
     for key, text in strings_of(english).items():
         parts = plural_parts(key)
@@ -566,8 +809,16 @@ def check() -> int:
         elif not placeholders(english[f"{family}#one"]) <= placeholders(family):
             problem(f"en: the one form of {family[:60]!r} uses a value the other form does not")
     for tag, catalog in catalogs.items():
+        # The app embeds a right-to-left language's text itself; a control written here would come on top of it, and one
+        # left unclosed would turn the direction of everything after the string.
+        for key, text in strings_of(catalog).items():
+            if any(c in DIRECTION_CONTROLS for c in text):
+                problem(f"{tag}: {key[:60]!r} holds a direction control (U+202A-U+202E, U+2066-U+2069); the app adds what "
+                        "it needs, a direction mark (U+200F) is all a catalog may hold")
         if tag == "en":
             continue
+        if METADATA in catalog and catalog[METADATA].get("direction", "ltr") not in ("ltr", "rtl"):
+            problem(f"{tag}: the header's direction must be \"ltr\" or \"rtl\" (the app refuses the catalog otherwise)")
         if "plurals" not in catalog.get(METADATA, {}):
             problem(f"{tag}: the header has no plurals (write {{}} for a language with only the other form)")
         own = set(categories_of(catalog))
@@ -617,10 +868,13 @@ def migrate() -> int:
         print(f"{key} stays a hash key: {moves.pop(key)[:60]!r}")
     for tag, catalog in catalogs.items():
         converted = 0
+        descriptions = catalog.get(DESCRIPTIONS, {})
         for key, text in list(catalog.items()):
             if key in moves:
                 del catalog[key]
                 catalog[moves[key]] = text if tag != "en" else moves[key]
+                if key in descriptions:
+                    descriptions[moves[key]] = descriptions.pop(key)
                 converted += 1
         if REVIEW in catalog:
             catalog[REVIEW] = [moves.get(m, m) for m in catalog[REVIEW]]
@@ -648,6 +902,8 @@ def main(argv: list[str]) -> int:
         return add_file(args[0])
     if command == "add-plural":
         return add_plural(args)
+    if command == "describe" and len(args) == 2:
+        return describe(args[0], args[1])
     if command == "rename" and len(args) == 2:
         return rename(args[0], args[1])
     if command == "remove" and len(args) == 1:

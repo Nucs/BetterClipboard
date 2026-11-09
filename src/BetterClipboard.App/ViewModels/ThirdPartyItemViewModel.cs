@@ -40,9 +40,10 @@ public sealed record ThirdPartyItemViewModel(string Name, string Credit, string 
         ArgumentNullException.ThrowIfNull(project);
         // The catalog is English (its tests compare it with THIRD-PARTY-NOTICES.md); the row shows it in the interface
         // language. Names, makers and SPDX ids stay as their owners write them; only words are translated.
+        // The maker and the license on one line: in a right-to-left language it reads from the maker, at the right.
         var credit = project.Role == ThirdPartyRole.Integration
             ? UiText.Format($"{project.Maker} · separate app")
-            : $"{project.Maker} · {UiText.Translate(project.License ?? string.Empty)}";
+            : UiText.JoinLine(" · ", [project.Maker, UiText.Translate(project.License ?? string.Empty)]);
         return new ThirdPartyItemViewModel(project.Name, credit, UiText.Translate(project.Use), project.LinkText, project.Link);
     }
 }

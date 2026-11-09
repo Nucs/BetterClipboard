@@ -27,8 +27,9 @@ public sealed class LocalizationTests
 
     /// <summary>
     /// Windows display languages and the shipped language each must get: exact tags, parents (zh-SG and zh-Hans-CN reach
-    /// zh-Hans through zh-Hans), the bare "zh" that zh-Hans claims, letter case, and every Traditional Chinese name,
-    /// which must stay English although its parents end in "zh".
+    /// zh-Hans through zh-Hans; every regional Russian, Spanish and Hebrew reaches its language, Latin America's es-419
+    /// included), the bare "zh" that zh-Hans claims, letter case, and every Traditional Chinese name, which must stay
+    /// English although its parents end in "zh". French has no catalog: English.
     /// </summary>
     public static TheoryData<string, string> SystemMatches => new()
     {
@@ -44,7 +45,14 @@ public sealed class LocalizationTests
         { "zh-Hant", "en" },
         { "en-US", "en" },
         { "en-GB", "en" },
-        { "he-IL", "en" },
+        { "he-IL", "he" },
+        { "he", "he" },
+        { "ru-RU", "ru" },
+        { "ru-UA", "ru" },
+        { "es-ES", "es" },
+        { "es-MX", "es" },
+        { "es-419", "es" },
+        { "ES-ar", "es" },
         { "fr-FR", "en" },
         { "", "en" },
         { "not a culture", "en" },
@@ -52,7 +60,7 @@ public sealed class LocalizationTests
 
     /// <summary>
     /// Saved selections against Windows: an explicit language wins in any letter case; "system", an empty value and a
-    /// tag this build does not ship ("he", a newer version's language) follow Windows.
+    /// tag this build does not ship ("fr", a newer version's language) follow Windows.
     /// </summary>
     public static TheoryData<string, string, string> Resolutions => new()
     {
@@ -62,8 +70,12 @@ public sealed class LocalizationTests
         { "system", "zh-CN", "zh-Hans" },
         { "system", "en-US", "en" },
         { "", "zh-CN", "zh-Hans" },
-        { "he", "zh-CN", "zh-Hans" },
-        { "he", "fr-FR", "en" },
+        { "he", "zh-CN", "he" },
+        { "RU", "en-US", "ru" },
+        { "es", "he-IL", "es" },
+        { "system", "ru-RU", "ru" },
+        { "fr", "zh-CN", "zh-Hans" },
+        { "fr", "fr-FR", "en" },
     };
 
     /// <summary>
@@ -195,7 +207,8 @@ public sealed class LocalizationTests
         foreach (var language in UiText.AllShipped)
         {
             using var stream = assembly.GetManifestResourceStream($"BetterClipboard.Core.Localization.{language.Tag}.json")!;
-            using var document = JsonDocument.Parse(stream);
+            // The loader's own options: en.json's rows end with // descriptions, which strict JSON refuses.
+            using var document = JsonDocument.Parse(stream, UiText.CatalogParseOptions);
             Assert.True(document.RootElement.GetProperty("$language").TryGetProperty("plurals", out _), $"{language.Tag}: no plurals in its header");
             foreach (var category in language.Plurals.Categories)
             {
@@ -211,8 +224,8 @@ public sealed class LocalizationTests
 
     /// <summary>
     /// The offered languages are English first (the source and every fallback), then the others by English name, each
-    /// with its own name, its English name and its flag read from the embedded catalogs; Simplified Chinese is among
-    /// them, complete enough to offer.
+    /// with its own name, its English name and its flag read from the embedded catalogs; Simplified Chinese, Hebrew,
+    /// Russian and Spanish are among them, complete enough to offer, and only Chinese claims another Windows name.
     /// </summary>
     [Fact]
     public void Languages_EnglishFirst_ThenByEnglishName()
@@ -229,6 +242,162 @@ public sealed class LocalizationTests
         Assert.True(UiText.TryFind("zh-Hans", out var chinese));
         Assert.Equal(("简体中文", "Chinese (Simplified)", "cn"), (chinese.Name, chinese.EnglishName, chinese.Flag));
         Assert.Equal(new[] { "zh" }, chinese.AlsoFor);
+
+        // The three added on 2026-11-09, each with the flag tools/make_flags.py draws for it and no extra Windows name:
+        // their own tags already cover every regional variant (he-IL, ru-RU, es-MX through their parents).
+        (string Tag, string Name, string EnglishName, string Flag)[] added =
+        [
+            ("he", "עברית", "Hebrew", "il"),
+            ("ru", "Русский", "Russian", "ru"),
+            ("es", "Español", "Spanish", "es"),
+        ];
+        foreach (var (tag, name, englishName, flag) in added)
+        {
+            Assert.True(UiText.TryFind(tag, out var language), $"{tag} is not shipped");
+            Assert.Equal((name, englishName, flag), (language.Name, language.EnglishName, language.Flag));
+            Assert.Empty(language.AlsoFor);
+            Assert.Contains(language, UiText.Languages);
+        }
+    }
+
+    /// <summary>
+    /// Every row of en.json ends with its description for translators: a <c>//</c> comment on the row's own line, after
+    /// the value and its comma, that says something. tools/localization/catalog.py writes and keeps them there (its
+    /// <c>check</c> refuses a row without one), but en.json is also edited by hand, and a string added without a
+    /// description leaves every translator guessing where it shows and what its values hold. A comment anywhere else
+    /// (a line of its own, inside the header) is refused too: catalog.py's canonical layout has no place for it and
+    /// would drop it at the next save.
+    /// </summary>
+    [Fact]
+    public void EnglishCatalog_EveryRowHasItsDescription()
+    {
+        using var stream = typeof(UiText).Assembly.GetManifestResourceStream("BetterClipboard.Core.Localization.en.json")!;
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        var (rows, undescribed, stray) = FindUndescribedRows(buffer.ToArray());
+
+        Assert.Equal(UiText.English.Strings.Count, rows);
+        Assert.True(undescribed.Count == 0, "en.json rows without a description (catalog.py describe): " + string.Join(" | ", undescribed));
+        Assert.True(stray.Count == 0, "en.json comments that are no row's description: " + string.Join(" | ", stray));
+    }
+
+    /// <summary>
+    /// The description check itself, on small catalogs: a described row passes; a row without a comment, with an empty
+    /// one, or with its comment on the next line is reported; a comment of its own line or inside the header is stray;
+    /// and a <c>//</c> inside a text (a URL) is part of the text, not a description.
+    /// </summary>
+    [Fact]
+    public void DescriptionCheck_TellsDescribedRowsFromTheRest()
+    {
+        static (int Rows, List<string> Undescribed, List<string> Stray) Check(string text) =>
+            FindUndescribedRows(Encoding.UTF8.GetBytes(text));
+
+        Assert.Equal((2, 0, 0), Count(Check("""
+            {
+              "$language": { "name": "English", "plurals": { "one": "i = 1 and v = 0" } },
+              "Open {0}": "Open {0}", // A menu item; {0} is a file name.
+              "https://example.org": "https://example.org" // The site's address, shown as a link.
+            }
+            """)));
+
+        var missing = Check("""
+            {
+              "Copy": "Copy",
+              "Paste": "Paste", //
+              "Cut": "Cut",
+              // Shown on the cut button.
+              "Delete": "Delete" // A menu item.
+            }
+            """);
+        Assert.Equal(["Copy", "Paste", "Cut"], missing.Undescribed);
+        Assert.Single(missing.Stray);
+
+        var header = Check("""
+            {
+              "$language": { "name": "English" // the header
+              },
+              "https://x.org": "https://x.org"
+            }
+            """);
+        Assert.Equal(["https://x.org"], header.Undescribed);
+        Assert.Single(header.Stray);
+
+        static (int, int, int) Count((int Rows, List<string> Undescribed, List<string> Stray) result) =>
+            (result.Rows, result.Undescribed.Count, result.Stray.Count);
+    }
+
+    /// <summary>
+    /// Reads a catalog's tokens and finds the rows whose description is missing: every top-level string row must be
+    /// followed, on its own line, by a <c>//</c> comment with some text. The <c>$language</c> header and the
+    /// <c>$review</c> list are objects and arrays, not rows, and need none.
+    /// </summary>
+    /// <param name="json">The catalog file's UTF-8 bytes.</param>
+    /// <returns>
+    /// How many rows the catalog has; the keys (cut to 60 characters) of the rows without a description; and where each
+    /// comment that describes no row sits.
+    /// </returns>
+    /// <exception cref="JsonException">The bytes are not JSON with comments.</exception>
+    private static (int Rows, List<string> Undescribed, List<string> Stray) FindUndescribedRows(byte[] json)
+    {
+        // Allow, not Skip: the reader must hand the comments over as tokens, so the check can see where each one sits.
+        var reader = new Utf8JsonReader(json, new JsonReaderOptions { CommentHandling = JsonCommentHandling.Allow });
+        var undescribed = new List<string>();
+        var stray = new List<string>();
+        string? key = null;
+        string? open = null;    // the row whose value was read and whose description has not come yet
+        long openEnd = -1;      // where that value ends, to tell "same line" from "next line"
+        int rows = 0;
+        while (reader.Read())
+        {
+            switch (reader.TokenType)
+            {
+                case JsonTokenType.Comment:
+                    bool lineComment = json.AsSpan((int)reader.TokenStartIndex).StartsWith("//"u8);
+                    bool sameLine = open is not null
+                        && !json.AsSpan((int)openEnd, (int)(reader.TokenStartIndex - openEnd)).Contains((byte)'\n');
+                    if (!lineComment || !sameLine)
+                    {
+                        stray.Add($"{(lineComment ? "//" : "/* */")} comment at byte {reader.TokenStartIndex}");
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(reader.GetComment()))
+                    {
+                        undescribed.Add(Preview(open!));
+                    }
+
+                    open = null;
+                    continue;
+                case JsonTokenType.PropertyName when reader.CurrentDepth == 1:
+                    key = reader.GetString();
+                    break;
+                case JsonTokenType.String when reader.CurrentDepth == 1:
+                    // A row's value (the header's own strings sit deeper): its description must come before the next
+                    // token, so a row still open here had none.
+                    Close();
+                    rows++;
+                    open = key ?? "(unknown)";
+                    openEnd = reader.BytesConsumed;
+                    continue;
+            }
+
+            // Any other token (the next key, the header object, the review list, the closing brace) ends an open row.
+            Close();
+        }
+
+        Close();
+        return (rows, undescribed, stray);
+
+        void Close()
+        {
+            if (open is not null)
+            {
+                undescribed.Add(Preview(open));
+                open = null;
+            }
+        }
+
+        static string Preview(string text) => text.Length <= 60 ? text : text[..60] + "…";
     }
 
     /// <summary>
@@ -642,13 +811,13 @@ public sealed class LocalizationTests
         Assert.False(UiText.TryParsePluralKey("Issue #One", out _, out _));
     }
 
-    /// <summary>A language made in the test, with a stand-in flag.</summary>
+    /// <summary>A left-to-right language made in the test, with a stand-in flag.</summary>
     /// <param name="tag">Its tag.</param>
     /// <param name="plurals">Its plural rules.</param>
     /// <param name="strings">Its strings.</param>
     /// <returns>The language.</returns>
     private static UiLanguage Language(string tag, PluralRules plurals, Dictionary<string, string> strings) =>
-        new(tag, tag, tag, "us", [], [], plurals, strings);
+        new(tag, tag, tag, "us", [], [], plurals, strings, rightToLeft: false);
 
     /// <summary>How many arguments a composite format needs: its highest placeholder index plus one (0 for none).</summary>
     /// <param name="format">The format.</param>

@@ -91,11 +91,85 @@ def china() -> str:
     return "".join(parts)
 
 
+def stripe(y: float, height: float, color: str) -> str:
+    """A full-width horizontal stripe as a path (every flag must hold at least one path; the tests check it).
+
+    Args:
+        y: The stripe's top edge.
+        height: Its height.
+        color: Its fill.
+
+    Returns:
+        One SVG path element.
+    """
+    return f'<path fill="{color}" d="M0,{y:.3f}H{WIDTH}V{y + height:.3f}H0Z"/>'
+
+
+def russia() -> str:
+    """White, blue and red stripes of equal height (the state flag's official colors).
+
+    Returns:
+        The flag's SVG elements, without the document around them.
+    """
+    third = HEIGHT / 3
+    return stripe(0, third, "#FFFFFF") + stripe(third, third, "#0039A6") + stripe(2 * third, third, "#D52B1E")
+
+
+def spain() -> str:
+    """Red, yellow and red stripes, 1:2:1: the civil flag, without the coat of arms (a blur at 36 × 24 DIPs).
+
+    Returns:
+        The flag's SVG elements, without the document around them.
+    """
+    quarter = HEIGHT / 4
+    return stripe(0, quarter, "#AA151B") + stripe(quarter, 2 * quarter, "#F1BF00") + stripe(3 * quarter, quarter, "#AA151B")
+
+
+def israel() -> str:
+    """White field, two blue stripes and the Star of David, on the official 160-unit height.
+
+    The stripes are 25 units high, 15 units from the top and the bottom edges; the star is two equilateral triangles
+    drawn as 5.5-unit bands, 55 units from point to point, centered. Each band is a triangle with the inner triangle cut
+    out (even-odd fill), so no stroke or <use> is needed.
+
+    Returns:
+        The flag's SVG elements, without the document around them.
+    """
+    unit = HEIGHT / 160
+    blue = "#0038B8"
+    parts = [f'<rect width="{WIDTH}" height="{HEIGHT}" fill="#FFFFFF"/>',
+             stripe(15 * unit, 25 * unit, blue), stripe(HEIGHT - 40 * unit, 25 * unit, blue)]
+    cx, cy = WIDTH / 2, HEIGHT / 2
+    # Point to point the star spans 4/3 of one triangle's height; a band of width w makes the inner triangle 3w shorter.
+    height = 55 * unit * 3 / 4
+    band = 5.5 * unit
+
+    def triangle(h: float, pointing_up: bool) -> str:
+        """Path data of an equilateral triangle centered on (cx, cy), its height h.
+
+        Args:
+            h: The triangle's height.
+            pointing_up: Whether its apex points up (else down).
+
+        Returns:
+            "M…L…L…Z" for its three corners.
+        """
+        sign = -1 if pointing_up else 1
+        apex = (cx, cy + sign * 2 * h / 3)
+        half = h / math.sqrt(3)
+        base_y = cy - sign * h / 3
+        return f"M{apex[0]:.2f},{apex[1]:.2f}L{cx - half:.2f},{base_y:.2f}L{cx + half:.2f},{base_y:.2f}Z"
+
+    for up in (True, False):
+        parts.append(f'<path fill="{blue}" fill-rule="evenodd" d="{triangle(height, up)}{triangle(height - 3 * band, up)}"/>')
+    return "".join(parts)
+
+
 def document(body: str) -> str:
     """Wraps a flag's drawing: 3:2 canvas, rounded-corner clip, faint outline on top.
 
     Args:
-        body: The flag's SVG elements (united_states() or china()).
+        body: The flag's SVG elements (united_states(), china(), russia(), spain() or israel()).
 
     Returns:
         A complete SVG document, ending with a newline.
@@ -110,7 +184,7 @@ def document(body: str) -> str:
 def main() -> None:
     """Writes every flag a shipped language names in its catalog's "$language" header."""
     FLAGS.mkdir(parents=True, exist_ok=True)
-    for code, draw in (("us", united_states), ("cn", china)):
+    for code, draw in (("us", united_states), ("cn", china), ("ru", russia), ("es", spain), ("il", israel)):
         path = FLAGS / f"{code}.svg"
         path.write_bytes(document(draw()).encode("utf-8"))
         print(f"{path.relative_to(ROOT)}: {path.stat().st_size} bytes")
