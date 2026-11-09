@@ -86,6 +86,12 @@ public static class UiText
     private const char PopDirectionalFormatting = '\u202C';
 
     /// <summary>
+    /// U+200E LEFT-TO-RIGHT MARK: an invisible strong left-to-right character, put after the signs that end a Latin word
+    /// inside right-to-left text so they stay with it (<see cref="KeepTrailingSignsWithTheirWord"/>).
+    /// </summary>
+    private const char LeftToRightMark = '\u200E';
+
+    /// <summary>
     /// How a catalog is parsed: <c>//</c> and <c>/* */</c> comments are skipped, because <c>en.json</c> ends every row
     /// with its description (<c>"Paste": "Paste", // Card menu item…</c>); everything else is strict JSON, so a stray
     /// trailing comma still fails the load (and the tests) instead of being silently accepted.
@@ -276,13 +282,15 @@ public static class UiText
     /// <summary>Translates an interpolated UI template before formatting, so argument values are never translated.</summary>
     /// <param name="message">Application-owned interpolation; arguments can contain paths or user text.</param>
     /// <returns>The translated template formatted using the user's numeric and date culture.</returns>
-    public static string Format(FormattableString message) => string.Format(CultureInfo.CurrentCulture, Translate(message.Format), message.GetArguments());
+    public static string Format(FormattableString message) =>
+        Finish(string.Format(CultureInfo.CurrentCulture, Translate(message.Format), message.GetArguments()));
 
     /// <summary>Formats a localized template while preserving a caller-supplied number and date culture.</summary>
     /// <param name="provider">Explicit culture, or null for the current culture.</param>
     /// <param name="message">Application-owned interpolation whose arguments are not translated.</param>
     /// <returns>Localized and formatted UI text.</returns>
-    public static string Format(IFormatProvider? provider, FormattableString message) => string.Format(provider, Translate(message.Format), message.GetArguments());
+    public static string Format(IFormatProvider? provider, FormattableString message) =>
+        Finish(string.Format(provider, Translate(message.Format), message.GetArguments()));
 
     /// <summary>
     /// Joins the pieces of one line that the code puts together instead of a catalog template (a card's caption
@@ -401,7 +409,7 @@ public static class UiText
 
             try
             {
-                return string.Format(CultureInfo.InvariantCulture, Translate(template, language), parts);
+                return Finish(string.Format(CultureInfo.InvariantCulture, Translate(template, language), parts));
             }
             catch (FormatException)
             {
@@ -496,7 +504,7 @@ public static class UiText
         string template = PluralTemplate(count, one.Format, other.Format, language);
         try
         {
-            return string.Format(provider, template, values);
+            return Finish(string.Format(provider, template, values));
         }
         catch (FormatException) when (!ReferenceEquals(template, english))
         {
@@ -884,7 +892,70 @@ public static class UiText
     /// </remarks>
     /// <param name="text">The text.</param>
     /// <returns>The embedded text.</returns>
-    private static string EmbedRightToLeft(string text) => RightToLeftEmbedding + text + PopDirectionalFormatting;
+    private static string EmbedRightToLeft(string text) =>
+        RightToLeftEmbedding + KeepTrailingSignsWithTheirWord(text) + PopDirectionalFormatting;
+
+    /// <summary>
+    /// The last step of every text <see cref="Format(FormattableString)"/>, <see cref="Plural(IFormatProvider?, long, FormattableString, FormattableString, UiLanguage)"/>
+    /// and <see cref="TranslateFormatted(string?, IReadOnlyList{string}, UiLanguage)"/> put together: a right-to-left
+    /// template filled with values gets <see cref="KeepTrailingSignsWithTheirWord"/> for the values (an app's name such as
+    /// "Notepad++" goes in only now, after the catalog's load); every other text comes back as it is.
+    /// </summary>
+    /// <param name="formatted">The formatted text.</param>
+    /// <returns>The text, with left-to-right marks only when it holds a right-to-left embedding.</returns>
+    private static string Finish(string formatted) =>
+        formatted.Contains(RightToLeftEmbedding) ? KeepTrailingSignsWithTheirWord(formatted) : formatted;
+
+    /// <summary>
+    /// Puts U+200E LEFT-TO-RIGHT MARK after the signs that end a Latin word ("Notepad++", "C#") in text bound for a
+    /// right-to-left embedding, so those signs stay with their word instead of jumping to its other side.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Under UAX #9 a run of neutral signs between a left-to-right word and right-to-left text (or the embedding's end)
+    /// takes the embedding's direction: "Notepad++" next to Hebrew showed as "++Notepad". Found on 2026-11-09 in the
+    /// Hebrew panel's captions and in 26 places of the Hebrew catalog ("קבצים שנפתחו ב-Notepad++"). The mark is an
+    /// invisible strong left-to-right character, so the signs then sit between two left-to-right characters and keep
+    /// the word's direction.
+    /// </para>
+    /// <para>
+    /// Only "+" and "#" right after a Latin letter are touched. A sign followed by a letter or digit ("Win+V", "C++17") is
+    /// inside its word already, and one after a digit ("60+") is left to the algorithm on purpose: a right-to-left reader
+    /// expects "60+" shown as "+60". A mark already there (a text finished twice) is not doubled.
+    /// </para>
+    /// </remarks>
+    /// <param name="text">The text.</param>
+    /// <returns>The text with a mark after each such run of signs; the same instance when there is none.</returns>
+    internal static string KeepTrailingSignsWithTheirWord(string text)
+    {
+        StringBuilder? result = null;
+        int copied = 0;
+        for (int i = 1; i < text.Length; i++)
+        {
+            if (text[i] is not ('+' or '#') || !char.IsAsciiLetter(text[i - 1]))
+            {
+                continue;
+            }
+
+            int end = i;
+            while (end < text.Length && text[end] is '+' or '#')
+            {
+                end++;
+            }
+
+            // Followed by a letter, a digit or a mark: the signs belong to a longer word, or are kept already.
+            if (end == text.Length || !(char.IsAsciiLetterOrDigit(text[end]) || text[end] == LeftToRightMark))
+            {
+                result ??= new StringBuilder(text.Length + 4);
+                result.Append(text, copied, end - copied).Append(LeftToRightMark);
+                copied = end;
+            }
+
+            i = end - 1;
+        }
+
+        return result is null ? text : result.Append(text, copied, text.Length - copied).ToString();
+    }
 
     /// <summary>
     /// Reads the header's <c>"plurals"</c>: category name → CLDR rule. A header without it gets

@@ -1,5 +1,6 @@
 using BetterClipboard.Core.Localization;
 using System.Globalization;
+using System.Text;
 using BetterClipboard.Core.Updates;
 
 namespace BetterClipboard.Core.Presentation;
@@ -135,9 +136,15 @@ public static class UpdateText
 
     /// <summary>Ends a title with a full stop, unless it already ends a sentence (an ellipsis counts).</summary>
     /// <remarks>
+    /// <para>
     /// A right-to-left title comes embedded (<see cref="UiLanguage.IsRightToLeft"/>: U+202B … U+202C around it). Its
     /// sentence ends before those invisible marks, so they are looked past, and the period goes in before them: added
     /// after the closing mark, it would sit outside the embedding, at the right edge, where a Hebrew reader starts.
+    /// </para>
+    /// <para>
+    /// A title that ends in a Chinese or Japanese character gets the ideographic full stop (。): the Settings line read
+    /// "BetterClipboard 0.2.9 是最新发布版." in Simplified Chinese (found in the release QA of 2026-11-09).
+    /// </para>
     /// </remarks>
     /// <param name="title">A title from <see cref="Title"/>.</param>
     /// <returns>The title as a sentence.</returns>
@@ -150,7 +157,33 @@ public static class UpdateText
             end--;
         }
 
-        return end == 0 || title[end - 1] is '.' or '!' or '?' or '…' or '。' or '！' or '？' ? title : title.Insert(end, ".");
+        if (end == 0 || title[end - 1] is '.' or '!' or '?' or '…' or '。' or '！' or '？')
+        {
+            return title;
+        }
+
+        return title.Insert(end, EndsInIdeograph(title, end) ? "。" : ".");
+    }
+
+    /// <summary>
+    /// Whether the visible text ends in a character of a language that closes sentences with the ideographic full stop:
+    /// Han (Chinese, and the kanji of Japanese, beyond the BMP too) or kana. Korean's Hangul takes a period.
+    /// </summary>
+    /// <param name="text">The text.</param>
+    /// <param name="end">Where its visible part ends (after the last visible character).</param>
+    /// <returns><see langword="true"/> for a text that ends in such a character.</returns>
+    private static bool EndsInIdeograph(string text, int end)
+    {
+        // A character beyond the BMP (a rare Han ideograph) ends in a low surrogate: read the whole code point.
+        int start = end >= 2 && char.IsSurrogatePair(text[end - 2], text[end - 1]) ? end - 2 : end - 1;
+        if (!Rune.TryGetRuneAt(text, start, out Rune last))
+        {
+            return false;
+        }
+
+        int value = last.Value;
+        return value is (>= 0x3040 and <= 0x30FF) or (>= 0x3400 and <= 0x4DBF) or (>= 0x4E00 and <= 0x9FFF)
+            or (>= 0xF900 and <= 0xFAFF) or (>= 0x20000 and <= 0x3FFFF);
     }
 
     /// <summary>

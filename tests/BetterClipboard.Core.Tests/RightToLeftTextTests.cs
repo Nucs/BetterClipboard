@@ -68,6 +68,33 @@ public sealed class RightToLeftTextTests
         { $"{Rle}מעודכן?{Pdf}", $"{Rle}מעודכן?{Pdf}" },
         { string.Empty, string.Empty },
         { $"{Rle}{Pdf}", $"{Rle}{Pdf}" },
+        { "BetterClipboard 0.2.9 是最新发布版", "BetterClipboard 0.2.9 是最新发布版。" },
+        { "最新です", "最新です。" },
+        { "版本 0.2.9", "版本 0.2.9." },
+        { "최신 버전", "최신 버전." },
+    };
+
+    /// <summary>U+200E LEFT-TO-RIGHT MARK, the mark that keeps a Latin word's trailing signs with it.</summary>
+    private const char Lrm = (char)0x200E;
+
+    /// <summary>
+    /// Texts and what <see cref="UiText.KeepTrailingSignsWithTheirWord"/> makes of them: a mark after "++" or "#" that ends a
+    /// Latin word, also at the end of a text and next to Hebrew; nothing for signs inside a word ("Win+V", "C++17"),
+    /// after a digit ("60+") or at the start, and no second mark.
+    /// </summary>
+    public static TheoryData<string, string> TrailingSigns => new()
+    {
+        { "Notepad++", $"Notepad++{Lrm}" },
+        { "קבצים שנפתחו ב-Notepad++", $"קבצים שנפתחו ב-Notepad++{Lrm}" },
+        { "Notepad++ · new 1", $"Notepad++{Lrm} · new 1" },
+        { "C# and F#", $"C#{Lrm} and F#{Lrm}" },
+        { "Win+V", "Win+V" },
+        { "Ctrl+Shift+P", "Ctrl+Shift+P" },
+        { "C++17", "C++17" },
+        { "60+ matching", "60+ matching" },
+        { "+1", "+1" },
+        { $"Notepad++{Lrm}", $"Notepad++{Lrm}" },
+        { string.Empty, string.Empty },
     };
 
     /// <summary>The shipped Hebrew catalog.</summary>
@@ -178,6 +205,34 @@ public sealed class RightToLeftTextTests
         Assert.Equal($"{Rle}Notepad · לפני 5 דקות{Pdf}", UiText.JoinLine(" · ", ["Notepad", "לפני 5 דקות"], Hebrew));
         Assert.Equal(string.Empty, UiText.JoinLine(" · ", [], Hebrew));
         Assert.Throws<ArgumentNullException>(() => UiText.JoinLine(" · ", null!, Hebrew));
+    }
+
+    /// <summary>What a Latin word's trailing signs get (see <see cref="TrailingSigns"/>).</summary>
+    /// <param name="text">The text.</param>
+    /// <param name="expected">The text with its marks.</param>
+    [Theory]
+    [MemberData(nameof(TrailingSigns))]
+    public void KeepTrailingSignsWithTheirWord_MarksOnlyAWordsTrailingSigns(string text, string expected) =>
+        Assert.Equal(expected, UiText.KeepTrailingSignsWithTheirWord(text));
+
+    /// <summary>
+    /// "Notepad++" keeps its "++" in Hebrew, which showed it as "++Notepad" in the release QA of 2026-11-09: in a caption
+    /// joined from pieces (an app's name is not translated, so it reaches the line as it is), and in the shipped Hebrew
+    /// catalog's own strings; a left-to-right language's line gets no mark.
+    /// </summary>
+    [Fact]
+    public void NotepadPlusPlus_KeepsItsSignsInHebrew()
+    {
+        Assert.Equal($"{Rle}Notepad++{Lrm} · לפני 3 דק׳ · נתיב{Pdf}", UiText.JoinLine(" · ", ["Notepad++", "לפני 3 דק׳", "נתיב"], Hebrew));
+        Assert.Equal("Notepad++ · 3 min ago", UiText.JoinLine(" · ", ["Notepad++", "3 min ago"], UiText.English));
+
+        string files = UiText.Translate("Files opened in Notepad++", Hebrew);
+        Assert.Contains($"Notepad++{Lrm}", files, StringComparison.Ordinal);
+        Assert.Equal((Rle, Pdf), (files[0], files[^1]));
+
+        // Every shipped Hebrew string that names Notepad++ next to Hebrew, its own end or a sign, keeps the "++" with it.
+        int unkept = Hebrew.Strings.Values.Count(value => System.Text.RegularExpressions.Regex.IsMatch(value, @"[A-Za-z]\+\+(?![A-Za-z0-9\u200E])"));
+        Assert.Equal(0, unkept);
     }
 
     /// <summary>Which texts count as right-to-left (see <see cref="Texts"/>).</summary>
