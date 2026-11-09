@@ -1266,14 +1266,16 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     /// <summary>
     /// Persists the UI language without restarting or interrupting clipboard capture, and offers the restart that applies
-    /// it (<see cref="IsLanguageRestartPending"/>).
+    /// it (<see cref="IsLanguageRestartPending"/>). A choice made here answers the language question too
+    /// (<see cref="AppSettings.LanguageChosen"/>), so "Use Windows setting" picked here is never asked over at a start.
     /// </summary>
     /// <param name="value">An index into <see cref="LanguageOptions"/> (-1 while the combo box has no selection: ignored).</param>
     partial void OnLanguageIndexChanged(int value)
     {
         if (value >= 0 && value < LanguageOptions.Count)
         {
-            Update(s => s with { InterfaceLanguage = LanguageOptions[value].Selection });
+            // Update is muted while the settings load, so only the user's own change marks the question answered.
+            Update(s => s with { InterfaceLanguage = LanguageOptions[value].Selection, LanguageChosen = true });
             IsLanguageRestartPending = !ReferenceEquals(
                 UiText.Resolve(LanguageOptions[value].Selection, CultureInfo.CurrentUICulture.Name),
                 UiText.Current);

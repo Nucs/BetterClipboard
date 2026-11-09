@@ -52,8 +52,27 @@ public enum AppTheme
 /// </remarks>
 public sealed record AppSettings
 {
-    /// <summary>Interface language (system, en, or zh-Hans); missing values preserve the system-language default.</summary>
+    /// <summary>
+    /// Interface language: <c>system</c> (follow Windows) or a catalog's tag (<c>en</c>, <c>zh-Hans</c>, <c>ru</c>,
+    /// <c>es</c>, <c>he</c>); missing values preserve the system-language default.
+    /// </summary>
     public string InterfaceLanguage { get; init; } = "system";
+
+    /// <summary>
+    /// Whether the user has answered the language question: picked a language in the start's language picker (every way
+    /// it closes saves one) or changed Settings › App › Language. While it is <see langword="false"/> and
+    /// <see cref="InterfaceLanguage"/> names no language, every start shows the picker before any other window: a first
+    /// start, and equally a start after an update from a version that never asked (the owner's request, 2026-11-09).
+    /// See <c>Localization.LanguageChoice.ShouldAsk</c>.
+    /// </summary>
+    /// <remarks>
+    /// Its own member because "system" cannot tell "never asked" from "chose Use Windows setting". An administrator who
+    /// pre-seeds <c>settings.json</c> silences the picker with an explicit language, or with <c>"system"</c> and this
+    /// set to <see langword="true"/>. Footgun: a version that does not know this member drops it when it saves the
+    /// file (any version before 2026-11-09, 0.2.9 among them, which drops the language too); a user who then comes back
+    /// to a newer version with "system" is asked once more. An explicit language is never asked over.
+    /// </remarks>
+    public bool LanguageChosen { get; init; }
 
     /// <summary>
     /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).

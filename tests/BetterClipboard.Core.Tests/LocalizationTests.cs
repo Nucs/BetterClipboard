@@ -79,8 +79,11 @@ public sealed class LocalizationTests
     };
 
     /// <summary>
-    /// When the first start asks: never once a history exists (an update from a version without languages), never over
-    /// a language someone saved (an administrator's pre-seeded settings), and in every other first start.
+    /// When a start asks (the language question answered or not, the saved selection, the answer): while nobody answered
+    /// and the selection names no language, every start asks — a first start, and a start after an update from a version
+    /// that never asked, whose settings hold "system" or no language at all. Never over a language someone saved (picked
+    /// in an earlier picker or in Settings, or an administrator's pre-seeded file; a tag this build does not ship
+    /// included), and never once answered, "Use Windows setting" picked in Settings included.
     /// </summary>
     public static TheoryData<bool, string, bool> FirstStarts => new()
     {
@@ -88,10 +91,12 @@ public sealed class LocalizationTests
         { false, "SYSTEM", true },
         { false, "", true },
         { false, "  ", true },
-        { true, "system", false },
         { false, "en", false },
         { false, "zh-Hans", false },
-        { true, "zh-Hans", false },
+        { false, "fr", false },
+        { true, "system", false },
+        { true, "en", false },
+        { true, "he", false },
     };
 
     /// <summary>
@@ -496,23 +501,55 @@ public sealed class LocalizationTests
         finally { UiText.Language = previous; }
     }
 
-    /// <summary>When the first start asks for the language (see <see cref="FirstStarts"/>).</summary>
-    /// <param name="historyExisted">Whether a history existed before this start.</param>
+    /// <summary>When a start asks for the language (see <see cref="FirstStarts"/>).</summary>
+    /// <param name="languageChosen">Whether the language question was answered.</param>
     /// <param name="saved">The saved selection.</param>
     /// <param name="expected">Whether the picker is shown.</param>
     [Theory]
     [MemberData(nameof(FirstStarts))]
-    public void FirstStart_AsksOnlyWithoutHistoryOrChoice(bool historyExisted, string saved, bool expected) =>
-        Assert.Equal(expected, LanguageChoice.ShouldAsk(historyExisted, saved));
+    public void Start_AsksUntilALanguageIsChosen(bool languageChosen, string saved, bool expected) =>
+        Assert.Equal(expected, LanguageChoice.ShouldAsk(languageChosen, saved));
 
     /// <summary>A settings file without the language (null after a hand edit) is no choice either; the suggestion follows Windows.</summary>
     [Fact]
     public void FirstStart_NoSavedLanguage_AsksAndSuggestsWindowsLanguage()
     {
-        Assert.True(LanguageChoice.ShouldAsk(historyExisted: false, interfaceLanguage: null));
+        Assert.True(LanguageChoice.ShouldAsk(languageChosen: false, interfaceLanguage: null));
         Assert.Equal("zh-Hans", LanguageChoice.Suggest("zh-CN").Tag);
         Assert.Equal("en", LanguageChoice.Suggest("de-DE").Tag);
         Assert.Equal("en", LanguageChoice.Suggest(null).Tag);
+    }
+
+    /// <summary>
+    /// The settings files the rule meets, read for real: a file written before the language existed (0.2.9 and older:
+    /// no language, no answer) asks, whether a history exists or not — the update the owner asked about (2026-11-09); so
+    /// does a file the installer wrote before the first start (shortcuts only). A file whose user answered (a language
+    /// picked, or "Use Windows setting" picked in Settings) does not, and the answer survives a save and a reload.
+    /// </summary>
+    [Fact]
+    public void SettingsFiles_FromBeforeTheLanguageAsk_UntilAnswered()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+
+        // 0.2.9's file: none of the language members.
+        File.WriteAllText(path, """{ "OpenHotkey": "Win+V", "MaxItems": 5000, "PinnedOnTop": true }""");
+        var old = new SettingsStore(path).Load();
+        Assert.Equal(("system", false), (old.InterfaceLanguage, old.LanguageChosen));
+        Assert.True(LanguageChoice.ShouldAsk(old.LanguageChosen, old.InterfaceLanguage));
+
+        // The picker's answer, saved the way AppController saves it, and read back by the next start.
+        var store = new SettingsStore(path);
+        store.Load();
+        store.Update(s => s with { InterfaceLanguage = "es", LanguageChosen = true });
+        var picked = new SettingsStore(path).Load();
+        Assert.Equal(("es", true), (picked.InterfaceLanguage, picked.LanguageChosen));
+        Assert.False(LanguageChoice.ShouldAsk(picked.LanguageChosen, picked.InterfaceLanguage));
+
+        // "Use Windows setting" picked in Settings: "system" again, but answered.
+        store.Update(s => s with { InterfaceLanguage = UiText.SystemSelection, LanguageChosen = true });
+        var system = new SettingsStore(path).Load();
+        Assert.False(LanguageChoice.ShouldAsk(system.LanguageChosen, system.InterfaceLanguage));
     }
 
     /// <summary>

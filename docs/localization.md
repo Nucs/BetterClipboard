@@ -11,11 +11,12 @@ English row, and right-to-left text in the left-to-right windows came on 2026-11
 
 ## What the user sees
 
-- **The first start asks.** On the app's very first start in a data folder, a small window lists every offered language
-  as *own name · flag · English name* (`简体中文 · 🇨🇳 · Chinese (Simplified)`), with the one that fits Windows' display
-  language selected. The heading switches to the language under the selection. A green check (or `Enter`, `Esc`, a
-  double click, or closing the window) keeps the selection. The picker runs before any other window exists, so the
-  whole app opens in that language at once.
+- **A start asks until a language is chosen.** On the app's first start, and on the first start after an update from a
+  version that never asked, a small window lists every offered language as *own name · flag · English name*
+  (`简体中文 · 🇨🇳 · Chinese (Simplified)`), with the one that fits Windows' display language selected. The heading
+  switches to the language under the selection. A green check (or `Enter`, `Esc`, a double click, or closing the
+  window) keeps the selection. The picker runs before any other window exists, so the whole app opens in that language
+  at once.
 - **Settings › App › Language** changes it later: *Use Windows setting* (with the flag and name of the language it picks
   now) or any offered language, each with its flag. The closed box shows the language in effect with its flag, and a
   dimmed "· Windows setting" after it while BetterClipboard follows Windows ("🇺🇸 English · Windows setting",
@@ -23,10 +24,22 @@ English row, and right-to-left text in the left-to-right windows came on 2026-11
   the chosen language differs from the one on screen, and restarts BetterClipboard (the new process waits for the old
   one, then opens Settings in the new language). Windows read their labels when they are built, so a restart is what
   applies a language everywhere at once.
-- **Who is asked:** only a first start: the data folder holds no history yet. Updating from a version without
-  languages never asks (a history exists), and neither does a start whose settings already name a language (an
-  administrator's pre-seeded `settings.json`). The installer may write `settings.json` before the first start (with
-  `-Hotkey` or `-NoUpdateCheck`), so the settings file is not the signal; the history store is.
+- **Who is asked:** every start until the language question is answered. The answer is `AppSettings.LanguageChosen`,
+  which the picker sets whichever way it closes, and so does a change in *Settings › App › Language* (*Use Windows
+  setting* included). Since 2026-11-09:
+  - a first start is asked, also when the installer wrote `settings.json` before it (`-Hotkey`, `-NoUpdateCheck`):
+    such a file names no language;
+  - so is the first start after an update from a version that never asked: 0.2.9 and older, which have no languages,
+    and the development builds of 2026-11-08 and 2026-11-09, which asked only in a data folder without a history;
+  - a start whose settings name a language is never asked: an administrator's pre-seeded `settings.json`, and every
+    user who answered the earlier builds' picker (it saved an explicit language). To pre-seed "follow Windows"
+    without the picker, write `"InterfaceLanguage": "system"` with `"LanguageChosen": true`;
+  - an exit from the tray while the picker is open saves nothing, so the next start asks again;
+  - a user who goes back to 0.2.9 loses the answer (0.2.9 drops the members it does not know when it saves its
+    settings) and is asked once more after updating again.
+
+  `LanguageChoice.ShouldAsk` is the rule; the history store only words the log line ("Interface language chosen at
+  the first start" or "… at a start with a history already kept").
 - **A language may be partly translated.** Every string a catalog lacks shows in English. A language that lacks more
   than one string in ten is not offered at all (not in the picker, not in Settings, not picked for Windows' language),
   so a half-done translation can be merged without putting half-English screens in front of people. No percentage is
@@ -45,7 +58,7 @@ src/BetterClipboard.Core/Localization/
 ├── UiText.cs          finds the catalogs, picks the language, looks strings up, words plurals, embeds right-to-left text
 ├── UiLanguage.cs      one language: names, flag, plural rules, strings
 ├── PluralRules.cs     CLDR's plural rules: which form a count takes
-└── LanguageChoice.cs  when the first start asks, and what it suggests
+└── LanguageChoice.cs  when a start asks, and what it suggests
 ```
 
 All of `Localization/*.json` and `Localization/Flags/*.svg` are embedded resources of `BetterClipboard.Core.dll`

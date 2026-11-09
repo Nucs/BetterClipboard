@@ -265,8 +265,9 @@ public sealed partial class AppController
         AppLog.Initialize(paths.LogDirectory);
         AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{(options.RestartAfter is null ? string.Empty : ", restarted from Settings")}).");
 
-        // Before the store is opened (which creates it): no history yet means the app's very first start in this folder,
-        // when the language picker may ask (LanguageChoice.ShouldAsk).
+        // Before the store is opened (which creates it): no history yet means the app's very first start in this folder.
+        // The language picker asks whenever no language was ever chosen (LanguageChoice.ShouldAsk); this only tells its
+        // log line a first start from a start after an update.
         bool historyExisted = paths.HasHistory();
 
         settings = new SettingsStore(paths.SettingsPath);
@@ -364,12 +365,13 @@ public sealed partial class AppController
             _ = ImportWindowsHistoryAsync();
         }
 
-        // The first start asks for the interface language before any other window is built: the panel and Settings read
-        // their labels when they are built, so waiting for the choice spares a restart. Capture, shortcuts and the tray
-        // already run meanwhile; a Win+V or a tray click brings the picker to the front.
-        if (LanguageChoice.ShouldAsk(historyExisted, settings.Current.InterfaceLanguage))
+        // A start whose user never chose a language asks for it before any other window is built: a first start, and the
+        // first start after an update from a version that never asked. The panel and Settings read their labels when they
+        // are built, so waiting for the choice spares a restart. Capture, shortcuts and the tray already run meanwhile;
+        // a Win+V or a tray click brings the picker to the front.
+        if (LanguageChoice.ShouldAsk(settings.Current.LanguageChosen, settings.Current.InterfaceLanguage))
         {
-            _ = AskForLanguageAsync(showSettingsAfter: !options.Background);
+            _ = AskForLanguageAsync(showSettingsAfter: !options.Background, afterUpdate: historyExisted);
             return;
         }
 
@@ -384,13 +386,18 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// The first start's language picker (<see cref="LanguageWindow"/>): shows it with the language that fits Windows
-    /// selected, saves the choice as an explicit language, applies it before any other window exists, then continues the
-    /// startup that waited for it (the panel's warm-up, and Settings for a start that shows it).
+    /// The language picker (<see cref="LanguageWindow"/>) of a start whose user never chose a language: shows it with the
+    /// language that fits Windows selected, saves the choice as an explicit language and marks the question answered
+    /// (<c>AppSettings.LanguageChosen</c>), applies it before any other window exists, then continues the startup that
+    /// waited for it (the panel's warm-up, and Settings for a start that shows it).
     /// </summary>
     /// <param name="showSettingsAfter">Whether this start opens Settings (a plain launch, such as the installer's).</param>
+    /// <param name="afterUpdate">
+    /// Whether a history existed before this start: the user already used BetterClipboard (a version that never asked, or
+    /// a start that closed with the picker open), so this is not the first start. Only the log line says it.
+    /// </param>
     /// <returns>A task completing once startup continued; failures are logged, never thrown (the app then follows Windows' language).</returns>
-    private async Task AskForLanguageAsync(bool showSettingsAfter)
+    private async Task AskForLanguageAsync(bool showSettingsAfter, bool afterUpdate)
     {
         try
         {
@@ -400,8 +407,8 @@ public sealed partial class AppController
             var chosen = await languageWindow.Choice;
             languageWindow = null;
 
-            // Closed by an exit from the tray: the tray and the settings are being disposed, so nothing is saved (the
-            // next start follows Windows, and does not ask again: the history exists by then).
+            // Closed by an exit from the tray: the tray and the settings are being disposed, so nothing is saved, and the
+            // question stays unanswered: the next start asks again.
             if (exiting)
             {
                 return;
@@ -410,16 +417,18 @@ public sealed partial class AppController
             // Applied before saving: the settings change below raises events that may word things already.
             UiText.Language = chosen.Tag;
             ApplyLanguageToWindowsText(chosen);
-            Settings.Update(s => s with { InterfaceLanguage = chosen.Tag });
-            AppLog.Info($"Interface language chosen at the first start: {chosen.Tag} (Windows suggested {suggested.Tag}).");
+            Settings.Update(s => s with { InterfaceLanguage = chosen.Tag, LanguageChosen = true });
+            AppLog.Info(afterUpdate
+                ? $"Interface language chosen at a start with a history already kept (an update from a version that did not ask, or an earlier start that closed without a choice): {chosen.Tag} (Windows suggested {suggested.Tag})."
+                : $"Interface language chosen at the first start: {chosen.Tag} (Windows suggested {suggested.Tag}).");
 
             // The tray icon was made before the choice; word its tooltip again.
             tray?.SetTooltip(TrayTooltip(Settings.Current));
         }
         catch (Exception ex)
         {
-            // Never stuck behind a broken picker: continue in Windows' language, and ask again at the next start only if
-            // no history exists by then (it normally does).
+            // Never stuck behind a broken picker: continue in Windows' language. Nothing is saved, so the next start asks
+            // again.
             languageWindow = null;
             AppLog.Error("The language picker failed; the interface follows Windows' language.", ex);
         }

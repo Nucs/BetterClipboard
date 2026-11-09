@@ -90,7 +90,8 @@ you send to Claude Code and Codex.
   is kept ([Updates](#updates)).
 - **In your language.** English, Simplified Chinese (简体中文), Russian (Русский), Spanish (Español) and Hebrew (עברית),
   all in every download. The first start shows the languages with their flags, with Windows' language already
-  selected: one click on the green check and the whole app speaks it. *Settings › App › Language* changes it later:
+  selected: one click on the green check and the whole app speaks it. An update from a version that did not ask yet
+  asks once too. *Settings › App › Language* changes it later:
   pick a language and press *Restart now*. Hebrew reads right to left inside the usual layout. What you copy, file
   names and the names you give groups are never translated.
 - **Settings you can search.** Type in the box at the top of Settings (`Ctrl+F`) and the page keeps only the settings
@@ -121,7 +122,7 @@ folder, also one you cannot write to, and leaves your PowerShell in that folder 
 
 At its first start, BetterClipboard asks for your language: English, 简体中文, Русский, Español or עברית, each with its
 flag, with Windows' language already selected. Press the green check (or `Enter`) and everything opens in that
-language.
+language. If you update from a version that did not ask yet, the first start after the update asks once.
 
 Once a day, the installed app asks GitHub whether a newer release exists. Nothing about you, your PC or your clipboard
 is sent, and nothing is installed without your approval ([Privacy](#privacy)). `-NoUpdateCheck` installs with that
