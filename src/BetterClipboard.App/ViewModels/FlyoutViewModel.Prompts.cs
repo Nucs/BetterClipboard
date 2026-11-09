@@ -73,6 +73,7 @@ public sealed partial class FlyoutViewModel
             Filter = Filter,
             Limit = MaxKeptPrompts,
             PinnedFirst = controller.Settings.Current.PinnedOnTop,
+            HiddenRows = HiddenRows,
         }, cancellationToken);
         var kept = stored.Select(e => e.ContentHash).ToHashSet(StringComparer.Ordinal);
         var rows = await history.QueryPromptsAsync(new PromptQuery

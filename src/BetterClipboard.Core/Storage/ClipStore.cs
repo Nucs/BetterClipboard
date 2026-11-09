@@ -26,7 +26,11 @@ public sealed record UpsertResult(ClipEntry Entry, bool IsNew, bool Changed);
 /// <param name="GroupedCount">Entries in at least one group (kept like pinned ones; may overlap <paramref name="PinnedCount"/>).</param>
 /// <param name="ForgottenCount">Entries of the "Forget forever" list (content never recorded again; not history items).</param>
 /// <param name="RunCount">Entries with a Win+R run time — the Run tab's size (may overlap every other count).</param>
-public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0, long ForgottenCount = 0, long RunCount = 0);
+/// <param name="HiddenCount">
+/// Entries the panel leaves out because their tab is hidden with its rows (<see cref="ClipQuery.HiddenRows"/>), grouped ones
+/// not counted (they stay shown); 0 unless the caller named such tabs. Included in <paramref name="Count"/>.
+/// </param>
+public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0, long ForgottenCount = 0, long RunCount = 0, long HiddenCount = 0);
 
 /// <summary>Outcome of <see cref="ClipStore.RemoveFromGroup"/>.</summary>
 /// <param name="Removed">The entry was in the group and is not anymore.</param>
@@ -856,6 +860,12 @@ public sealed partial class ClipStore
             predicates.Add($"EXISTS (SELECT 1 FROM clip_groups cg WHERE cg.clip_id = c.id AND cg.group_id IN ({BindIds(command, "$group", groupIds)}))");
         }
 
+        // The rows of tabs hidden with their rows: left out, unless the entry is in a group.
+        if (HiddenRowsCondition(query.HiddenRows) is { } hiddenRows)
+        {
+            predicates.Add($"NOT {hiddenRows}");
+        }
+
         // Last, so every cheaper predicate above has narrowed the rows before a text is tested.
         Exception? matchFailure = null;
         if (matcher is not null)
@@ -1142,17 +1152,31 @@ public sealed partial class ClipStore
     /// <summary>
     /// Returns aggregate counts and sizes.
     /// </summary>
+    /// <returns>The statistics (<see cref="StoreStats.HiddenCount"/> 0).</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public StoreStats GetStats() => GetStats(null);
+
+    /// <summary>
+    /// Returns aggregate counts and sizes, and how many entries the panel leaves out because their tab is hidden with its
+    /// rows — the footer's "· N hidden".
+    /// </summary>
+    /// <remarks>
+    /// One pass over the table either way (the totals already read every row), so counting the hidden rows costs no second
+    /// scan; their condition is <see cref="HiddenRowsCondition"/>, the same the panel's lists leave out.
+    /// </remarks>
+    /// <param name="hiddenRows">The tabs hidden with their rows (<see cref="ClipQuery.HiddenRows"/>); <see langword="null"/> or empty count nothing.</param>
     /// <returns>The statistics.</returns>
     /// <exception cref="SqliteException">The read failed.</exception>
-    public StoreStats GetStats()
+    public StoreStats GetStats(IReadOnlyList<ClipFilter>? hiddenRows)
     {
         using var connection = Open();
+        string hidden = HiddenRowsCondition(hiddenRows) is { } condition ? $"coalesce(sum({condition}), 0)" : "0";
         using var command = Command(connection,
-            "SELECT count(*), coalesce(sum(is_pinned), 0), coalesce(sum(size_bytes), 0), (SELECT count(DISTINCT clip_id) FROM clip_groups), " +
-            "(SELECT count(*) FROM forgotten), count(run_last_utc) FROM clips;");
+            "SELECT count(*), coalesce(sum(c.is_pinned), 0), coalesce(sum(c.size_bytes), 0), (SELECT count(DISTINCT clip_id) FROM clip_groups), " +
+            $"(SELECT count(*) FROM forgotten), count(c.run_last_utc), {hidden} FROM clips c;");
         using var reader = command.ExecuteReader();
         reader.Read();
-        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5));
+        return new StoreStats(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3), reader.GetInt64(4), reader.GetInt64(5), reader.GetInt64(6));
     }
 
     /// <summary>
@@ -1996,6 +2020,32 @@ public sealed partial class ClipStore
         }
 
         return condition;
+    }
+
+    /// <summary>
+    /// The condition (over alias <c>c</c>) "this entry is a hidden row": one of the tabs hidden with their rows
+    /// (<see cref="ClipQuery.HiddenRows"/>) lists it, and it is in no group — an entry in a group stays wherever it shows
+    /// (the owner's choice, 2026-11-09). <see cref="Query(ClipQuery, CancellationToken)"/> leaves such entries out, and
+    /// <see cref="GetStats(IReadOnlyList{ClipFilter})"/> counts them for the panel's footer.
+    /// </summary>
+    /// <remarks>
+    /// Never NULL, which is what makes <c>NOT</c> of it safe: a tab's filter can be NULL for an entry that is not in the tab
+    /// (ShareX's <c>source_app_path LIKE …</c> on an entry without a path, Files' <c>path_count &gt; 0</c> on a row the
+    /// backfill has not decided), and <c>NOT NULL</c> would have left such an entry out of every list. Built from enum
+    /// constants only (<see cref="FilterPredicate"/>), so safe to inline.
+    /// </remarks>
+    /// <param name="hiddenRows">The tabs; <see langword="null"/>, empty or "All" alone hide nothing.</param>
+    /// <returns>The condition, or <see langword="null"/> when nothing is hidden.</returns>
+    private static string? HiddenRowsCondition(IReadOnlyList<ClipFilter>? hiddenRows)
+    {
+        var tabs = (hiddenRows ?? []).Distinct().Select(FilterPredicate).OfType<string>().ToList();
+        if (tabs.Count == 0)
+        {
+            return null;
+        }
+
+        // Each predicate in its own parentheses: some are bare comparisons, and none may bind to its neighbor's OR.
+        return $"(coalesce({string.Join(" OR ", tabs.Select(tab => $"({tab})"))}, 0) AND NOT EXISTS (SELECT 1 FROM clip_groups hg WHERE hg.clip_id = c.id))";
     }
 
     /// <summary>

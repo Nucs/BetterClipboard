@@ -27,6 +27,7 @@
   " {0} are released.": " {0} are released.", // Settings › Shortcut › Release from Explorer: appended (leading space) for SEVERAL released shortcuts. {0} = the list.
   " {0} is released.": " {0} is released.", // Settings › Shortcut › Release from Explorer: appended (leading space) for ONE shortcut already released. {0} = the shortcut.
   " · {0:N0} forgotten": " · {0:N0} forgotten", // Settings, chip at the top: appended to the statistics while some contents are forgotten forever. {0} = how many.
+  " · {0:N0} hidden": " · {0:N0} hidden", // Clipboard panel footer: appended (leading space) to the item count while a tab is hidden with its clipboard rows. {0} = how many items are not listed because of that.
   " · {0:N0} kept": " · {0:N0} kept", // Clipboard panel footer (Everything, Pwsh, Cmd, Claude, Codex tabs): appended to the count. {0} = how many of the listed things are kept as history items.
   " · {0:N0} open windows#one": " · {0:N0} open window", // Cmd tab footer part (leading separator). {0} = Command Prompt windows open now. This row: the form for a count of 1.
   " · {0:N0} open windows#other": " · {0:N0} open windows", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
@@ -254,8 +255,9 @@
   "Groups (Ctrl+G)": "Groups (Ctrl+G)", // Clipboard panel header: tooltip of the groups button. Ctrl+G is its key.
   "Health": "Health", // Name of a group icon (a heartbeat) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
   "Heart": "Heart", // Name of a group icon (a heart) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
-  "Hide": "Hide", // Right-click menu of a panel tab: hides that tab (nothing is deleted).
   "Hide groups": "Hide groups", // Clipboard panel header: screen-reader name of the groups button while the groups column is shown.
+  "Hide tab": "Hide tab", // Right-click menu of a panel tab: hides that tab only (its items still show in All and the other tabs; nothing is deleted).
+  "Hide tab & clipboard rows": "Hide tab & clipboard rows", // Right-click menu of a panel tab: hides that tab and also takes every item it lists out of all the panel's lists (All, the other tabs, searches), except items the user put in a group. Nothing is deleted; "Show all hidden" brings them back. "Rows" = the items (cards) of the clipboard list.
   "Hide until opened again": "Hide until opened again", // Card menu item (Del) on a file opened in Everything: hides it from the Everything tab until it is opened in Everything again (nothing is deleted).
   "Hide until typed again": "Hide until typed again", // Card menu item (Del) in the Pwsh and Cmd tabs: hides the command until it is typed again (the shell's own history is not changed).
   "Highlight the update button for this version again.": "Highlight the update button for this version again.", // Update dialog: tooltip of "Stop skipping this version".
@@ -516,8 +518,8 @@
   "Shopping": "Shopping", // Name of a group icon (a shopping bag) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
   "Shortcut": "Shortcut", // Settings section header: the shortcuts that open the clipboard panel. One or two words.
   "Shortcuts you add are listed here": "Shortcuts you add are listed here", // Settings › Shortcut: greyed placeholder line in the drop-down menu while no shortcut was used before.
-  "Show all hidden": "Show all hidden", // Right-click menu of the panel's tab strip: shows every hidden tab again (greyed while none is hidden).
-  "Show all hidden ({0})": "Show all hidden ({0})", // Right-click menu of the panel's tab strip: shows every hidden tab again. {0} = how many tabs are hidden.
+  "Show all hidden": "Show all hidden", // Right-click menu of the panel's tab strip: shows every hidden tab again, and brings back the items hidden with them (greyed while none is hidden).
+  "Show all hidden ({0})": "Show all hidden ({0})", // Right-click menu of the panel's tab strip: shows every hidden tab again, and brings back the items hidden with them. {0} = how many tabs are hidden.
   "Show groups": "Show groups", // Clipboard panel header: screen-reader name of the groups button while the groups column is hidden.
   "Show in Everything": "Show in Everything", // Card menu item: opens the Everything search app on this file (Everything is a product name).
   "Show in Explorer": "Show in Explorer", // Card menu item on copied files and on files opened in Everything: opens File Explorer with the file selected. Use Windows' name for File Explorer.

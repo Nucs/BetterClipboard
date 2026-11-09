@@ -482,6 +482,19 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     public Task<StoreStats> GetStatsAsync() => Task.Run(store.GetStats);
 
     /// <summary>
+    /// Reads aggregate statistics on the thread pool, counting the entries the panel leaves out for the tabs hidden with
+    /// their rows (<see cref="StoreStats.HiddenCount"/>, for the footer's "· N hidden").
+    /// </summary>
+    /// <param name="hiddenRows">The tabs hidden with their rows; copied here, so the caller may change its list afterwards.</param>
+    /// <returns>The statistics.</returns>
+    public Task<StoreStats> GetStatsAsync(IReadOnlyList<ClipFilter>? hiddenRows)
+    {
+        // Copied on the caller's thread: the pool runs the read later, and the caller's list may change meanwhile.
+        var tabs = hiddenRows?.ToArray();
+        return Task.Run(() => store.GetStats(tabs));
+    }
+
+    /// <summary>
     /// Reads integration state kept with this history (see <see cref="ClipStore.GetStateValue"/>) on the
     /// thread pool.
     /// </summary>

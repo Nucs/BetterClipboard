@@ -285,8 +285,8 @@ public sealed record AppSettings
     public IReadOnlyList<string> TabOrder { get; init; } = [];
 
     /// <summary>
-    /// The tabs the user took out of the row (right-click a tab › <i>Hide</i>; <i>Show all hidden</i> empties the list), as
-    /// <see cref="Storage.ClipFilter"/> names. Never "All": it always stays.
+    /// The tabs the user took out of the row (right-click a tab › <i>Hide tab</i> or <i>Hide tab &amp; clipboard rows</i>;
+    /// <i>Show all hidden</i> empties the list), as <see cref="Storage.ClipFilter"/> names. Never "All": it always stays.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -301,6 +301,26 @@ public sealed record AppSettings
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> HiddenTabs { get; init; } = [];
+
+    /// <summary>
+    /// The hidden tabs whose clipboard rows are hidden too (right-click a tab › <i>Hide tab &amp; clipboard rows</i>; <i>Show
+    /// all hidden</i> empties it with <see cref="HiddenTabs"/>), as <see cref="Storage.ClipFilter"/> names: the entries such a
+    /// tab lists are left out of every list the panel shows (<see cref="Storage.ClipQuery.HiddenRows"/>), except entries
+    /// that are in a group.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Hidden, not removed</b> (the owner's choices, 2026-11-09): nothing is deleted or kept from being recorded, the
+    /// command line still lists every entry, and an entry the user put in a group stays wherever it shows — it was kept on
+    /// purpose. A pinned entry is hidden like any other.
+    /// </para>
+    /// <para>
+    /// Always a subset of <see cref="HiddenTabs"/> (<see cref="Normalize"/> drops a name whose tab shows): a tab in the row
+    /// never has its rows hidden. Read leniently like <see cref="TabOrder"/>. Footgun: a version from before this member
+    /// drops it when it saves the file, and the rows show again while their tabs stay hidden.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> HiddenTabRows { get; init; } = [];
 
     /// <summary>
     /// The panel search box's "Aa" toggle: words match only with the same upper and lower case
@@ -659,7 +679,7 @@ public sealed record AppSettings
     }
 
     /// <summary>
-    /// Reads a tab name as stored in <see cref="TabOrder"/> or <see cref="HiddenTabs"/>: the name of a
+    /// Reads a tab name as stored in <see cref="TabOrder"/>, <see cref="HiddenTabs"/> or <see cref="HiddenTabRows"/>: the name of a
     /// <see cref="Storage.ClipFilter"/> member, ignoring case and surrounding spaces — and, unlike <see cref="ParseTab"/>,
     /// tells an unknown name apart instead of reading it as "All".
     /// </summary>
@@ -727,7 +747,8 @@ public sealed record AppSettings
     }
 
     /// <summary>
-    /// Normalizes a stored list of tab names (<see cref="TabOrder"/>, <see cref="HiddenTabs"/>): every name a tab answers to,
+    /// Normalizes a stored list of tab names (<see cref="TabOrder"/>, <see cref="HiddenTabs"/>, <see cref="HiddenTabRows"/>):
+    /// every name a tab answers to,
     /// spelled as its <see cref="Storage.ClipFilter"/>, in the stored order, each once.
     /// </summary>
     /// <remarks>
@@ -798,6 +819,10 @@ public sealed record AppSettings
             }
         }
 
+        // "All" always stays, so it is never hidden (a hand-edited file cannot hide it); a tab's rows are hidden only while
+        // the tab itself is, so a tab in the row never misses rows of its own.
+        var hiddenTabs = NormalizeTabNames(HiddenTabs).Where(name => name != DefaultTab).ToArray();
+
         var normalized = this with
         {
             SchemaVersion = 1,
@@ -808,9 +833,10 @@ public sealed record AppSettings
             // Canonical, so the file never keeps a name no tab answers to ("pinned" becomes "Pinned", a typo becomes "All").
             LastTab = ParseTab(LastTab).ToString(),
 
-            // Known names only, each once; "All" always stays, so it is never hidden (a hand-edited file cannot hide it).
+            // Known names only, each once (the hidden lists are worked out above).
             TabOrder = NormalizeTabNames(TabOrder),
-            HiddenTabs = NormalizeTabNames(HiddenTabs).Where(name => name != DefaultTab).ToArray(),
+            HiddenTabs = hiddenTabs,
+            HiddenTabRows = NormalizeTabNames(HiddenTabRows).Where(name => hiddenTabs.Contains(name)).ToArray(),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

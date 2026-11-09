@@ -268,12 +268,28 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// </remarks>
     public bool IsStoredHistoryView => !IsEverythingView && !IsShellView && !IsPromptView;
 
+    /// <summary>
+    /// The tabs hidden with their rows (right-click a tab › <i>Hide tab &amp; clipboard rows</i>), in a fixed order: every
+    /// list this panel loads leaves their entries out — except entries in a group (<see cref="ClipQuery.HiddenRows"/>) —
+    /// and the footer counts them ("· 37 hidden"). Empty while no tab hides its rows. Set by the panel
+    /// (<see cref="SetHiddenRows"/>), which owns the tabs' arrangement.
+    /// </summary>
+    public IReadOnlyList<ClipFilter> HiddenRows { get; private set; } = [];
+
+    /// <summary>
+    /// Sets the tabs hidden with their rows. The list shown is stale afterwards (they are part of its
+    /// <see cref="ViewKey"/>), so the caller reloads it while the panel shows; a hidden panel reloads at the next summon.
+    /// </summary>
+    /// <param name="tabs">The tabs; order and repeats do not matter (kept sorted and distinct, so the same set is the same key).</param>
+    public void SetHiddenRows(IEnumerable<ClipFilter> tabs) => HiddenRows = tabs.Distinct().Order().ToArray();
+
     /// <summary>Whether <see cref="LoadGroupsAsync"/> succeeded once (until then the cards show no group badges).</summary>
     public bool GroupsLoaded { get; private set; }
 
     /// <summary>The view a load is made for (see <see cref="IsListCurrent"/>).</summary>
     private ViewKey CurrentViewKey =>
-        new(SearchText, Filter, string.Join(",", GroupSelection.Ids), CurrentSearchOptions, controller.Settings.Current.PinnedOnTop);
+        new(SearchText, Filter, string.Join(",", GroupSelection.Ids), CurrentSearchOptions, controller.Settings.Current.PinnedOnTop,
+            string.Join(",", HiddenRows));
 
     /// <summary>
     /// Notes that the history changed (an entry added, updated, removed or reordered), whether or not the change was applied
@@ -921,6 +937,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             Filter = ClipFilter.Everything,
             Limit = EverythingTab.MaxStoredEntries,
             PinnedFirst = false, // the merge orders both sources together
+            HiddenRows = HiddenRows,
         }, cancellationToken);
 
         var picks = controller.Everything is { } everything
@@ -947,6 +964,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
         // Several groups are merged by the store: each item once, ordered like any other page.
         GroupIds = GroupSelection.IsEmpty ? null : GroupSelection.Ids,
+
+        // In every tab, group view and search: the rows of tabs hidden with them (grouped entries excepted, by the store).
+        HiddenRows = HiddenRows,
     };
 
     /// <summary>
@@ -1209,7 +1229,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return;
             }
 
-            var stats = await controller.History.GetStatsAsync();
+            var stats = await controller.History.GetStatsAsync(HiddenRows);
             if (Filter == ClipFilter.Run)
             {
                 // The number that matters here: how many commands are kept, against Windows' own 26.
@@ -1217,9 +1237,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return;
             }
 
-            StatusText = stats.PinnedCount > 0
+            var counts = stats.PinnedCount > 0
                 ? UiText.Plural(stats.Count, $"{stats.Count:N0} item · {stats.PinnedCount:N0} pinned", $"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned")
                 : UiText.Plural(stats.Count, $"{stats.Count:N0} item", $"{stats.Count:N0} items");
+
+            // Said while a tab's rows are hidden, so an entry that is not listed is not taken for one that was lost (the
+            // owner's choice, 2026-11-09). The total above still counts them.
+            StatusText = stats.HiddenCount > 0 ? counts + UiText.Format($" · {stats.HiddenCount:N0} hidden") : counts;
         }
         catch (Exception ex)
         {
@@ -1240,5 +1264,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// Whether pinned entries come first (<see cref="Core.Settings.AppSettings.PinnedOnTop"/>, read when the load starts):
     /// the same entries in another order are another list, and the row a load selects depends on it.
     /// </param>
-    private readonly record struct ViewKey(string Search, ClipFilter Filter, string Groups, SearchOptions Options, bool PinnedFirst);
+    /// <param name="HiddenRows">
+    /// The tabs hidden with their rows (<see cref="HiddenRows"/>), comma-separated: hiding or showing a tab's rows leaves
+    /// other entries in the list, so a list loaded before is stale, also in a hidden panel that waits for the next summon.
+    /// </param>
+    private readonly record struct ViewKey(string Search, ClipFilter Filter, string Groups, SearchOptions Options, bool PinnedFirst, string HiddenRows);
 }

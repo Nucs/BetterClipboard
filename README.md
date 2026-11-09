@@ -55,8 +55,9 @@ you send to Claude Code and Codex.
   only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were ([Use](#use)).
 - **A panel that fits you.** It opens in the tab you used last, also after a restart. Drag any empty spot to move it,
   and drag an edge to resize it: it opens at that size from then on. Tabs that don't fit scroll sideways with the ‹ ›
-  arrows, the mouse wheel or a drag. Right-click a tab to move it left or right or to hide it; *Show all hidden* brings
-  hidden tabs back, and your order is kept ([Tabs](#tabs)). The mouse selects the item it is over.
+  arrows, the mouse wheel or a drag. Right-click a tab to move it left or right, to hide it, or to hide it together
+  with its items in every list; *Show all hidden* brings them back, and your order is kept ([Tabs](#tabs)). The mouse
+  selects the item it is over.
 - **Pins and groups.** Pin what you reuse: pinned items are listed on top, and the panel still opens on your newest copy
   just below them, so `Win+V` `Enter` pastes what you copied last and `↑` reaches the pins. Make groups with your own
   icons, drag cards onto them, and show one group or several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group
@@ -245,7 +246,7 @@ desktop, the screen with the mouse).
 | `Ctrl+F` | Back to the search box |
 | `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
 | `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), delete, forget forever |
-| Right-click a tab (or `Menu` on a tab you clicked) | Tab menu: *Move left*, *Move right*, *Hide*, *Show all hidden*. A right-click on the tabs' empty space offers *Show all hidden* too (see [Tabs](#tabs)). |
+| Right-click a tab (or `Menu` on a tab you clicked) | Tab menu: *Move left*, *Move right*, *Hide tab*, *Hide tab & clipboard rows*, *Show all hidden*. A right-click on the tabs' empty space offers *Show all hidden* too (see [Tabs](#tabs)). |
 | `Esc` | Clear the search, then close — focus returns to where you were |
 | Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens where *Panel position* says again next time. |
 | Drag an edge | Resize the panel. It opens at that size from then on. |
@@ -310,10 +311,14 @@ and its tab goes away. [Tabs for other apps](#tabs-for-other-apps) tells what ea
 
 **Arrange the tabs** by right-clicking one:
 - *Move left* and *Move right* move it one place among the tabs you see. All always stays first and can't be moved.
-- *Hide* takes the tab out of the row. Only the tab goes: its switch in *Settings › Integrations* stays on, and
-  BetterClipboard keeps gathering for it. Hiding the tab you are in switches to All. All can't be hidden.
-- *Show all hidden* brings every hidden tab back, with how many there are. A right-click on the row's empty space
-  offers it too.
+- *Hide tab* takes the tab out of the row. Only the tab goes: its items still show in All and the other tabs, its
+  switch in *Settings › Integrations* stays on, and BetterClipboard keeps gathering for it. Hiding the tab you are in
+  switches to All. All can't be hidden.
+- *Hide tab & clipboard rows* also takes the tab's items out of every list: All, the other tabs, searches. Items you put
+  in a group stay where they show. The footer then says how many are hidden (`1,240 items · 37 hidden`). Nothing is
+  deleted, and `bclip` still lists them.
+- *Show all hidden* brings every hidden tab back, with how many there are, and the items hidden with them. A
+  right-click on the row's empty space offers it too.
 
 Your order and your hidden tabs are kept, also after a restart. `←` and `→` skip hidden tabs.
 

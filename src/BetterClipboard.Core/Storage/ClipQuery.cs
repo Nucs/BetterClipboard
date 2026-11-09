@@ -170,4 +170,16 @@ public sealed record ClipQuery
     /// ids are ignored.
     /// </remarks>
     public IReadOnlyList<long>? GroupIds { get; init; }
+
+    /// <summary>
+    /// Tabs whose entries are left out: the panel's tabs hidden with <i>Hide tab &amp; clipboard rows</i>
+    /// (<see cref="Settings.AppSettings.HiddenTabRows"/>). An entry any of these tabs lists is not returned — unless it is
+    /// in a group, which keeps it wherever it shows (the owner's choice, 2026-11-09). <see langword="null"/> or empty =
+    /// nothing left out. Combines with every other condition here.
+    /// </summary>
+    /// <remarks>
+    /// Each tab counts with exactly the filter it lists with, so a tab's rows are what its tab showed. <see cref="ClipFilter.All"/>
+    /// here leaves nothing out (it is never hidden). Only the panel sets this: the command line lists everything.
+    /// </remarks>
+    public IReadOnlyList<ClipFilter>? HiddenRows { get; init; }
 }

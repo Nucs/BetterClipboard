@@ -98,6 +98,7 @@ public sealed partial class FlyoutViewModel
             Filter = Filter,
             Limit = ShellTab.MaxStoredEntries,
             PinnedFirst = false, // the merge orders them
+            HiddenRows = HiddenRows,
         }, cancellationToken);
 
         var all = await controller.GetShellCommandsAsync(shell, cancellationToken);

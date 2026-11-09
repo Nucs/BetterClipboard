@@ -11,8 +11,9 @@ using Microsoft.UI.Xaml.Input;
 namespace BetterClipboard.App.Views;
 
 /// <summary>
-/// Arranging the filter tabs from their right-click menu — <i>Move left</i>, <i>Move right</i>, <i>Hide</i>, <i>Show all
-/// hidden</i> — kept in the settings (<see cref="AppSettings.TabOrder"/>, <see cref="AppSettings.HiddenTabs"/>).
+/// Arranging the filter tabs from their right-click menu — <i>Move left</i>, <i>Move right</i>, <i>Hide tab</i>, <i>Hide
+/// tab &amp; clipboard rows</i>, <i>Show all hidden</i> — kept in the settings (<see cref="AppSettings.TabOrder"/>,
+/// <see cref="AppSettings.HiddenTabs"/>, <see cref="AppSettings.HiddenTabRows"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,11 +23,17 @@ namespace BetterClipboard.App.Views;
 /// read once here before anything is rearranged (<see cref="defaultTabOrder"/>).
 /// </para>
 /// <para>
-/// <b>Hiding only takes a tab out of the row</b> (the owner's choice, 2026-11-08): what feeds the tab keeps working — the
+/// <b>Hiding takes a tab out of the row</b> (the owner's choice, 2026-11-08): what feeds the tab keeps working — the
 /// Settings switches of other apps' tabs stay on, so a tab shown again has everything. A tab shows when its own
 /// conditions hold (the <c>Update…Tab</c> methods, <see cref="SetTabVisible"/>) and the user did not hide it
 /// (<see cref="IsTabHidden"/>); <see cref="IsTabAvailable"/> applies the same, so a hidden tab is never the one a summon
 /// opens in, and the Left and Right keys skip it like any tab that does not show.
+/// </para>
+/// <para>
+/// <b><i>Hide tab &amp; clipboard rows</i> also takes the tab's entries out of the panel</b> (the owner's choices,
+/// 2026-11-09): every list it loads — All, the other tabs, group views, searches — leaves out what the hidden tab lists,
+/// except entries in a group, which stay wherever they show; the footer says how many are hidden. Nothing is deleted, and
+/// the command line still lists everything. <i>Show all hidden</i> brings the tabs and their rows back.
 /// </para>
 /// <para>
 /// <b>Rearranging the tabs moves the bar's own items</b> (<see cref="ApplyTabOrder"/>): the SelectorBar shows its
@@ -38,8 +45,8 @@ namespace BetterClipboard.App.Views;
 /// <para>
 /// <b>Where the menu opens:</b> a right-click (or a touch press-and-hold) on a tab, the Menu key or Shift+F10 while a tab
 /// has the keyboard focus (<see cref="Root_PreviewKeyDown"/>), and a right-click on the row's empty space, where only
-/// <i>Show all hidden</i> is offered. Items that cannot apply are grayed out: the moves at the ends and on "All",
-/// <i>Hide</i> on "All", <i>Show all hidden</i> while nothing is hidden (it says how many are).
+/// <i>Show all hidden</i> is offered. Items that cannot apply are grayed out: the moves at the ends and on "All", both
+/// hides on "All", <i>Show all hidden</i> while nothing is hidden (it says how many tabs are).
 /// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout
@@ -55,6 +62,13 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>The tabs the user took out of the row (<see cref="AppSettings.HiddenTabs"/>); never "All".</summary>
     private readonly HashSet<ClipFilter> hiddenTabs = [];
+
+    /// <summary>
+    /// The hidden tabs whose clipboard rows are hidden too (<see cref="AppSettings.HiddenTabRows"/>): always a subset of
+    /// <see cref="hiddenTabs"/>. The view model gets a copy (<see cref="ViewModels.FlyoutViewModel.SetHiddenRows"/>) whenever it
+    /// changes.
+    /// </summary>
+    private readonly HashSet<ClipFilter> hiddenRowTabs = [];
 
     /// <summary>
     /// Set while <see cref="ApplyTabOrder"/> moves the bar's items: the selection changes the bar reports meanwhile are
@@ -84,6 +98,18 @@ public sealed partial class ClipboardFlyout
             }
         }
 
+        // Only tabs that are hidden themselves (the settings keep it so; a hand edit cannot show a tab without its rows).
+        foreach (var name in settings.HiddenTabRows)
+        {
+            if (AppSettings.TryParseTab(name, out var filter) && hiddenTabs.Contains(filter))
+            {
+                hiddenRowTabs.Add(filter);
+            }
+        }
+
+        // Before the first load, so no list is ever loaded with the hidden rows in it.
+        ViewModel.SetHiddenRows(hiddenRowTabs);
+
         ApplyTabOrder(TabArrangement.Arrange(defaultTabOrder, settings.TabOrder));
         UpdateBuiltInTabs();
 
@@ -96,7 +122,7 @@ public sealed partial class ClipboardFlyout
         TabsScroller.RightTapped += TabsScroller_RightTapped;
     }
 
-    /// <summary>Whether the user hid a tab (right-click › <i>Hide</i>). "All" never is.</summary>
+    /// <summary>Whether the user hid a tab (right-click › <i>Hide tab</i>, or with its rows). "All" never is.</summary>
     /// <param name="filter">The tab's filter.</param>
     /// <returns><see langword="true"/> while the tab is hidden.</returns>
     private bool IsTabHidden(ClipFilter filter) => hiddenTabs.Contains(filter);
@@ -215,20 +241,33 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Takes a tab out of the row and saves that. When it is the tab shown, the panel goes to "All", which then also
-    /// becomes the tab the next summon opens in: leaving a tab by hiding it is the user's choice to be elsewhere.
+    /// Takes a tab out of the row — with <paramref name="withRows"/>, its entries out of every list too — and saves that.
+    /// When it is the tab shown, the panel goes to "All", which then also becomes the tab the next summon opens in: leaving
+    /// a tab by hiding it is the user's choice to be elsewhere.
     /// </summary>
-    /// <param name="tab">The tab (never "All": the menu grays <i>Hide</i> out there).</param>
-    private void HideTab(SelectorBarItem tab)
+    /// <param name="tab">The tab (never "All": the menu grays both hides out there).</param>
+    /// <param name="withRows">
+    /// <i>Hide tab &amp; clipboard rows</i>: the tab's entries leave the panel's lists as well (grouped ones excepted, see the
+    /// class remarks), and the shown list is reloaded without them.
+    /// </param>
+    private void HideTab(SelectorBarItem tab, bool withRows)
     {
         string name = TabName(tab);
         if (!TabArrangement.CanHide(name) || !AppSettings.TryParseTab(name, out var filter) || !hiddenTabs.Add(filter))
         {
-            return;
+            return; // the menu offers the hides only on tabs in the row, so a stale menu (the row changed under it) does nothing
         }
 
         bool wasShown = ViewModel.Filter == filter;
-        AppLog.Info($"Tabs: {name} hidden.");
+        if (withRows)
+        {
+            // Before the tabs change: when the hidden tab was the one shown, the switch to All below loads the list, and
+            // that load must already leave the rows out.
+            hiddenRowTabs.Add(filter);
+            ViewModel.SetHiddenRows(hiddenRowTabs);
+        }
+
+        AppLog.Info(withRows ? $"Tabs: {name} hidden with its rows." : $"Tabs: {name} hidden.");
         SaveTabArrangement();
 
         // Every tab's visibility follows the new set; the one hidden goes, and a selected one hands over to All.
@@ -238,11 +277,17 @@ public sealed partial class ClipboardFlyout
         {
             RememberTab(ClipFilter.All);
         }
+        else if (withRows)
+        {
+            // The tab shown stays, and its list loses the hidden rows now (no switch to All happened to reload it).
+            _ = ViewModel.ReloadAsync();
+        }
     }
 
     /// <summary>
-    /// Brings every hidden tab back and saves that. Each shows again where it stands in the order, as soon as its own
-    /// conditions hold (another app's tab still needs that app).
+    /// Brings every hidden tab back, and the rows of those hidden with their rows, and saves that. Each tab shows again where
+    /// it stands in the order, as soon as its own conditions hold (another app's tab still needs that app); the list shown
+    /// is reloaded with the rows that come back.
     /// </summary>
     private void ShowAllHiddenTabs()
     {
@@ -251,24 +296,34 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        AppLog.Info($"Tabs: {hiddenTabs.Count} hidden shown again.");
+        bool rowsComeBack = hiddenRowTabs.Count > 0;
+        AppLog.Info(rowsComeBack
+            ? $"Tabs: {hiddenTabs.Count} hidden shown again, {hiddenRowTabs.Count} of them with their rows."
+            : $"Tabs: {hiddenTabs.Count} hidden shown again.");
         hiddenTabs.Clear();
+        hiddenRowTabs.Clear();
+        ViewModel.SetHiddenRows(hiddenRowTabs);
         SaveTabArrangement();
         UpdateBuiltInTabs();
         UpdateSourceTabs();
+        if (rowsComeBack)
+        {
+            _ = ViewModel.ReloadAsync();
+        }
     }
 
     /// <summary>
-    /// Writes the order (empty while it is the default, <see cref="TabArrangement.ToStored"/>) and the hidden tabs to the
-    /// settings. A failed write is logged; the arrangement then lasts until the app closes.
+    /// Writes the order (empty while it is the default, <see cref="TabArrangement.ToStored"/>), the hidden tabs and the tabs
+    /// hidden with their rows to the settings. A failed write is logged; the arrangement then lasts until the app closes.
     /// </summary>
     private void SaveTabArrangement()
     {
         var order = TabArrangement.ToStored(tabOrder, defaultTabOrder);
         var hidden = tabOrder.Where(name => AppSettings.TryParseTab(name, out var filter) && hiddenTabs.Contains(filter)).ToArray();
+        var hiddenRows = tabOrder.Where(name => AppSettings.TryParseTab(name, out var filter) && hiddenRowTabs.Contains(filter)).ToArray();
         try
         {
-            controller.Settings.Update(s => s with { TabOrder = order, HiddenTabs = hidden });
+            controller.Settings.Update(s => s with { TabOrder = order, HiddenTabs = hidden, HiddenTabRows = hiddenRows });
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -314,9 +369,9 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Opens the tab menu: <i>Move left</i>, <i>Move right</i>, <i>Hide</i> for a tab, and <i>Show all hidden</i> — the
-    /// latter alone for the row's empty space. What cannot apply is grayed out rather than left out, so the menu keeps its
-    /// shape.
+    /// Opens the tab menu: <i>Move left</i>, <i>Move right</i>, <i>Hide tab</i>, <i>Hide tab &amp; clipboard rows</i> for a
+    /// tab, and <i>Show all hidden</i> — the latter alone for the row's empty space. What cannot apply is grayed out rather
+    /// than left out, so the menu keeps its shape.
     /// </summary>
     /// <param name="tab">The tab the menu is for, or <see langword="null"/> for the row's empty space.</param>
     /// <param name="target">Placement target.</param>
@@ -331,12 +386,18 @@ public sealed partial class ClipboardFlyout
             left.IsEnabled = TabArrangement.CanMove(tabOrder, name, toRight: false, IsTabShown);
             var right = MenuItem(UiText.Translate("Move right"), "\uE72A", null, () => MoveTab(tab, toRight: true));
             right.IsEnabled = TabArrangement.CanMove(tabOrder, name, toRight: true, IsTabShown);
-            var hide = MenuItem(UiText.Translate("Hide"), "\uED1A", null, () => HideTab(tab));
+            var hide = MenuItem(UiText.Translate("Hide tab"), "\uED1A", null, () => HideTab(tab, withRows: false));
             hide.IsEnabled = TabArrangement.CanHide(name);
+
+            // On every tab but "All" (the owner's choice, 2026-11-09): hiding Text or Images with their rows empties much of
+            // the panel, which is the user's call. The same glyph: it is a hide, and its label says how much.
+            var hideRows = MenuItem(UiText.Translate("Hide tab & clipboard rows"), "\uED1A", null, () => HideTab(tab, withRows: true));
+            hideRows.IsEnabled = TabArrangement.CanHide(name);
             menu.Items.Add(left);
             menu.Items.Add(right);
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(hide);
+            menu.Items.Add(hideRows);
         }
 
         // The count says how many come back; another app's tab among them shows only while that app is there.
