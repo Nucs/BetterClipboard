@@ -146,6 +146,43 @@ public sealed class CmdHistorySource : IAsyncDisposable
     }
 
     /// <summary>
+    /// Forgets the kept commands (Settings' <em>Delete stored…</em> on the Cmd card), in memory and in the store, while the
+    /// reading goes on. Each open window's last read is kept, so what the windows hold now is not kept again on the next
+    /// read; commands typed from now on are. The windows themselves are never touched: the tab still shows what they hold
+    /// while they are open.
+    /// </summary>
+    /// <remarks>
+    /// Without this, the list in memory would be written back at the next read (every 30 s), undoing a deletion made
+    /// through the store alone. Waits for a read in progress (the same gate), so a read cannot write the old list after it.
+    /// </remarks>
+    /// <returns>A task completing when forgotten; failures are logged, never thrown.</returns>
+    public async Task ForgetKeptAsync()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        await gate.WaitAsync();
+        try
+        {
+            kept = [];
+            await history.SetStateValueAsync(CmdHistory.KeptStateName, string.Empty);
+            AppLog.Info("The kept Command Prompt commands were deleted from Settings; open windows are read on.");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            AppLog.Warn($"Deleting the kept Command Prompt commands failed ({ex.GetType().Name}).");
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
     /// The Cmd tab's live commands: the kept list plus whatever open windows hold, newest first. Reads the windows
     /// first unless the last read is fresher than <see cref="FreshFor"/>.
     /// </summary>

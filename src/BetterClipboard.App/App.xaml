@@ -16,7 +16,98 @@
                 <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
             </ResourceDictionary.MergedDictionaries>
 
+            <!--
+              The colors of DangerButtonStyle (Settings' Delete stored… dialog, CLAUDE.md §2.43), per theme. One red in light
+              and dark (#C42B1C, Fluent's critical red in the light theme): white text on it reads at 5.9:1 in both, which the
+              dark theme's own critical brush (#FF99A4, a pink) would not. High contrast uses the system's highlight colors.
+            -->
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Default">
+                    <SolidColorBrush x:Key="DangerButtonBackground" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="DangerButtonBackgroundPointerOver" Color="#D13A2B" />
+                    <SolidColorBrush x:Key="DangerButtonBackgroundPressed" Color="#A8261A" />
+                    <SolidColorBrush x:Key="DangerButtonForeground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="DangerButtonForegroundPressed" Color="#E6FFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="DangerButtonBackground" Color="#C42B1C" />
+                    <SolidColorBrush x:Key="DangerButtonBackgroundPointerOver" Color="#B02618" />
+                    <SolidColorBrush x:Key="DangerButtonBackgroundPressed" Color="#9E2316" />
+                    <SolidColorBrush x:Key="DangerButtonForeground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="DangerButtonForegroundPressed" Color="#E6FFFFFF" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="DangerButtonBackground" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="DangerButtonBackgroundPointerOver" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="DangerButtonBackgroundPressed" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="DangerButtonForeground" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                    <SolidColorBrush x:Key="DangerButtonForegroundPressed" Color="{ThemeResource SystemColorHighlightTextColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
             <FontFamily x:Key="MonoFontFamily">Cascadia Mono, Cascadia Code, Consolas</FontFamily>
+
+            <!--
+              A button for a decision that deletes data (Settings' Delete stored… dialog: "Delete 34 items"): red, so it never
+              looks like the safe choice. WinUI's own Button template (2.3.9, DefaultButtonStyle) with the three color states
+              pointing at the Danger* brushes above; the disabled state keeps WinUI's own look. A whole template, not setters:
+              the default template's states would replace a red Background with the gray hover and pressed brushes.
+            -->
+            <Style x:Key="DangerButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+                <Setter Property="Background" Value="{ThemeResource DangerButtonBackground}" />
+                <Setter Property="Foreground" Value="{ThemeResource DangerButtonForeground}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource DangerButtonBackground}" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <ContentPresenter
+                                x:Name="ContentPresenter"
+                                Padding="{TemplateBinding Padding}"
+                                HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                AutomationProperties.AccessibilityView="Raw"
+                                Background="{TemplateBinding Background}"
+                                BackgroundSizing="{TemplateBinding BackgroundSizing}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                ContentTransitions="{TemplateBinding ContentTransitions}"
+                                CornerRadius="{TemplateBinding CornerRadius}"
+                                Foreground="{TemplateBinding Foreground}">
+                                <ContentPresenter.BackgroundTransition>
+                                    <BrushTransition Duration="0:0:0.083" />
+                                </ContentPresenter.BackgroundTransition>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Background" Value="{ThemeResource DangerButtonBackgroundPointerOver}" />
+                                                <Setter Target="ContentPresenter.BorderBrush" Value="{ThemeResource DangerButtonBackgroundPointerOver}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Background" Value="{ThemeResource DangerButtonBackgroundPressed}" />
+                                                <Setter Target="ContentPresenter.BorderBrush" Value="{ThemeResource DangerButtonBackgroundPressed}" />
+                                                <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource DangerButtonForegroundPressed}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Background" Value="{ThemeResource ButtonBackgroundDisabled}" />
+                                                <Setter Target="ContentPresenter.BorderBrush" Value="{ThemeResource ButtonBorderBrushDisabled}" />
+                                                <Setter Target="ContentPresenter.Foreground" Value="{ThemeResource ButtonForegroundDisabled}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </ContentPresenter>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
             <!-- Borderless square button hosting a single Fluent glyph (toolbar actions). -->
             <Style x:Key="IconButtonStyle" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
@@ -773,7 +864,8 @@
                                     FontSize="18"
                                     Glyph="{TemplateBinding Glyph}" />
                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                                    <TextBlock Text="{TemplateBinding Header}" TextWrapping="Wrap" />
+                                    <!--  Named, like the description, so Settings' search can highlight what matched (SettingsCard.ApplySearchHighlights).  -->
+                                    <TextBlock x:Name="HeaderText" Text="{TemplateBinding Header}" TextWrapping="Wrap" />
                                     <TextBlock
                                         x:Name="DescriptionText"
                                         Foreground="{ThemeResource TextFillColorSecondaryBrush}"

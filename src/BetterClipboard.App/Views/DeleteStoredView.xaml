@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The content of Settings' Delete stored… dialog (CLAUDE.md §2.43; ViewModel: DeleteStoredViewModel). The owner's choice
+  (2026-11-09, "Parts, counts, examples"): one bordered row per part with its checkbox, count and size, and its newest
+  examples (pictures as thumbnails, texts as one line each, "+N more"); then what is never touched, "Also turn off …", and
+  an error line. The dialog's own buttons (red "Delete N items", Cancel as the default) are set by the window.
+-->
+<UserControl
+    x:Class="BetterClipboard.App.Views.DeleteStoredView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:loc="using:BetterClipboard.App.Localization"
+    xmlns:vm="using:BetterClipboard.App.ViewModels">
+
+    <StackPanel MinWidth="460" Spacing="10">
+        <TextBlock
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            Text="{x:Bind ViewModel.Summary, Mode=OneWay}"
+            TextWrapping="Wrap"
+            Visibility="{x:Bind ViewModel.HasParts, Mode=OneWay}" />
+
+        <StackPanel
+            Orientation="Horizontal"
+            Spacing="10"
+            Visibility="{x:Bind ViewModel.IsLoading, Mode=OneWay}">
+            <ProgressRing
+                Width="20"
+                Height="20"
+                IsActive="{x:Bind ViewModel.IsLoading, Mode=OneWay}" />
+            <TextBlock VerticalAlignment="Center" Text="{loc:Tr Text='Reading what is stored…'}" />
+        </StackPanel>
+
+        <TextBlock
+            Text="{x:Bind ViewModel.EmptyText}"
+            TextWrapping="Wrap"
+            Visibility="{x:Bind ViewModel.IsEmpty, Mode=OneWay}" />
+
+        <!--  One bordered row per part; its examples are indented under the checkbox's box (28 DIPs), like its text.  -->
+        <ItemsControl IsTabStop="False" ItemsSource="{x:Bind ViewModel.Parts}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:StoredPartViewModel">
+                    <Border
+                        Margin="0,0,0,6"
+                        Padding="10,6,12,10"
+                        Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6">
+                        <StackPanel Spacing="6">
+                            <Grid ColumnSpacing="12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <!--  The label wraps: a CheckBox's own Content text would be cut off at the dialog's width.  -->
+                                <CheckBox
+                                    MinWidth="0"
+                                    AutomationProperties.Name="{x:Bind AccessibleName}"
+                                    IsChecked="{x:Bind IsSelected, Mode=TwoWay}">
+                                    <TextBlock Text="{x:Bind Label}" TextWrapping="Wrap" />
+                                </CheckBox>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{x:Bind Meta}" />
+                            </Grid>
+                            <ItemsControl
+                                Margin="28,0,0,0"
+                                IsTabStop="False"
+                                ItemsSource="{x:Bind Thumbnails}"
+                                Visibility="{x:Bind ThumbnailsVisibility}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StoredThumbnailViewModel">
+                                        <Border
+                                            Width="80"
+                                            Height="45"
+                                            Background="{ThemeResource SubtleFillColorSecondaryBrush}"
+                                            BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                                            BorderThickness="1"
+                                            CornerRadius="4">
+                                            <Image Source="{x:Bind Image, Mode=OneWay}" Stretch="UniformToFill" />
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <ItemsControl
+                                Margin="28,0,0,0"
+                                IsTabStop="False"
+                                ItemsSource="{x:Bind Lines}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:StoredLineViewModel">
+                                        <TextBlock
+                                            FontFamily="{x:Bind Font}"
+                                            MaxLines="1"
+                                            Style="{StaticResource CaptionTextBlockStyle}"
+                                            Text="{x:Bind Text}"
+                                            TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock
+                                Margin="28,0,0,0"
+                                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind More}"
+                                Visibility="{x:Bind MoreVisibility}" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!--  E946 = Info. What is never touched, and what comes back while the switch stays on.  -->
+        <Grid ColumnSpacing="8" Visibility="{x:Bind ViewModel.HasParts, Mode=OneWay}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <FontIcon
+                Margin="0,2,0,0"
+                VerticalAlignment="Top"
+                FontSize="14"
+                Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"
+                Glyph="&#xE946;" />
+            <TextBlock
+                Grid.Column="1"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="{x:Bind ViewModel.Note}"
+                TextWrapping="Wrap" />
+        </Grid>
+
+        <CheckBox IsChecked="{x:Bind ViewModel.TurnOff, Mode=TwoWay}" Visibility="{x:Bind TurnOffVisibility(ViewModel.HasParts), Mode=OneWay}">
+            <TextBlock Text="{x:Bind ViewModel.TurnOffLabel}" TextWrapping="Wrap" />
+        </CheckBox>
+
+        <TextBlock
+            Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+            Text="{x:Bind ViewModel.Error, Mode=OneWay}"
+            TextWrapping="Wrap"
+            Visibility="{x:Bind HasText(ViewModel.Error), Mode=OneWay}" />
+    </StackPanel>
+</UserControl>

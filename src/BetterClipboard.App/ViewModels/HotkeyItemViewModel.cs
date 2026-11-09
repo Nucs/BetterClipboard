@@ -10,8 +10,11 @@ namespace BetterClipboard.App.ViewModels;
 /// <param name="Text">The shortcut in canonical form (<c>Alt+Win+V</c>), or the raw text of an entry that is not a shortcut.</param>
 /// <param name="Status">A short sentence: registered, taken over with the keyboard hook, used by another app, or skipped.</param>
 /// <param name="IsActive">Whether pressing it opens the panel right now (a broken row shows its status in the critical color).</param>
-public sealed record HotkeyItemViewModel(string Text, string Status, bool IsActive)
+public sealed record HotkeyItemViewModel(string Text, string Status, bool IsActive) : ISearchableItem
 {
+    /// <summary>The shortcut and its state, for Settings' search ("win+v" finds the Shortcut card).</summary>
+    public IEnumerable<string> SearchTexts => [Text, Status];
+
     /// <summary>Whether the row's Remove button is enabled: never for the only shortcut (the panel would have no key).</summary>
     public bool CanRemove { get; init; }
 

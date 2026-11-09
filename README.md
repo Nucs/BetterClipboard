@@ -47,6 +47,8 @@ you send to Claude Code and Codex.
 
   The last eight are tabs for other apps. Each one has its own switch and is on by default, BetterClipboard only reads
   its source, and the tab of an app you don't have stays hidden ([Tabs for other apps](#tabs-for-other-apps)).
+  *Delete stored…* on each one's Settings card shows what BetterClipboard kept from it, part by part with examples,
+  and deletes what you tick; the other app's own files are never touched.
 - **Instant search** in any language, Hebrew, CJK and emoji included, with VS Code's toggles: match case (`Alt+C`),
   whole word (`Alt+W`) and regular expression (`Alt+E`) ([Search](#search)). Win+V has no search.
 - **Made for the keyboard.** `Enter` pastes into the app you came from and `Shift+Enter` pastes plain text. `↑` `↓`
@@ -91,6 +93,10 @@ you send to Claude Code and Codex.
   selected: one click on the green check and the whole app speaks it. *Settings › App › Language* changes it later:
   pick a language and press *Restart now*. Hebrew reads right to left inside the usual layout. What you copy, file
   names and the names you give groups are never translated.
+- **Settings you can search.** Type in the box at the top of Settings (`Ctrl+F`) and the page keeps only the settings
+  that match, in their places, with the matched letters highlighted. Any word on a setting counts — its title,
+  description, section, buttons and options — and so do initials ("rfe" for *Release from Explorer*) and typos
+  ("pasword"). `Esc` brings the whole page back where it was.
 - **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (next to the
   text cursor or the mouse, or in the middle of the main screen or of the screen you are typing on — with several
   monitors, at any scale), and a page that credits every app it works with and every component it ships, with their
@@ -262,7 +268,8 @@ without administrator rights type into it. BetterClipboard puts the item on the 
 tells you once (a notification) to press `Ctrl+V` yourself. The shortcut itself works over such windows when Win+V is
 released from Explorer (the installer's default).
 
-The tray icon opens the panel and Settings:
+The tray icon opens the panel and Settings. The search box at the top of Settings (`Ctrl+F`) filters the page as you
+type, typos included; `Esc` clears it. Its sections:
 
 - **Shortcut:** the keys that open the panel (add as many as you like: click the box and press them, or pick one from
   its menu of suggestions and shortcuts used before), where the panel opens (next to the text cursor, next to the mouse,
@@ -274,7 +281,9 @@ The tray icon opens the panel and Settings:
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
   remembers — including its pinned items.
 - **Integrations:** one switch for each tab of another app, two for Notepad++ (its unsaved tabs, and the files you
-  open in it) (see [Tabs for other apps](#tabs-for-other-apps)).
+  open in it), and on each card *Delete stored…*: a dialog that lists what BetterClipboard kept from that source, part
+  by part with counts, sizes and the newest examples, and deletes the parts you tick — optionally turning the switch
+  off first (see [Tabs for other apps](#tabs-for-other-apps)).
 - **App:** the interface language (Windows' or one you pick; *Restart now* next to the list applies it), start with
   Windows (for you alone, also when BetterClipboard was installed for every user), theme, the command line, the data
   folder.
@@ -485,6 +494,14 @@ has its own tab and its own switch in *Settings › Integrations*. All of them a
 you don't have stays hidden. BetterClipboard only reads these sources; it never changes their files or lists.
 [Privacy](#privacy) sums up what each one reads.
 
+**Deleting what a source left.** *Delete stored…* on each card opens a dialog that shows what BetterClipboard kept
+from that source, one part per row: how many, how large, and the newest examples (thumbnails for screenshots). The
+everyday parts are ticked; pinned and grouped items, and the lists of commands or picks you hid, are kept unless you
+tick them. Cancel is the default button, so `Enter` deletes nothing. The other app's files are never touched — ShareX's
+screenshots stay in ShareX's folders — and what you deleted is not imported again by the next catch-up, while new
+screenshots, runs and prompts are recorded as long as the switch is on (the dialog's *Also turn off* switches it off
+first). For Claude Code and Codex, whatever the agent still has is read again at once while the switch is on.
+
 <p align="center">
   <img src="docs/images/prompts.png" width="417" alt="The Claude tab of the panel: prompts sent to Claude Code in the Acme project, newest first, each with when it was sent; one was sent 2 times. Above them, the tabs are scrolled to Files, Snipping, Run, Pwsh, Cmd, Claude and Codex.">
 </p>
@@ -610,8 +627,8 @@ cleanup removes old prompts from its history.
   until you send it again.
 - **Kept apart:** prompts never appear under *All*, and they never count against your history's limits.
 - **Only yours:** Codex's subagents and `codex exec` runs are left out. Images are counted, not kept.
-- `bclip prompts` lists and searches them from a terminal. *Delete stored prompts…* in Settings deletes what
-  was kept.
+- `bclip prompts` lists and searches them from a terminal. *Delete stored…* on the card in Settings deletes what
+  was kept ([Deleting what a source left](#tabs-for-other-apps)).
 
 ## Command line for scripts and AI agents
 
@@ -779,7 +796,8 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
   and its sync between devices (*Clipboard history across your devices*) treat it the way you set them up in
   Windows (Microsoft's [privacy statement](https://privacy.microsoft.com/privacystatement) covers those).
 - **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored. *Settings › Clear
-  history* and *Delete stored prompts…* delete parts of it.
+  history*, and *Delete stored…* on each source's card in *Settings › Integrations*, delete parts of it; neither
+  touches the other apps' own files.
 
 ## Uninstall
 

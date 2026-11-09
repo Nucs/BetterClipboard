@@ -160,6 +160,10 @@ choice, confirmed 2026-11-09 ("Keep left-to-right"). The text carries its direct
   sentence that differs for one and for several is a plural string too. Never put a translated template around an
   English word passed in as a value: `$"{names} {isAre} released"` showed "is" inside Chinese text. Lists are joined
   with the catalog's `", "` (Chinese `、`) and `"{0} and {1}"`.
+- **Quotes around an inserted title.** A translated title can carry quote marks of its own (Russian «Ножницы» и
+  Win+PrtScn), so a template that puts quotes around `{0}` nests them: the Delete stored dialog once read
+  "Также выключить ««Ножницы» и Win+PrtScn»". Where a value may be such a title, use a colon instead
+  ("Также выключить: {0}"); the description says when.
 - **Text a component words in English for the log, shown translated.** Some reasons and statuses are made once, in
   English, by code that also logs them or prints them for the installer: why a shortcut cannot be used
   (`HotkeyGesture.ProblemTemplates`), a shortcut's state, why Everything was not trusted or how it and ShareX were found,
@@ -229,7 +233,8 @@ python tools/localization/catalog.py migrate
 - `describe` sets or replaces a string's description (a plural string by its other form).
 - `rename` changes a string's or a plural string's English everywhere (catalogs and XAML), keeping each translation and
   its description, and marking each translation for review. `remove` deletes a string no code uses any more (refused
-  while XAML still names it).
+  while XAML still names it), a plural string with every form any language gives it (Russian's `#few` and `#many`,
+  Hebrew's `#two`; until 2026-11-09 it left those behind).
 - `missing` is a translator's to-do list: the strings and forms a language lacks, each with its description, and its
   review marks.
 - `check` reports broken entries (exit 1): keys that are not their text, forms a language does not have, values English

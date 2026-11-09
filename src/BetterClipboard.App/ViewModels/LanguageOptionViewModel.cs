@@ -22,8 +22,14 @@ namespace BetterClipboard.App.ViewModels;
 /// for a language picked (the owner's choice, 2026-11-09).
 /// </para>
 /// </remarks>
-public sealed class LanguageOptionViewModel
+public sealed class LanguageOptionViewModel : ISearchableItem
 {
+    /// <summary>
+    /// The row's names, for Settings' search: "spanish" or "español" finds the Language card although its closed box shows
+    /// only the language in effect.
+    /// </summary>
+    public IEnumerable<string> SearchTexts => [Name, EnglishName, SelectedName];
+
     /// <summary>Creates the row of a shipped language.</summary>
     /// <param name="language">The language.</param>
     /// <exception cref="ArgumentNullException"><paramref name="language"/> is <see langword="null"/>.</exception>

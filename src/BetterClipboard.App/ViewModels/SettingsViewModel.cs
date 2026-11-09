@@ -1094,10 +1094,10 @@ public sealed partial class SettingsViewModel : ObservableObject
         RefreshHotkeyStatus();
     }
 
-    /// <summary>Formats a byte count (KB/MB/GB).</summary>
+    /// <summary>Formats a byte count (KB/MB/GB); shared with the Delete stored dialog, which shows the same sizes.</summary>
     /// <param name="bytes">Byte count.</param>
     /// <returns>The formatted size.</returns>
-    private static string FormatBytes(long bytes) => bytes switch
+    internal static string FormatBytes(long bytes) => bytes switch
     {
         < 1024 => $"{bytes} B",
         < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",

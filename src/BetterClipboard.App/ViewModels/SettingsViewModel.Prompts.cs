@@ -9,8 +9,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace BetterClipboard.App.ViewModels;
 
 /// <summary>
-/// The prompt archives' settings cards (Claude Code, Codex; CLAUDE.md §2.21): the two switches, their status lines and the
-/// "Delete stored prompts" actions. Status lines carry folders and counts, never a prompt.
+/// The prompt archives' settings cards (Claude Code, Codex; CLAUDE.md §2.21): the two switches and their status lines.
+/// Their <em>Delete stored…</em> is every integration's (SettingsViewModel.Stored.cs). Status lines carry folders and
+/// counts, never a prompt.
 /// </summary>
 public sealed partial class SettingsViewModel
 {
@@ -30,38 +31,11 @@ public sealed partial class SettingsViewModel
     [ObservableProperty]
     public partial string CodexPromptsStatus { get; set; } = string.Empty;
 
-    /// <summary>Whether Claude Code's archive holds prompts (enables its "Delete stored prompts…").</summary>
-    [ObservableProperty]
-    public partial bool HasClaudeCodePrompts { get; set; }
-
-    /// <summary>Whether Codex's archive holds prompts (enables its "Delete stored prompts…").</summary>
-    [ObservableProperty]
-    public partial bool HasCodexPrompts { get; set; }
-
-    /// <summary>Claude Code's archived prompts at the last refresh (the delete confirmation names the number).</summary>
-    public long ClaudeCodePromptCount { get; private set; }
-
-    /// <summary>Codex's archived prompts at the last refresh.</summary>
-    public long CodexPromptCount { get; private set; }
-
     /// <summary>Re-reads both archives' state into their status lines (counts are read on the pool).</summary>
     public void RefreshPromptsStatus()
     {
         _ = RefreshPromptStatusAsync(PromptAgent.ClaudeCode);
         _ = RefreshPromptStatusAsync(PromptAgent.Codex);
-    }
-
-    /// <summary>
-    /// "Delete stored prompts": deletes an agent's whole archive (the agent's own files are never touched). While its switch
-    /// is on, BetterClipboard imports what the agent still has right away — the confirmation says so.
-    /// </summary>
-    /// <param name="agent">The agent.</param>
-    /// <returns>How many prompts were deleted.</returns>
-    public async Task<int> DeleteStoredPromptsAsync(PromptAgent agent)
-    {
-        int deleted = await controller.ClearPromptsAsync(agent);
-        await RefreshPromptStatusAsync(agent);
-        return deleted;
     }
 
     /// <summary>Re-reads one agent's archive state into its status line.</summary>
@@ -78,14 +52,10 @@ public sealed partial class SettingsViewModel
             if (agent == PromptAgent.Codex)
             {
                 CodexPromptsStatus = status;
-                CodexPromptCount = stats.Sends;
-                HasCodexPrompts = stats.Sends > 0;
             }
             else
             {
                 ClaudeCodePromptsStatus = status;
-                ClaudeCodePromptCount = stats.Sends;
-                HasClaudeCodePrompts = stats.Sends > 0;
             }
         }
         catch (Exception ex)

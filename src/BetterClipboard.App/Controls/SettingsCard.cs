@@ -1,6 +1,9 @@
+using BetterClipboard.Core.Presentation;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 
 namespace BetterClipboard.App.Controls;
 
@@ -31,8 +34,21 @@ public sealed partial class SettingsCard : ContentControl
     public static readonly DependencyProperty FooterProperty =
         DependencyProperty.Register(nameof(Footer), typeof(object), typeof(SettingsCard), new PropertyMetadata(null, OnPartsChanged));
 
+    /// <summary>Identifies <see cref="Keywords"/>.</summary>
+    public static readonly DependencyProperty KeywordsProperty =
+        DependencyProperty.Register(nameof(Keywords), typeof(string), typeof(SettingsCard), new PropertyMetadata(string.Empty));
+
     private FrameworkElement? descriptionText;
     private FrameworkElement? footerPresenter;
+
+    /// <summary>The template's title text, highlighted by the search (<see cref="ApplySearchHighlights"/>).</summary>
+    private TextBlock? headerText;
+
+    /// <summary>
+    /// The highlights asked for last (title, description, color), kept so a card whose template is applied later — or
+    /// again, after a theme change — shows them too. <see langword="null"/> when nothing is highlighted.
+    /// </summary>
+    private (IReadOnlyList<TextSpan> Header, IReadOnlyList<TextSpan> Description, Brush Brush)? highlights;
 
     /// <summary>Card title.</summary>
     public string Header
@@ -62,14 +78,86 @@ public sealed partial class SettingsCard : ContentControl
         set => SetValue(FooterProperty, value);
     }
 
+    /// <summary>
+    /// Words people may type to find this setting that its own texts lack ("hotkey" for a shortcut), comma-separated, in
+    /// the interface language (a catalog string, so each language brings its own synonyms). Never shown: only Settings'
+    /// search reads them.
+    /// </summary>
+    public string Keywords
+    {
+        get => (string)GetValue(KeywordsProperty);
+        set => SetValue(KeywordsProperty, value);
+    }
+
     /// <summary>Grabs template parts and applies initial visibility.</summary>
     protected override void OnApplyTemplate()
     {
         base.OnApplyTemplate();
         descriptionText = GetTemplateChild("DescriptionText") as FrameworkElement;
         footerPresenter = GetTemplateChild("FooterPresenter") as FrameworkElement;
+        headerText = GetTemplateChild("HeaderText") as TextBlock;
         UpdateParts();
         NameContent();
+        PaintHighlights();
+    }
+
+    /// <summary>
+    /// Shows what Settings' search matched in the card's title and description (the owner's choice, 2026-11-09: matches
+    /// highlighted), or removes the highlights.
+    /// </summary>
+    /// <remarks>
+    /// The stretches are offsets into the texts as they are now (<see cref="SettingsSearch.Match"/> over
+    /// <see cref="Header"/> and <see cref="Description"/>); the window searches again whenever a status changes, so a
+    /// description that changed meanwhile gets new stretches. Stretches past the end of the text are dropped: a highlighter
+    /// with a range beyond its text throws.
+    /// </remarks>
+    /// <param name="header">Stretches of the title; empty for none.</param>
+    /// <param name="description">Stretches of the description; empty for none.</param>
+    /// <param name="brush">The highlight's background (a translucent accent, legible under text in both themes); <see langword="null"/> removes all highlights.</param>
+    public void ApplySearchHighlights(IReadOnlyList<TextSpan> header, IReadOnlyList<TextSpan> description, Brush? brush)
+    {
+        highlights = brush is null || (header.Count == 0 && description.Count == 0) ? null : (header, description, brush);
+        PaintHighlights();
+    }
+
+    /// <summary>Puts <see cref="highlights"/> on the template's text blocks (or clears them).</summary>
+    private void PaintHighlights()
+    {
+        Paint(headerText, highlights?.Header, highlights?.Brush);
+        Paint(descriptionText as TextBlock, highlights?.Description, highlights?.Brush);
+    }
+
+    /// <summary>Replaces a text block's highlighters with one that paints <paramref name="spans"/>.</summary>
+    /// <param name="block">The text block (nothing happens before the template is applied).</param>
+    /// <param name="spans">The stretches; <see langword="null"/> or empty clears.</param>
+    /// <param name="brush">The background.</param>
+    private static void Paint(TextBlock? block, IReadOnlyList<TextSpan>? spans, Brush? brush)
+    {
+        if (block is null)
+        {
+            return;
+        }
+
+        block.TextHighlighters.Clear();
+        int length = block.Text?.Length ?? 0;
+        if (spans is not { Count: > 0 } || brush is null || length == 0)
+        {
+            return;
+        }
+
+        var highlighter = new TextHighlighter { Background = brush };
+        foreach (var span in spans)
+        {
+            if (span.Start >= 0 && span.Length > 0 && span.Start + span.Length <= length)
+            {
+                highlighter.Ranges.Add(new TextRange { StartIndex = span.Start, Length = span.Length });
+            }
+        }
+
+        if (highlighter.Ranges.Count > 0)
+        {
+            block.TextHighlighters.Add(highlighter);
+        }
     }
 
     /// <summary>The card's action control was set or replaced: give it the card's title as its accessible name when it has none.</summary>

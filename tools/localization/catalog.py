@@ -672,11 +672,14 @@ def remove(english: str) -> int:
         print(f"{uses[0].relative_to(ROOT)} still names it; change it first", file=sys.stderr)
         return 2
     for tag, catalog in catalogs.items():
-        if any(k in catalog for k in keys) or any(m in keys for m in catalog.get(REVIEW, [])):
-            for key in keys:
+        # A language's own plural forms (Russian #few and #many, Hebrew #two) are not in en.json: find them by their family,
+        # or they would stay behind as forms of no English string (found 2026-11-09, removing a plural string).
+        own = keys | {k for k in catalog if not k.startswith("$") and (plural_parts(k) or ("", ""))[0] == english}
+        if any(k in catalog for k in own) or any(m in own for m in catalog.get(REVIEW, [])):
+            for key in own:
                 catalog.pop(key, None)
                 catalog.get(DESCRIPTIONS, {}).pop(key, None)
-            catalog[REVIEW] = [m for m in catalog.get(REVIEW, []) if m not in keys]
+            catalog[REVIEW] = [m for m in catalog.get(REVIEW, []) if m not in own]
             save(tag, catalog)
     print(f"removed {len(keys)} key(s)")
     return 0

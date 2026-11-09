@@ -87,6 +87,8 @@ public sealed partial class SettingsWindow : Window
         Closed += OnClosed;
         Activated += OnActivated;
         BuildHotkeyPresetsMenu();
+        InitializeSearch();
+        InitializeStoredRefresh();
 
         // The update dialog opens under its button (over it when there is no room below), left edges aligned: the card's
         // buttons sit at the card's left.
@@ -116,6 +118,9 @@ public sealed partial class SettingsWindow : Window
 
         // Also refreshes the stats line, which counts the forgotten items.
         _ = ViewModel.RefreshForgottenAsync();
+
+        // Which integration cards have anything to delete (one pass over the history, on the pool).
+        _ = ViewModel.RefreshStoredAsync();
         AppWindow.Show(true);
         Activate();
         ForegroundHelper.Activate(hwnd);
@@ -154,6 +159,8 @@ public sealed partial class SettingsWindow : Window
         controller.UpdateStatusChanged -= OnUpdateStatusChanged;
         controller.Settings.Changed -= OnSettingsChanged;
         Activated -= OnActivated;
+        CloseSearch();
+        storedRefresh?.Stop();
 
         // Closing the dialog also ends its own subscription to the update status.
         updateDialog.Hide();
@@ -349,53 +356,28 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Event data.</param>
     private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshRunHistoryStatus();
 
-    /// <summary>A shell tab was switched, PowerShell's file found or lost, or the Cmd tab kept new commands: refresh their cards.</summary>
+    /// <summary>
+    /// A shell tab was switched, PowerShell's file found or lost, or the Cmd tab kept new commands: refresh their cards, and
+    /// count again what they stored (their Delete stored… buttons).
+    /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
-    private void OnShellHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshShellHistoryStatus();
-
-    /// <summary>A prompt archive started, stopped, imported or stored prompts: refresh both prompt cards.</summary>
-    /// <param name="sender">Controller.</param>
-    /// <param name="agent">The agent whose archive changed (both cards are cheap to refresh).</param>
-    private void OnPromptsStatusChanged(object? sender, Core.Prompts.PromptAgent agent) => ViewModel.RefreshPromptsStatus();
-
-    /// <summary>"Delete stored prompts…" on the Claude Code card, after confirmation.</summary>
-    /// <param name="sender">Button.</param>
-    /// <param name="e">Click data.</param>
-    private void DeleteClaudeCodePrompts_Click(object sender, RoutedEventArgs e) => _ = DeleteStoredPromptsAsync(Core.Prompts.PromptAgent.ClaudeCode);
-
-    /// <summary>"Delete stored prompts…" on the Codex card, after confirmation.</summary>
-    /// <param name="sender">Button.</param>
-    /// <param name="e">Click data.</param>
-    private void DeleteCodexPrompts_Click(object sender, RoutedEventArgs e) => _ = DeleteStoredPromptsAsync(Core.Prompts.PromptAgent.Codex);
+    private void OnShellHistoryStatusChanged(object? sender, EventArgs e)
+    {
+        ViewModel.RefreshShellHistoryStatus();
+        ScheduleStoredRefresh();
+    }
 
     /// <summary>
-    /// Asks before deleting an agent's prompt archive — it cannot be undone, and prompts the agent has pruned meanwhile are
-    /// gone for good — and says what happens next while the switch is on (what the agent still has is read again).
+    /// A prompt archive started, stopped, imported or stored prompts: refresh both prompt cards, and count again what they
+    /// stored (their Delete stored… buttons).
     /// </summary>
-    /// <param name="agent">The agent.</param>
-    /// <returns>A task completing when done (never throws).</returns>
-    private async Task DeleteStoredPromptsAsync(Core.Prompts.PromptAgent agent)
+    /// <param name="sender">Controller.</param>
+    /// <param name="agent">The agent whose archive changed (both cards are cheap to refresh).</param>
+    private void OnPromptsStatusChanged(object? sender, Core.Prompts.PromptAgent agent)
     {
-        var name = Core.Prompts.PromptAgents.NameOf(agent);
-        long count = agent == Core.Prompts.PromptAgent.Codex ? ViewModel.CodexPromptCount : ViewModel.ClaudeCodePromptCount;
-        bool on = agent == Core.Prompts.PromptAgent.Codex ? ViewModel.KeepCodexPrompts : ViewModel.KeepClaudeCodePrompts;
-        try
-        {
-            if (await ConfirmAsync(
-                    UiText.Plural(count, $"Delete {count:N0} stored {name} prompt?", $"Delete {count:N0} stored {name} prompts?"),
-                    UiText.Format($"BetterClipboard's copy is deleted; {name}'s own files are not changed. Prompts {name} no longer has are gone for good.")
-                    + (on ? UiText.Format($" The switch is on, so what {name} still has is read again right away — turn it off first to keep them out.") : string.Empty),
-                    UiText.Translate("Delete")))
-            {
-                await ViewModel.DeleteStoredPromptsAsync(agent);
-            }
-        }
-        catch (Exception ex)
-        {
-            // async void's caller has nothing to catch it: a failure here must not crash the app.
-            Core.Diagnostics.AppLog.Warn($"Deleting the stored {name} prompts failed: {ex.Message}");
-        }
+        ViewModel.RefreshPromptsStatus();
+        ScheduleStoredRefresh();
     }
 
     /// <summary>
@@ -550,10 +532,14 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    /// <summary>History changed: refresh the counters.</summary>
+    /// <summary>History changed: refresh the counters, and soon what each integration card has to delete.</summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Change data.</param>
-    private void OnHistoryChanged(object? sender, ClipChangedEventArgs e) => _ = ViewModel.RefreshStatsAsync();
+    private void OnHistoryChanged(object? sender, ClipChangedEventArgs e)
+    {
+        _ = ViewModel.RefreshStatsAsync();
+        ScheduleStoredRefresh();
+    }
 
     /// <summary>Settings changed elsewhere (tray, flyout): mirror them and re-apply the theme.</summary>
     /// <param name="sender">Store.</param>

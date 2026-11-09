@@ -11,8 +11,11 @@ namespace BetterClipboard.App.ViewModels;
 /// <param name="Id">The list entry id for "Allow again".</param>
 /// <param name="Title">E.g. "Text · 23 characters".</param>
 /// <param name="Details">E.g. "From Chrome · forgotten 5 min ago · kept out 3 times, last just now".</param>
-public sealed record ForgottenItemViewModel(long Id, string Title, string Details)
+public sealed record ForgottenItemViewModel(long Id, string Title, string Details) : ISearchableItem
 {
+    /// <summary>The row's two lines, for Settings' search.</summary>
+    public IEnumerable<string> SearchTexts => [Title, Details];
+
     /// <summary>
     /// Accessible name of the row's button. Every row has an "Allow again" button, so the name says which
     /// item it is for — otherwise a screen reader (or UI Automation) sees a column of identical buttons.

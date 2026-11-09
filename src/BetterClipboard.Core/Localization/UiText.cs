@@ -279,6 +279,65 @@ public static class UiText
         return HashKeysByEnglish.TryGetValue(english, out string? key) && language.TryGet(key, out text) ? text : english;
     }
 
+    /// <summary>
+    /// The English text a string shown in the current language was translated from, so that a translated Settings page can
+    /// also be searched with the English words (a Chinese user who knows Windows' English "shortcut").
+    /// </summary>
+    /// <remarks>
+    /// Only whole catalog strings are known: a label, a title, a description. Text built from a template with values (a
+    /// status line with a path) has no English counterpart here. The reverse table is built once per language, on first
+    /// use; when two English strings share one translation, the first in the catalog's order is returned.
+    /// </remarks>
+    /// <param name="shown">The text as shown (a right-to-left translation with its embedding marks, as the catalog gives it).</param>
+    /// <returns>
+    /// The English text, or <see langword="null"/> when the interface is English, the text is not a whole catalog string, or
+    /// its English is the same text (a product name).
+    /// </returns>
+    public static string? EnglishOf(string? shown)
+    {
+        var language = Current;
+        if (string.IsNullOrEmpty(shown) || ReferenceEquals(language, EnglishLanguage))
+        {
+            return null;
+        }
+
+        var reverse = ReverseCatalogs.GetOrAdd(language, BuildReverseCatalog);
+        return reverse.TryGetValue(shown, out string? english) && !string.Equals(english, shown, StringComparison.Ordinal) ? english : null;
+    }
+
+    /// <summary>
+    /// Translation → English text, per language (<see cref="EnglishOf"/>). A handful of languages ship, each table is built
+    /// once, so the cache never grows past them.
+    /// </summary>
+    private static readonly ConcurrentDictionary<UiLanguage, IReadOnlyDictionary<string, string>> ReverseCatalogs = new();
+
+    /// <summary>
+    /// Builds a language's reverse table: each plain string's translation mapped to its English text (a hash key's English
+    /// read from the English catalog). Plural forms are left out: their translations carry placeholders, never shown as
+    /// such.
+    /// </summary>
+    /// <param name="language">The language.</param>
+    /// <returns>The table.</returns>
+    private static IReadOnlyDictionary<string, string> BuildReverseCatalog(UiLanguage language)
+    {
+        var reverse = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (key, value) in language.Strings)
+        {
+            if (TryParsePluralKey(key, out _, out _))
+            {
+                continue;
+            }
+
+            string? english = IsHashKey(key) ? (EnglishLanguage.TryGet(key, out string? text) ? text : null) : key;
+            if (english is not null)
+            {
+                reverse.TryAdd(value, english);
+            }
+        }
+
+        return reverse;
+    }
+
     /// <summary>Translates an interpolated UI template before formatting, so argument values are never translated.</summary>
     /// <param name="message">Application-owned interpolation; arguments can contain paths or user text.</param>
     /// <returns>The translated template formatted using the user's numeric and date culture.</returns>
