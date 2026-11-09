@@ -683,6 +683,7 @@
   "Windows clipboard": "Portapapeles de Windows",
   "Windows could not run it (error {0}).": "Windows no pudo ejecutarlo (error {0}).",
   "Windows keeps only your last 26 Win+R commands, in plain text. BetterClipboard keeps every one, encrypted, in a Run tab: each command shows up the moment you run it, and Ctrl+Enter runs it again. The first time, it imports the 26 Windows still remembers. Pause capturing, Ignored apps (add Win+R to skip them) and Forget forever apply. Windows' own list is never changed.": "Windows guarda solo tus últimos 26 comandos de Win+R, en texto sin cifrar. BetterClipboard los guarda todos, cifrados, en una pestaña Ejecutar: cada comando aparece en cuanto lo ejecutas, y Ctrl+Enter lo vuelve a ejecutar. La primera vez importa los 26 que Windows todavía recuerda. Se aplican Pausar la captura, Aplicaciones ignoradas (agrega Win+R para omitirlos) y Olvidar para siempre. La lista de Windows nunca se modifica.",
+  "Windows setting": "según Windows",
   "Windows' API definitions for .NET, which the Windows import and image decoding call.": "Las definiciones de las API de Windows para .NET, a las que llaman la importación desde Windows y la decodificación de imágenes.",
   "Windows' own clipboard history": "Historial del portapapeles de Windows",
   "Work": "Trabajo",

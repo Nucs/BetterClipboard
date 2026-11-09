@@ -697,6 +697,7 @@
   "Windows clipboard": "Буфер обмена Windows",
   "Windows could not run it (error {0}).": "Windows не удалось его запустить (ошибка {0}).",
   "Windows keeps only your last 26 Win+R commands, in plain text. BetterClipboard keeps every one, encrypted, in a Run tab: each command shows up the moment you run it, and Ctrl+Enter runs it again. The first time, it imports the 26 Windows still remembers. Pause capturing, Ignored apps (add Win+R to skip them) and Forget forever apply. Windows' own list is never changed.": "Windows хранит только 26 последних команд Win+R, открытым текстом. BetterClipboard хранит каждую, в зашифрованном виде, на вкладке «Выполнить»: команда появляется сразу после запуска, а Ctrl+Enter запускает её снова. В первый раз импортируются 26 команд, которые ещё помнит Windows. Действуют «Приостановить запись», «Игнорируемые приложения» (добавьте Win+R, чтобы пропускать их) и «Забыть навсегда». Собственный список Windows никогда не изменяется.",
+  "Windows setting": "как в Windows",
   "Windows' API definitions for .NET, which the Windows import and image decoding call.": "Определения API Windows для .NET, которые вызывают импорт из Windows и декодирование изображений.",
   "Windows' own clipboard history": "Журнал буфера обмена Windows",
   "Work": "Работа",

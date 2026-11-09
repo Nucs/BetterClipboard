@@ -684,6 +684,7 @@
   "Windows clipboard": "הלוח של Windows",
   "Windows could not run it (error {0}).": "Windows לא הצליח להפעיל אותו (שגיאה {0}).",
   "Windows keeps only your last 26 Win+R commands, in plain text. BetterClipboard keeps every one, encrypted, in a Run tab: each command shows up the moment you run it, and Ctrl+Enter runs it again. The first time, it imports the 26 Windows still remembers. Pause capturing, Ignored apps (add Win+R to skip them) and Forget forever apply. Windows' own list is never changed.": "Windows שומר רק את 26 פקודות Win+R האחרונות שלך, כטקסט גלוי. BetterClipboard שומר כל אחת מהן, מוצפנת, בכרטיסיית \"הפעלה\": כל פקודה מופיעה ברגע שמריצים אותה, ו-Ctrl+Enter מריץ אותה שוב. בפעם הראשונה הוא מייבא את 26 הפקודות ש-Windows עדיין זוכר. השהיית הקליטה, אפליקציות מוחרגות (אפשר להוסיף Win+R כדי לדלג עליהן) ושכח לצמיתות חלים. הרשימה של Windows עצמה אף פעם לא משתנה.",
+  "Windows setting": "לפי הגדרת Windows",
   "Windows' API definitions for .NET, which the Windows import and image decoding call.": "הגדרות ה-API של Windows עבור .NET, שהייבוא מ-Windows ופענוח התמונות קוראים להן.",
   "Windows' own clipboard history": "היסטוריית הלוח של Windows",
   "Work": "עבודה",

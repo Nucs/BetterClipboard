@@ -255,13 +255,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial bool IsLanguageRestartPending { get; set; }
 
     /// <summary>
-    /// The Language card's choices: "Use Windows setting" (with the language it picks now), then every language this
-    /// build ships with its flag and names (<see cref="UiText.Languages"/>): a new catalog appears here without code.
+    /// The Language card's choices: "Use Windows setting" (with the flag and name of the language it picks now), then
+    /// every language this build ships with its flag and names (<see cref="UiText.Languages"/>): a new catalog appears
+    /// here without code. While the Windows row is chosen, the closed box shows "🇺🇸 English · Windows setting".
     /// Built once per window, on the UI thread.
     /// </summary>
     public IReadOnlyList<LanguageOptionViewModel> LanguageOptions { get; } =
     [
-        new LanguageOptionViewModel(UiText.Translate("Use Windows setting"), UiText.MatchSystem(CultureInfo.CurrentUICulture.Name)),
+        new LanguageOptionViewModel(
+            UiText.Translate("Use Windows setting"),
+            UiText.MatchSystem(CultureInfo.CurrentUICulture.Name),
+            UiText.Translate("Windows setting")),
         .. UiText.Languages.Select(language => new LanguageOptionViewModel(language)),
     ];
 

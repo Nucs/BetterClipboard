@@ -658,6 +658,7 @@
   "Windows clipboard": "Windows 剪贴板",
   "Windows could not run it (error {0}).": "Windows 无法运行它（错误 {0}）。",
   "Windows keeps only your last 26 Win+R commands, in plain text. BetterClipboard keeps every one, encrypted, in a Run tab: each command shows up the moment you run it, and Ctrl+Enter runs it again. The first time, it imports the 26 Windows still remembers. Pause capturing, Ignored apps (add Win+R to skip them) and Forget forever apply. Windows' own list is never changed.": "Windows 仅以明文保留最近 26 条 Win+R 命令。BetterClipboard 将全部命令加密保存到“运行”标签页，执行后立即显示，Ctrl+Enter 可再次执行。首次启用时导入 Windows 仍保留的 26 条记录。暂停采集、忽略应用（添加 Win+R）和永久忘记规则同样适用。不会修改 Windows 自身的列表。",
+  "Windows setting": "跟随 Windows",
   "Windows' API definitions for .NET, which the Windows import and image decoding call.": "供 .NET 使用的 Windows API 定义，Windows 导入和图片解码会调用它们。",
   "Windows' own clipboard history": "Windows 自带的剪贴板历史",
   "Work": "工作",

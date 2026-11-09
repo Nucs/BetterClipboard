@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  One choice of Settings › App › Language (LanguageOptionView.xaml.cs fills it in): the flag, a name, and a dimmed
+  detail. In the open list the detail is the English name; in the closed box it is "· Windows setting" while
+  BetterClipboard follows Windows, and nothing for a language picked.
+
+  A Grid, not a StackPanel: the detail's column takes what is left and trims with an ellipsis. In the closed box the
+  room is finite (the card holds its content to 380 px, "Restart now" may stand beside the list), and a StackPanel would
+  let a long hint ("English · לפי הגדרת Windows") push the box's chevron past the card's edge. In the open list the room
+  is unbounded, so nothing is trimmed there.
+-->
+<UserControl
+    x:Class="BetterClipboard.App.Views.LanguageOptionView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Grid ColumnSpacing="10">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <!--  The flags are 3:2 SVGs (FlagImages): 24 x 16 is the size the old globe and flags shared, so rows stay aligned.  -->
+        <Image
+            x:Name="FlagImage"
+            Width="24"
+            Height="16"
+            VerticalAlignment="Center"
+            Stretch="Uniform" />
+        <TextBlock
+            x:Name="NameText"
+            Grid.Column="1"
+            VerticalAlignment="Center" />
+        <!--
+          UseFlowDirection: a TextBlock otherwise takes its direction from its first strong letter, and the closed box's
+          "· " + a Hebrew hint would become a right-to-left paragraph with the dot at its right end, away from the name.
+          Left to right, the dot comes first and the hint, embedded right to left by UiText, reads in its own order.
+        -->
+        <TextBlock
+            x:Name="DetailText"
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+            TextReadingOrder="UseFlowDirection"
+            TextTrimming="CharacterEllipsis" />
+    </Grid>
+</UserControl>

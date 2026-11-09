@@ -16,8 +16,10 @@ English row, and right-to-left text in the left-to-right windows came on 2026-11
   language selected. The heading switches to the language under the selection. A green check (or `Enter`, `Esc`, a
   double click, or closing the window) keeps the selection. The picker runs before any other window exists, so the
   whole app opens in that language at once.
-- **Settings › App › Language** changes it later: *Use Windows setting* (with the language it picks now) or any offered
-  language, each with its flag. The choice is saved at once; a **Restart now** button appears next to the list while
+- **Settings › App › Language** changes it later: *Use Windows setting* (with the flag and name of the language it picks
+  now) or any offered language, each with its flag. The closed box shows the language in effect with its flag, and a
+  dimmed "· Windows setting" after it while BetterClipboard follows Windows ("🇺🇸 English · Windows setting",
+  "🇨🇳 简体中文"). The choice is saved at once; a **Restart now** button appears next to the list while
   the chosen language differs from the one on screen, and restarts BetterClipboard (the new process waits for the old
   one, then opens Settings in the new language). Windows read their labels when they are built, so a restart is what
   applies a language everywhere at once.
