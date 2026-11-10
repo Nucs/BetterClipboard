@@ -71,6 +71,14 @@ public sealed class AgentPromptsIntegration : IAsyncDisposable
     /// <summary>Wakes the worker.</summary>
     private readonly AutoResetEvent wake = new(false);
 
+    /// <summary>
+    /// One <see cref="SetEnabledAsync"/> at a time. Two can overlap — Settings' <em>Delete stored…</em> stops the reader
+    /// for its deletion while "Also turn off" is still stopping it through the setting — and both then saw the worker
+    /// running: two stops of one worker, and "reading stopped" logged twice (the test desktop, 2026-11-09). Never
+    /// disposed: it holds no wait handle, and a call that waits on it while the integration is disposed must still wake.
+    /// </summary>
+    private readonly SemaphoreSlim toggling = new(1, 1);
+
     private readonly List<FileSystemWatcher> watchers = [];
     private bool reconcileRequested;
     private bool hotRequested;
@@ -141,7 +149,10 @@ public sealed class AgentPromptsIntegration : IAsyncDisposable
     /// stops it. Idempotent. Stopping keeps the archive and the checkpoints: on again catches up from where it stopped.
     /// </summary>
     /// <param name="enabled">Desired state.</param>
-    /// <returns>A task completing when applied (a running pass is stopped first); failures are logged, never thrown.</returns>
+    /// <returns>
+    /// A task completing when applied (a running pass is stopped first; a call made meanwhile waits for this one, then
+    /// finds the state it asks for and changes nothing); failures are logged, never thrown.
+    /// </returns>
     public async Task SetEnabledAsync(bool enabled)
     {
         if (disposed)
@@ -149,17 +160,30 @@ public sealed class AgentPromptsIntegration : IAsyncDisposable
             return;
         }
 
-        if (enabled && worker is null)
+        await toggling.WaitAsync();
+        try
         {
-            Start();
-        }
-        else if (!enabled && worker is not null)
-        {
-            await StopAsync();
-            AppLog.Info($"{PromptAgents.NameOf(Agent)} prompts: reading stopped (the stored prompts stay).");
-        }
+            if (disposed)
+            {
+                return; // disposed while this call waited: DisposeAsync stopped everything already
+            }
 
-        RaiseStatusChanged();
+            if (enabled && worker is null)
+            {
+                Start();
+            }
+            else if (!enabled && worker is not null)
+            {
+                await StopAsync();
+                AppLog.Info($"{PromptAgents.NameOf(Agent)} prompts: reading stopped (the stored prompts stay).");
+            }
+
+            RaiseStatusChanged();
+        }
+        finally
+        {
+            toggling.Release();
+        }
     }
 
     /// <summary>

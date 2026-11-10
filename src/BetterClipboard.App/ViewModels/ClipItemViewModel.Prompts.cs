@@ -30,7 +30,10 @@ public sealed partial class ClipItemViewModel
     /// <summary>"Claude Code prompt", "Codex slash command", … for a prompt card; <see langword="null"/> otherwise.</summary>
     private string? PromptLabel => (Prompt?.Agent, Entry.Origin) switch
     {
-        (PromptAgent agent, _) => $"{PromptAgents.NameOf(agent)} {(Prompt!.IsCommand ? "slash command" : "prompt")}",
+        // Two whole templates, not a word passed in: a language words "slash command" and "prompt" around the name its own way.
+        (PromptAgent agent, _) => Prompt!.IsCommand
+            ? UiText.Format($"{PromptAgents.NameOf(agent)} slash command")
+            : UiText.Format($"{PromptAgents.NameOf(agent)} prompt"),
         (null, ClipOrigin.ClaudeCode) => UiText.Format($"{PromptAgents.ClaudeCodeName} prompt"),
         (null, ClipOrigin.Codex) => UiText.Format($"{PromptAgents.CodexName} prompt"),
         _ => null,
@@ -90,15 +93,16 @@ public sealed partial class ClipItemViewModel
         parts.Add(RelativeTimeFormatter.Format(prompt.LastSentUtc, DateTimeOffset.UtcNow));
         if (prompt.Sends > 1)
         {
-            parts.Add(UiText.Format($"sent {prompt.Sends:N0} times"));
+            parts.Add(UiText.Plural(prompt.Sends, $"sent once", $"sent {prompt.Sends:N0} times"));
         }
 
         if (prompt.ImageCount > 0)
         {
-            parts.Add(prompt.ImageCount == 1 ? "1 image" : UiText.Format($"{prompt.ImageCount:N0} images"));
+            parts.Add(UiText.Plural(prompt.ImageCount, $"{prompt.ImageCount:N0} image", $"{prompt.ImageCount:N0} images"));
         }
 
-        return string.Join(" · ", parts);
+        // One line of pieces: in a right-to-left language it reads from the agent's name, at the right.
+        return UiText.JoinLine(" · ", parts);
     }
 
     /// <summary>The last folder of a project path ("BetterClipboard" for <c>K:\source\BetterClipboard</c>), or <see langword="null"/>.</summary>

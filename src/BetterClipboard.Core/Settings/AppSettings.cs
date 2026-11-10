@@ -3,6 +3,12 @@ using System.Text.Json.Serialization;
 namespace BetterClipboard.Core.Settings;
 
 /// <summary>Where the flyout appears when summoned.</summary>
+/// <remarks>
+/// Written to the settings file by name. Footgun: never add a member. A version that does not know a name throws while
+/// reading the file and sets the whole file aside as corrupt (<see cref="SettingsStore.Load"/>), losing every setting. A
+/// new choice gets a member of <see cref="AppSettings"/> of its own instead, the way
+/// <see cref="AppSettings.CenterOnMainScreen"/> refines <see cref="CenterScreen"/>.
+/// </remarks>
 [JsonConverter(typeof(JsonStringEnumConverter<FlyoutPlacement>))]
 public enum FlyoutPlacement
 {
@@ -12,7 +18,12 @@ public enum FlyoutPlacement
     /// <summary>Next to the mouse cursor.</summary>
     NearCursor = 1,
 
-    /// <summary>Centered on the monitor that holds the foreground window.</summary>
+    /// <summary>
+    /// Centered on a screen's work area: the screen the user is working on, or the main screen when
+    /// <see cref="AppSettings.CenterOnMainScreen"/> is on. The screen the user is working on is the one with the text
+    /// cursor, else the one showing most of the window they were in, else the one with the mouse (nothing active, the
+    /// desktop, the tray); <c>FlyoutPositioner.ChooseScreen</c> in BetterClipboard.Windows has the full rule.
+    /// </summary>
     CenterScreen = 2,
 }
 
@@ -41,8 +52,27 @@ public enum AppTheme
 /// </remarks>
 public sealed record AppSettings
 {
-    /// <summary>Interface language (system, en, or zh-Hans); missing values preserve the system-language default.</summary>
+    /// <summary>
+    /// Interface language: <c>system</c> (follow Windows) or a catalog's tag (<c>en</c>, <c>zh-Hans</c>, <c>ru</c>,
+    /// <c>es</c>, <c>he</c>); missing values preserve the system-language default.
+    /// </summary>
     public string InterfaceLanguage { get; init; } = "system";
+
+    /// <summary>
+    /// Whether the user has answered the language question: picked a language in the start's language picker (every way
+    /// it closes saves one) or changed Settings › App › Language. While it is <see langword="false"/> and
+    /// <see cref="InterfaceLanguage"/> names no language, every start shows the picker before any other window: a first
+    /// start, and equally a start after an update from a version that never asked (the owner's request, 2026-11-09).
+    /// See <c>Localization.LanguageChoice.ShouldAsk</c>.
+    /// </summary>
+    /// <remarks>
+    /// Its own member because "system" cannot tell "never asked" from "chose Use Windows setting". An administrator who
+    /// pre-seeds <c>settings.json</c> silences the picker with an explicit language, or with <c>"system"</c> and this
+    /// set to <see langword="true"/>. Footgun: a version that does not know this member drops it when it saves the
+    /// file (any version before 2026-11-09, 0.2.9 among them, which drops the language too); a user who then comes back
+    /// to a newer version with "system" is asked once more. An explicit language is never asked over.
+    /// </remarks>
+    public bool LanguageChosen { get; init; }
 
     /// <summary>
     /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).
@@ -193,7 +223,11 @@ public sealed record AppSettings
     /// <summary>Move an item to the top of history when it is pasted from the flyout.</summary>
     public bool MoveToTopOnPaste { get; init; } = true;
 
-    /// <summary>Show pinned items above everything else.</summary>
+    /// <summary>
+    /// Show pinned items above everything else. The panel still selects the newest copy, the first item below the pins
+    /// (<see cref="Presentation.PanelNavigation.ArmedRow{T}"/>): off, the list is in plain recency order and its top item is
+    /// the one selected.
+    /// </summary>
     public bool PinnedOnTop { get; init; } = true;
 
     /// <summary>
@@ -249,6 +283,63 @@ public sealed record AppSettings
     /// </summary>
     [JsonIgnore]
     public Storage.ClipFilter LastTabFilter => ParseTab(LastTab);
+
+    /// <summary>
+    /// The panel's tabs in the order the user arranged them (right-click a tab › <i>Move left</i> / <i>Move right</i>), as
+    /// the names of their <see cref="Storage.ClipFilter"/>s; empty while they stand in the panel's own order.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written whole after a move (every tab, also those not shown right now), and empty again once the order equals the
+    /// default (<see cref="Presentation.TabArrangement.ToStored"/>), so a later version's default order still reaches users
+    /// who never moved a tab. The panel completes the list with tabs it lacks and keeps "All" first
+    /// (<see cref="Presentation.TabArrangement.Arrange"/>), so any list here shows every tab once.
+    /// </para>
+    /// <para>
+    /// Names, read leniently like <see cref="LastTab"/> (<see cref="Normalize"/> keeps the known ones, spelled as their
+    /// filter, each once): a tab name a version does not know only drops that entry. Footgun: a version from before this
+    /// member drops it when it saves the file, and the tabs are back in their default order.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> TabOrder { get; init; } = [];
+
+    /// <summary>
+    /// The tabs the user took out of the row (right-click a tab › <i>Hide tab</i> or <i>Hide tab &amp; clipboard rows</i>;
+    /// <i>Show all hidden</i> empties the list), as <see cref="Storage.ClipFilter"/> names. Never "All": it always stays.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hiding only takes a tab out of the row (the owner's choice, 2026-11-08): what feeds a hidden tab keeps working — the
+    /// Settings switches of the tabs of other apps stay on, Command Prompt windows are still read, prompts still archived —
+    /// so a tab shown again has everything. A hidden tab is skipped by the Left and Right keys and by the moves; when it is
+    /// the tab the user last chose (<see cref="LastTab"/>), the panel opens in "All" until it is shown again.
+    /// </para>
+    /// <para>
+    /// Read leniently like <see cref="TabOrder"/>. Same footgun: a version from before this member drops it when it saves
+    /// the file, and every tab shows again.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> HiddenTabs { get; init; } = [];
+
+    /// <summary>
+    /// The hidden tabs whose clipboard rows are hidden too (right-click a tab › <i>Hide tab &amp; clipboard rows</i>; <i>Show
+    /// all hidden</i> empties it with <see cref="HiddenTabs"/>), as <see cref="Storage.ClipFilter"/> names: the entries such a
+    /// tab lists are left out of every list the panel shows (<see cref="Storage.ClipQuery.HiddenRows"/>), except entries
+    /// that are in a group.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Hidden, not removed</b> (the owner's choices, 2026-11-09): nothing is deleted or kept from being recorded, the
+    /// command line still lists every entry, and an entry the user put in a group stays wherever it shows — it was kept on
+    /// purpose. A pinned entry is hidden like any other.
+    /// </para>
+    /// <para>
+    /// Always a subset of <see cref="HiddenTabs"/> (<see cref="Normalize"/> drops a name whose tab shows): a tab in the row
+    /// never has its rows hidden. Read leniently like <see cref="TabOrder"/>. Footgun: a version from before this member
+    /// drops it when it saves the file, and the rows show again while their tabs stay hidden.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> HiddenTabRows { get; init; } = [];
 
     /// <summary>
     /// The panel search box's "Aa" toggle: words match only with the same upper and lower case
@@ -398,6 +489,30 @@ public sealed record AppSettings
     /// </remarks>
     public bool KeepCodexPrompts { get; init; } = true;
 
+    /// <summary>
+    /// Keep the text of Notepad++'s unsaved tabs ("new 3") in the history, updated as it changes, and show the panel's
+    /// Notepad++ tab (CLAUDE.md §2.41).
+    /// </summary>
+    /// <remarks>
+    /// On by default, like the other integrations: Notepad++ already keeps this text in plain files (its backup folder), the
+    /// encrypted copy adds no exposure and keeps what Notepad++ forgets when a tab is closed. Read only from Notepad++'s
+    /// own files, once a tab's text has rested (never on every 7-second save). A change that loses more than a fifth of the
+    /// text keeps the old version as its own entry (<see cref="Documents.TrackedDocumentRule"/>). Off stops reading and
+    /// forgets which entry belongs to which tab; the entries stay. "Ignored apps" matches "notepad++".
+    /// </remarks>
+    public bool KeepNotepadPlusPlusTabs { get; init; } = true;
+
+    /// <summary>
+    /// Record the full path of every file opened in Notepad++, as if it was copied: opening it again moves its one entry to
+    /// now (CLAUDE.md §2.41).
+    /// </summary>
+    /// <remarks>
+    /// On by default. Asks a running, signed Notepad++ through its plugin messages which documents it has open (reading paths
+    /// through a buffer BetterClipboard places in Notepad++'s process); nothing in Notepad++ changes. The files it restores
+    /// from its last session are not openings. Not for a Notepad++ running as administrator (Windows blocks the messages).
+    /// </remarks>
+    public bool RecordNotepadPlusPlusFiles { get; init; } = true;
+
     /// <summary>Process names (e.g. <c>KeePass</c>) whose copies are never recorded.</summary>
     /// <remarks>
     /// Starts out holding <see cref="KnownPasswordManagers.All"/>: <see cref="Normalize"/> merges every
@@ -420,8 +535,34 @@ public sealed record AppSettings
     /// </remarks>
     public IReadOnlyList<string> SeededIgnoredApps { get; init; } = [];
 
-    /// <summary>Where the flyout appears.</summary>
+    /// <summary>
+    /// Where the panel appears at every summon (Settings › Shortcut › Panel position): next to the text cursor (the
+    /// default, like Win+V), next to the mouse, or centered on a screen (<see cref="CenterOnMainScreen"/> says which).
+    /// </summary>
+    /// <remarks>
+    /// Only where a summon puts the panel: a panel the user dragged elsewhere is placed this way again at the next summon,
+    /// and its size is always <see cref="FlyoutWidth"/> × <see cref="FlyoutHeight"/>, shrunk to the chosen screen's work
+    /// area.
+    /// </remarks>
     public FlyoutPlacement Placement { get; init; } = FlyoutPlacement.NearCaret;
+
+    /// <summary>
+    /// With <see cref="Placement"/> <see cref="FlyoutPlacement.CenterScreen"/>: center the panel on the main screen (the
+    /// one Windows' display settings call the main display) instead of the screen the user is working on. Off by default;
+    /// the other placements ignore it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A member of its own, not a fourth <see cref="FlyoutPlacement"/> value, on purpose:</b> the placement is written
+    /// by name, and a name an older version does not know makes that version set the whole settings file aside as
+    /// corrupt. This way an older version reads <c>CenterScreen</c>, which it knows, and centers on the current screen.
+    /// </para>
+    /// <para>
+    /// Footgun: an older version that saves the settings file drops this member; the next newer version then centers on
+    /// the current screen until the main screen is chosen again.
+    /// </para>
+    /// </remarks>
+    public bool CenterOnMainScreen { get; init; }
 
     /// <summary>Theme of BetterClipboard's windows.</summary>
     public AppTheme Theme { get; init; } = AppTheme.System;
@@ -557,6 +698,37 @@ public sealed record AppSettings
     }
 
     /// <summary>
+    /// Reads a tab name as stored in <see cref="TabOrder"/>, <see cref="HiddenTabs"/> or <see cref="HiddenTabRows"/>: the name of a
+    /// <see cref="Storage.ClipFilter"/> member, ignoring case and surrounding spaces — and, unlike <see cref="ParseTab"/>,
+    /// tells an unknown name apart instead of reading it as "All".
+    /// </summary>
+    /// <remarks>
+    /// Names only, compared one by one, for the reason <see cref="ParseTab"/> gives: <see cref="Enum.TryParse{TEnum}(string,
+    /// bool, out TEnum)"/> would also accept numbers and comma-separated lists, which this app never writes.
+    /// </remarks>
+    /// <param name="name">The stored name; may be <see langword="null"/> or anything a hand-edited file holds.</param>
+    /// <param name="filter">The tab's filter; <see cref="Storage.ClipFilter.All"/> when the name is unknown.</param>
+    /// <returns><see langword="true"/> when the name is a tab's (never an exception).</returns>
+    public static bool TryParseTab(string? name, out Storage.ClipFilter filter)
+    {
+        var trimmed = name?.Trim();
+        if (!string.IsNullOrEmpty(trimmed))
+        {
+            foreach (var candidate in Enum.GetValues<Storage.ClipFilter>())
+            {
+                if (string.Equals(candidate.ToString(), trimmed, StringComparison.OrdinalIgnoreCase))
+                {
+                    filter = candidate;
+                    return true;
+                }
+            }
+        }
+
+        filter = Storage.ClipFilter.All;
+        return false;
+    }
+
+    /// <summary>
     /// Builds the normalized <see cref="HotkeyHistory"/>: the current shortcuts that are missing go first, then the history
     /// in its order, without blanks and repeats, capped at <see cref="MaxHotkeyHistory"/>.
     /// </summary>
@@ -591,6 +763,33 @@ public sealed record AppSettings
         }
 
         return merged.ToArray();
+    }
+
+    /// <summary>
+    /// Normalizes a stored list of tab names (<see cref="TabOrder"/>, <see cref="HiddenTabs"/>, <see cref="HiddenTabRows"/>):
+    /// every name a tab answers to,
+    /// spelled as its <see cref="Storage.ClipFilter"/>, in the stored order, each once.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent, since <see cref="Normalize"/> runs on every load and save. Names no tab answers to — a tab of a newer
+    /// version, a typo in a hand-edited file, a blank — are dropped rather than kept for later: a version that knows such a
+    /// tab puts it back in its default place (<see cref="Presentation.TabArrangement.Arrange"/>), so dropping costs at most
+    /// that tab's place, never a broken file.
+    /// </remarks>
+    /// <param name="names">The stored names (may be <see langword="null"/> or hold <see langword="null"/>, from a hand-edited file).</param>
+    /// <returns>The known names, canonical and distinct.</returns>
+    private static string[] NormalizeTabNames(IReadOnlyList<string>? names)
+    {
+        var result = new List<string>();
+        foreach (var name in names ?? [])
+        {
+            if (TryParseTab(name, out var filter) && !result.Contains(filter.ToString()))
+            {
+                result.Add(filter.ToString());
+            }
+        }
+
+        return result.ToArray();
     }
 
     /// <summary>Removes every whitespace character from a shortcut text, for <see cref="SameHotkeyText"/>.</summary>
@@ -639,6 +838,10 @@ public sealed record AppSettings
             }
         }
 
+        // "All" always stays, so it is never hidden (a hand-edited file cannot hide it); a tab's rows are hidden only while
+        // the tab itself is, so a tab in the row never misses rows of its own.
+        var hiddenTabs = NormalizeTabNames(HiddenTabs).Where(name => name != DefaultTab).ToArray();
+
         var normalized = this with
         {
             SchemaVersion = 1,
@@ -648,6 +851,11 @@ public sealed record AppSettings
 
             // Canonical, so the file never keeps a name no tab answers to ("pinned" becomes "Pinned", a typo becomes "All").
             LastTab = ParseTab(LastTab).ToString(),
+
+            // Known names only, each once (the hidden lists are worked out above).
+            TabOrder = NormalizeTabNames(TabOrder),
+            HiddenTabs = hiddenTabs,
+            HiddenTabRows = NormalizeTabNames(HiddenTabRows).Where(name => hiddenTabs.Contains(name)).ToArray(),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

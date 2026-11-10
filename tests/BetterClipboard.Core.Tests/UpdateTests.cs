@@ -357,16 +357,34 @@ public sealed class UpdateCatalogTests
         Assert.Equal(UpdateCatalog.ChecksumsFileName, offer.Checksums.Name);
     }
 
-    /// <summary>Nothing is offered to the newest version, to a newer development build, or from a list of pre-releases only.</summary>
+    /// <summary>
+    /// Nothing is offered to the newest version, to a newer release candidate, or from a list of pre-releases only. (A
+    /// newer development build is offered the latest release since 2026-11-08: the next test.)
+    /// </summary>
     /// <param name="current">The running version.</param>
     [Theory]
     [InlineData("0.2.7")]
-    [InlineData("0.2.8-dev.abc")]
+    [InlineData("0.2.8-rc.1")]
     [InlineData("1.0.0")]
     public void FindUpdate_OffersNothingWhenUpToDate(string current)
     {
         ReleaseInfo[] releases = [UpdateTestData.Release("0.2.7"), UpdateTestData.Release("0.2.6"), UpdateTestData.Release("0.3.0-rc.1"), UpdateTestData.Release("0.9.0", prerelease: true)];
         Assert.Null(UpdateCatalog.FindUpdate(UpdateTestData.Version(current), releases, "x64"));
+    }
+
+    /// <summary>
+    /// A development build is always offered the newest complete stable release, also when it is ahead of it (the owner's
+    /// rule of 2026-11-08: the way back to the official version); never a pre-release, and nothing from a list of
+    /// pre-releases only.
+    /// </summary>
+    [Fact]
+    public void FindUpdate_ADevelopmentBuildIsAlwaysOfferedTheLatestRelease()
+    {
+        ReleaseInfo[] releases = [UpdateTestData.Release("0.2.7"), UpdateTestData.Release("0.2.6"), UpdateTestData.Release("0.3.0-rc.1"), UpdateTestData.Release("0.9.0", prerelease: true)];
+        var offer = UpdateCatalog.FindUpdate(UpdateTestData.Version("0.2.8-dev.abc"), releases, "x64");
+        Assert.Equal("0.2.7", offer?.Release.Version.ToString());
+        Assert.Null(UpdateCatalog.FindUpdate(UpdateTestData.Version("0.2.8-dev.abc"), [UpdateTestData.Release("0.3.0-rc.1")], "x64"));
+        Assert.Equal("0.2.6", UpdateCatalog.FindUpdate(UpdateTestData.Version("0.2.8-dev.abc"), [UpdateTestData.Release("0.2.7", checksums: false), UpdateTestData.Release("0.2.6")], "x64")?.Release.Version.ToString());
     }
 
     /// <summary>A development build of a version is offered that version's release.</summary>

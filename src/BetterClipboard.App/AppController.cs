@@ -1,5 +1,6 @@
 using BetterClipboard.Core.Localization;
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using System.Security.Cryptography;
 using BetterClipboard.App.Views;
@@ -9,6 +10,7 @@ using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Everything;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Security;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
@@ -65,6 +67,13 @@ public sealed partial class AppController
     private TrayIcon? tray;
     private ClipboardFlyout? flyout;
     private SettingsWindow? settingsWindow;
+
+    /// <summary>
+    /// The first start's language picker while it is open (<see cref="AskForLanguageAsync"/>); <see langword="null"/>
+    /// otherwise. While it is open, every way to open the panel or Settings brings it to the front instead: those
+    /// windows would read their labels before the language is chosen. UI thread only.
+    /// </summary>
+    private LanguageWindow? languageWindow;
     private volatile CaptureRules rules = new();
     private ForegroundContext? pasteTarget;
 
@@ -148,8 +157,9 @@ public sealed partial class AppController
     public event EventHandler? EverythingStatusChanged;
 
     /// <summary>
-    /// Raised on the UI thread when the Win+R history watch started or stopped, Windows' list was read, or a run
-    /// was recorded (the flyout shows or hides its Run tab; Settings refreshes its status line).
+    /// Raised on the UI thread when the Win+R history watch started or stopped, Windows' list was read, a run was
+    /// recorded, or the history gained its first Win+R command or lost its last (the flyout shows or hides its Run tab;
+    /// Settings refreshes its status line).
     /// </summary>
     public event EventHandler? RunHistoryStatusChanged;
 
@@ -157,10 +167,12 @@ public sealed partial class AppController
     public AppPaths Paths => paths;
 
     /// <summary>Settings store (valid after <see cref="Start"/>).</summary>
-    public SettingsStore Settings => settings ?? throw new InvalidOperationException(UiText.Translate("Not started."));
+    /// <exception cref="InvalidOperationException">Read before <see cref="Start"/> (a bug; the message goes to the log, so it stays English).</exception>
+    public SettingsStore Settings => settings ?? throw new InvalidOperationException("Not started.");
 
     /// <summary>History service (valid after <see cref="Start"/>).</summary>
-    public ClipHistoryService History => history ?? throw new InvalidOperationException(UiText.Translate("Not started."));
+    /// <exception cref="InvalidOperationException">Read before <see cref="Start"/> (a bug; the message goes to the log, so it stays English).</exception>
+    public ClipHistoryService History => history ?? throw new InvalidOperationException("Not started.");
 
     /// <summary>
     /// How the encrypted history store was opened (store id, folder, migration/quarantine flags) — for the
@@ -211,10 +223,12 @@ public sealed partial class AppController
     public bool IsEverythingTabAvailable => Settings.Current.ShowEverythingTab && everything?.IsAvailable == true;
 
     /// <summary>
-    /// Whether the panel shows its Run tab: the <see cref="AppSettings.RecordRunHistory"/> setting. Unlike the ShareX
-    /// tab it does not wait for anything to be found — Win+R exists on every Windows.
+    /// Whether the panel shows its Run tab: the <see cref="AppSettings.RecordRunHistory"/> setting is on and the history
+    /// holds at least one command run with Win+R (<see cref="ClipHistoryService.HasRunHistory"/>) — an empty tab would only
+    /// take room in the strip. It appears with the first run (or the first import of Windows' list) and goes with the
+    /// last entry deleted; <see cref="RunHistoryStatusChanged"/> tells the panel either way.
     /// </summary>
-    public bool IsRunTabAvailable => settings?.Current.RecordRunHistory == true;
+    public bool IsRunTabAvailable => settings?.Current.RecordRunHistory == true && history?.HasRunHistory == true;
 
     /// <summary>Whether Windows' Win+R history is being watched right now (the setting on and started).</summary>
     public bool IsRunHistoryWatching => runHistory?.IsWatching == true;
@@ -249,12 +263,18 @@ public sealed partial class AppController
     {
         paths.EnsureCreated();
         AppLog.Initialize(paths.LogDirectory);
-        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}).");
+        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{(options.RestartAfter is null ? string.Empty : ", restarted from Settings")}).");
+
+        // Before the store is opened (which creates it): no history yet means the app's very first start in this folder.
+        // The language picker asks whenever no language was ever chosen (LanguageChoice.ShouldAsk); this only tells its
+        // log line a first start from a start after an update.
+        bool historyExisted = paths.HasHistory();
 
         settings = new SettingsStore(paths.SettingsPath);
         settings.Load();
         // Read the persisted selection before any view model or XAML markup resolves its labels.
         Core.Localization.UiText.Language = settings.Current.InterfaceLanguage;
+        ApplyLanguageToWindowsText(UiText.Current);
         rules = CaptureRules.FromSettings(settings.Current);
         settings.Changed += OnSettingsChanged;
 
@@ -263,6 +283,24 @@ public sealed partial class AppController
         history.Changed += (_, e) => ui.TryEnqueue(() => HistoryChanged?.Invoke(this, e));
         history.GroupsChanged += (_, _) => ui.TryEnqueue(() => GroupsChanged?.Invoke(this, EventArgs.Empty));
         history.ForgottenChanged += (_, _) => ui.TryEnqueue(() => ForgottenChanged?.Invoke(this, EventArgs.Empty));
+
+        // The Run and Snipping tabs show only with something in them: the worker tells when a tab got its first entry or
+        // lost its last (also right after it starts, for a history that has some), through each tab's own status event.
+        history.TabContentChanged += (_, tab) => ui.TryEnqueue(() =>
+        {
+            if (tab == ClipFilter.Run)
+            {
+                RunHistoryStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+            else if (tab == ClipFilter.Snipping)
+            {
+                SnippingStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+            else if (tab == ClipFilter.NotepadPlusPlus)
+            {
+                NotepadPlusPlusStatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+        });
         history.Start();
         _ = history.PruneAsync();
 
@@ -278,6 +316,10 @@ public sealed partial class AppController
         // Windows' own screenshots (the Snipping tab): the Screenshots folder is looked up on the pool, then watched
         // (AppController.Snipping.cs).
         StartSnipping();
+
+        // Notepad++ (its tab): the unsaved tabs from its own files, read once they rest; the files it opens, asked from a
+        // running Notepad++ (AppController.NotepadPlusPlus.cs).
+        StartNotepadPlusPlus();
 
         // Everything is only talked to while its tab is wanted; the first lookup (window, registry) runs on the pool.
         if (settings.Current.ShowEverythingTab)
@@ -323,11 +365,81 @@ public sealed partial class AppController
             _ = ImportWindowsHistoryAsync();
         }
 
+        // A start whose user never chose a language asks for it before any other window is built: a first start, and the
+        // first start after an update from a version that never asked. The panel and Settings read their labels when they
+        // are built, so waiting for the choice spares a restart. Capture, shortcuts and the tray already run meanwhile;
+        // a Win+V or a tray click brings the picker to the front.
+        if (LanguageChoice.ShouldAsk(settings.Current.LanguageChosen, settings.Current.InterfaceLanguage))
+        {
+            _ = AskForLanguageAsync(showSettingsAfter: !options.Background, afterUpdate: historyExisted);
+            return;
+        }
+
         // The panel is otherwise built on the first Win+V, and keys typed during those few hundred milliseconds went to the
         // app underneath: build and render it now, once the startup work has settled (ClipboardFlyout.WarmUp).
         _ = WarmUpFlyoutAsync();
 
         if (!options.Background)
+        {
+            ShowSettings();
+        }
+    }
+
+    /// <summary>
+    /// The language picker (<see cref="LanguageWindow"/>) of a start whose user never chose a language: shows it with the
+    /// language that fits Windows selected, saves the choice as an explicit language and marks the question answered
+    /// (<c>AppSettings.LanguageChosen</c>), applies it before any other window exists, then continues the startup that
+    /// waited for it (the panel's warm-up, and Settings for a start that shows it).
+    /// </summary>
+    /// <param name="showSettingsAfter">Whether this start opens Settings (a plain launch, such as the installer's).</param>
+    /// <param name="afterUpdate">
+    /// Whether a history existed before this start: the user already used BetterClipboard (a version that never asked, or
+    /// a start that closed with the picker open), so this is not the first start. Only the log line says it.
+    /// </param>
+    /// <returns>A task completing once startup continued; failures are logged, never thrown (the app then follows Windows' language).</returns>
+    private async Task AskForLanguageAsync(bool showSettingsAfter, bool afterUpdate)
+    {
+        try
+        {
+            var suggested = LanguageChoice.Suggest(CultureInfo.CurrentUICulture.Name);
+            languageWindow = new LanguageWindow(this, suggested);
+            languageWindow.Present();
+            var chosen = await languageWindow.Choice;
+            languageWindow = null;
+
+            // Closed by an exit from the tray: the tray and the settings are being disposed, so nothing is saved, and the
+            // question stays unanswered: the next start asks again.
+            if (exiting)
+            {
+                return;
+            }
+
+            // Applied before saving: the settings change below raises events that may word things already.
+            UiText.Language = chosen.Tag;
+            ApplyLanguageToWindowsText(chosen);
+            Settings.Update(s => s with { InterfaceLanguage = chosen.Tag, LanguageChosen = true });
+            AppLog.Info(afterUpdate
+                ? $"Interface language chosen at a start with a history already kept (an update from a version that did not ask, or an earlier start that closed without a choice): {chosen.Tag} (Windows suggested {suggested.Tag})."
+                : $"Interface language chosen at the first start: {chosen.Tag} (Windows suggested {suggested.Tag}).");
+
+            // The tray icon was made before the choice; word its tooltip again.
+            tray?.SetTooltip(TrayTooltip(Settings.Current));
+        }
+        catch (Exception ex)
+        {
+            // Never stuck behind a broken picker: continue in Windows' language. Nothing is saved, so the next start asks
+            // again.
+            languageWindow = null;
+            AppLog.Error("The language picker failed; the interface follows Windows' language.", ex);
+        }
+
+        if (exiting)
+        {
+            return;
+        }
+
+        _ = WarmUpFlyoutAsync();
+        if (showSettingsAfter)
         {
             ShowSettings();
         }
@@ -368,6 +480,14 @@ public sealed partial class AppController
             return;
         }
 
+        // The first start's language picker is still open: the panel would be built with its labels in a language not
+        // chosen yet. Bring the picker forward instead.
+        if (languageWindow is not null)
+        {
+            languageWindow.Present();
+            return;
+        }
+
         pasteTarget = context;
 
         // Everything may have started or exited since the last look; the tab follows when the refresh lands (ms).
@@ -381,7 +501,10 @@ public sealed partial class AppController
 
         // A Screenshots folder that did not exist may have been created by the first screenshot: look again (only then).
         RefreshSnippingIfWaiting();
-        EnsureFlyout().ShowAt(context, Settings.Current.Placement);
+
+        // One snapshot for both halves of the placement (where, and which screen when centered).
+        var settings = Settings.Current;
+        EnsureFlyout().ShowAt(context, settings.Placement, settings.CenterOnMainScreen);
     }
 
     /// <summary>Opens (or focuses) the settings window.</summary>
@@ -389,6 +512,14 @@ public sealed partial class AppController
     {
         if (exiting)
         {
+            return;
+        }
+
+        // Same as for the panel: Settings waits for the first start's language choice (the picker opens it afterwards on
+        // a plain launch).
+        if (languageWindow is not null)
+        {
+            languageWindow.Present();
             return;
         }
 
@@ -409,6 +540,9 @@ public sealed partial class AppController
 
         // Same for Everything: its card shows the install and the running state as of now.
         _ = everything?.RefreshAsync(forceInstallation: true);
+
+        // Same for Notepad++: a copy installed or started meanwhile shows in its cards at once.
+        RefreshNotepadPlusPlus();
     }
 
     /// <summary>
@@ -720,10 +854,13 @@ public sealed partial class AppController
             var importer = new WindowsHistoryImporter();
             var result = await Task.Run(() => importer.ReadAllAsync());
             int created = await History.ImportAsync(result.Captures);
-            var summary = UiText.Format($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows ") +
-                          UiText.Format($"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus)}; pinned on disk: {result.PinnedOnDisk}).");
-            AppLog.Info(summary);
-            return summary;
+
+            // The log stays English whatever the interface language (the developer reads it); the returned summary is
+            // shown in Settings, so it follows the interface language.
+            AppLog.Info($"Imported {created} new item{(created == 1 ? "" : "s")} from Windows " +
+                        $"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus, translate: false)}; pinned on disk: {result.PinnedOnDisk}).");
+            return UiText.Plural(created, $"Imported {created} new item from Windows ", $"Imported {created} new items from Windows ") +
+                   UiText.Format($"({result.Captures.Count} found; Win+V history: {Describe(result.HistoryStatus, translate: true)}; pinned on disk: {result.PinnedOnDisk}).");
         }
         catch (Exception ex)
         {
@@ -731,11 +868,12 @@ public sealed partial class AppController
             return UiText.Translate("Import failed: ") + ex.Message;
         }
 
-        static string Describe(string status) => status switch
+        // The state of Windows' own history in words: translated for Settings, English for the log.
+        static string Describe(string status, bool translate) => status switch
         {
-            "Success" => "read",
-            "ClipboardHistoryDisabled" => UiText.Translate("turned off in Windows"),
-            "AccessDenied" => UiText.Translate("access denied"),
+            "Success" => translate ? UiText.Translate("read") : "read",
+            "ClipboardHistoryDisabled" => translate ? UiText.Translate("turned off in Windows") : "turned off in Windows",
+            "AccessDenied" => translate ? UiText.Translate("access denied") : "access denied",
             _ => status,
         };
     }
@@ -781,6 +919,53 @@ public sealed partial class AppController
         Process.Start(new ProcessStartInfo("explorer.exe", $"\"{paths.DataDirectory}\"") { UseShellExecute = true })?.Dispose();
 
     /// <summary>
+    /// Restarts BetterClipboard: Settings' <em>Restart now</em>, after the interface language changed (XAML words a window
+    /// once, when it is built, so a new language needs new windows). Starts a new process that waits for this one
+    /// (<see cref="StartupOptions.RestartSwitch"/>), then exits this one the usual way, queued captures drained. The new
+    /// process opens Settings, in the new language.
+    /// </summary>
+    /// <returns>
+    /// Whether the new process started. When it did not, this one keeps running and the failure is logged: a restart that
+    /// left no BetterClipboard behind would silently stop recording copies.
+    /// </returns>
+    /// <remarks>
+    /// Capture pauses for the second or two between the two processes: a copy made in that moment is not recorded (it is
+    /// still on the clipboard, and Windows' own history has it).
+    /// </remarks>
+    public async Task<bool> RestartAsync()
+    {
+        if (exiting)
+        {
+            return false;
+        }
+
+        try
+        {
+            using var self = Process.GetCurrentProcess();
+            var target = new RestartTarget(self.Id, self.StartTime.ToUniversalTime().Ticks);
+
+            // ShellExecute, so the new process inherits none of this one's handles (a script that redirected this one's
+            // output must not wait for the restarted app); it still inherits this process's environment, so an isolated
+            // instance (BETTERCLIPBOARD_DATA_DIR) comes back as itself, and its rights.
+            var start = new ProcessStartInfo(ExecutablePath, $"{StartupOptions.RestartSwitch} {target.ToArgument()}")
+            {
+                UseShellExecute = true,
+                WorkingDirectory = AppContext.BaseDirectory,
+            };
+            Process.Start(start)?.Dispose();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            AppLog.Error("Restarting failed: the new BetterClipboard process did not start, so this one keeps running.", ex);
+            return false;
+        }
+
+        AppLog.Info("Restarting (Settings' Restart now).");
+        await ExitAsync();
+        return true;
+    }
+
+    /// <summary>
     /// Stops everything (draining queued captures) and ends the process.
     /// </summary>
     /// <returns>A task completing just before the app exits.</returns>
@@ -813,6 +998,9 @@ public sealed partial class AppController
         // Same for the Screenshots folder watch (the Snipping tab).
         await DisposeSnippingAsync();
 
+        // Same for Notepad++: a tab's version must only be recorded while the history runs (the next start catches up).
+        await DisposeNotepadPlusPlusAsync();
+
         // Same for the Win+R watch: its snapshot must only move past runs that were really stored, and a rescan
         // in flight is cancelled (the next start finds those runs again).
         if (runHistory is not null)
@@ -838,6 +1026,9 @@ public sealed partial class AppController
 
         flyout?.CloseForExit();
         settingsWindow?.Close();
+
+        // An exit from the tray while the first start's picker is open closes it, which keeps its selected language.
+        languageWindow?.Close();
         AppLog.Shutdown();
         Application.Current.Exit();
     }
@@ -878,7 +1069,7 @@ public sealed partial class AppController
 
             // Ids and flags only — never the key, the binding or the identifiers they come from.
             AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
-                        UiText.Format($"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext})."));
+                        $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
             if (opened.QuarantinedDirectory is not null)
             {
                 AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
@@ -984,6 +1175,13 @@ public sealed partial class AppController
             if (!exiting)
             {
                 await ApplyPromptSettingsAsync(next);
+            }
+
+            // Idempotent too: Notepad++'s tabs start (first activation: an import) or stop (forgetting which entry is which
+            // tab), and the opened-files watch starts or stops; the Notepad++ tab follows.
+            if (!exiting)
+            {
+                await ApplyNotepadPlusPlusSettingsAsync(next);
             }
 
             if (next.ShowEverythingTab != (everything is not null) && !exiting)
@@ -1175,9 +1373,10 @@ public sealed partial class AppController
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
-                    // FirstPipeInstance failed: someone else holds the name. Never share it.
+                    // FirstPipeInstance failed: someone else holds the name. Never share it. Settings shows the error in the
+                    // interface language; the log keeps it in English.
                     CommandLineError = UiText.Format($"The bclip pipe is already in use by another program ({ex.Message}).");
-                    AppLog.Warn(CommandLineError);
+                    AppLog.Warn($"The bclip pipe is already in use by another program ({ex.Message}).");
                     await server.DisposeAsync();
                 }
             }
@@ -1216,9 +1415,10 @@ public sealed partial class AppController
 
         // Only while an update waits that the user did not skip: the same condition that highlights the panel's update
         // button, so the menu never nags about a version they chose to pass over. The snapshot is safe to read here.
-        if (UpdateStatus is { IsInstalling: false, IsSkipped: false, Offer: { } offer })
+        if (UpdateStatus is { IsInstalling: false, IsSkipped: false, Offer: not null } waiting)
         {
-            items.Add(new TrayMenuItem(UiText.Format($"Update to {offer.Release.Version}…"), () => ui.TryEnqueue(ShowUpdate)));
+            // "Install 0.2.9…" when the offer is the way back from a development build: "Update to" an older version misleads.
+            items.Add(new TrayMenuItem(UpdateText.OfferAction(waiting), () => ui.TryEnqueue(ShowUpdate)));
         }
 
         items.Add(TrayMenuItem.Separator);
@@ -1228,9 +1428,47 @@ public sealed partial class AppController
         return items;
     }
 
+    /// <summary>
+    /// Makes the text WinUI words itself — a text box's Cut, Copy and Paste, the parts of its controls BetterClipboard
+    /// never names — speak the interface language too, not Windows' display language: the process's preferred UI
+    /// languages pick WinUI's <c>.mui</c> files (<see cref="ProcessLanguages"/>), and the Windows App SDK's language
+    /// override picks the controls' resources.
+    /// </summary>
+    /// <remarks>
+    /// Called before any window is built (settings read at start, or the first start's language picker), because text
+    /// WinUI has already loaded keeps its language: like the interface itself, a change in Settings shows after a
+    /// restart. Failures only leave that text in Windows' language, so they are logged and nothing else.
+    /// </remarks>
+    /// <param name="language">The interface language in effect.</param>
+    private static void ApplyLanguageToWindowsText(UiLanguage language)
+    {
+        var names = language.WindowsLanguageNames;
+        if (names.Count == 0)
+        {
+            return;
+        }
+
+        if (!ProcessLanguages.TryPrefer(names, out int error))
+        {
+            AppLog.Warn($"Windows did not take the interface language {language.Tag} for WinUI's own text (error {error}).");
+        }
+
+        try
+        {
+            Microsoft.Windows.Globalization.ApplicationLanguages.PrimaryLanguageOverride = names[0];
+        }
+        catch (Exception ex)
+        {
+            // The override is the Windows App SDK's; an unpackaged app that cannot set it still has the .mui choice above.
+            AppLog.Warn($"Setting the Windows App SDK's language override to {names[0]} failed: {ex.Message}");
+        }
+
+        AppLog.Info($"Interface language: {language.Tag} (WinUI's own text: {string.Join(", ", names)}).");
+    }
+
     /// <summary>Tray hover text reflecting capture state and shortcut.</summary>
     /// <param name="current">Current settings.</param>
     /// <returns>The tooltip.</returns>
     private string TrayTooltip(AppSettings current) =>
-        current.IsCapturePaused ? "BetterClipboard — paused" : UiText.Format($"BetterClipboard — {current.OpenHotkey} to open");
+        current.IsCapturePaused ? UiText.Translate("BetterClipboard — paused") : UiText.Format($"BetterClipboard — {current.OpenHotkey} to open");
 }

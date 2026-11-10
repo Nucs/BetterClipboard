@@ -1,4 +1,3 @@
-using BetterClipboard.Core.Localization;
 using System.Diagnostics;
 using BetterClipboard.App.Interop;
 using BetterClipboard.Core.Diagnostics;
@@ -31,7 +30,8 @@ namespace BetterClipboard.App.Views;
 /// </para>
 /// <para>
 /// <b>Preparing</b> (<see cref="PrepareForNextSummon"/>, right after concealing): reset the view a summon shows (search
-/// empty, the tab the user last chose, no group, the strip showing that tab), and reload the list if it is not current.
+/// empty, the tab the user last chose, no group, the strip showing that tab, the newest copy selected with the list at its
+/// top), and reload the list if it is not current.
 /// Whenever the history changes while the panel is concealed, the list is refreshed again
 /// (<see cref="ScheduleConcealedRefresh"/>, at low priority, so a burst of changes costs one refresh). Reloads patch the
 /// list instead of rebuilding it (<c>FlyoutViewModel.ApplyEntries</c>), so a refresh after a copy only adds that copy's card.
@@ -44,8 +44,10 @@ namespace BetterClipboard.App.Views;
 /// just sent is already there when the panel appears.
 /// </para>
 /// <para>
-/// <b>Presenting</b> (<see cref="PresentAsync"/>): move the window to the caret, activate it, uncloak it. A new size (another
-/// monitor scale, the groups column) waits for one rendered frame first, so DWM never shows the old picture stretched.
+/// <b>Presenting</b> (<see cref="PresentAsync"/>): move the window where the placement setting puts it (the caret by
+/// default, ClipboardFlyout.Placement.cs) — at exactly the bounds asked for, also on a monitor with another scale — activate
+/// it, uncloak it. A new size (another monitor scale, the groups column) waits for one rendered frame first, so DWM never
+/// shows the old picture stretched.
 /// </para>
 /// <para>
 /// <b>Fallbacks.</b> If DWM refuses to cloak the window (<see cref="cloaking"/> false), the panel hides and shows like any
@@ -122,8 +124,8 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Sets the concealed panel to what the next summon shows — the regular view with an empty search, the tab the user
     /// last chose (<see cref="ResetViewForShow"/>), the tab strip showing that tab, the groups column as remembered, the
-    /// first card selected at the top of the list — and reloads the list if it is not current. <see cref="ShowAt"/> repeats
-    /// the resets, which are then no-ops, so nothing changes on screen.
+    /// newest copy selected with the list at its top (<see cref="ResetListPosition"/>) — and reloads the list if it is not
+    /// current. <see cref="ShowAt"/> repeats the resets, which are then no-ops, so nothing changes on screen.
     /// </summary>
     private void PrepareForNextSummon()
     {
@@ -182,7 +184,7 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Reloads the list while the panel is concealed, unless it is current already or a summon came first (which reloads by
-    /// itself), then puts the first card at the top, selected.
+    /// itself), then selects the newest copy with the list at its top (<see cref="ResetListPosition"/>).
     /// </summary>
     /// <returns>A task completing when the list is current; it never throws (<c>ReloadAsync</c> logs its own failures).</returns>
     private async Task RefreshConcealedListAsync()
@@ -199,11 +201,21 @@ public sealed partial class ClipboardFlyout
         }
     }
 
-    /// <summary>Selects the first card and scrolls the list to its top, without animation (the concealed list, for the next summon).</summary>
+    /// <summary>
+    /// Selects the armed card — the newest copy, below the pinned cards while they are listed first — and scrolls the list
+    /// to its top, without animation: the concealed list, for the next summon, and the summon itself once its list is in.
+    /// </summary>
+    /// <remarks>
+    /// Below pinned cards, <see cref="ArmCard"/> scrolls by itself: to the top, or just low enough to show the armed card
+    /// whole when the pins fill the top's view. A plain scroll to the top afterwards would undo the latter, so it follows only
+    /// when the armed card is the top card (or the list is empty).
+    /// </remarks>
     private void ResetListPosition()
     {
-        SelectIndex(0);
-        scrollViewer?.ChangeView(null, 0, null, disableAnimation: true);
+        if (!ArmCard())
+        {
+            scrollViewer?.ChangeView(null, 0, null, disableAnimation: true);
+        }
     }
 
     /// <summary>
@@ -229,13 +241,16 @@ public sealed partial class ClipboardFlyout
     {
         var sizeBefore = AppWindow.Size;
         bool wasShown = AppWindow.IsVisible;
-        AppWindow.MoveAndResize(rect);
+
+        // Exactly the bounds asked for: a move onto a monitor with another scale makes WinUI rescale the window a second
+        // time (ClipboardFlyout.Placement.cs has the measurements), and the panel would open 25 % too large or 20 % too small.
+        MoveAndResizeExactly(rect);
         if (!wasShown)
         {
             // Never shown yet (a summon before the warm-up), or hidden by the fallback path: show it — still cloaked when
             // cloaking — and re-apply the bounds, since a monitor with another DPI may have rescaled it on showing.
             AppWindow.Show(false);
-            AppWindow.MoveAndResize(rect);
+            MoveAndResizeExactly(rect);
         }
 
         presented = true;
@@ -363,7 +378,8 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        string list = reloaded ? UiText.Format($", its list reloaded after {toList.TotalMilliseconds:0} ms") : ", its list ready";
+        // Part of a log line, so English whatever the interface language.
+        string list = reloaded ? $", its list reloaded after {toList.TotalMilliseconds:0} ms" : ", its list ready";
         AppLog.Info($"Panel on screen {toScreen.TotalMilliseconds:0} ms after the shortcut{list}{(summonLogged ? " (slow)" : " (first summon)")}.");
         summonLogged = true;
     }

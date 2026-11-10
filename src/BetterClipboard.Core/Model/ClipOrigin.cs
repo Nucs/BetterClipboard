@@ -114,4 +114,30 @@ public enum ClipOrigin
     /// history": the startup catch-up rediscovers files, and must not bring back a screenshot the user deleted.
     /// </remarks>
     WindowsScreenshot = 11,
+
+    /// <summary>
+    /// The text of an unsaved Notepad++ tab ("new 3"), read from the backup file Notepad++ keeps for it and tracked by the
+    /// Notepad++ integration (CLAUDE.md §2.41): updated in place while it changes a little, split into a new copy once more
+    /// than a fifth of its text is gone (<see cref="Documents.TrackedDocumentRule"/>).
+    /// </summary>
+    /// <remarks>
+    /// The <see cref="ShareX"/> hybrid, for the same reason. Like a live copy a new version is a new event: pause skips it
+    /// (unless it is the first activation's import of the tabs Notepad++ already remembers), ignored apps ("notepad++"), the
+    /// size limit and "Forget forever" apply, and a version equal to an existing entry bumps it. Like an import it never
+    /// lifts a tombstone and is skipped when older than the last "clear history": every start reads the tabs again, and
+    /// must not bring back text the user deleted.
+    /// </remarks>
+    NotepadPlusPlusTab = 12,
+
+    /// <summary>
+    /// The full path of a file opened in Notepad++, recorded as if it was copied (CLAUDE.md §2.41). Opening the same file
+    /// again moves its one entry from its old date to now.
+    /// </summary>
+    /// <remarks>
+    /// A new event like <see cref="RunDialog"/>: an existing duplicate is bumped (the same path copied before is the same
+    /// entry), paused capture skips it, and it lifts a tombstone — opening a file is as explicit as copying its path. Only
+    /// openings seen while BetterClipboard watches count; the files Notepad++ restores from its last session are not
+    /// openings.
+    /// </remarks>
+    NotepadPlusPlusFile = 13,
 }

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The first start's language picker (Core.Localization.LanguageChoice): one row per language this build ships, each
+  "own name · flag · English name", the one that fits Windows' language already selected, and a green check to finish.
+  Shown before any other window, so the choice applies to everything at once (no restart). The heading words itself in
+  the language under the selection, so people who do not read English see their own language as soon as they reach it.
+-->
+<Window
+    x:Class="BetterClipboard.App.Views.LanguageWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:BetterClipboard.App.ViewModels">
+
+    <Grid x:Name="Root" PreviewKeyDown="Root_PreviewKeyDown">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!--  Title bar: the app's name; the system draws the close button over its right end (closing keeps the selection).  -->
+        <Grid
+            x:Name="TitleBar"
+            Height="40"
+            Padding="16,0,0,0"
+            ColumnSpacing="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Image
+                Width="16"
+                Height="16"
+                VerticalAlignment="Center"
+                Source="ms-appx:///Assets/AppIcon32.png" />
+            <TextBlock
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Style="{StaticResource CaptionTextBlockStyle}"
+                Text="BetterClipboard" />
+        </Grid>
+
+        <!--  Heading and hint, worded in the selected row's language (LanguageWindow.ApplyLanguage).  -->
+        <StackPanel
+            x:Name="HeadingPanel"
+            Grid.Row="1"
+            Padding="28,8,28,16"
+            Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <!--  E774 = Globe, the glyph of Settings' Language card.  -->
+                <FontIcon
+                    VerticalAlignment="Center"
+                    FontSize="20"
+                    Glyph="&#xE774;" />
+                <TextBlock x:Name="Heading" Style="{StaticResource SubtitleTextBlockStyle}" />
+            </StackPanel>
+            <TextBlock
+                x:Name="Hint"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                TextWrapping="Wrap" />
+        </StackPanel>
+
+        <!--
+          One row per language: own name on the left, flag in the middle, English name on the right (two equal star
+          columns keep every flag on one line). The own name carries its language tag, so Han characters get the font of
+          their language. A double click chooses the row at once. The items are set by the constructor (Options).
+        -->
+        <ListView
+            x:Name="LanguageList"
+            Grid.Row="2"
+            Padding="16,0,16,0"
+            DoubleTapped="LanguageList_DoubleTapped"
+            SelectionChanged="LanguageList_SelectionChanged"
+            SelectionMode="Single">
+            <ListView.ItemTemplate>
+                <DataTemplate x:DataType="vm:LanguageOptionViewModel">
+                    <Grid Height="52" ColumnSpacing="16">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock
+                            VerticalAlignment="Center"
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Language="{x:Bind LanguageTag}"
+                            Text="{x:Bind Name}" />
+                        <Image
+                            Grid.Column="1"
+                            Width="36"
+                            Height="24"
+                            VerticalAlignment="Center"
+                            Source="{x:Bind Flag}"
+                            Stretch="Uniform" />
+                        <TextBlock
+                            Grid.Column="2"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{x:Bind EnglishName}" />
+                    </Grid>
+                </DataTemplate>
+            </ListView.ItemTemplate>
+        </ListView>
+
+        <!--
+          The green check that finishes. Lightweight styling (the Button template's own resources, overridden here) keeps
+          WinUI's focus visual, hover and press states while making the button green in both themes; white on #107C10
+          has a 5.4:1 contrast. E73E = CheckMark.
+        -->
+        <Grid Grid.Row="3" Padding="28,12,28,24">
+            <Button
+                x:Name="DoneButton"
+                Width="48"
+                Height="48"
+                Padding="0"
+                HorizontalAlignment="Right"
+                Click="DoneButton_Click"
+                CornerRadius="24">
+                <Button.Resources>
+                    <SolidColorBrush x:Key="ButtonBackground" Color="#107C10" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#1C8C1C" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#0B5E0B" />
+                    <SolidColorBrush x:Key="ButtonForeground" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="White" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#E6FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                </Button.Resources>
+                <FontIcon FontSize="20" Glyph="&#xE73E;" />
+            </Button>
+        </Grid>
+    </Grid>
+</Window>

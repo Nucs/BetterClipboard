@@ -73,6 +73,7 @@ public sealed partial class FlyoutViewModel
             Filter = Filter,
             Limit = MaxKeptPrompts,
             PinnedFirst = controller.Settings.Current.PinnedOnTop,
+            HiddenRows = HiddenRows,
         }, cancellationToken);
         var kept = stored.Select(e => e.ContentHash).ToHashSet(StringComparer.Ordinal);
         var rows = await history.QueryPromptsAsync(new PromptQuery
@@ -163,7 +164,10 @@ public sealed partial class FlyoutViewModel
             var (done, total) = reader.ImportProgress;
             EmptyTitle = UiText.Format($"Reading {name}'s prompts…");
             EmptyMessage = total > 0
-                ? UiText.Format($"First import: {done:N0} of {total:N0} files read. Prompts appear here as they are stored.")
+                ? UiText.Plural(
+                    total,
+                    $"First import: {done:N0} of {total:N0} file read. Prompts appear here as they are stored.",
+                    $"First import: {done:N0} of {total:N0} files read. Prompts appear here as they are stored.")
                 : UiText.Translate("First import: prompts appear here as they are stored.");
         }
         else if (agent == PromptAgent.ClaudeCode)
@@ -187,20 +191,35 @@ public sealed partial class FlyoutViewModel
         var reader = controller.PromptsReader(CurrentAgent);
         if (reader is { IsImporting: true } && reader.ImportProgress is { Total: > 0 } progress)
         {
-            return UiText.Format($"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompts so far");
+            return UiText.Plural(
+                lastPromptStats.Distinct,
+                $"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompt so far",
+                $"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompts so far");
         }
 
         int keptShown = Items.Count(i => i.Prompt is null);
         var kept = keptShown > 0 ? UiText.Format($" · {keptShown:N0} kept") : string.Empty;
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
+            // "60+" says that more pages match: a sentence of its own, since a "+" passed in as a value was left out of
+            // the Chinese template, which then claimed exactly 60.
             int matching = Items.Count(i => i.Prompt is not null);
-            return UiText.Format($"{matching:N0}{(hasMore ? "+" : string.Empty)} matching of {lastPromptStats.Distinct:N0} prompts{kept}");
+            // "60+ matching" is its own sentence (a language may place the "+" differently), and each takes the form the
+            // archive's count needs.
+            return hasMore
+                ? UiText.Plural(
+                    lastPromptStats.Distinct,
+                    $"{matching:N0}+ matching of {lastPromptStats.Distinct:N0} prompt{kept}",
+                    $"{matching:N0}+ matching of {lastPromptStats.Distinct:N0} prompts{kept}")
+                : UiText.Plural(
+                    lastPromptStats.Distinct,
+                    $"{matching:N0} matching of {lastPromptStats.Distinct:N0} prompt{kept}",
+                    $"{matching:N0} matching of {lastPromptStats.Distinct:N0} prompts{kept}");
         }
 
         var stats = lastPromptStats;
         return stats.Sends == stats.Distinct
-            ? UiText.Format($"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")}{kept}")
-            : UiText.Format($"{stats.Distinct:N0} prompts ({stats.Sends:N0} sent){kept}");
+            ? UiText.Plural(stats.Distinct, $"{stats.Distinct:N0} prompt{kept}", $"{stats.Distinct:N0} prompts{kept}")
+            : UiText.Plural(stats.Distinct, $"{stats.Distinct:N0} prompt ({stats.Sends:N0} sent){kept}", $"{stats.Distinct:N0} prompts ({stats.Sends:N0} sent){kept}");
     }
 }

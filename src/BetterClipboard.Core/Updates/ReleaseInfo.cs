@@ -7,7 +7,8 @@ namespace BetterClipboard.Core.Updates;
 /// <param name="Size">Its size in bytes as the feed states it; 0 when the feed does not say. A download of another size is refused.</param>
 /// <param name="DownloadUrl">
 /// Where to download it. Taken from the feed as is: callers check it with <see cref="UpdateSource.IsTrustedDownload"/>
-/// before requesting it.
+/// before requesting it. For a local build (<see cref="ReleaseInfo.IsLocalBuild"/>) it is the file's <c>file:</c>
+/// address inside the dev-builds folder, which only <see cref="LocalBuildFeed"/> reads.
 /// </param>
 /// <param name="Sha256">
 /// The SHA-256 the host computed when the file was uploaded (GitHub's asset <c>digest</c>), as 64 lower-case hex digits,
@@ -19,8 +20,9 @@ public sealed record ReleaseAsset(string Name, long Size, Uri DownloadUrl, strin
 /// One published release of BetterClipboard: its version, its notes (the changelog text) and its files.
 /// </summary>
 /// <remarks>
-/// Built from network input by <see cref="GitHubReleases.Parse"/>, which bounds every text's length. The notes are
-/// Markdown as the maintainer wrote them; they are shown as text and links only, never run or rendered as HTML.
+/// Built from network input by <see cref="GitHubReleases.Parse"/>, which bounds every text's length, or from a build
+/// published into this PC's dev-builds folder by <see cref="LocalBuildFeed.Read"/> (<see cref="IsLocalBuild"/>). The
+/// notes are Markdown as the maintainer wrote them; they are shown as text and links only, never run or rendered as HTML.
 /// </remarks>
 /// <param name="Version">The version read from <paramref name="Tag"/>.</param>
 /// <param name="Tag">The release's tag, e.g. <c>v0.2.6</c>.</param>
@@ -28,7 +30,10 @@ public sealed record ReleaseAsset(string Name, long Size, Uri DownloadUrl, strin
 /// <param name="Notes">The release notes in Markdown; empty when the feed has none.</param>
 /// <param name="PageUrl">The release's web page, or <see langword="null"/> when the feed has none or it is not an http(s) address.</param>
 /// <param name="PublishedAt">When the release was published, or <see langword="null"/> when unknown.</param>
-/// <param name="IsPrerelease">Whether the feed marks it a pre-release, or its version has a pre-release part. Never offered as an update.</param>
+/// <param name="IsPrerelease">
+/// Whether the feed marks it a pre-release, or its version has a pre-release part. A GitHub pre-release is never offered
+/// as an update; a local build is offered whatever its version (<see cref="UpdateCatalog.FindUpdate(SemanticVersion, IReadOnlyList{ReleaseInfo}, IReadOnlyList{ReleaseInfo}, string)"/>).
+/// </param>
 /// <param name="Assets">Its files; empty when it has none.</param>
 public sealed record ReleaseInfo(
     SemanticVersion Version,
@@ -40,6 +45,18 @@ public sealed record ReleaseInfo(
     bool IsPrerelease,
     IReadOnlyList<ReleaseAsset> Assets)
 {
+    /// <summary>
+    /// Whether this is a development build published into this PC's dev-builds folder (<see cref="LocalBuildFeed"/>)
+    /// rather than a release on GitHub.
+    /// </summary>
+    /// <remarks>
+    /// It decides where the package comes from when the user approves it: a local build's assets are files
+    /// (<c>file:</c> addresses inside the dev-builds folder), copied and hashed by <see cref="LocalBuildFeed.CopyPackageAsync"/>;
+    /// they never reach the network client, whose trust rule would refuse them anyway. A local build has no web page
+    /// (<see cref="PageUrl"/> is <see langword="null"/>), so the dialog shows no "View on GitHub" link for it.
+    /// </remarks>
+    public bool IsLocalBuild { get; init; }
+
     /// <summary>
     /// Finds an attached file by its exact name (case-insensitive, as release hosts treat names).
     /// </summary>

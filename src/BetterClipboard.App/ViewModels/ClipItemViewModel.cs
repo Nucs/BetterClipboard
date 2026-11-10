@@ -63,6 +63,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <param name="pick">The pick.</param>
     /// <param name="syntheticId">A negative id, unique within the list.</param>
     /// <returns>The card model.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="pick"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="syntheticId"/> is not negative.</exception>
     public static ClipItemViewModel ForPick(EverythingPick pick, long syntheticId)
     {
@@ -163,13 +164,14 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// which a screen reader would otherwise announce as plain text inside the Files tab; for a pick, where it
     /// comes from ("File opened in Everything"); and "Win+R command" for a command run with Win+R, so a screen
     /// reader announces that Ctrl+Enter runs it. A shell command names its shell ("PowerShell command"), a prompt its agent
-    /// ("Claude Code prompt").
+    /// ("Claude Code prompt"), and an unsaved Notepad++ tab's text says so ("Notepad++ tab"; its name is in the caption).
     /// </summary>
     public string KindLabel => Pick is { } pick ? (pick.IsFolder ? UiText.Translate("Folder opened in Everything") : UiText.Translate("File opened in Everything"))
         : Entry.HasRunHistory ? UiText.Translate("Win+R command")
+        : Entry.Origin == ClipOrigin.NotepadPlusPlusTab ? UiText.Translate("Notepad++ tab")
         : ShellCommandLabel is { } shellLabel ? shellLabel
         : PromptLabel is { } promptLabel ? promptLabel
-        : Entry.IsPathText ? (Entry.PathCount == 1 ? "Path" : "Paths") : Kind switch
+        : Entry.IsPathText ? (Entry.PathCount == 1 ? UiText.Translate("Path") : UiText.Translate("Paths")) : Kind switch
     {
         ClipKind.RichText => UiText.Translate("Formatted text"),
         ClipKind.Link => UiText.Translate("Link"),
@@ -197,8 +199,11 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// </summary>
     public FontFamily BodyFontFamily => Pick is null && (IsShellCommandCard || (Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)))) ? MonoFont : UiFont;
 
-    /// <summary>Accessible name for screen readers.</summary>
-    public string AutomationName => $"{KindLabel}: {Preview}";
+    /// <summary>
+    /// Accessible name for screen readers: the kind, then the preview, joined the interface language's way (a
+    /// full-width colon in Chinese). The preview is the user's content and goes in as a value, never translated.
+    /// </summary>
+    public string AutomationName => UiText.Format($"{KindLabel}: {Preview}");
 
     /// <summary>
     /// Replaces the snapshot after an update (pin/recency change) without recreating the card.
@@ -237,7 +242,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
             return (string.Empty, string.Empty);
         }
 
-        return (string.Join("\u2009", groups.Select(g => g.Glyph)), "In " + string.Join(", ", groups.Select(g => g.Name)));
+        // Group names are the user's own; only the words around them and the list separator follow the interface language.
+        var names = string.Join(UiText.Translate(", "), groups.Select(g => g.Name));
+        return (string.Join("\u2009", groups.Select(g => g.Glyph)), UiText.Format($"In {names}"));
     }
 
     /// <summary>
@@ -291,16 +298,17 @@ public sealed partial class ClipItemViewModel : ObservableObject
         if (Pick is { } pick)
         {
             // When it was last opened, and how often: Everything keeps one row per file, not one per opening.
-            var times = pick.RunCount == 1 ? "opened once" : UiText.Format($"opened {pick.RunCount:N0} times");
+            var times = UiText.Plural(pick.RunCount, $"opened once", $"opened {pick.RunCount:N0} times");
             return pick.LastOpened is { } opened
                 ? $"Everything · {RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow)} · {times}"
                 : $"Everything · {times}";
         }
 
-        var parts = new List<string>(3);
+        var parts = new List<string>(4);
         if (!string.IsNullOrWhiteSpace(Entry.SourceAppName))
         {
-            parts.Add(Entry.SourceAppName!);
+            // Stored in English (the tabs filter by it); a name BetterClipboard made up is shown in the interface language.
+            parts.Add(SourceNames.Display(Entry.SourceAppName));
         }
         else if (Entry.Origin == ClipOrigin.Captured)
         {
@@ -308,9 +316,24 @@ public sealed partial class ClipItemViewModel : ObservableObject
             parts.Add(UiText.Translate("Unknown app"));
         }
 
+        // The document inside the app, when an integration knows it: a Notepad++ tab's name ("Notepad++ · new 3 · …").
+        // Its own statement, after the app's: chained to the app's if/else, a known app without a title read
+        // "Notepad++ · Unknown app" (found in the live check, 2026-11-08).
+        if (!string.IsNullOrWhiteSpace(Entry.SourceTitle))
+        {
+            parts.Add(Entry.SourceTitle!);
+        }
+
         // Imported items (Windows never records their producer) show no source at all rather than a
         // placeholder label repeated on every card.
         parts.Add(RelativeTimeFormatter.Format(Entry.LastUsedUtc, DateTimeOffset.UtcNow));
+
+        // A text replaced in place keeps the card's place (its time above); the edit is a time of its own. Shown only while it
+        // is the newer of the two: a later copy of the same text moves the card, and then says it all.
+        if (Entry.EditedUtc is { } edited && edited > Entry.LastUsedUtc)
+        {
+            parts.Add(UiText.Format($"edited {RelativeTimeFormatter.Format(edited, DateTimeOffset.UtcNow)}"));
+        }
 
         if (Kind == ClipKind.Image && Entry.ImageWidth is > 0 && Entry.ImageHeight is > 0)
         {
@@ -319,19 +342,22 @@ public sealed partial class ClipItemViewModel : ObservableObject
         else if (Kind == ClipKind.Files)
         {
             int count = Entry.Preview.Split('\n').Length;
-            parts.Add(Entry.Preview.Contains(" more", StringComparison.Ordinal) ? "many files" : UiText.Format($"{count} file{(count == 1 ? "" : "s")}"));
+            parts.Add(Entry.Preview.Contains(" more", StringComparison.Ordinal)
+                ? UiText.Translate("many files")
+                : UiText.Plural(count, $"{count:N0} file", $"{count:N0} files"));
         }
         else if (Entry.IsPathText)
         {
             // Tells why a text card shows up in the Files tab (and wins over "formatted" for a path copied
             // from a web page).
-            parts.Add(Entry.PathCount == 1 ? "path" : UiText.Format($"{Entry.PathCount} paths"));
+            parts.Add(UiText.Plural(Entry.PathCount, $"path", $"{Entry.PathCount:N0} paths"));
         }
         else if (Entry.HasRichFormats && Kind == ClipKind.RichText)
         {
-            parts.Add("formatted");
+            parts.Add(UiText.Translate("formatted"));
         }
 
-        return string.Join(" · ", parts);
+        // One line of pieces: in a right-to-left language it reads from the app's name, at the right.
+        return UiText.JoinLine(" · ", parts);
     }
 }

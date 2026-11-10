@@ -263,6 +263,29 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool IsIconic(nint hWnd);
 
+    /// <summary>Whether a window has the <c>WS_VISIBLE</c> style (it may still be covered, off-screen or cloaked).</summary>
+    /// <param name="hWnd">Window.</param>
+    /// <returns><see langword="true"/> when the window and its parents are visible.</returns>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool IsWindowVisible(nint hWnd);
+
+    /// <summary>A window's rectangle in screen coordinates (physical pixels for a DPI-aware caller), invisible resize borders included.</summary>
+    /// <param name="hWnd">Window.</param>
+    /// <param name="lpRect">Receives the rectangle.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+    /// <summary>A window's class name.</summary>
+    /// <param name="hWnd">Window.</param>
+    /// <param name="lpClassName">Output buffer (a raw pointer: <c>[Out] char[]</c> would need runtime marshalling).</param>
+    /// <param name="nMaxCount">Buffer length in chars, terminating NUL included.</param>
+    /// <returns>Characters copied (without the NUL), or 0 on failure.</returns>
+    [LibraryImport("user32.dll", EntryPoint = "GetClassNameW", SetLastError = true)]
+    internal static unsafe partial int GetClassName(nint hWnd, char* lpClassName, int nMaxCount);
+
     /// <summary>Sets a window's show state.</summary>
     /// <param name="hWnd">Window.</param>
     /// <param name="nCmdShow"><c>SW_*</c> command.</param>
@@ -834,6 +857,24 @@ internal static partial class NativeMethods
     /// <returns>The thread id.</returns>
     [LibraryImport("kernel32.dll")]
     internal static partial uint GetCurrentThreadId();
+
+    /// <summary><c>MUI_LANGUAGE_NAME</c>: the language list holds names (<c>zh-CN</c>), not hexadecimal ids.</summary>
+    internal const uint MUI_LANGUAGE_NAME = 0x8;
+
+    /// <summary>
+    /// Sets the languages Windows' resource loader prefers for this process (the <c>.mui</c> files of every DLL it
+    /// loads strings from, WinUI's own included).
+    /// </summary>
+    /// <param name="dwFlags"><see cref="MUI_LANGUAGE_NAME"/>.</param>
+    /// <param name="pwszLanguagesBuffer">
+    /// The names, each followed by a NUL; the marshaller adds the final NUL that ends the list. <see langword="null"/>
+    /// clears the process's preference.
+    /// </param>
+    /// <param name="pulNumLanguages">How many languages Windows accepted.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetProcessPreferredUILanguages(uint dwFlags, string? pwszLanguagesBuffer, out uint pulNumLanguages);
 
     /// <summary><c>PROCESS_QUERY_LIMITED_INFORMATION</c>: enough for the image path, allowed even for most elevated processes.</summary>
     internal const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;

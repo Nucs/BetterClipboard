@@ -9,8 +9,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace BetterClipboard.App.ViewModels;
 
 /// <summary>
-/// The prompt archives' settings cards (Claude Code, Codex; CLAUDE.md §2.21): the two switches, their status lines and the
-/// "Delete stored prompts" actions. Status lines carry folders and counts, never a prompt.
+/// The prompt archives' settings cards (Claude Code, Codex; CLAUDE.md §2.21): the two switches and their status lines.
+/// Their <em>Delete stored…</em> is every integration's (SettingsViewModel.Stored.cs). Status lines carry folders and
+/// counts, never a prompt.
 /// </summary>
 public sealed partial class SettingsViewModel
 {
@@ -30,38 +31,11 @@ public sealed partial class SettingsViewModel
     [ObservableProperty]
     public partial string CodexPromptsStatus { get; set; } = string.Empty;
 
-    /// <summary>Whether Claude Code's archive holds prompts (enables its "Delete stored prompts…").</summary>
-    [ObservableProperty]
-    public partial bool HasClaudeCodePrompts { get; set; }
-
-    /// <summary>Whether Codex's archive holds prompts (enables its "Delete stored prompts…").</summary>
-    [ObservableProperty]
-    public partial bool HasCodexPrompts { get; set; }
-
-    /// <summary>Claude Code's archived prompts at the last refresh (the delete confirmation names the number).</summary>
-    public long ClaudeCodePromptCount { get; private set; }
-
-    /// <summary>Codex's archived prompts at the last refresh.</summary>
-    public long CodexPromptCount { get; private set; }
-
     /// <summary>Re-reads both archives' state into their status lines (counts are read on the pool).</summary>
     public void RefreshPromptsStatus()
     {
         _ = RefreshPromptStatusAsync(PromptAgent.ClaudeCode);
         _ = RefreshPromptStatusAsync(PromptAgent.Codex);
-    }
-
-    /// <summary>
-    /// "Delete stored prompts": deletes an agent's whole archive (the agent's own files are never touched). While its switch
-    /// is on, BetterClipboard imports what the agent still has right away — the confirmation says so.
-    /// </summary>
-    /// <param name="agent">The agent.</param>
-    /// <returns>How many prompts were deleted.</returns>
-    public async Task<int> DeleteStoredPromptsAsync(PromptAgent agent)
-    {
-        int deleted = await controller.ClearPromptsAsync(agent);
-        await RefreshPromptStatusAsync(agent);
-        return deleted;
     }
 
     /// <summary>Re-reads one agent's archive state into its status line.</summary>
@@ -78,14 +52,10 @@ public sealed partial class SettingsViewModel
             if (agent == PromptAgent.Codex)
             {
                 CodexPromptsStatus = status;
-                CodexPromptCount = stats.Sends;
-                HasCodexPrompts = stats.Sends > 0;
             }
             else
             {
                 ClaudeCodePromptsStatus = status;
-                ClaudeCodePromptCount = stats.Sends;
-                HasClaudeCodePrompts = stats.Sends > 0;
             }
         }
         catch (Exception ex)
@@ -106,9 +76,11 @@ public sealed partial class SettingsViewModel
     private static string PromptStatusLine(PromptAgent agent, bool on, AgentPromptsIntegration? reader, PromptStats stats)
     {
         var name = PromptAgents.NameOf(agent);
+        // Two counts, two plurals: the sends are worded on their own, then placed in the prompts' sentence.
+        var sends = UiText.Plural(stats.Sends, $"{stats.Sends:N0} send", $"{stats.Sends:N0} sends");
         var kept = stats.Sends == 0
             ? UiText.Translate("No prompts stored yet.")
-            : UiText.Format($"{stats.Distinct:N0} prompt{(stats.Distinct == 1 ? string.Empty : "s")} stored ({stats.Sends:N0} sends)")
+            : UiText.Plural(stats.Distinct, $"{stats.Distinct:N0} prompt stored ({sends})", $"{stats.Distinct:N0} prompts stored ({sends})")
               + (stats.NewestSentUtc is { } newest ? UiText.Format($", the newest {RelativeTimeFormatter.Format(newest, DateTimeOffset.UtcNow)}.") : ".");
         if (!on)
         {
@@ -128,11 +100,14 @@ public sealed partial class SettingsViewModel
         if (reader.IsImporting)
         {
             var (done, total) = reader.ImportProgress;
-            return UiText.Format($"{where}. First import: {done:N0} of {total:N0} files read. {kept}");
+            return UiText.Plural(total, $"{where}. First import: {done:N0} of {total:N0} file read. {kept}", $"{where}. First import: {done:N0} of {total:N0} files read. {kept}");
         }
 
         var leftOut = reader.ExcludedFiles > 0
-            ? UiText.Format($" {reader.ExcludedFiles:N0} session file{(reader.ExcludedFiles == 1 ? " is" : "s are")} left out: written by agents or codex exec runs, not typed by you.")
+            ? UiText.Plural(
+                reader.ExcludedFiles,
+                $" {reader.ExcludedFiles:N0} session file is left out: written by agents or codex exec runs, not typed by you.",
+                $" {reader.ExcludedFiles:N0} session files are left out: written by agents or codex exec runs, not typed by you.")
             : string.Empty;
         var session = reader.AddedThisSession > 0 ? UiText.Format($" {reader.AddedThisSession:N0} added since BetterClipboard started.") : string.Empty;
         return UiText.Format($"{where} as {name} writes them (only the new bytes).\n{kept}{session}{leftOut}");

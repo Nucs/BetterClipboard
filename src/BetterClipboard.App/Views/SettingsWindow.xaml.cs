@@ -76,6 +76,7 @@ public sealed partial class SettingsWindow : Window
         controller.CommandLineStatusChanged += OnCommandLineStatusChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
         controller.SnippingStatusChanged += OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged += OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
@@ -86,6 +87,8 @@ public sealed partial class SettingsWindow : Window
         Closed += OnClosed;
         Activated += OnActivated;
         BuildHotkeyPresetsMenu();
+        InitializeSearch();
+        InitializeStoredRefresh();
 
         // The update dialog opens under its button (over it when there is no room below), left edges aligned: the card's
         // buttons sit at the card's left.
@@ -115,6 +118,9 @@ public sealed partial class SettingsWindow : Window
 
         // Also refreshes the stats line, which counts the forgotten items.
         _ = ViewModel.RefreshForgottenAsync();
+
+        // Which integration cards have anything to delete (one pass over the history, on the pool).
+        _ = ViewModel.RefreshStoredAsync();
         AppWindow.Show(true);
         Activate();
         ForegroundHelper.Activate(hwnd);
@@ -144,6 +150,7 @@ public sealed partial class SettingsWindow : Window
         controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.SnippingStatusChanged -= OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged -= OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged -= OnShellHistoryStatusChanged;
@@ -152,6 +159,8 @@ public sealed partial class SettingsWindow : Window
         controller.UpdateStatusChanged -= OnUpdateStatusChanged;
         controller.Settings.Changed -= OnSettingsChanged;
         Activated -= OnActivated;
+        CloseSearch();
+        storedRefresh?.Stop();
 
         // Closing the dialog also ends its own subscription to the update status.
         updateDialog.Hide();
@@ -285,6 +294,29 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    /// <summary>
+    /// "Restart now" next to the language list: restarts BetterClipboard so the chosen language applies to every window.
+    /// No confirmation: the button only shows after the user picked another language, and a restart loses nothing (the
+    /// new process opens Settings again).
+    /// </summary>
+    /// <param name="sender">Button.</param>
+    /// <param name="e">Click data.</param>
+    private async void RestartForLanguage_Click(object sender, RoutedEventArgs e)
+    {
+        // A second click while the old process drains its queue must not start a second new process.
+        if (sender is Button button)
+        {
+            button.IsEnabled = false;
+        }
+
+        await ViewModel.RestartForLanguageAsync();
+        if (sender is Button again)
+        {
+            // Reached only when the restart did not happen (otherwise this process is exiting): let the user try again.
+            again.IsEnabled = true;
+        }
+    }
+
     /// <summary>"Allow all again", after confirmation.</summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
@@ -309,6 +341,11 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Event data.</param>
     private void OnSnippingStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshSnippingStatus();
 
+    /// <summary>Notepad++ was found or went, a tab version or an opened file was recorded, or a switch changed: refresh both cards.</summary>
+    /// <param name="sender">Controller.</param>
+    /// <param name="e">Unused.</param>
+    private void OnNotepadPlusPlusStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshNotepadPlusPlusStatus();
+
     /// <summary>Everything started, stopped, finished loading or was found installed, or the tab was switched: refresh its card.</summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
@@ -319,53 +356,28 @@ public sealed partial class SettingsWindow : Window
     /// <param name="e">Event data.</param>
     private void OnRunHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshRunHistoryStatus();
 
-    /// <summary>A shell tab was switched, PowerShell's file found or lost, or the Cmd tab kept new commands: refresh their cards.</summary>
+    /// <summary>
+    /// A shell tab was switched, PowerShell's file found or lost, or the Cmd tab kept new commands: refresh their cards, and
+    /// count again what they stored (their Delete stored… buttons).
+    /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Event data.</param>
-    private void OnShellHistoryStatusChanged(object? sender, EventArgs e) => ViewModel.RefreshShellHistoryStatus();
-
-    /// <summary>A prompt archive started, stopped, imported or stored prompts: refresh both prompt cards.</summary>
-    /// <param name="sender">Controller.</param>
-    /// <param name="agent">The agent whose archive changed (both cards are cheap to refresh).</param>
-    private void OnPromptsStatusChanged(object? sender, Core.Prompts.PromptAgent agent) => ViewModel.RefreshPromptsStatus();
-
-    /// <summary>"Delete stored prompts…" on the Claude Code card, after confirmation.</summary>
-    /// <param name="sender">Button.</param>
-    /// <param name="e">Click data.</param>
-    private void DeleteClaudeCodePrompts_Click(object sender, RoutedEventArgs e) => _ = DeleteStoredPromptsAsync(Core.Prompts.PromptAgent.ClaudeCode);
-
-    /// <summary>"Delete stored prompts…" on the Codex card, after confirmation.</summary>
-    /// <param name="sender">Button.</param>
-    /// <param name="e">Click data.</param>
-    private void DeleteCodexPrompts_Click(object sender, RoutedEventArgs e) => _ = DeleteStoredPromptsAsync(Core.Prompts.PromptAgent.Codex);
+    private void OnShellHistoryStatusChanged(object? sender, EventArgs e)
+    {
+        ViewModel.RefreshShellHistoryStatus();
+        ScheduleStoredRefresh();
+    }
 
     /// <summary>
-    /// Asks before deleting an agent's prompt archive — it cannot be undone, and prompts the agent has pruned meanwhile are
-    /// gone for good — and says what happens next while the switch is on (what the agent still has is read again).
+    /// A prompt archive started, stopped, imported or stored prompts: refresh both prompt cards, and count again what they
+    /// stored (their Delete stored… buttons).
     /// </summary>
-    /// <param name="agent">The agent.</param>
-    /// <returns>A task completing when done (never throws).</returns>
-    private async Task DeleteStoredPromptsAsync(Core.Prompts.PromptAgent agent)
+    /// <param name="sender">Controller.</param>
+    /// <param name="agent">The agent whose archive changed (both cards are cheap to refresh).</param>
+    private void OnPromptsStatusChanged(object? sender, Core.Prompts.PromptAgent agent)
     {
-        var name = Core.Prompts.PromptAgents.NameOf(agent);
-        long count = agent == Core.Prompts.PromptAgent.Codex ? ViewModel.CodexPromptCount : ViewModel.ClaudeCodePromptCount;
-        bool on = agent == Core.Prompts.PromptAgent.Codex ? ViewModel.KeepCodexPrompts : ViewModel.KeepClaudeCodePrompts;
-        try
-        {
-            if (await ConfirmAsync(
-                    UiText.Format($"Delete {count:N0} stored {name} prompt{(count == 1 ? string.Empty : "s")}?"),
-                    UiText.Format($"BetterClipboard's copy is deleted; {name}'s own files are not changed. Prompts {name} no longer has are gone for good.")
-                    + (on ? UiText.Format($" The switch is on, so what {name} still has is read again right away — turn it off first to keep them out.") : string.Empty),
-                    UiText.Translate("Delete")))
-            {
-                await ViewModel.DeleteStoredPromptsAsync(agent);
-            }
-        }
-        catch (Exception ex)
-        {
-            // async void's caller has nothing to catch it: a failure here must not crash the app.
-            Core.Diagnostics.AppLog.Warn($"Deleting the stored {name} prompts failed: {ex.Message}");
-        }
+        ViewModel.RefreshPromptsStatus();
+        ScheduleStoredRefresh();
     }
 
     /// <summary>
@@ -520,10 +532,14 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    /// <summary>History changed: refresh the counters.</summary>
+    /// <summary>History changed: refresh the counters, and soon what each integration card has to delete.</summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Change data.</param>
-    private void OnHistoryChanged(object? sender, ClipChangedEventArgs e) => _ = ViewModel.RefreshStatsAsync();
+    private void OnHistoryChanged(object? sender, ClipChangedEventArgs e)
+    {
+        _ = ViewModel.RefreshStatsAsync();
+        ScheduleStoredRefresh();
+    }
 
     /// <summary>Settings changed elsewhere (tray, flyout): mirror them and re-apply the theme.</summary>
     /// <param name="sender">Store.</param>
@@ -553,13 +569,21 @@ public sealed partial class SettingsWindow : Window
 
             bool release = plan.Action == BetterClipboard.Windows.Shell.ExplorerReleaseAction.Release;
             bool one = plan.Keys.Count == 1;
-            var names = plan.KeyNames;
-            const string Restart = "Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.";
+            var names = plan.DisplayKeyNames;
+
+            // Whole sentences for one shortcut and for several: an English "it" or "them" put into a translated template
+            // once showed inside Chinese text.
+            var restart = UiText.Translate("Explorer restarts now: the taskbar disappears for a moment and open File Explorer windows close.");
+            var body = (release, one) switch
+            {
+                (true, true) => UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own it without a keyboard hook. While BetterClipboard is not running, it does nothing. {restart}"),
+                (true, false) => UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own them without a keyboard hook. While BetterClipboard is not running, they do nothing. {restart}"),
+                (false, true) => UiText.Format($"Explorer will register {names} again (Windows' own shortcut). {restart}"),
+                (false, false) => UiText.Format($"Explorer will register {names} again (Windows' own shortcuts). {restart}"),
+            };
             var confirmed = await ConfirmAsync(
                 release ? UiText.Format($"Release {names} from Explorer?") : UiText.Format($"Give {names} back to Explorer?"),
-                release
-                    ? UiText.Format($"Explorer will stop registering {names}, so BetterClipboard can own {(one ? "it" : "them")} without a keyboard hook. While BetterClipboard is not running, {(one ? "it does" : "they do")} nothing. {Restart}")
-                    : UiText.Format($"Explorer will register {names} again (Windows' own {(one ? "shortcut" : "shortcuts")}). {Restart}"),
+                body,
                 release ? UiText.Translate("Release and restart Explorer") : UiText.Translate("Restore and restart Explorer"));
             if (confirmed)
             {
@@ -662,7 +686,7 @@ public sealed partial class SettingsWindow : Window
     /// <summary>x:Bind helper: capture status text.</summary>
     /// <param name="paused">Paused state.</param>
     /// <returns>The text.</returns>
-    public string CaptureText(bool paused) => paused ? UiText.Translate("Paused") : "Capturing";
+    public string CaptureText(bool paused) => paused ? UiText.Translate("Paused") : UiText.Translate("Capturing");
 
     /// <summary>x:Bind helper: visible when the text is non-empty.</summary>
     /// <param name="text">Text.</param>

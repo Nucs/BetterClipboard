@@ -275,7 +275,10 @@ public sealed class RunHistoryIntegrationTests : IAsyncLifetime
         scratch.Run("BC-TEST a");
         await WaitUntilAsync(() => RunsAsync().Result.FirstOrDefault()?.Preview == "BC-TEST a");
         Assert.Equal(["BC-TEST a", "BC-TEST new", "BC-TEST c", "BC-TEST b"], (await RunsAsync()).Select(e => e.Preview));
-        Assert.Equal(2, integration.RecordedThisSession);
+
+        // The run is in the history before the integration counts it (it adds its count once AddAsync returned): wait for
+        // the counter like the first run's, never read it right after the list (CLAUDE.md §4; failed once in a full run).
+        await WaitUntilAsync(() => integration.RecordedThisSession == 2);
     }
 
     /// <summary>Runs made while the app was not running are found by the next start, as runs (not an import).</summary>

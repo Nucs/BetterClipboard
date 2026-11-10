@@ -161,40 +161,6 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Settings' "Delete stored prompts": the agent's whole archive is deleted. While the setting is on, the next pass
-    /// imports what the agent still has — so Settings offers it next to the switch, which stops that.
-    /// </summary>
-    /// <param name="agent">The agent.</param>
-    /// <returns>How many prompts were deleted (0 on failure, logged).</returns>
-    public async Task<int> ClearPromptsAsync(PromptAgent agent)
-    {
-        try
-        {
-            // Stopped first: a pass in flight would otherwise store prompts and checkpoints again right after the clear.
-            // Restarted after: its tracked files are gone, so it must not go on reading only what is appended.
-            var reader = PromptsReader(agent);
-            if (reader is { IsRunning: true })
-            {
-                await reader.SetEnabledAsync(false);
-            }
-
-            int deleted = await History.ClearPromptsAsync(agent);
-            if (reader is not null)
-            {
-                await reader.SetEnabledAsync(IsPromptSettingOn(agent));
-            }
-
-            RefreshPromptAvailability();
-            return deleted;
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn($"Deleting the stored {PromptAgents.NameOf(agent)} prompts failed: {ex.Message}");
-            return 0;
-        }
-    }
-
-    /// <summary>
     /// Creates both archive readers and starts those whose setting is on (from <see cref="Start"/>). A failure is logged:
     /// the rest of the app keeps working without the tabs.
     /// </summary>

@@ -1,5 +1,6 @@
 using BetterClipboard.Core.Localization;
 using System.Globalization;
+using System.Text;
 using BetterClipboard.Core.Updates;
 
 namespace BetterClipboard.Core.Presentation;
@@ -17,22 +18,36 @@ public static class UpdateText
     /// The update button's tooltip and accessible name: what a click will show.
     /// </summary>
     /// <param name="snapshot">The state.</param>
-    /// <returns>E.g. "Update available: BetterClipboard 0.2.7", "BetterClipboard 0.2.6 is up to date", "Updates".</returns>
+    /// <returns>
+    /// E.g. "Update available: BetterClipboard 0.2.7", "Dev build available: BetterClipboard 0.2.10-dev.15.gabc1234"
+    /// (a local build), "Back to the release: BetterClipboard 0.2.9" (the latest release offered to a newer development
+    /// build), "BetterClipboard 0.2.6 is up to date", "Updates".
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
     public static string ButtonTip(UpdateSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var offered = snapshot.Offer?.Release.Version.ToString();
+
+        // A local build is copied, not downloaded: the words follow what really happens.
+        bool local = snapshot.IsLocalOffer;
         return snapshot.Phase switch
         {
+            UpdatePhase.Downloading when offered is not null && local =>
+                snapshot.TotalBytes > 0
+                    ? UiText.Format(CultureInfo.InvariantCulture, $"Copying BetterClipboard {offered}: {snapshot.DownloadFraction * 100:0} %")
+                    : UiText.Format($"Copying BetterClipboard {offered}"),
             UpdatePhase.Downloading when offered is not null =>
                 snapshot.TotalBytes > 0
                     ? UiText.Format(CultureInfo.InvariantCulture, $"Downloading BetterClipboard {offered}: {snapshot.DownloadFraction * 100:0} %")
                     : UiText.Format($"Downloading BetterClipboard {offered}"),
+            UpdatePhase.Verifying when offered is not null && local => UiText.Format($"Checking the copy of BetterClipboard {offered}"),
             UpdatePhase.Verifying when offered is not null => UiText.Format($"Checking the download of BetterClipboard {offered}"),
             UpdatePhase.Installing when offered is not null => UiText.Format($"Installing BetterClipboard {offered}"),
             UpdatePhase.Checking when offered is null => UiText.Translate("Checking for updates"),
             _ when offered is not null && snapshot.IsSkipped => UiText.Format($"BetterClipboard {offered} is available (you skipped it)"),
+            _ when offered is not null && local => UiText.Format($"Dev build available: BetterClipboard {offered}"),
+            _ when offered is not null && snapshot.OffersOlderVersion => UiText.Format($"Back to the release: BetterClipboard {offered}"),
             _ when offered is not null => UiText.Format($"Update available: BetterClipboard {offered}"),
             _ when snapshot.LastChecked is not null => UiText.Format($"BetterClipboard {snapshot.CurrentVersion} is up to date"),
             _ => UiText.Translate("Updates"),
@@ -43,17 +58,26 @@ public static class UpdateText
     /// The dialog's title line.
     /// </summary>
     /// <param name="snapshot">The state.</param>
-    /// <returns>E.g. "BetterClipboard 0.2.7 is available", "BetterClipboard is up to date", "Checking for updates…".</returns>
+    /// <returns>
+    /// E.g. "BetterClipboard 0.2.7 is available", "BetterClipboard 0.2.9 is the latest release" (offered to a newer
+    /// development build), "BetterClipboard is up to date", "Checking for updates…".
+    /// </returns>
     /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
     public static string Title(UpdateSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var offered = snapshot.Offer?.Release.Version.ToString();
+        bool local = snapshot.IsLocalOffer;
         return snapshot.Phase switch
         {
+            UpdatePhase.Downloading when offered is not null && local => UiText.Format($"Copying BetterClipboard {offered}…"),
             UpdatePhase.Downloading when offered is not null => UiText.Format($"Downloading BetterClipboard {offered}…"),
+            UpdatePhase.Verifying when offered is not null && local => UiText.Translate("Checking the copy…"),
             UpdatePhase.Verifying when offered is not null => UiText.Translate("Checking the download…"),
             UpdatePhase.Installing when offered is not null => UiText.Format($"Installing BetterClipboard {offered}…"),
+
+            // "Available" would read as "newer": the way back from a development build says what it is instead.
+            _ when offered is not null && snapshot.OffersOlderVersion => UiText.Format($"BetterClipboard {offered} is the latest release"),
             _ when offered is not null => UiText.Format($"BetterClipboard {offered} is available"),
             UpdatePhase.Checking => UiText.Translate("Checking for updates…"),
             _ when snapshot.LastChecked is not null => UiText.Translate("BetterClipboard is up to date"),
@@ -65,11 +89,102 @@ public static class UpdateText
     /// <summary>The title while nothing is known yet (no check ran, none failed): only what the dialog is about.</summary>
     private const string NeutralTitle = "Updates";
 
+    /// <summary>
+    /// The words of the entries that open the update dialog for an offer: the Settings card's button and the tray menu's
+    /// item.
+    /// </summary>
+    /// <param name="snapshot">The state; <see cref="UpdateSnapshot.Offer"/> must be set.</param>
+    /// <returns>"Update to 0.2.7…", or "Install 0.2.9…" for the latest release offered to a newer development build.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">Nothing is offered.</exception>
+    public static string OfferAction(UpdateSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var offer = snapshot.Offer ?? throw new ArgumentException("Nothing is offered.", nameof(snapshot));
+        return snapshot.OffersOlderVersion
+            ? UiText.Format($"Install {offer.Release.Version}…")
+            : UiText.Format($"Update to {offer.Release.Version}…");
+    }
+
+    /// <summary>
+    /// The label of the dialog's button that approves the offer, for a copy that installs updates itself.
+    /// </summary>
+    /// <param name="snapshot">The state.</param>
+    /// <returns>"Update and restart", or "Install and restart" when the offer is older than the running development build.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="snapshot"/> is <see langword="null"/>.</exception>
+    public static string ApproveButton(UpdateSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+
+        // "Update" to an older version would promise something newer: going back to the release is an install.
+        return snapshot.OffersOlderVersion ? UiText.Translate("Install and restart") : UiText.Translate("Update and restart");
+    }
+
+    /// <summary>
+    /// A failure's message in the interface language. The update system words it once, in English, for the log as well
+    /// (<see cref="UpdateMessages"/>); what came from outside the app inside it (the installer's own report, a network or
+    /// file system reason) stays as it came.
+    /// </summary>
+    /// <param name="problem">The failure.</param>
+    /// <returns>The message to show.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="problem"/> is <see langword="null"/>.</exception>
+    public static string ProblemText(UpdateProblem problem)
+    {
+        ArgumentNullException.ThrowIfNull(problem);
+        return UiText.TranslateFormatted(problem.Message, UpdateMessages.Templates);
+    }
+
     /// <summary>Ends a title with a full stop, unless it already ends a sentence (an ellipsis counts).</summary>
+    /// <remarks>
+    /// <para>
+    /// A right-to-left title comes embedded (<see cref="UiLanguage.IsRightToLeft"/>: U+202B … U+202C around it). Its
+    /// sentence ends before those invisible marks, so they are looked past, and the period goes in before them: added
+    /// after the closing mark, it would sit outside the embedding, at the right edge, where a Hebrew reader starts.
+    /// </para>
+    /// <para>
+    /// A title that ends in a Chinese or Japanese character gets the ideographic full stop (。): the Settings line read
+    /// "BetterClipboard 0.2.9 是最新发布版." in Simplified Chinese (found in the release QA of 2026-11-09).
+    /// </para>
+    /// </remarks>
     /// <param name="title">A title from <see cref="Title"/>.</param>
     /// <returns>The title as a sentence.</returns>
-    private static string AsSentence(string title) =>
-        title.Length == 0 || title[^1] is '.' or '!' or '?' or '…' or '。' or '！' or '？' ? title : title + ".";
+    internal static string AsSentence(string title)
+    {
+        // Format characters (an embedding's marks, a direction mark) are invisible: the sentence ends at the last visible one.
+        int end = title.Length;
+        while (end > 0 && char.GetUnicodeCategory(title[end - 1]) == UnicodeCategory.Format)
+        {
+            end--;
+        }
+
+        if (end == 0 || title[end - 1] is '.' or '!' or '?' or '…' or '。' or '！' or '？')
+        {
+            return title;
+        }
+
+        return title.Insert(end, EndsInIdeograph(title, end) ? "。" : ".");
+    }
+
+    /// <summary>
+    /// Whether the visible text ends in a character of a language that closes sentences with the ideographic full stop:
+    /// Han (Chinese, and the kanji of Japanese, beyond the BMP too) or kana. Korean's Hangul takes a period.
+    /// </summary>
+    /// <param name="text">The text.</param>
+    /// <param name="end">Where its visible part ends (after the last visible character).</param>
+    /// <returns><see langword="true"/> for a text that ends in such a character.</returns>
+    private static bool EndsInIdeograph(string text, int end)
+    {
+        // A character beyond the BMP (a rare Han ideograph) ends in a low surrogate: read the whole code point.
+        int start = end >= 2 && char.IsSurrogatePair(text[end - 2], text[end - 1]) ? end - 2 : end - 1;
+        if (!Rune.TryGetRuneAt(text, start, out Rune last))
+        {
+            return false;
+        }
+
+        int value = last.Value;
+        return value is (>= 0x3040 and <= 0x30FF) or (>= 0x3400 and <= 0x4DBF) or (>= 0x4E00 and <= 0x9FFF)
+            or (>= 0xF900 and <= 0xFAFF) or (>= 0x20000 and <= 0x3FFFF);
+    }
 
     /// <summary>
     /// The lines under the dialog's title: what the state means for the user and what the buttons will do.
@@ -89,9 +204,25 @@ public static class UpdateText
             case UpdatePhase.Downloading:
                 return Progress(snapshot.DownloadedBytes, snapshot.TotalBytes, culture);
             case UpdatePhase.Verifying:
-                return UiText.Translate("Comparing the download with the release's SHA-256 checksum.");
+                return snapshot.IsLocalOffer
+                    ? UiText.Translate("Comparing the copy with the build's SHA-256 checksum.")
+                    : UiText.Translate("Comparing the download with the release's SHA-256 checksum.");
             case UpdatePhase.Installing:
                 return UiText.Translate("BetterClipboard closes and starts again by itself in a moment. Your history is kept.");
+        }
+
+        // Only a copy the installer installed is ever offered these two (the others neither read the dev-builds folder nor
+        // install anything): the words say what its "Update" or "Install" button does.
+        if (snapshot.Offer is { } localOffer && snapshot.IsLocalOffer && snapshot.InstallKind == UpdateInstallKind.Installer)
+        {
+            var published = localOffer.Release.PublishedAt is { } when ? UiText.Format($" Published {RelativeTimeFormatter.Format(when, now, zone, culture)}.") : string.Empty;
+            var haveBuild = UiText.Format($"You have {snapshot.CurrentVersion}.{published}");
+            return UiText.Format($"{haveBuild} It is a development build from the dev-builds folder on this PC: updating copies it from there, checks it, and restarts BetterClipboard. Your history is kept.");
+        }
+
+        if (snapshot.Offer is not null && snapshot.OffersOlderVersion && snapshot.InstallKind == UpdateInstallKind.Installer)
+        {
+            return UiText.Format($"You have {snapshot.CurrentVersion}, a development build that is newer than this release. Installing it replaces the development build with the official release from GitHub and restarts BetterClipboard. Your history is kept.");
         }
 
         if (snapshot.Offer is { } offer)
@@ -119,7 +250,9 @@ public static class UpdateText
             var newer = snapshot.Latest is { } latest && snapshot.CurrentVersion > latest.Version
                 ? UiText.Format($"Version {snapshot.CurrentVersion}, newer than the latest release ({latest.Version}).")
                 : UiText.Format($"Version {snapshot.CurrentVersion} is the latest release.");
-            return $"{newer} {checkedText}";
+
+            // Two sentences on one line: in a right-to-left language the line is ordered right to left as a whole.
+            return UiText.JoinLine(" ", [newer, checkedText]);
         }
 
         if (!snapshot.AutomaticChecks)
@@ -147,7 +280,13 @@ public static class UpdateText
         // a sentence of its own. The bare "Updates" (nothing known yet) says nothing and is left out.
         var title = Title(snapshot);
         var detail = Detail(snapshot, now, zone, culture);
-        var lines = new List<string>(5) { title == UiText.Translate(NeutralTitle) ? detail : $"{AsSentence(title)} {detail}".Trim() };
+        // Title and detail share one line, so a right-to-left language orders them as one (JoinLine). An empty piece is left
+        // out, which gives what trimming "title detail" gave before: no stray space inside a right-to-left embedding.
+        var lines = new List<string>(5)
+        {
+            title == UiText.Translate(NeutralTitle) ? detail
+                : UiText.JoinLine(" ", new[] { AsSentence(title), detail }.Where(part => part.Length > 0)).Trim(),
+        };
 
         // Without this line a skipped version looks forgotten: it is offered, yet nothing is highlighted for it.
         if (snapshot.IsSkipped && !snapshot.IsInstalling)
@@ -157,12 +296,13 @@ public static class UpdateText
 
         if (snapshot.CheckProblem is { } check && snapshot.Phase != UpdatePhase.Checking)
         {
-            lines.Add(UiText.Format($"The last check failed: {check.Message}"));
+            // The message was worded in English for the log too; it is translated from its template here.
+            lines.Add(UiText.Format($"The last check failed: {ProblemText(check)}"));
         }
 
         if (snapshot.InstallProblem is { } install)
         {
-            lines.Add(install.Message);
+            lines.Add(ProblemText(install));
         }
 
         if (!snapshot.AutomaticChecks && snapshot.LastChecked is not null)
@@ -222,7 +362,7 @@ public static class UpdateText
         double done = Math.Max(0, downloaded) / Megabyte;
         return total > 0
             ? UiText.Format(culture, $"{done:0.0} of {total / Megabyte:0.0} MB")
-            : UiText.Format(culture, $"{done:0.0} MB");
+            : string.Format(culture, "{0:0.0} MB", done);
     }
 
     /// <summary>Why this copy does not check by itself, and what does instead.</summary>

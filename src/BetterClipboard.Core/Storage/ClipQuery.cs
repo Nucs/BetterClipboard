@@ -95,6 +95,17 @@ public enum ClipFilter
     /// first stored by an earlier copy keeps that row's origin but takes the source name.
     /// </remarks>
     Snipping = 13,
+
+    /// <summary>
+    /// The panel's Notepad++ tab: the text of unsaved Notepad++ tabs (<see cref="Model.ClipOrigin.NotepadPlusPlusTab"/>), the
+    /// paths of files opened in Notepad++ (<see cref="Model.ClipOrigin.NotepadPlusPlusFile"/>), and whatever Notepad++ put on
+    /// the clipboard (source <c>notepad++.exe</c>, whose file description is "Notepad++").
+    /// </summary>
+    /// <remarks>
+    /// Also matched by the source name "Notepad++": an opened file or a tab's text that bumped a row first stored by an
+    /// earlier copy keeps that row's origin but takes the source.
+    /// </remarks>
+    NotepadPlusPlus = 14,
 }
 
 /// <summary>
@@ -159,4 +170,16 @@ public sealed record ClipQuery
     /// ids are ignored.
     /// </remarks>
     public IReadOnlyList<long>? GroupIds { get; init; }
+
+    /// <summary>
+    /// Tabs whose entries are left out: the panel's tabs hidden with <i>Hide tab &amp; clipboard rows</i>
+    /// (<see cref="Settings.AppSettings.HiddenTabRows"/>). An entry any of these tabs lists is not returned — unless it is
+    /// in a group, which keeps it wherever it shows (the owner's choice, 2026-11-09). <see langword="null"/> or empty =
+    /// nothing left out. Combines with every other condition here.
+    /// </summary>
+    /// <remarks>
+    /// Each tab counts with exactly the filter it lists with, so a tab's rows are what its tab showed. <see cref="ClipFilter.All"/>
+    /// here leaves nothing out (it is never hidden). Only the panel sets this: the command line lists everything.
+    /// </remarks>
+    public IReadOnlyList<ClipFilter>? HiddenRows { get; init; }
 }

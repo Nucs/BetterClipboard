@@ -239,6 +239,18 @@ public sealed record CliItem
     /// </summary>
     public DateTimeOffset? LastRun { get; init; }
 
+    /// <summary>
+    /// The document inside the source app the item came from — a Notepad++ tab's name for that tab's text
+    /// (<c>-f notepad++</c>); omitted when unknown.
+    /// </summary>
+    public string? SourceTitle { get; init; }
+
+    /// <summary>
+    /// When the item's text was last replaced in place (a Notepad++ tab's newer text, which keeps the item's place in the
+    /// list); omitted for items never edited that way.
+    /// </summary>
+    public DateTimeOffset? Edited { get; init; }
+
     /// <summary><c>grep</c>: the matching lines.</summary>
     public IReadOnlyList<CliMatch>? Matches { get; init; }
 }

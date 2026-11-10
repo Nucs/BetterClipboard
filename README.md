@@ -1,4 +1,6 @@
-# BetterClipboard
+# <img src="src/BetterClipboard.App/Assets/AppIcon.png" width="40" height="40" align="top" alt="BetterClipboard icon"> BetterClipboard
+
+**ENG** / [简体中文](docs/translations/README.zh-CN.md)
 
 **The Win+V clipboard history Windows should have shipped.** Same shortcut, same panel by your cursor —
 but it remembers everything, survives restarts, searches instantly, and keeps it all encrypted on your PC.
@@ -34,6 +36,8 @@ you send to Claude Code and Codex.
     in BetterClipboard is not imported again.
   - **ShareX:** every screenshot that [ShareX](https://getsharex.com) saves, the moment it is saved.
   - **Snipping:** every screenshot that Snipping Tool's auto-save and `Win+PrtScn` save.
+  - **Notepad++:** the text of [Notepad++](https://notepad-plus-plus.org/)'s unsaved "new" tabs, kept up to date as
+    you edit them, and the full path of every file you open in Notepad++.
   - **Run:** every command you run with `Win+R`, also after Windows' list of 26 forgets it. `Ctrl+Enter` runs one again
     (`Ctrl+Shift+Enter`: as administrator).
   - **Pwsh:** PowerShell's whole command history, also the old commands that its Up arrow no longer reaches.
@@ -41,8 +45,10 @@ you send to Claude Code and Codex.
   - **Claude and Codex:** every prompt you send to Claude Code and Codex, kept for good.
   - **Everything:** the files you open from [Everything](https://www.voidtools.com/), to paste as a file or as a path.
 
-  The last seven are tabs for other apps. Each one has its own switch and is on by default, BetterClipboard only reads
+  The last eight are tabs for other apps. Each one has its own switch and is on by default, BetterClipboard only reads
   its source, and the tab of an app you don't have stays hidden ([Tabs for other apps](#tabs-for-other-apps)).
+  *Delete stored…* on each one's Settings card shows what BetterClipboard kept from it, part by part with examples,
+  and deletes what you tick; the other app's own files are never touched.
 - **Instant search** in any language, Hebrew, CJK and emoji included, with VS Code's toggles: match case (`Alt+C`),
   whole word (`Alt+W`) and regular expression (`Alt+E`) ([Search](#search)). Win+V has no search.
 - **Made for the keyboard.** `Enter` pastes into the app you came from and `Shift+Enter` pastes plain text. `↑` `↓`
@@ -51,10 +57,14 @@ you send to Claude Code and Codex.
   only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were ([Use](#use)).
 - **A panel that fits you.** It opens in the tab you used last, also after a restart. Drag any empty spot to move it,
   and drag an edge to resize it: it opens at that size from then on. Tabs that don't fit scroll sideways with the ‹ ›
-  arrows, the mouse wheel or a drag. The mouse selects the item it is over.
-- **Pins and groups.** Pin what you reuse. Make groups with your own icons, drag cards onto them, and show one group or
-  several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group you reach with the arrow keys). Pinned and grouped
-  items outlive every limit, and *Clear* keeps them ([Groups](#groups)).
+  arrows, the mouse wheel or a drag. Right-click a tab to move it left or right, to hide it, or to hide it together
+  with its items in every list; *Show all hidden* brings them back, and your order is kept ([Tabs](#tabs)). The mouse
+  selects the item it is over.
+- **Pins and groups.** Pin what you reuse: pinned items are listed on top, and the panel still opens on your newest copy
+  just below them, so `Win+V` `Enter` pastes what you copied last and `↑` reaches the pins. Make groups with your own
+  icons, drag cards onto them, and show one group or several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group
+  you reach with the arrow keys). Pinned and grouped items outlive every limit, and *Clear* keeps them
+  ([Groups](#groups)).
 - **Reads every copy at once.** Copies 2 ms apart or more are all kept. A program that copies faster than that
   overwrites its own copies before any app, Win+V included, can read them: BetterClipboard keeps the last one and
   counts the rest (*Settings › Capture reliability*).
@@ -78,9 +88,20 @@ you send to Claude Code and Codex.
   decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
   checked against the release's SHA-256 and installed in place: BetterClipboard restarts by itself, and your history
   is kept ([Updates](#updates)).
-- **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (text
-  cursor, mouse or screen center), and a page that credits every app it works with and every component it ships, with
-  their official links.
+- **In your language.** English, Simplified Chinese (简体中文), Russian (Русский), Spanish (Español) and Hebrew (עברית),
+  all in every download. The first start shows the languages with their flags, with Windows' language already
+  selected: one click on the green check and the whole app speaks it. An update from a version that did not ask yet
+  asks once too. *Settings › App › Language* changes it later:
+  pick a language and press *Restart now*. Hebrew reads right to left inside the usual layout. What you copy, file
+  names and the names you give groups are never translated.
+- **Settings you can search.** Type in the box at the top of Settings (`Ctrl+F`) and the page keeps only the settings
+  that match, in their places, with the matched letters highlighted. Any word on a setting counts — its title,
+  description, section, buttons and options — and so do initials ("rfe" for *Release from Explorer*) and typos
+  ("pasword"). `Esc` brings the whole page back where it was.
+- **Settings for the rest:** start with Windows, the theme (light, dark or Windows'), where the panel opens (next to the
+  text cursor or the mouse, or in the middle of the main screen or of the screen you are typing on — with several
+  monitors, at any scale), and a page that credits every app it works with and every component it ships, with their
+  official links.
 
 ## Install
 
@@ -98,6 +119,10 @@ your architecture, **verifies its SHA-256**, installs per user into `%LOCALAPPDA
 taskbar blinks, and open folder windows close). See [Taking over Win+V](#taking-over-winv). Running it again updates in
 place, and so does the app's own update button ([Updates](#updates)); your history is never touched. It runs from any
 folder, also one you cannot write to, and leaves your PowerShell in that folder when it is done.
+
+At its first start, BetterClipboard asks for your language: English, 简体中文, Русский, Español or עברית, each with its
+flag, with Windows' language already selected. Press the green check (or `Enter`) and everything opens in that
+language. If you update from a version that did not ask yet, the first start after the update asks once.
 
 Once a day, the installed app asks GitHub whether a newer release exists. Nothing about you, your PC or your clipboard
 is sent, and nothing is installed without your approval ([Privacy](#privacy)). `-NoUpdateCheck` installs with that
@@ -190,6 +215,11 @@ when you say so.
   `-NoUpdateCheck`. *Check now* asks once, whatever the switch says.
 - **Skip this version** ends the highlight and the weekly reminder for that release. The next release brings both
   back.
+- **A development build** (a version such as `0.2.10-dev.12.gabc1234`, see [Build from source](#build-from-source))
+  is offered the builds published to its PC's `dev-builds` folder first: *Dev build available*, and *Update and
+  restart* copies the build from that folder instead of downloading it. Otherwise it is always offered GitHub's latest
+  release, also an older one, as the way back to the official version (*Install and restart*). It gets no weekly
+  reminder.
 - **A copy you extracted by hand** does not replace itself: an update replaces the whole folder, and that is only
   safe for a folder the installer made. Its dialog has the download page and the install command instead.
 - **A copy installed for every user** neither replaces itself nor checks by itself: only an administrator may change
@@ -199,13 +229,18 @@ when you say so.
 ## Use
 
 Press **Win+V**. The panel appears at once by your text cursor, in the tab you used last, with the search box focused
-— just type.
+— just type. Your newest copy is selected, so `Enter` pastes it. Pinned items are listed above it (*Settings › Pasting*
+can list them in time order instead), and `↑` reaches them.
+
+*Settings › Shortcut › Panel position* opens it next to the mouse instead, or in the middle of a screen: the main one,
+or the one you are typing on (with several monitors, the screen with the window you were in; after a click on the
+desktop, the screen with the mouse).
 
 | Key | Action |
 |---|---|
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
 | `Alt+C` / `Alt+W` / `Alt+E` | Toggle the search box's **Aa** (match case), **W** (whole word) and **.\*** (regular expression) — or click them. They stay as you leave them. |
-| `↑` `↓` `PgUp` `PgDn` | Move the selection. With the groups column open, press `↑` on the top item to step into the groups (see [Groups](#groups)). |
+| `↑` `↓` `PgUp` `PgDn` | Move the selection. The panel opens on your newest copy, so `↑` goes first to the pinned items above it, the lowest one first. With the groups column open, press `↑` on the top item to step into the groups (see [Groups](#groups)). |
 | `Space` / `Enter` in the groups column | While the arrow keys are in the groups column: keep the group under the ring and go back to the items. While several groups are open: add the group under the ring to the list, or take it out (see [Groups](#groups)). Everywhere else, `Space` is typed and `Enter` pastes. |
 | `←` `→` | Previous / next tab, in a circle: `←` on the first tab goes to the last tab, `→` on the last tab to the first. While you edit search text, they move its caret instead; after `↑` or `↓` they switch tabs again. A held key stops at the first or last tab. |
 | Mouse over an item | Select it. Tabs and group icons are only selected by a click. |
@@ -218,33 +253,41 @@ Press **Win+V**. The panel appears at once by your text cursor, in the tab you u
 | `Ctrl+F` | Back to the search box |
 | `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
 | `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), delete, forget forever |
+| Right-click a tab (or `Menu` on a tab you clicked) | Tab menu: *Move left*, *Move right*, *Hide tab*, *Hide tab & clipboard rows*, *Show all hidden*. A right-click on the tabs' empty space offers *Show all hidden* too (see [Tabs](#tabs)). |
 | `Esc` | Clear the search, then close — focus returns to where you were |
-| Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens by your cursor again next time. |
+| Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens where *Panel position* says again next time. |
 | Drag an edge | Resize the panel. It opens at that size from then on. |
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
 | The update button, left of Pause | Open the update dialog: the release notes, and *Update and restart* when a newer version exists (the button is highlighted then; see [Updates](#updates)) |
 
-Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match.
+Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match — the
+newest one that is not pinned, when pinned matches are listed above it.
 
 **Pasting into a window that runs as administrator** (an elevated terminal, say): Windows does not let an app that runs
 without administrator rights type into it. BetterClipboard puts the item on the clipboard, goes back to that window, and
 tells you once (a notification) to press `Ctrl+V` yourself. The shortcut itself works over such windows when Win+V is
 released from Explorer (the installer's default).
 
-The tray icon opens the panel and Settings:
+The tray icon opens the panel and Settings. The search box at the top of Settings (`Ctrl+F`) filters the page as you
+type, typos included; `Esc` clears it. Its sections:
 
 - **Shortcut:** the keys that open the panel (add as many as you like: click the box and press them, or pick one from
-  its menu of suggestions and shortcuts used before), and releasing Win+letter shortcuts from Explorer
-  ([Choosing shortcuts](#choosing-shortcuts)).
+  its menu of suggestions and shortcuts used before), where the panel opens (next to the text cursor, next to the mouse,
+  in the middle of the main screen, or in the middle of the screen you are typing on), and releasing Win+letter
+  shortcuts from Explorer ([Choosing shortcuts](#choosing-shortcuts)).
 - **History:** how many items, for how many days, how large, and what to record.
-- **Pasting:** paste after choosing, move pasted items to the top, pinned items first, where the panel opens.
+- **Pasting:** paste after choosing, move pasted items to the top, pinned items first.
 - **Privacy:** pause, ignored apps, *Forgotten forever*, capture reliability, clear history.
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
   remembers — including its pinned items.
-- **Integrations:** one switch for each tab of another app (see [Tabs for other apps](#tabs-for-other-apps)).
-- **App:** start with Windows (for you alone, also when BetterClipboard was installed for every user), theme, the
-  command line, the data folder.
+- **Integrations:** one switch for each tab of another app, two for Notepad++ (its unsaved tabs, and the files you
+  open in it), and on each card *Delete stored…*: a dialog that lists what BetterClipboard kept from that source, part
+  by part with counts, sizes and the newest examples, and deletes the parts you tick — optionally turning the switch
+  off first (see [Tabs for other apps](#tabs-for-other-apps)).
+- **App:** the interface language (Windows' or one you pick; *Restart now* next to the list applies it), start with
+  Windows (for you alone, also when BetterClipboard was installed for every user), theme, the command line, the data
+  folder.
 - **Updates:** the switch for the daily check, *Check now*, and the update dialog ([Updates](#updates)).
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
@@ -264,8 +307,9 @@ The tray icon opens the panel and Settings:
 | Links | Copied URLs | Always |
 | Files | Files you copied in Explorer, and text that is nothing but paths | Always |
 | ShareX | Screenshots that ShareX saved, and everything you copied from ShareX | When ShareX is installed |
-| Snipping | Screenshots that Snipping Tool and Win+PrtScn saved | Always |
-| Run | Commands you ran with Win+R | Always |
+| Snipping | Screenshots that Snipping Tool and Win+PrtScn saved | When your history has a screenshot from them |
+| Notepad++ | The text of Notepad++'s unsaved tabs, the files you opened in Notepad++, and what you copied in it | When your history has something from Notepad++ |
+| Run | Commands you ran with Win+R | When your history has a Win+R command |
 | Pwsh | PowerShell's own command history | When PowerShell has a history file |
 | Cmd | Commands typed in Command Prompt windows | Always |
 | Claude | Prompts you sent to Claude Code | When Claude Code has prompts |
@@ -275,9 +319,22 @@ The tray icon opens the panel and Settings:
 Every tab after Files has its own switch in *Settings › Integrations*. All of them are on by default; turn one off
 and its tab goes away. [Tabs for other apps](#tabs-for-other-apps) tells what each one reads.
 
+**Arrange the tabs** by right-clicking one:
+- *Move left* and *Move right* move it one place among the tabs you see. All always stays first and can't be moved.
+- *Hide tab* takes the tab out of the row. Only the tab goes: its items still show in All and the other tabs, its
+  switch in *Settings › Integrations* stays on, and BetterClipboard keeps gathering for it. Hiding the tab you are in
+  switches to All. All can't be hidden.
+- *Hide tab & clipboard rows* also takes the tab's items out of every list: All, the other tabs, searches. Items you put
+  in a group stay where they show. The footer then says how many are hidden (`1,240 items · 37 hidden`). Nothing is
+  deleted, and `bclip` still lists them.
+- *Show all hidden* brings every hidden tab back, with how many there are, and the items hidden with them. A
+  right-click on the row's empty space offers it too.
+
+Your order and your hidden tabs are kept, also after a restart. `←` and `→` skip hidden tabs.
+
 **The panel opens in the tab you used last**, also after a restart. `←` and `→` go through the tabs in a circle. If
-the tab you used last is not there (its app is gone, or its switch is off), the panel opens in All, and returns to
-your tab when it is back. The search text and the groups you opened are not kept: each Win+V starts with an empty
+the tab you used last is not there (its app is gone, its switch is off, or you hid it), the panel opens in All, and
+returns to your tab when it is back. The search text and the groups you opened are not kept: each Win+V starts with an empty
 search over your whole history.
 
 ### Search
@@ -432,11 +489,19 @@ of opening File Explorer.
 
 ## Tabs for other apps
 
-BetterClipboard also keeps what other tools on your PC forget or bury: screenshots, Win+R commands, shell
-history, the prompts you send to AI coding agents, and the files you open in Everything. Each source has its own
-tab and its own switch in *Settings › Integrations*. All of them are on by default, and the tab of an app you don't
-have stays hidden. BetterClipboard only reads these sources; it never changes their files or lists.
+BetterClipboard also keeps what other tools on your PC forget or bury: screenshots, Notepad++'s unsaved tabs, Win+R
+commands, shell history, the prompts you send to AI coding agents, and the files you open in Everything. Each source
+has its own tab and its own switch in *Settings › Integrations*. All of them are on by default, and the tab of an app
+you don't have stays hidden. BetterClipboard only reads these sources; it never changes their files or lists.
 [Privacy](#privacy) sums up what each one reads.
+
+**Deleting what a source left.** *Delete stored…* on each card opens a dialog that shows what BetterClipboard kept
+from that source, one part per row: how many, how large, and the newest examples (thumbnails for screenshots). The
+everyday parts are ticked; pinned and grouped items, and the lists of commands or picks you hid, are kept unless you
+tick them. Cancel is the default button, so `Enter` deletes nothing. The other app's files are never touched — ShareX's
+screenshots stay in ShareX's folders — and what you deleted is not imported again by the next catch-up, while new
+screenshots, runs and prompts are recorded as long as the switch is on (the dialog's *Also turn off* switches it off
+first). For Claude Code and Codex, whatever the agent still has is read again at once while the switch is on.
 
 <p align="center">
   <img src="docs/images/prompts.png" width="417" alt="The Claude tab of the panel: prompts sent to Claude Code in the Acme project, newest first, each with when it was sent; one was sent 2 times. Above them, the tabs are scrolled to Files, Snipping, Run, Pwsh, Cmd, Claude and Codex.">
@@ -472,7 +537,8 @@ ShareX. Paste one with `Enter` like any other item.
 ### Snipping Tool and Win+PrtScn
 
 Windows saves your screenshots in *Pictures › Screenshots*: Snipping Tool's auto-save (`Win+Shift+S`, `PrtScn`)
-and `Win+PrtScn`. Each one is in your history the moment Windows finishes writing it, in the **Snipping** tab.
+and `Win+PrtScn`. Each one is in your history the moment Windows finishes writing it, in the **Snipping** tab. The
+tab shows once your history has a screenshot from them, and goes when you delete the last one.
 
 - **One item per picture.** Snipping Tool also copies each snip to the clipboard. The copy and the saved file
   become one item.
@@ -483,10 +549,36 @@ and `Win+PrtScn`. Each one is in your history the moment Windows finishes writin
 - **Snipping Tool's own settings** show in *Settings › Integrations*: whether it auto-saves, and whether it
   saves to a folder of its own (BetterClipboard does not watch that folder).
 
+### Notepad++
+
+[Notepad++](https://notepad-plus-plus.org/) keeps the text of its unsaved "new" tabs in backup files, and forgets it
+when you close such a tab. BetterClipboard keeps it in the **Notepad++** tab, with the full path of every file you
+open in Notepad++ and whatever you copy in it. The tab shows once your history has something from Notepad++. Two
+switches in *Settings › Integrations*: *Notepad++ unsaved tabs* and *Files opened in Notepad++*.
+
+- **Unsaved tabs, kept up to date.** A tab is read from Notepad++'s backup once you stop typing in it for a minute
+  (at the latest five minutes after its first change, if you keep typing). A small change updates the tab's item
+  where it is, and the card says when it was edited. Once more than a fifth of the text is gone (deleted or
+  rewritten, added up over the edits), the old version stays as an item of its own and the new text becomes a new
+  item. Typing more never splits a tab. The card names the tab ("new 3"), also after you rename it.
+- **Files you open, as if you copied their path.** Opening a file in Notepad++ puts its full path in your history;
+  opening it again later moves that item from its old date to the top. BetterClipboard asks a running Notepad++
+  which files it has open. The files Notepad++ restores from its last session at start do not count; the files you
+  start it with (a double-click in Explorer) do.
+- **The first time,** the unsaved tabs Notepad++ remembers then are imported. Files opened before are not.
+- **Never in Notepad++'s way.** Its files are read without locking them, and nothing of Notepad++ is ever changed.
+  BetterClipboard asks only a Notepad++ signed by its makers. *Pause capturing*, *Ignored apps* (add `notepad++`)
+  and the size limit apply.
+- **Deleting a tab's item** is respected: that text does not come back, and the tab's next change is a new item.
+- **Not seen:** a file opened again while it is still open in Notepad++ (Notepad++ only switches to its tab); unsaved
+  tabs while Notepad++'s *Settings › Preferences › Backup › Enable session snapshot and periodic backup* is off
+  (*Settings › Integrations* says so); a Notepad++ running as administrator while BetterClipboard does not.
+
 ### Win+R history
 
 Windows remembers only your last 26 Win+R commands. BetterClipboard keeps every command you run with `Win+R`, in
-the **Run** tab, starting with the 26 that Windows remembers today.
+the **Run** tab, starting with the 26 that Windows remembers today. The tab shows once there is a command in it:
+if Windows remembers none, with the first one you run.
 
 - `Enter` pastes a command. `Ctrl+Enter` runs it again, the way the Run dialog does; `Ctrl+Shift+Enter` runs it
   as administrator. Both are also in the item's menu.
@@ -536,8 +628,8 @@ cleanup removes old prompts from its history.
   until you send it again.
 - **Kept apart:** prompts never appear under *All*, and they never count against your history's limits.
 - **Only yours:** Codex's subagents and `codex exec` runs are left out. Images are counted, not kept.
-- `bclip prompts` lists and searches them from a terminal. *Delete stored prompts…* in Settings deletes what
-  was kept.
+- `bclip prompts` lists and searches them from a terminal. *Delete stored…* on the card in Settings deletes what
+  was kept ([Deleting what a source left](#tabs-for-other-apps)).
 
 ## Command line for scripts and AI agents
 
@@ -553,7 +645,7 @@ the network cannot connect, and each command is logged by name only, never with 
 
 | Command | What it does |
 |---|---|
-| `bclip list [-n 20] [-f FILTER] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line. `FILTER` is `pinned`, `text`, `images`, `links` or `files` (copied paths included, as kind `path`), or a tab: `sharex`, `snipping`, `run`, `pwsh`, `cmd`, `claude`, `codex`, `everything` |
+| `bclip list [-n 20] [-f FILTER] [-s 2h]` | Recent items: id (`*` = pinned), kind, age, source app, first line. `FILTER` is `pinned`, `text`, `images`, `links` or `files` (copied paths included, as kind `path`), or a tab: `sharex`, `snipping`, `notepad++`, `run`, `pwsh`, `cmd`, `claude`, `codex`, `everything` |
 | `bclip search <words…>` | Items containing all the words (substring, any language) |
 | `bclip grep [-i] <regex>` | Matching lines as `id:line: text`, like `grep -n` |
 | `bclip get [ID \| -r N] [--format text\|html\|rtf\|files\|png] [-o FILE]` | An item's content, byte for byte (default: the latest); images need `-o file.png` |
@@ -571,7 +663,8 @@ kept from those tabs. The prompts themselves are in `bclip prompts`.
 
 Add `--json` to any command for structured output (ids, kinds, times, source app, formats, grep matches).
 Exit codes: `0` ok · `1` nothing found or timed out · `2` bad usage · `3` BetterClipboard unreachable or the
-command line is off · `4` other error. `bclip help <command>` shows every option.
+command line is off · `4` other error. `bclip help <command>` shows every option. `bclip` always answers in English,
+whatever the app's or Windows' language: scripts and agents rely on its output.
 
 ```powershell
 bclip get                                 # what did I just copy?
@@ -611,6 +704,9 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   - the agents' history files: a reader that keeps a checkpoint per file and reads only the bytes added since. A
     folder watcher alone is not enough: Windows reports no writes to a file that another app keeps open, so a
     short check every 5 seconds backs it up;
+  - Notepad++'s unsaved tabs: a folder watcher on its backup folder; a tab is read only once it rests for a minute;
+  - files opened in Notepad++: a notification when its window title changes, and every 5 seconds one question for how
+    many documents it has open; BetterClipboard asks which ones only when the title or the count changed;
   - PowerShell's history file and Everything's list of opened files: read only when you open their tab;
   - Command Prompt windows: read by a short-lived helper process, so that a window that closes during the read
     can never take BetterClipboard down with it.
@@ -637,6 +733,12 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   (queued copies are saved first), swaps the folder by renames — a failed swap puts the old folder back — and starts
   the app again. It writes its outcome to a file, which the app reads at its next start to tell you how it went.
   Only the install folder is touched.
+- **Languages.** Each interface language is one catalog embedded in the program, with its flag, so one build holds
+  every language and no copy can miss a language file. Strings are found by their English text, counts take the form
+  each language needs (CLDR's plural rules), and a string a translation lacks shows in English; a language is offered
+  once nearly all of it is translated. Every English string carries a description for translators. A right-to-left
+  language keeps the left-to-right layout, and its text is embedded right to left so each sentence reads in its own
+  order. Logs and `bclip`'s output stay English. See [docs/localization.md](docs/localization.md).
 
 Data lives in `%LOCALAPPDATA%\BetterClipboard` (`stores\<id>\history.db` + `history.key`, `settings.json`,
 `logs\`, `updates\`). Logs never contain clipboard content.
@@ -679,6 +781,8 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 | Windows' own clipboard history | Imports what Win+V still remembers, its pinned items included, at each start | On | *Import from Windows › Import automatically every time BetterClipboard starts* |
 | ShareX's screenshot folders | Keeps each screenshot ShareX saves | On, while ShareX is installed | *ShareX screenshots* |
 | Windows' Screenshots folder | Keeps each screenshot Snipping Tool or Win+PrtScn saves there | On | *Snipping Tool and Win+PrtScn* |
+| Notepad++'s session and backup files | Keeps the text of its unsaved tabs, read once a tab rests for a minute | On, while Notepad++ is installed | *Notepad++ unsaved tabs* |
+| A running Notepad++ | Asks it which files it has open (its plugin messages), and keeps the path of each file you open | On, while Notepad++ runs | *Files opened in Notepad++* |
 | Windows' Win+R list | Keeps every command the list records | On | *Win+R history* |
 | PowerShell's history file | Lists its commands in the Pwsh tab; keeps a command only when you paste, copy, pin or group it | On | *Pwsh tab (PowerShell history)* |
 | Command Prompt windows you opened | Reads their command history every 30 seconds and keeps it, since Command Prompt forgets it when the window closes | On | *Cmd tab (Command Prompt history)* |
@@ -686,14 +790,15 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 | Claude Code and Codex | Keeps the prompts you sent them, read from their own history files | On | *Claude Code prompts*, *Codex prompts* |
 
 - **Nothing private in the logs:** they record what happened (counts, versions, errors), never what you copied,
-  ran, typed or sent.
+  ran, typed or sent. They are always in English.
 - **The command line is off by default.** While *Command line (bclip)* is on, any program running as you can read
   the history through it (see [Command line](#command-line-for-scripts-and-ai-agents)).
 - **Windows' own features:** an item you paste goes onto the clipboard like any copy, so Windows' clipboard history
   and its sync between devices (*Clipboard history across your devices*) treat it the way you set them up in
   Windows (Microsoft's [privacy statement](https://privacy.microsoft.com/privacystatement) covers those).
 - **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored. *Settings › Clear
-  history* and *Delete stored prompts…* delete parts of it.
+  history*, and *Delete stored…* on each source's card in *Settings › Integrations*, delete parts of it; neither
+  touches the other apps' own files.
 
 ## Uninstall
 
@@ -728,7 +833,20 @@ pwsh tools/release/package.ps1 -Version 0.1.0     # the exact release zips and .
 ```
 
 Set `BETTERCLIPBOARD_DATA_DIR` to a scratch folder when experimenting so your real history stays clean.
+
+To run your own build as your installed app, publish it to this PC's dev-builds folder
+(`%LOCALAPPDATA%\BetterClipboard\dev-builds`); the installed app's update button then offers it:
+
+```powershell
+pwsh tools/release/publish-dev.ps1             # builds HEAD's commit (never uncommitted changes) as X.Y.Z-dev.N.g<sha>
+pwsh tools/release/publish-dev.ps1 -Install    # the first time: installs it now (an installed 0.2.9 or older cannot
+                                               # read the folder); the update button does the rest
+```
+
+A development build's update button always offers GitHub's latest release too, as the way back.
 Releases are built by [`.github/workflows/release.yml`](.github/workflows/release.yml) from a `v*` tag.
+Translations live in the build itself, one file per language: [docs/localization.md](docs/localization.md) explains how
+to add one or fix a string.
 
 ## Code signing policy
 

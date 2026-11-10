@@ -21,6 +21,11 @@ namespace BetterClipboard.Core.Updates;
 /// </item>
 /// <item>"Skip this version" (<see cref="UpdateSnapshot.IsSkipped"/>): no reminder for that version; a newer one reminds again.</item>
 /// <item>An approved update that is on its way (<see cref="UpdateSnapshot.IsInstalling"/>): nothing left to remind of.</item>
+/// <item>
+/// A development build (<see cref="UpdateSnapshot.IsDevBuild"/>, since 2026-11-08): never. Its button is lit on purpose
+/// whenever the release list is known — GitHub's latest release is always offered to it as the way back
+/// (<see cref="UpdateCatalog"/>) — and whoever runs one publishes its builds themselves, so a weekly nudge would only nag.
+/// </item>
 /// </list>
 /// <para>
 /// <b>One clock for everything.</b> The time of the last reminder is one value (<c>AppSettings.UpdateReminderShownUtc</c>),
@@ -50,12 +55,12 @@ public static class UpdateReminder
 
     /// <summary>
     /// Whether this state calls for reminders at all, whatever the clock says: an update is offered that the user did not
-    /// skip, nothing is being installed, and this copy checks for updates by itself.
+    /// skip, nothing is being installed, this copy checks for updates by itself, and it is not a development build.
     /// </summary>
     /// <param name="snapshot">The update state, or <see langword="null"/> when the update system did not start.</param>
     /// <returns><see langword="true"/> when a reminder may be shown once it is due.</returns>
     public static bool IsWanted(UpdateSnapshot? snapshot) =>
-        snapshot is { AutomaticChecks: true, IsUpdateAvailable: true, IsSkipped: false, IsInstalling: false };
+        snapshot is { AutomaticChecks: true, IsUpdateAvailable: true, IsSkipped: false, IsInstalling: false, IsDevBuild: false };
 
     /// <summary>
     /// Whether the reminder should be shown now: the state calls for one (<see cref="IsWanted"/>) and the last one is at

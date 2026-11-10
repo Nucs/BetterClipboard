@@ -160,7 +160,7 @@ public sealed partial class UpdateView : UserControl
 
         // A failed installation is an error; a failed check (usually no connection) only means the list may be old.
         ProblemBar.Severity = install is not null ? InfoBarSeverity.Error : InfoBarSeverity.Warning;
-        ProblemBar.Message = problem.Message;
+        ProblemBar.Message = UpdateText.ProblemText(problem);
         ProblemBar.IsOpen = true;
     }
 
@@ -208,7 +208,8 @@ public sealed partial class UpdateView : UserControl
             switch (snapshot.InstallKind)
             {
                 case UpdateInstallKind.Installer:
-                    primary = UiText.Translate("Update and restart");
+                    // "Install and restart" for the way back from a development build to an older release.
+                    primary = UpdateText.ApproveButton(snapshot);
                     primaryAction = () => InstallRequested?.Invoke(this, EventArgs.Empty);
                     secondary = UiText.Translate("Later");
                     secondaryAction = () => LaterRequested?.Invoke(this, EventArgs.Empty);
@@ -334,6 +335,11 @@ public sealed partial class UpdateView : UserControl
                       ?? (changelog.Releases.Count > 0 ? changelog.Releases[0].PageUrl : null)
                       ?? ReleasesPage;
 
+        // Notes of a build from the dev-builds folder have no page on GitHub: a "View on GitHub" link under them would lead
+        // to releases that say nothing about that build.
+        bool localNotes = snapshot.IsLocalOffer || (changelog.Releases.Count > 0 && changelog.Releases[0].IsLocalBuild);
+        ReleasePageLink.Visibility = localNotes ? Visibility.Collapsed : Visibility.Visible;
+
         if (changelog.Kind == ChangelogKind.None || changelog.Releases.Count == 0)
         {
             var state = snapshot.Phase == UpdatePhase.Checking ? NotesState.Loading
@@ -402,7 +408,7 @@ public sealed partial class UpdateView : UserControl
         if (changelog.OlderReleasesLeftOut > 0)
         {
             int older = changelog.OlderReleasesLeftOut;
-            NotesPanel.Children.Add(SecondaryLine(UiText.Format($"{older} older release{(older == 1 ? string.Empty : "s")} in between: see GitHub.")));
+            NotesPanel.Children.Add(SecondaryLine(UiText.Plural(older, $"{older} older release in between: see GitHub.", $"{older} older releases in between: see GitHub.")));
         }
 
         ScrollNotesToTop();

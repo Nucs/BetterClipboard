@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 
 namespace BetterClipboard.Core.Shells;
@@ -119,10 +120,22 @@ public static class PsReadLineHistory
         return host switch
         {
             "ConsoleHost" or "" => "PowerShell",
-            "Visual Studio Code Host" => "PowerShell in VS Code",
-            _ => $"PowerShell ({host})",
+            "Visual Studio Code Host" => VsCodeHostName,
+            _ => string.Format(CultureInfo.InvariantCulture, OtherHostTemplate, host),
         };
     }
+
+    /// <summary>
+    /// The source name of commands from the VS Code PowerShell extension's history file. Shown translated
+    /// (<see cref="Presentation.SourceNames"/>), so it is a constant the display can match.
+    /// </summary>
+    public const string VsCodeHostName = "PowerShell in VS Code";
+
+    /// <summary>
+    /// The source name of commands from any other PowerShell host's file: the host's name in brackets
+    /// (<c>PowerShell (MyHost)</c>). A composite format, so the display can match and translate it.
+    /// </summary>
+    public const string OtherHostTemplate = "PowerShell ({0})";
 
     /// <summary>Adds the record in <paramref name="current"/> unless it is blank, then clears the builder.</summary>
     /// <param name="records">The records so far.</param>

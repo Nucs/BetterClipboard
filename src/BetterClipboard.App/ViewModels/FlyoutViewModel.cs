@@ -145,7 +145,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// (<see cref="SetGroupsNavigation"/>), <see cref="GroupsKeyHint"/> or <see cref="GroupsPickKeyHint"/>.
     /// </summary>
     [ObservableProperty]
-    public partial string KeyHint { get; set; } = DefaultKeyHint;
+    public partial string KeyHint { get; set; } = UiText.Translate(DefaultKeyHint);
 
     /// <summary>The footer's key hints everywhere but the Run tab.</summary>
     public const string DefaultKeyHint = "↵ paste · ⇧↵ plain text · Ctrl+P pin · Del delete";
@@ -216,7 +216,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>Search box placeholder ("Search in Work…" or "Search in Work + Home…" in a group view).</summary>
     [ObservableProperty]
-    public partial string SearchPlaceholder { get; set; } = DefaultSearchPlaceholder;
+    public partial string SearchPlaceholder { get; set; } = UiText.Translate(DefaultSearchPlaceholder);
 
     /// <summary>
     /// Whether the empty Everything tab offers "Start Everything": it is not running, nothing could be shown, and
@@ -235,15 +235,23 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public bool IsGroupView => !GroupSelection.IsEmpty;
 
     /// <summary>
-    /// Whether the list already shows what a load would show now: it was loaded for the current search, tab, groups and
-    /// search toggles, and no history change was reported since that load started. A summon then shows the list as it is,
-    /// without the reload that used to rebuild every card after the panel appeared.
+    /// Whether the list already shows what a load would show now: it was loaded for the current search, tab, groups,
+    /// search toggles and order (Settings' "Show pinned items first"), and no history change was reported since that load
+    /// started. A summon then shows the list as it is, without the reload that used to rebuild every card after the panel
+    /// appeared.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Only views of stored history qualify (<see cref="IsStoredHistoryView"/>). The Everything, shell and prompt tabs also
     /// show what other apps keep (picks, shell histories, the prompt archive), which no history event announces, so they
     /// always reload. A summon starts in one of them when it is the tab the user last chose: the panel then shows that
     /// tab's list as it was last loaded, and reloads it right after it appeared.
+    /// </para>
+    /// <para>
+    /// The order counts since 2026-11-08: no event reloads the hidden panel when the setting changes, and its list kept the
+    /// old order until the next copy — with the pins among the copies right after the setting was turned on, or on top
+    /// after it was turned off. Now the next summon finds the list stale and reloads it.
+    /// </para>
     /// </remarks>
     public bool IsListCurrent =>
         IsStoredHistoryView
@@ -260,11 +268,28 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// </remarks>
     public bool IsStoredHistoryView => !IsEverythingView && !IsShellView && !IsPromptView;
 
+    /// <summary>
+    /// The tabs hidden with their rows (right-click a tab › <i>Hide tab &amp; clipboard rows</i>), in a fixed order: every
+    /// list this panel loads leaves their entries out — except entries in a group (<see cref="ClipQuery.HiddenRows"/>) —
+    /// and the footer counts them ("· 37 hidden"). Empty while no tab hides its rows. Set by the panel
+    /// (<see cref="SetHiddenRows"/>), which owns the tabs' arrangement.
+    /// </summary>
+    public IReadOnlyList<ClipFilter> HiddenRows { get; private set; } = [];
+
+    /// <summary>
+    /// Sets the tabs hidden with their rows. The list shown is stale afterwards (they are part of its
+    /// <see cref="ViewKey"/>), so the caller reloads it while the panel shows; a hidden panel reloads at the next summon.
+    /// </summary>
+    /// <param name="tabs">The tabs; order and repeats do not matter (kept sorted and distinct, so the same set is the same key).</param>
+    public void SetHiddenRows(IEnumerable<ClipFilter> tabs) => HiddenRows = tabs.Distinct().Order().ToArray();
+
     /// <summary>Whether <see cref="LoadGroupsAsync"/> succeeded once (until then the cards show no group badges).</summary>
     public bool GroupsLoaded { get; private set; }
 
     /// <summary>The view a load is made for (see <see cref="IsListCurrent"/>).</summary>
-    private ViewKey CurrentViewKey => new(SearchText, Filter, string.Join(",", GroupSelection.Ids), CurrentSearchOptions);
+    private ViewKey CurrentViewKey =>
+        new(SearchText, Filter, string.Join(",", GroupSelection.Ids), CurrentSearchOptions, controller.Settings.Current.PinnedOnTop,
+            string.Join(",", HiddenRows));
 
     /// <summary>
     /// Notes that the history changed (an entry added, updated, removed or reordered), whether or not the change was applied
@@ -518,7 +543,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             // is wrong, and how to search for the characters themselves. A superseded query's verdict is stale.
             if (!cancellation.IsCancellationRequested)
             {
-                ShowSearchProblem("Not a valid regular expression", UiText.Format($"{ex.Reason} Turn off .* (Alt+E) to search for these characters as they are."));
+                ShowSearchProblem(UiText.Translate("Not a valid regular expression"), UiText.Format($"{ex.Reason} Turn off .* (Alt+E) to search for these characters as they are."));
             }
         }
         catch (SearchTooSlowException)
@@ -786,17 +811,18 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <returns>One of the key hint texts.</returns>
     private string CurrentKeyHint()
     {
+        // The constants are the English catalog texts (they also document each hint); the footer shows the translation.
         if (groupsWalk is { } walk)
         {
-            return walk == GroupWalkMode.Pick ? GroupsPickKeyHint : GroupsKeyHint;
+            return UiText.Translate(walk == GroupWalkMode.Pick ? GroupsPickKeyHint : GroupsKeyHint);
         }
 
         // The Run tab is where Ctrl+Enter runs a command (it works on any card with a run time, but only the
         // Run tab has room to say so). In a shell tab Delete hides a command rather than deleting anything.
-        return Filter == ClipFilter.Run ? RunKeyHint
+        return UiText.Translate(Filter == ClipFilter.Run ? RunKeyHint
             : Filter is ClipFilter.PowerShell or ClipFilter.Cmd ? ShellKeyHint
             : Filter is ClipFilter.ClaudeCode or ClipFilter.Codex ? PromptKeyHint
-            : DefaultKeyHint;
+            : DefaultKeyHint);
     }
 
     /// <summary>
@@ -885,10 +911,10 @@ public sealed partial class FlyoutViewModel : ObservableObject
         var groups = SelectedGroups;
         GroupTitle = groups.Count == 0 ? string.Empty : "› " + GroupViewText.Title(groups);
         SearchPlaceholder = groups.Count > 0 ? UiText.Format($"Search in {GroupViewText.ShortName(groups)}…")
-            : IsEverythingView ? EverythingSearchPlaceholder
-            : IsShellView ? ShellSearchPlaceholder
+            : IsEverythingView ? UiText.Translate(EverythingSearchPlaceholder)
+            : IsShellView ? UiText.Translate(ShellSearchPlaceholder)
             : IsPromptView ? PromptSearchPlaceholder(CurrentAgent)
-            : DefaultSearchPlaceholder;
+            : UiText.Translate(DefaultSearchPlaceholder);
     }
 
     /// <summary>The ids of the groups column, top to bottom (what <see cref="GroupSelection"/> orders and runs by).</summary>
@@ -911,6 +937,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             Filter = ClipFilter.Everything,
             Limit = EverythingTab.MaxStoredEntries,
             PinnedFirst = false, // the merge orders both sources together
+            HiddenRows = HiddenRows,
         }, cancellationToken);
 
         var picks = controller.Everything is { } everything
@@ -937,6 +964,9 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
         // Several groups are merged by the store: each item once, ordered like any other page.
         GroupIds = GroupSelection.IsEmpty ? null : GroupSelection.Ids,
+
+        // In every tab, group view and search: the rows of tabs hidden with them (grouped entries excepted, by the store).
+        HiddenRows = HiddenRows,
     };
 
     /// <summary>
@@ -950,22 +980,29 @@ public sealed partial class FlyoutViewModel : ObservableObject
         var qualifiers = new List<string>(3);
         if (UseRegex)
         {
-            qualifiers.Add("regular expression");
+            qualifiers.Add(UiText.Translate("regular expression"));
         }
 
         if (WholeWord)
         {
-            qualifiers.Add(UseRegex ? "whole words only" : "whole words");
+            qualifiers.Add(UseRegex ? UiText.Translate("whole words only") : UiText.Translate("whole words"));
         }
 
         if (MatchCase)
         {
-            qualifiers.Add("match case");
+            qualifiers.Add(UiText.Translate("match case"));
         }
 
-        // A pattern is shown as typed (its spaces may matter); words are trimmed like the search trims them.
+        // A pattern is shown as typed (its spaces may matter); words are trimmed like the search trims them. The brackets
+        // and the separator are the language's own (Chinese uses full-width ones), so they are catalog entries too.
         var phrase = UseRegex ? UiText.Format($"matches “{SearchText}”") : UiText.Format($"contains “{SearchText.Trim()}”");
-        return qualifiers.Count == 0 ? phrase : $"{phrase} ({string.Join(", ", qualifiers)})";
+        if (qualifiers.Count == 0)
+        {
+            return phrase;
+        }
+
+        var joined = string.Join(UiText.Translate(", "), qualifiers);
+        return UiText.Format($"{phrase} ({joined})");
     }
 
     /// <summary>
@@ -1029,7 +1066,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
             // "Work", "Work or Home", "these 4 groups": true of none of the groups shown.
             bool searching = !string.IsNullOrWhiteSpace(SearchText);
             var name = GroupViewText.AnyOf(groups);
-            EmptyTitle = searching ? "No matches" : UiText.Format($"Nothing in {name} yet");
+            EmptyTitle = searching ? UiText.Translate("No matches") : UiText.Format($"Nothing in {name} yet");
             EmptyMessage = searching
                 ? UiText.Format($"Nothing in {name} {DescribeSearch()}.")
                 : groups.Count == 1
@@ -1059,6 +1096,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
             EmptyMessage = controller.Settings.Current.ImportWindowsScreenshots
                 ? UiText.Translate("Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up here the moment Windows saves it.")
                 : UiText.Translate("Turn on “Snipping Tool and Win+PrtScn” in Settings to collect Windows' screenshots here.");
+        }
+        else if (Filter == ClipFilter.NotepadPlusPlus)
+        {
+            // Seen only for a moment: the tab shows only while the history holds something it lists.
+            EmptyTitle = UiText.Translate("Nothing from Notepad++ yet");
+            EmptyMessage = UiText.Translate("Unsaved “new” tabs show up here once they rest for a minute, and every file the moment you open it in Notepad++.");
         }
         else if (Filter == ClipFilter.Files)
         {
@@ -1112,8 +1155,10 @@ public sealed partial class FlyoutViewModel : ObservableObject
         }
         else if (problem is not null)
         {
+            // The problem is worded in English for the log too; it is translated as a whole, then made a sentence.
             EmptyTitle = UiText.Translate("Everything did not answer");
-            EmptyMessage = UiText.Format($"{char.ToUpperInvariant(problem[0])}{problem[1..]}. Try again in a moment.");
+            var reason = UiText.TranslateFormatted(problem, EverythingIntegration.ProblemTemplates);
+            EmptyMessage = UiText.Format($"{char.ToUpperInvariant(reason[0])}{reason[1..]}. Try again in a moment.");
         }
         else
         {
@@ -1184,17 +1229,21 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return;
             }
 
-            var stats = await controller.History.GetStatsAsync();
+            var stats = await controller.History.GetStatsAsync(HiddenRows);
             if (Filter == ClipFilter.Run)
             {
                 // The number that matters here: how many commands are kept, against Windows' own 26.
-                StatusText = UiText.Format($"{stats.RunCount:N0} command{(stats.RunCount == 1 ? string.Empty : "s")} kept");
+                StatusText = UiText.Plural(stats.RunCount, $"{stats.RunCount:N0} command kept", $"{stats.RunCount:N0} commands kept");
                 return;
             }
 
-            StatusText = stats.PinnedCount > 0
-                ? UiText.Format($"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned")
-                : UiText.Format($"{stats.Count:N0} items");
+            var counts = stats.PinnedCount > 0
+                ? UiText.Plural(stats.Count, $"{stats.Count:N0} item · {stats.PinnedCount:N0} pinned", $"{stats.Count:N0} items · {stats.PinnedCount:N0} pinned")
+                : UiText.Plural(stats.Count, $"{stats.Count:N0} item", $"{stats.Count:N0} items");
+
+            // Said while a tab's rows are hidden, so an entry that is not listed is not taken for one that was lost (the
+            // owner's choice, 2026-11-09). The total above still counts them.
+            StatusText = stats.HiddenCount > 0 ? counts + UiText.Format($" · {stats.HiddenCount:N0} hidden") : counts;
         }
         catch (Exception ex)
         {
@@ -1203,12 +1252,21 @@ public sealed partial class FlyoutViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Everything that decides which entries a load shows: two keys are equal exactly when a load for one would show the
-    /// same list as a load for the other (with the same history), which is what <see cref="IsListCurrent"/> relies on.
+    /// Everything that decides which entries a load shows, and in which order: two keys are equal exactly when a load for one
+    /// would show the same list as a load for the other (with the same history), which is what <see cref="IsListCurrent"/>
+    /// relies on.
     /// </summary>
     /// <param name="Search">The search box's text, as typed.</param>
     /// <param name="Filter">The tab.</param>
     /// <param name="Groups">The ids of the groups shown, in column order, comma-separated (empty in the regular view).</param>
     /// <param name="Options">The search toggles.</param>
-    private readonly record struct ViewKey(string Search, ClipFilter Filter, string Groups, SearchOptions Options);
+    /// <param name="PinnedFirst">
+    /// Whether pinned entries come first (<see cref="Core.Settings.AppSettings.PinnedOnTop"/>, read when the load starts):
+    /// the same entries in another order are another list, and the row a load selects depends on it.
+    /// </param>
+    /// <param name="HiddenRows">
+    /// The tabs hidden with their rows (<see cref="HiddenRows"/>), comma-separated: hiding or showing a tab's rows leaves
+    /// other entries in the list, so a list loaded before is stale, also in a hidden panel that waits for the next summon.
+    /// </param>
+    private readonly record struct ViewKey(string Search, ClipFilter Filter, string Groups, SearchOptions Options, bool PinnedFirst, string HiddenRows);
 }

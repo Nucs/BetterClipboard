@@ -235,7 +235,13 @@ never content; `--watch` for live copies, `--save` keeps BC-TEST copies only, `-
 with Windows' RichEdit and GDI, §2.33),
 [`preview_lab`](tools/probes/preview_lab) (a WinUI 3 app: RTF in a read-only `RichEditBox`, HTML in a WebView2 with
 scripts off and every request blocked; times, memory, requests; it opens a window, so it runs only inside a
-claude-desktops Windows desktop, §2.33).
+claude-desktops Windows desktop, §2.33),
+[`probe_dpi_move.cs`](tools/probes/probe_dpi_move.cs) (what Windows suggests when a program moves a window onto a monitor
+with another scale; a cloaked tool window, never seen, so it runs on a PC in use; needs two monitors with different
+scales, §2.38),
+[`dpi_move_lab`](tools/probes/dpi_move_lab) (a WinUI 3 app: whether a window set up like the panel keeps the bounds
+`AppWindow.MoveAndResize` gave it on such a monitor, and with `--fix` whether asking again holds; cloaked and never
+activated, so it runs on a PC in use, §2.38).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -289,13 +295,13 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28 and §2.31, and for the update dialog `Presentation/Markdown`, the release-notes parser, `Presentation/UpdateText` and `Presentation/UpdateDialogLayout`, §2.29), the sign-in rules (`Startup/SignInStartup`: the user's own and the all-users "Start with Windows" entry, when a start from the latter steps aside, what the switch shows and changes — §2.34), and the update system (`Updates/`: GitHub's release list, SemVer precedence, which release is offered and which notes are shown, `SHA256SUMS.txt`, the release feed and its download-trust rule, the HTTP client, the update service with its schedule and cache, how a copy was installed, the installer contract, the `--set-update-check` command — §2.29; `Updates/UpdateReminder`, when the panel reminds of a waiting update — §2.30). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21), `Updates/` (the Installed-apps record of the running copy, the OS architecture, and `ScriptUpdateInstaller`, which takes `install.ps1` out of a verified package and runs it in update mode — §2.29). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`; what each integration stored, its parts counted and deleted: `Storage/StoredData`, `ClipStore.Stored.cs`, `Services/ClipHistoryService.Stored.cs`, §2.43), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`; whether the Run and Snipping tabs have anything to show, `ClipHistoryService.TabContent.cs`, §2.36), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/SettingsSearch`, Settings' fuzzy search, and `Presentation/StoredText`, the *Delete stored…* dialog's words, §2.43, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/TabArrangement`, the tabs' order and hiding from their right-click menu, §2.40, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28 and §2.31, and for the update dialog `Presentation/Markdown`, the release-notes parser, `Presentation/UpdateText` and `Presentation/UpdateDialogLayout`, §2.29), the sign-in rules (`Startup/SignInStartup`: the user's own and the all-users "Start with Windows" entry, when a start from the latter steps aside, what the switch shows and changes — §2.34), and the update system (`Updates/`: GitHub's release list, SemVer precedence, which release is offered and which notes are shown, `SHA256SUMS.txt`, the release feed and its download-trust rule, the HTTP client, the update service with its schedule and cache, how a copy was installed, the installer contract, the `--set-update-check` command — §2.29; `Updates/UpdateReminder`, when the panel reminds of a waiting update — §2.30; `Updates/LocalBuildFeed`, the dev-builds folder's development builds read as releases and copied with a checksum check, and the dev rule in `UpdateCatalog` — §2.39), and the interface languages (`Localization/`: one catalog per language and its flag, embedded in the DLL, keyed by the English text; `UiText` finds them, looks strings up, words plurals and decides which languages are translated enough to offer, `UiLanguage`, `PluralRules` (CLDR's rules from each catalog's header), `LanguageChoice` for the language picker, asked until a language is chosen — §2.37), tracked documents (`Documents/`, `Content/TextLoss`, `Storage/ClipStore.Documents.cs`: an editor's unsaved buffer kept as one entry, updated in place or split into a new copy by the text it lost) and Notepad++'s files (`NotepadPlusPlus/`: session, backups, config, command line, the opened-files tracker — §2.41). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21; Notepad++: the plugin-message client with its owner check (Authenticode, NOTEPAD++ signer), the locator, the unsaved-tabs watcher, the opened-files watcher, life cycle — §2.41), `Updates/` (the Installed-apps record of the running copy, the OS architecture, and `ScriptUpdateInstaller`, which takes `install.ps1` out of a verified package and runs it in update mode — §2.29; `LocalBuildsWatcher`, which tells the update service when the dev-builds folder changed — §2.39). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
-| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29). The panel's weekly update reminder and its keyboard guard for clicked tooltips are §2.30. |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,220 tests, one class at a time — §4: Start with Windows for every user (§2.34, 31 cases: the entry formats, which program an entry names, what the switch shows for every mix of the user's entry, the entry for every user and Windows' marks, when a start from the entry for every user steps aside, each flip's change and all 192 flips reaching the asked state, the card's words, the setting, a copy for every user recognized before the per-user records, its update words and command); the weekly update reminder (§2.30, 26 cases: once a week to the second, a clock that was wrong, who is never reminded, the room over the window, the setting); the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it (§2.31: onto the first group shown or the clipboard icon, as a walk that shows its groups or one that only picks, when Space and Enter pick or go back with the group, when Down leaves from the lowest group, and held keys acting once), one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), the sign-in entries on scratch keys (§2.34: both entries and both marks read, odd values tolerated, writes that touch only BetterClipboard's values, plan and registry together, the PC's Installed-apps entry), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller) (344 tests). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`release/test-iex.ps1`](tools/release/test-iex.ps1) (checks that `install.ps1`'s param block survives the README's `irm \| iex` in 5.1 and 7 — CI runs it, §3.1), [`release/test-all-users.ps1`](tools/release/test-all-users.ps1) (installs and uninstalls for every user for real, as administrator and as SYSTEM — CI or a disposable VM only, §2.34), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4). |
+| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29), `LanguageWindow` (the language picker, shown until a language is chosen, §2.37; `Localization/TrExtension` and `FlagImages` serve XAML's labels and the flags). The panel's weekly update reminder and its keyboard guard for clicked tooltips are §2.30. |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,645 tests, one class at a time — §4: Settings' search and *Delete stored…* (§2.43, 57 cases: `SettingsSearchTests` 40 — the query, every kind of match and what it refuses, letters in order never across a space, fuzzy matches only as the fallback, weights, highlights through embeddings and combining marks, the typo measure; `StoredDataTests` 17 — every source's parts, one-pass counting, the newest examples, deletion keeping pins, groups and other tabs and tombstoning, the service's preview, counts and deletion of archives and lists, shortcuts kept on one line); hiding a tab with its clipboard rows (§2.42, 6 cases: the setting's defaults, normalization and round trip; the rows left out of All, the kind tabs, Pinned and searches while grouped entries stay; two tabs at once; entries a filter cannot decide staying listed; the footer's count); the right-to-left languages and the descriptions for translators (§2.37, `RightToLeftTextTests` 44: Hebrew alone right to left, every Hebrew string embedded once or one of the few without Hebrew, values inside the embedding, English fallbacks untouched, `JoinLine`, the header's direction, `AsSentence` (with the ideographic full stop after a Han or kana title), a Latin word's trailing `+` and `#` kept with it (Notepad++ in Hebrew, and no shipped Hebrew string without its mark); every `en.json` row described, and the check itself on small catalogs; group names stored without direction controls); the tabs' arrangement (§2.40, 25 cases: the stored order completed and "All" kept first, moves past tabs that do not show and never past "All", what is stored, the settings' names, the XAML declaring one tab per filter); local dev builds (§2.39, 44 cases: the folder's reader — complete builds only, staging folders, names, checksum lists, architectures, bounds — the verified copy and its refusals, the owner's table of what is offered, release builds and release candidates, the notes of local builds, the words of a local build and of the way back, Chinese, no reminder for a development build, and the service: offered at start without a request, the folder followed, a changed package refused, the way back offered); the translation guards (§2.37, `TranslationCoverageTests` 14: every text and constant the code hands to UiText has a catalog entry and every entry is still used, both read from `src` by `CSharpSourceScanner` (next to `LocalizationTests.CodeAndCatalogsAgree`, below); Core's template lists in the catalogs; group icon names unique in every language; date patterns valid; `TranslateFormatted`, `DateCulture`, dates, the forgotten list, source names, update failures and the sign-in description in Chinese); the panel position (§2.38, 8 cases: `PanelPositionSettingsTests`); the interface languages (§2.37, 111 cases: the shipped languages and their headers, flags Direct2D can draw, English-text keys and hash keys, catalogs well formed with valid placeholders and what each lacks reported, the code and the catalogs agreeing (a lexer over every XAML and C# file), plurals in each language with English fallback, CLDR plural rules in five languages with their samples and broken rules refused, which languages are offered, Windows' language to a catalog with Traditional Chinese kept English, explicit choices, a text in a given language, when a start asks (until a language is chosen, also after an update from a version that never asked), `HasHistory`, relative times and bclip's tables English on request, and no log line built from translated text); the Run and Snipping tabs showing only with something in them (§2.36, 8 cases: the store's lookup of a tab's newest entry and of one entry, the history service through a first and a last run, a first import, Snipping Tool's pictures and text, a picture copied again from Paint, a clear, a start over a store that has both, a prune and Forget forever); Start with Windows for every user (§2.34, 31 cases: the entry formats, which program an entry names, what the switch shows for every mix of the user's entry, the entry for every user and Windows' marks, when a start from the entry for every user steps aside, each flip's change and all 192 flips reaching the asked state, the card's words, the setting, a copy for every user recognized before the per-user records, its update words and command); the weekly update reminder (§2.30, 26 cases: once a week to the second, a clock that was wrong, who is never reminded, the room over the window, the setting); the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: the row every load selects — the newest copy below the pins, only while they lead the list, also on the store's own pages — and Up from it reaching the lowest pin; tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it (§2.31: onto the first group shown or the clipboard icon, as a walk that shows its groups or one that only picks, when Space and Enter pick or go back with the group, when Down leaves from the lowest group, and held keys acting once), one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), the sign-in entries on scratch keys (§2.34: both entries and both marks read, odd values tolerated, writes that touch only BetterClipboard's values, plan and registry together, the PC's Installed-apps entry), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller), and the dev-builds folder's watcher (§2.39: the folder appearing, a build renamed into it, the folder deleted and created again) (380 tests, all in English whatever Windows' language: `TestLanguage`, §2.37; `TranslationTemplateTests` 6 check the Windows template lists in the catalogs and produce every shortcut problem, registration state and run result; `PanelPlacementTests` 27, §2.38). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/publish-dev.ps1`](tools/release/publish-dev.ps1) (builds a commit in a temporary worktree and publishes it to this PC's dev-builds folder, where the installed app's update button offers it; `-Install` bootstraps — §2.39, skill `local-dev`), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`release/test-iex.ps1`](tools/release/test-iex.ps1) (checks that `install.ps1`'s param block survives the README's `irm \| iex` in 5.1 and 7 — CI runs it, §3.1), [`release/test-all-users.ps1`](tools/release/test-all-users.ps1) (installs and uninstalls for every user for real, as administrator and as SYSTEM — CI or a disposable VM only, §2.34), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`make_flags.py`](tools/make_flags.py) (the language flags, §2.37), [`localization/`](tools/localization) (`catalog.py`: add (one, or a file of many), add-plural, rename, remove, review and check UI strings, list a language's missing ones, convert hash keys; `smoke-windows.ps1`: the PR's UI smoke test in every language the catalogs hold, CI or a disposable VM only — §2.37), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2). |
 
@@ -352,6 +358,14 @@ History worker (single consumer Channel) ── classify → WIC analyze (thumbn
  If-None-Match → cache (updates\releases.json + releases-state.json) → a new UpdateSnapshot → Changed → UI (the update
  button). An approved update: a pool thread downloads to updates\<zip>.part (SHA-256 while streaming) → verify →
  powershell.exe install.ps1 -Update in its own process, which closes the app, swaps its folder and starts it, §2.29
+
+Notepad++ unsaved tabs (only while Settings › Notepad++ unsaved tabs is on) ── FileSystemWatchers on its settings and
+ backup folders (pool threads) → a change only marks the tab → a 5-s timer reads the tabs quiet for 1 min (at most 5 min
+ after the first unread change) → ClipHistoryService.RecordDocumentsAsync (the worker: one transaction per version), §2.41
+
+"Notepad++ files" message-window thread (only while Settings › Files opened in Notepad++ is on) ── a WinEvent hook on each
+ running Notepad++'s title + a 5-s scan → plugin messages (SendMessageTimeout, 500 ms) → an opened file's path →
+ ClipHistoryService.AddAsync (the worker), §2.41
 ```
 
 Rules: nothing heavy on the hook thread (Windows silently drops slow LL hooks); the clipboard thread only
@@ -405,8 +419,9 @@ installer can leave Win+V to Windows (§2.25).
 
 Hotkey → `ForegroundContext.Capture()` on the input thread (target HWND + Win32 caret via
 `GetGUIThreadInfo` + cursor + a Stopwatch timestamp, `CapturedAt`) → UI at **High** dispatcher priority: the panel,
-already drawn with its list current while it was cloaked, is moved to the caret, activated and uncloaked in one frame
-(§2.27; focus to the search box; keystrokes must never leak into the app below); only a list that is not current is
+already drawn with its list current while it was cloaked, is moved to the caret (or where *Settings › Shortcut › Panel
+position* says: next to the mouse, or centered on the main or the current screen, §2.38), activated and uncloaked in one
+frame (§2.27; focus to the search box; keystrokes must never leak into the app below); only a list that is not current is
 reloaded afterwards → Enter/click → `ReplayFormats.Prepare` (plain text strips formats; file lists as plain text become
 paths; a stored "cut" drop effect is rewritten to "copy") → write clipboard while still foreground → **re-activate the
 target while we still own the foreground, then conceal** (`Conceal` hides the window once, which hands the foreground
@@ -434,7 +449,8 @@ Win/Alt) → inject Ctrl+V.
 was selected then: "delta" + Enter at once pasted the newest item ("echo"). `ReloadAsync` now keeps its task
 (`currentReload`) and the text the shown list was loaded for (`loadedSearchText`, set by `MarkLoaded` unless a newer load
 took over); Enter runs `PasteBestMatchAsync`, which awaits `FlyoutViewModel.SettleSearchAsync` (a pending search runs at
-once; a running load is awaited) and pastes the first match. A second Enter while it waits is ignored; a panel dismissed
+once; a running load is awaited) and pastes the armed match: the first one, or since 2026-11-08 the first one below
+the pinned matches while pins are listed first (§2.28). A second Enter while it waits is ignored; a panel dismissed
 meanwhile pastes nothing. Ctrl+1…9 and clicks still act on what is shown.
 
 **Pasting into an elevated window** (2026-10-09, QA pass, UAC on). A non-elevated BetterClipboard's Ctrl+V is dropped by
@@ -718,6 +734,9 @@ while on, any process running as the user can read the whole history through it 
 - **Audit + PATH.** Each command logs `Command line: <command> (client <process> pid N)` — never arguments or
   content. Settings › *Add bclip to PATH* (`Shell/UserPath`: REG_EXPAND_SZ read/written unexpanded,
   `WM_SETTINGCHANGE "Environment"`) or `install.ps1 -AddToPath`; uninstall removes the entry.
+  - **Footgun (found 2026-11-08, §4):** the entry is the whole install folder, 200+ DLLs, and Windows' DLL search
+    falls back to the PATH: ShareX had loaded BetterClipboard's `DWriteCore.dll` from it and held it for days. A
+    PATH folder with only `bclip` in it is a next step (§6).
 - **Race lesson.** The accept loop once did `Task.Run(() => ServeAsync(listener))` and then reassigned
   `listener` to the next, unconnected instance — the lambda captured the *variable*, so ~1 in 3 test runs
   served the wrong pipe and a client write blocked forever. Found with `dotnet-dump analyze` → `dumpasync`;
@@ -1629,7 +1648,8 @@ or add to the front; evictions only drop from the end).
   log ("Ran entry N as a Win+R command: Started.").
 
 **UI and CLI.**
-- Run tab (`RunFilter`, a text tab after ShareX) while the setting is on; the tab strip scrolls when the visible tabs
+- Run tab (`RunFilter`, a text tab after ShareX) while the setting is on and, since 2026-11-08, the history holds a command
+  run with Win+R (§2.36); the tab strip scrolls when the visible tabs
   need more than its width (§2.23; until then the window widened, `MeasureTabsExtraDip`). Footer: `FlyoutViewModel.KeyHint` = "↵
   paste · Ctrl+↵ run · Ctrl+⇧↵ run as admin" in the Run tab, status "N commands kept". Empty state explains
   both setting states.
@@ -2106,8 +2126,8 @@ reaches the history through the clipboard anyway, and the pixel hash merges the 
   did not exist is waited for, and the screenshot that created it is caught up.
 
 **UI and CLI.**
-- **Tab:** "Snipping" after ShareX (tooltip names both tools). It shows while the setting is on, and falls back to All when
-  it disappears while selected; the tab strip scrolls to make room for it like for any tab (§2.23). Cards are ordinary image cards: "Snipping
+- **Tab:** "Snipping" after ShareX (tooltip names both tools). It shows while the setting is on and, since 2026-11-08, the
+  history holds a picture it lists (§2.36), and falls back to All when it disappears while selected; the tab strip scrolls to make room for it like for any tab (§2.23). Cards are ordinary image cards: "Snipping
   Tool · just now · 480 × 270", "Win+PrtScn · …", "Screenshots folder · …".
 - **Empty state:** "No screenshots yet" — "Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up
   here the moment Windows saves it."
@@ -2182,10 +2202,14 @@ scroll"); a middle-button drag pulls it too.
   - A left- or middle-button drag pulls the strip past the 4-DIP threshold. It captures the pointer, so the release
     never reaches the tab: ItemsView selects on `PointerReleased` (microsoft-ui-xaml source, `ItemsViewInteractions.cpp`).
     A click without travel still picks the tab. After a drag the search box gets the keyboard back.
-  - The capture goes through the pressed tab (`TakeOverTabPress`): the tab captures first, the viewer takes it over,
-    and the tab's `PointerCaptureLost` makes it forget the press. Capturing on the viewer alone left the tab drawn
-    pressed (dimmed) after the drag, seen in the live test's captures, and still counting as pressed: a later release
-    over it would have picked it (`ItemContainer.cpp` resets only on exit, cancel or capture loss).
+  - The capture goes through the pressed tab (`TakeOverTabPress`): the tab captures, the viewer's first attempt fails
+    (WinUI never moves a capture from one element to another), the tab gives the capture back — its
+    `PointerCaptureLost` makes it forget the press — and the viewer captures. Capturing on the viewer alone left the tab
+    drawn pressed (dimmed) after the drag, seen in the live test's captures, and still counting as pressed: a later
+    release over it would have picked it. (Until 2026-11-08 this said the viewer takes the capture over from the tab; the
+    test desktop's log showed the order above.)
+  - A press that leaves its tab any other way is forgotten as the pointer leaves (`Tab_PointerExited`, since
+    2026-11-08): "Dragging a tab off itself" below.
   - Touch pans natively.
 - **Window drag:** `IsDragSurface` treats `TabsScroller` as a control while it can scroll; while every tab fits, its
   empty space moves the window, as before.
@@ -2210,6 +2234,44 @@ future template without them only loses the fix).
     a wheel turn jumping to 87 %.
   - `HorizontalCacheLength = 64` viewports now realizes every tab: the width is exact, and every tab can be measured,
     focused and read by screen readers.
+
+**Dragging a tab off itself** (fixed 2026-11-08). User report: "If you drag and drop a tab (Files, ShareX or any really)
+then it gets bugged, unclickable and grayed out."
+- **The cause** **[verified]** on a claude-desktops Windows 11 desktop, with every tab's visual state and pointer events
+  logged by a temporary build (never committed), and in the WinUI source:
+  - A tab is a WinUI `ItemContainer`. It draws a mouse press as `UnselectedPressed` (dimmed foreground: the "grayed out")
+    until the button comes up over it. The WinUI we ship (`Microsoft.WindowsAppSDK.WinUI` 2.3.9) never forgets a mouse
+    press when the pointer leaves: its exit only cleared the pointer-over flag. So a release anywhere else left the tab
+    drawn pressed.
+  - With the right button the tab was also unclickable: it picks itself on a left release only when no button is
+    flagged pressed, and the right-button flag clears only on a right release over it or a cancel. Reproduced: after a
+    right-button drag, two left clicks reached the tab (`PointerReleased` in the log) and picked nothing.
+  - After a left drag a click still picked it.
+  - Microsoft fixed this in `ItemContainer.cpp` on 2026-07-25 (microsoft-ui-xaml PR 16243757, "Fix ItemContainer stuck
+    in pressed visual state after mouse release outside": the exit resets the press), not in 2.3.9.
+- **Which drags:** only the sideways drag that pulls a scrollable strip was clean (the hand-over above; the log showed it
+  working). Every other one left its tab grayed:
+  - down into the list (the sideways travel stays under the 4-DIP threshold, so the pull never starts);
+  - along a strip where every tab fits (no pull at all; the strip fits on a wide panel), released on another tab;
+  - out of the window;
+  - any right-button drag (the pull uses the left and middle buttons only).
+- **The fix** (`ClipboardFlyout.TabStrip.cs`): `TabsScroller_PointerPressed` remembers the tab a left or right mouse press
+  lands on (`heldTab`), whatever the strip can do. Each tab's own `PointerExited` (wired once per tab in
+  `InitializeTabStrip`) makes that tab forget the press (`ForgetTabPress`: the tab captures the pointer and gives the
+  capture straight back; the `PointerCaptureLost` is where `ItemContainer` resets, its state being private). A press that
+  ends inside the strip clears `heldTab`; tabs merely crossed by a drag are left alone.
+  - Consequence, as with WinUI's own fix: a press that leaves its tab and comes back picks nothing on release.
+  - Harmless once a WinUI with PR 16243757 ships: the tab has then forgotten the press already, and the capture adds a
+    second, idempotent reset.
+- **Facts found on the way** **[verified from microsoft-ui-xaml source]**:
+  - WinUI never moves a capture: `PointerInputProcessor::SetPointerCapture` refuses while another element holds the
+    pointer (the result is true only for the element that holds it already).
+  - `CUIElement::CapturePointer` returns E_INVALIDARG (an `ArgumentException` in C#) for an element that is not hit-test
+    visible, a collapsed one included.
+  - Under a capture, `PointerEntered`/`PointerExited` fire only on the capturing element's chain
+    (`ProcessPointerCaptureEnterLeave`), so no tab gets an exit during a pull.
+  - `PointerExited` comes once per element the pointer leaves: the log had one exit per tab crossed.
+- **Verified:** see §5.
 
 **Pieces** (all unit-tested except the App's):
 - Core `Presentation/TabStripScroll` (`Step`, `Reveal`, `Wheel`, `Drag`, `Clamp`, the arrow rules; `TabExtent`).
@@ -2510,11 +2572,12 @@ leaked; 30 ms 1 → 0; 60 and 120 ms 0 → 0. Unchanged: activation takes as lon
   it. PowerToys' Command Palette hides its window the same way.
 - **Prepared while nobody looks.** `PrepareForNextSummon` (after every conceal) resets what a summon shows: empty search,
   the tab last chosen ("All" until 2026-10-09, §2.28), no group, the strip showing that tab, the groups column as
-  remembered, the first card selected at the top. A history change while concealed queues one refresh at Low priority
-  (`ScheduleConcealedRefresh`: an import's burst costs one).
+  remembered, the newest copy selected with the list at its top (below the pins while they are listed first, since
+  2026-11-08, §2.28). A history change while concealed queues one refresh at Low priority (`ScheduleConcealedRefresh`:
+  an import's burst costs one).
 - **Current or not.** `FlyoutViewModel.IsListCurrent` compares the view the shown list was loaded for (`ViewKey`: search,
-  tab, groups, toggles) and a history version (`MarkHistoryChanged`, bumped by every change, also one applied to a card in
-  place) with now. Only views of stored history qualify; the Everything, shell and prompt tabs always reload. Since a
+  tab, groups, toggles, and since 2026-11-08 the "Show pinned items first" order, §2.28) and a history version
+  (`MarkHistoryChanged`, bumped by every change, also one applied to a card in place) with now. Only views of stored history qualify; the Everything, shell and prompt tabs always reload. Since a
   summon can start in one of those (§2.28), the hidden panel loads such a tab once after concealing and not after every
   copy (`IsStoredHistoryView`).
 - **Patched, not rebuilt.** Reloads go through `FlyoutViewModel.ApplyEntries`: the card of every entry still listed is
@@ -2536,7 +2599,9 @@ leaked; 30 ms 1 → 0; 60 and 120 ms 0 → 0. Unchanged: activation takes as lon
     Down ×2, then a search that card still matches, then Enter, would have pasted it instead of the best match. The
     `Reloaded` handler now selects and scrolls to the first card after every reload, unconditionally; callers that keep
     a card selected (a history change, a prompt tab) select it again after awaiting the reload, as before. Verified on
-    the VM: that sequence pasted the first match.
+    the VM: that sequence pasted the first match. Since 2026-11-08 the handler arms the newest copy, below the pins
+    while they are listed first (`ArmCard`, §2.28), and the history handler also scrolls the card it selects again
+    into view.
 - **No item animations:** the list's `ItemContainerTransitions` is an empty `TransitionCollection`. Cards appear, move
   and leave in one frame (also on delete and while searching).
 - **Presenting** (`PresentAsync`): move (still cloaked) → activate → uncloak. A new size (another monitor scale, the
@@ -2575,7 +2640,9 @@ closing across summons; the first summon right after a start.
 - keys typed within ~15 ms of Win+V still reach the app below (activation is the floor; a key buffer in the LL hook
   would close it, §6);
 - not verified on a real GPU, a high-refresh monitor or a multi-monitor mixed-DPI setup (the size-change path is the one
-  a monitor with another scale takes);
+  a monitor with another scale takes). Update 2026-11-08 (§2.38): on mixed scales a window set up like the panel came out
+  at the wrong size — WinUI rescales a window the program moves onto such a monitor — and `MoveAndResizeExactly` now
+  asks again;
 - a summon that comes while a concealed refresh is still queued (a Win+V a few ms after a copy) shows the previous list
   for a moment, then patches it.
 
@@ -2602,6 +2669,8 @@ the categories doesn't select them, only click selects them."
   - **With several groups merged, the keys only move the ring** (§2.31): Space or Enter adds the group under it to the
     view or takes it out.
 - **The mouse selects the row it is over.** Tabs and group icons are still selected by a click only.
+- **Since 2026-11-08 every load selects the newest copy:** row 0, or the first row below the pins while they are listed
+  first, so Up reaches the lowest pin (see "Where every load puts the selection" below).
 
 **Decisions where the request left room** (told to the user in the reply; change them here if they ask):
 - **Left / Right against the search box's caret.** The box keeps the focus, so the keys serve two masters. They are the
@@ -2618,8 +2687,8 @@ the categories doesn't select them, only click selects them."
 - **Positions in the column:** the logo (the whole history) on top, then the groups. "+" is not one. Down stopped at
   the lowest group, and only Right, the mouse or typing left. Since 2026-10-10 a new press of Down on the lowest group
   goes back to the list, unless several groups are merged (§2.31).
-- **In the column, the other keys keep their meaning:** Ctrl+P and Del act on the selected card (the first card of the
-  group shown), Esc closes. Until 2026-10-10 Enter pasted that card too, and the footer said "↵ paste". Since then
+- **In the column, the other keys keep their meaning:** Ctrl+P and Del act on the selected card (the card the group's
+  load armed: its first card, or since 2026-11-08 its newest copy below its pins), Esc closes. Until 2026-10-10 Enter pasted that card too, and the footer said "↵ paste". Since then
   Space and a plain Enter belong to the groups in the column: they go back to the list with the group, or pick in a
   merged view, and the footer shows `GroupsKeyHint` ("↑ ↓ groups · ↵ or → back to the list") or `GroupsPickKeyHint`
   (§2.31).
@@ -2645,7 +2714,8 @@ the categories doesn't select them, only click selects them."
   counts a selection as a choice only while the panel is presented and `SelectFilter` is not running
   (`selectingFilterFromCode`). A reset, the bar's own selection while it loads, and the fallback to "All" when the
   selected tab disappears are not choices.
-- **A tab that is not there** (ShareX gone, its switch off, another app's tab not known yet right after a start): the
+- **A tab that is not there** (ShareX gone, its switch off, another app's tab not known yet right after a start, the Run
+  or Snipping tab with nothing in it, §2.36): the
   summon starts in "All" and the remembered tab stays. `IsTabAvailable` asks the controller the same questions the
   `Update…Tab` methods ask.
 - **It comes back while the panel is hidden:** every status handler ends with `ReturnToRememberedTabWhileConcealed`,
@@ -2682,7 +2752,7 @@ the categories doesn't select them, only click selects them."
   still gets `PointerEntered`. A replay raises `PointerMoved` only when the entered elements changed, and marks its events
   `PointerRoutedEventArgs.IsGenerated`. Windows also sends a mouse move to a window that appears under the cursor.
 - **So the cursor's position decides** (`GetCursorPos`, like the image peek, §2.24). The keyboard, a reload that arms
-  the first card, a summon and a closing popup call `SuspendPointerSelection`. The mouse selects again once the cursor is
+  its card, a summon and a closing popup call `SuspendPointerSelection`. The mouse selects again once the cursor is
   more than 4 DIPs (the drag threshold) from the spot it was on then.
 - **Per row, not per move.** Each row's container gets one `PointerEntered` handler (`WatchCardPointer`, marked in the
   row's `Tag`, attached in `ContainerContentChanging`). That is the event WinUI's own hover highlight follows, so
@@ -2710,6 +2780,55 @@ the categories doesn't select them, only click selects them."
 - **A summon before the warm-up with a far tab remembered:** 481–767 ms to the screen in 4 runs (Cmd 481, 514 and 540;
   Pwsh 767), as before (573 ms, §2.27). One earlier run took 3,195 ms: the first restart, right after the exit that
   logged the error above. It did not recur.
+
+**Where every load puts the selection: the newest copy, under the pins** (changed 2026-11-08). User report: "When having
+pinned tab and Win+V is pressed so that BetterClipboard gets opened, the top pinned clipboard row is selected where the
+unpinned should be selected, pressing up after open should to to the lowest pinned row."
+- **Before:** every load selected row 0. With "Show pinned items first" on (the default) that is a pin, so Win+V + Enter
+  pasted a pin, maybe weeks old, instead of the copy just made.
+- **Now** (`PanelNavigation.ArmedRow`, pure, tested): the first row that is not pinned, while the setting puts pins first
+  **and** the pins are the list's leading rows; otherwise row 0 (also for a list of nothing but pins: the Pinned tab, a
+  search only pins match); -1 for an empty list. Up from it goes to the lowest pin, the way the user asked; Up on row 0
+  still walks into the groups column, so with pins that walk is that many presses longer.
+- **Every load,** not only a summon: a search, another tab, another group, the Enter fallback (`PasteBestMatchAsync`).
+  A search lists its pinned matches first too, and the selection stays on the first unpinned match while the user types
+  instead of jumping into the pins with the first letter. `Ctrl+1…9` stay positional (the n-th row, pins included).
+- **Decisions where the request left room** (told to the user in the reply; change them here if they ask):
+  - "pinned tab" read as pinned rows listed on top (in the Pinned tab every row is a pin, so it starts on its top pin);
+  - searches, tabs and group views follow the same rule as a summon (a summon-only rule would make the selection jump
+    into the pins with the first typed letter);
+  - only with "Show pinned items first" on: in recency order row 0 is the newest item and stays selected;
+  - a pin pasted last (it then heads the pins, being the most recently used item) does not take the selection: the
+    request names the unpinned row, and the next copy is what Win+V users paste.
+- **Scrolling** (`ArmCard`, `ScrollToTopShowing` in `ClipboardFlyout.Navigation.cs`; `ResetListPosition`):
+  - the list stands at its top while that shows the armed card whole; otherwise just low enough to show it on the
+    lower edge, with as many pins above as fit. Row 0 keeps the old path (`SelectIndex(0)`, `ScrollIntoView`);
+  - measured, not left to `ScrollIntoView`, which brings a row in from wherever the list stands: after a use that left
+    the list scrolled down, the armed card would sit on the top edge with every pin out of sight;
+  - how: `ChangeView(0)`, `UpdateLayout()`, the row's lower edge in the scroll viewer's content coordinates, then
+    `ChangeView` to `max(0, bottom − viewport)` — **set again after the layout pass, also when it is 0**. Found in the QA
+    pass: Ctrl+P on the armed copy moved it to the top of the pins, and the layout pass kept the visible rows in place
+    (rows inserted above them), answering the request for the top with offset 32, the whole scroll range;
+  - fallback `ScrollIntoView`: no scroll viewer yet, or a row without a container after the layout. **A list the panel
+    has not shown since it started lays out no rows while cloaked** (measured: no container and no scroll range after
+    `UpdateLayout`, in the warm-up and in a refresh before the first summon); once shown, a concealed list lays out
+    normally. The summon positions the list again once it is on screen.
+- **Found on the way (fixed):**
+  - **The order was not part of "is the list current".** No event reloads the hidden panel when "Show pinned items first"
+    changes, and its list kept the old order until the next copy, also at HEAD. With the new rule, the setting turned on
+    over a list still in recency order selected row 1, under a pin of the old order. Now `FlyoutViewModel.ViewKey` has
+    `PinnedFirst`, so the next summon reloads, and the rule checks the rows (pins must lead the list).
+  - **A card re-selected after a history reload could end off-screen.** `OnHistoryChanged` reloads and selects the
+    user's card again; with many pins the reload's scroll goes to the armed card a screenful away from it (Ctrl+P on the
+    armed copy with 9 pins). It now also scrolls that card into view (`ScrollIntoView`, which moves only when needed).
+- **Limits:** the panel loads 60 rows at a time, so with more pins than that the first page holds no copy and the list
+  starts on its top pin. Not checked: whether the first summon of a session — its list never laid out while cloaked —
+  shows one frame at the top before the measured scroll (only with more pins than the top shows; not seen in the QA).
+- **Settings says so:** the "Show pinned items first" card's description adds "The panel still selects your newest copy,
+  just below them." It is the localized key `T7ffed93d48ee` in `Core/Localization/en.json` and `zh-Hans.json` (the
+  keys are the first 12 hex digits of the English text's SHA-256; the old sentence's `Tc907e7af7ff5` is gone from both).
+  The change was written before the Simplified Chinese UI landed (`8c5814a`) and rebased onto it: the QA ran the
+  English text from before the catalogs; the Chinese sentence was not seen on screen.
 
 **Verified:** see §5.
 
@@ -2926,6 +3045,8 @@ neither, it is installed with a warning that states its hash.
 - No Authenticode check of the package: releases are unsigned (§3.3).
 - The README's update photo shows a build labelled 0.2.3 that is offered the real 0.2.5 (§3.4): retake it with the
   first real update.
+- **Since 2026-11-08 (§2.39):** a copy the installer installed also offers the development builds of its dev-builds
+  folder, before GitHub's releases, and a development build is always offered GitHub's latest release (the way back).
 
 ### 2.30 The weekly update reminder, and tooltips that took the keyboard (built 2026-10-10)
 
@@ -2945,6 +3066,7 @@ anything as its a simple tooltip".
     Chocolatey copy, an isolated instance without a stand-in feed).
   - *Skip this version* silences it for that version.
   - Nothing shows while an approved update downloads or is installed.
+  - A development build is never reminded (since 2026-11-08, §2.39): its button is lit on purpose, as the way back.
 - **Opening the update dialog starts a new week** (from the panel or from Settings, while an update is offered): *Later*
   means "in a week", not "at the next Win+V".
 
@@ -3464,13 +3586,1095 @@ keys (35 checks, PowerShell 5.1 and 7); `test-update.ps1`; and on a disposable W
   the next sign-in, not at once.
 - ARM64 was not run.
 
+### 2.36 The Run and Snipping tabs show only with something in them (built 2026-11-08)
+
+User request (2026-11-08), on the README's Tabs table, whose "Shown" column read "Always" for both: "Run — Commands you
+ran with Win+R — Always - we should now always show but only if there is Run history" and "Snipping — Screenshots that
+Snipping Tool and Win+PrtScn saved — Always - only when there are images from snipping tool." (§2.35 is left to the
+uncommitted AI conversation in the working tree.)
+
+**What the user gets.**
+- **Run** shows while *Win+R history* is on and the history holds at least one entry with a Win+R run time: imported from
+  Windows' list at the first activation, a run seen live, or a command run again from the panel. A PC whose Win+R list
+  is empty gets the tab with its first run.
+- **Snipping** shows while *Snipping Tool and Win+PrtScn* is on and the history holds at least one *picture* the tab
+  lists: a screenshot file from the Screenshots folder (origin `WindowsScreenshot`, any tool), or a picture Snipping Tool
+  copied (its path or the names "Snipping Tool" / "Win+PrtScn"). Text Snipping Tool copied (its text actions) is listed
+  in the tab, but does not make it show: the request says images.
+- Each tab goes with its last entry: deleted, forgotten, pruned, cleared — or, for Snipping, a picture Snipping Tool
+  copied that is copied again from another app, which then takes that app's name (a screenshot file keeps its origin and
+  stays). An open panel in that tab falls back to All; the remembered tab stays, so the panel returns to it when the tab
+  has entries again (§2.28).
+- The README's Tabs table and its Snipping and Win+R sections say so.
+
+**How** (`Core/Services/ClipHistoryService.TabContent.cs`; `ClipStore.FindNewestInFilter` and `IsInFilter`).
+- **A witness per tab, kept by the history worker:** the id of one entry the tab lists, the newest at the last lookup —
+  the one retention prunes last. Every change passes through `Raise` on the worker after it was stored:
+  - an Added or Updated entry is checked (one primary-key lookup) only while its tab has no witness, or when it is the
+    witness (it may have left the tab);
+  - a Removed entry only when it is the witness;
+  - a Reset only by checking that the witness is still there and still listed. An empty tab is not looked up on a reset:
+    a full history prunes an entry with every copy, and the Snipping lookup walks every picture when there is no snip.
+- **Lookups** (`FindNewestInFilter`, newest first) only at the worker's start, after an import while a tab has no
+  witness, and when the witness went. `ImportAsync` raises one Reset and no event per entry, so it looks up the empty
+  tabs itself: that is how the first import of Windows' Win+R list fills the Run tab.
+- **Costs**, measured with a scratch probe on an encrypted store of 10,000 texts and 2,000 pictures with 30 KB thumbnails
+  (BC-TEST, session a6fd5958's scratchpad `probe_tabs/`):
+  - the Run lookup: 0.002 ms, through its partial index `ix_clips_run` (`SCAN c USING INDEX ix_clips_run`);
+  - the Snipping lookup with the kind: `ix_clips_kind` newest first, 0.003 ms with a recent snip, 37 ms with none or only
+    an old one;
+  - one entry by its id: 0.002–0.04 ms;
+  - the Snipping filter without the kind: a table scan, 150 ms. Its columns lie behind `search_text`, in overflow pages
+    for long texts.
+- **Answers:** `ClipHistoryService.HasRunHistory` and `HasSnippingImages` (volatile, read from any thread), and
+  `TabContentChanged` (worker thread, with the tab's `ClipFilter`). An awaited `AddAsync`, `DeleteAsync` or `ImportAsync`
+  returns with the answer up to date. Failures are logged and keep the old witness.
+- **App:** `AppController.IsRunTabAvailable` and `IsSnippingTabAvailable` are the setting and the answer.
+  `TabContentChanged` is forwarded as `RunHistoryStatusChanged` / `SnippingStatusChanged`, whose handlers were there
+  already (`UpdateRunTab`, `UpdateSnippingTab`, `ReturnToRememberedTabWhileConcealed`).
+- **`RefreshSnippingIfWaiting` asks the setting, not the tab:** while the Screenshots folder does not exist there are no
+  screenshots either, so the tab is away exactly when that look is needed. The live check went through this path.
+
+**Verified** (rows in §5): 8 Core tests with a mutation check, and on a Windows 11 desktop: a fresh start, the first
+Win+R run, the first Win+PrtScn, deleting the last run in the open Run tab, a restart, and a run that brings the
+remembered tab back.
+
+**Not built / open:**
+- The **Cmd** tab still shows while its switch is on (not asked). Its live half — the open windows — is not in the store,
+  so a witness alone would not serve it.
+- The two tabs' empty states (`FlyoutViewModel.UpdateEmptyState`) are now reached only for a moment, when the last entry
+  goes from an open tab. They were left in place.
+- Between the app's start and the worker's first lookup (milliseconds) both tabs count as empty.
+
+### 2.37 Interface languages: Simplified Chinese (PR #1), the first-start picker with flags, English-only logs (2026-11-08)
+
+The first external contribution: [PR #1](https://github.com/Nucs/BetterClipboard/pull/1) by Johnson-Tang2019, "Add
+Simplified Chinese UI with English fallback and language selection" (4 commits on `1ef565b`, head `29032d9`). The
+owner's plan (2026-11-07): merge it on GitHub almost as it is, and develop our own changes on a branch made from it.
+On 2026-11-08 it was merged into the **local** `main` only (`8c5814a`, not pushed), and our work went onto the branch
+`feat/localization`, to be merged to `main` after the PR. The contributor-facing guide is
+[`docs/localization.md`](docs/localization.md).
+
+**What the PR brought.**
+- `Core/Localization/UiText`: one static class; two JSON catalogs (`en.json`, `zh-Hans.json`, 559 strings each)
+  embedded in `BetterClipboard.Core.dll`. Key = `T` + the first 12 hex digits of the English text's SHA-256.
+- XAML: `{loc:Tr Key=T…}` (`App/Localization/TrExtension`), resolved once when a window is built (207 uses).
+- C#: about 420 call sites wrapped in `UiText.Translate("English")` / `UiText.Format($"…")`, looked up in reverse by
+  their exact English text; a template is translated before its values go in, so user content is never translated.
+  English plural endings are passed as values (`{1}` = "s"), which Chinese templates leave out.
+- Settings › App › Language (`AppSettings.InterfaceLanguage`: `system`, `en`, `zh-Hans`), read once at startup: a
+  change shows fully after a restart. Traditional Chinese (`zh-TW`, `zh-HK`) gets English.
+- `LocalizationTests` (13 cases) and a module initializer pinning the Core tests to English.
+- Also a workflow that ran only on the fork's branch (it built a separate "zh" package), a UI smoke script
+  (`tools/localization/smoke-windows.ps1`) and `README.zh-CN.md` (notes about the fork's build, not a translation).
+
+**The owner's decisions (2026-11-08)** and what was built on `feat/localization`:
+- **(a) One build, embedded resources.** Every language is one catalog embedded in `BetterClipboard.Core.dll`,
+  **found by its resource name** (`UiText.LoadLanguages`): a new language is a new `Localization/{tag}.json`, with no
+  code. Each catalog starts with a `"$language"` header: own name, English name, flag code, and `alsoFor` (Windows
+  names that pick it exactly, `zh` for `zh-Hans`). Flags are SVGs embedded next to the catalogs
+  (`Localization/Flags/{flag}.svg`), drawn by [`tools/make_flags.py`](tools/make_flags.py) (BetterClipboard's own
+  drawings: no third-party licence). `LogicalName` in the csproj pins the resource names. The fork's separate-build
+  workflow was deleted.
+- **(b) A language picker at the first start** (`App/Views/LanguageWindow`): every language as
+  *own name · flag · English name* (English shows its name once: the two names are the same word), the one that fits
+  Windows' language selected (`LanguageChoice.Suggest` → `UiText.MatchSystem`), and a round green check
+  (`#107C10`, white `E73E`, 5.4:1). The heading and hint switch to the selected row's language
+  (`UiText.Translate(text, language)`). The check, `Enter`, `Esc`, a double click and the close button all keep the
+  selection. **It runs before any other window** (`AppController.AskForLanguageAsync`): the panel's warm-up and
+  Settings wait for the choice, so the chosen language applies everywhere at once, with no restart; meanwhile
+  `ShowFlyout` and `ShowSettings` bring the picker forward instead.
+  - **When it asks** (`LanguageChoice.ShouldAsk`): since 2026-11-09, at every start until the user answered
+    (`AppSettings.LanguageChosen`) while the settings name no language: a first start, and the first start after an
+    update from a version that never asked (the last paragraph of this section). Until then: only when the data folder
+    held no history before this start (`AppPaths.HasHistory`: anything in `stores\`, or a v0.1 `history.db`), so users
+    who updated from a version without languages were never asked. The settings file alone is not the signal:
+    `install.ps1` writes it before the first start with `-Hotkey`, `-NoTakeOverWinV` or `-NoUpdateCheck`.
+  - **Settings › App › Language** lists *Use Windows setting* (globe, and the language it picks now) and every
+    shipped language with its flag (`SettingsViewModel.LanguageOptions`, `LanguageOptionViewModel`, `FlagImages`):
+    a new catalog shows up there by itself.
+- **(3) Logs and `bclip` stay English.** The PR had routed log lines through `UiText` (the update install kind, the
+  Windows-import summary, half of the store-opened line, the bclip pipe error, the update-failure line, the summon
+  timing fragment, "Not started." exceptions): each now logs English and shows the translation. `bclip` pins
+  `UiText.Language = "en"` in `Main`, and its tables ask `RelativeTimeFormatter.Format(…, localized: false)`.
+  `LocalizationTests.NoLogLineIsBuiltFromTranslatedText` scans `src/**/*.cs` for a log call that passes `UiText` (a
+  planted offender made it fail; a translated value handed over in a variable is not seen).
+- **(4) Gaps in the translation were deferred,** then closed on request ("Complete the gaps", the same day; below).
+- **(c) READMEs in other languages live in `docs/translations/`.** `README.md` starts with a language line
+  (`**ENG** / [简体中文](docs/translations/README.zh-CN.md)`); [`docs/translations/README.zh-CN.md`](docs/translations/README.zh-CN.md)
+  is a full translation (it replaced the fork note), with the English section ids as explicit anchors (`#privacy` works
+  in both) and the app's own Chinese labels, and it says the English README prevails.
+
+**Language resolution** (`UiText.Resolve`, `MatchSystem`): an explicit selection that ships (any letter case), else
+Windows' display language matched by exact tag or `alsoFor`, then by its parent cultures against tags only
+(`zh-SG` → `zh-Hans`, `en-GB` → `en`; `zh-TW`'s parents end in `zh`, which must not reach `zh-Hans` through
+`alsoFor`), else English. `UiText.Current` caches the resolution until `Language` or the display language changes.
+
+**Robustness changes.** A catalog other than English that does not load is left out with a warning instead of
+breaking every lookup; duplicate English texts no longer throw in the type initializer (first wins; a test forbids
+them); the Windows tests are pinned to English like the Core tests (`HotkeyTakeoverTests` assert English status
+texts). The PR's smoke script refuses to run outside GitHub Actions without `-ConfirmDisposableMachine`: it copies
+the whole screen.
+
+**Tools.** [`tools/localization/catalog.py`](tools/localization/catalog.py): `add "English" zh-Hans="中文"` (adds a
+string with its key to every catalog), `rename "Old" "New"` (moves a string to its new key in every catalog and XAML
+file, translations kept for review), `key`, `check`. It writes the catalogs' exact layout (verified byte for byte on
+the PR's files before the first write).
+
+**The translation gaps, closed** (2026-11-08, "Complete the gaps"). An inventory of the branch (a scan of every
+literal handed to `UiText`, every catalog entry, every XAML literal and every prose literal in UI code; 413 candidates
+sorted by hand) found the Chinese interface still showing English in these ways:
+- **213 texts with no catalog entry**: the code translated them, the catalog did not have them, so they fell back to
+  English without anything failing. Among them: the group icons' names (also a new group's default name), 24 shortcut
+  problems, 22 update failures, the third-party rows' uses, the Everything and ShareX status reasons, the Win+R run
+  results, the date patterns, and the regex time-out, whose template carries `{0:0}` while the catalog had `{0}`.
+- **About 40 entries the code never looked up**: the search box's placeholder, the footer's key hints, "BetterClipboard —
+  paused", "1 item", "1 image", "New group", the group icons' item status ("Shown", "Arrow keys here").
+- **English words inside Chinese templates**: Release from Explorer's "it/them" and "is/are", the forgotten list's
+  "characters" and "times", the search qualifiers ("(whole words, match case)"), the Everything tab's problem cut into
+  a first letter and a rest, the Explorer confirmation's sentence about the restart, the import summary's "read".
+- **Text the app does not word itself**: WinUI's own controls (a text box's Cut/Copy/Paste), which follow Windows'
+  language, and the day and month names in dates ("Wed 14:02", "8 Nov"), which followed Windows' format language.
+
+What was built:
+- **Every gap wired and translated:** the catalogs went from 563 to 737 strings (217 new, the regex time-out renamed, 43
+  that nothing used any more removed: log-only lines, product names, the pieces the whole sentences replaced);
+  `catalog.py` gained `add-file` and `remove`. Sentences that differed for one and several keys became whole sentences, counts became one phrase per form
+  (`"1 file"` / `"{0:N0} files"`), lists join with the catalog's `", "` (Chinese `、`) and `"{0} and {1}"`, the search
+  qualifiers go in a `"{0} ({1})"` template (full-width brackets in Chinese), and a card's screen-reader name joins the
+  kind and the preview with `"{0}: {1}"` (a full-width colon in Chinese).
+- **`UiText.TranslateFormatted(text, templates)`**: translates a text that a component already worded in English for the
+  log, the installer or its tests, by matching it against the component's template list (regex per template, anchored,
+  cached, 100 ms timeout). The matched parts go into the translation unchanged; a part is translated only when it is
+  itself in the list ("the release list"). Lists: `HotkeyGesture.ProblemTemplates`, `HotkeyRegistration.StateTemplates`,
+  `RunCommandResult.DescriptionTemplates`, `EverythingOwnerVerifier.ReasonTemplates`, `EverythingLocator` and
+  `ShareXLocator.DetectedByTemplates`, `EverythingIntegration.ProblemTemplates`, `UpdateMessages.Templates`,
+  `SourceNames.Templates`. The update failures, the Everything reasons and the ShareX wording now come from named
+  constants (`Core/Updates/UpdateMessages`), so producer and list cannot drift; the shortcut problems, registration
+  states and run results are checked by tests that produce every one of them.
+- **Source names BetterClipboard makes up** ("Command Prompt", "Snipping Tool", "Screenshots folder", "PowerShell in VS
+  Code", "PowerShell ({0})") stay English in the store, because the tabs filter by them as SQL literals; they are
+  translated where they are shown (`Core/Presentation/SourceNames.Display`: card captions, the shell tabs, the
+  forgotten list).
+- **Dates:** `UiText.DateCulture` gives the culture for day and month names: Windows' regional culture while it belongs
+  to the interface language (`en-GB` keeps its 24-hour clock), else the interface language's own (`UiLanguage.Culture`);
+  the invariant culture stays English for English, so tests that pin it keep their output. The two date patterns are
+  catalog entries (`M月d日`, `yyyy年M月d日`); a pattern .NET refuses falls back to the English one.
+- **WinUI's own text:** `AppController.ApplyLanguageToWindowsText` sets the process's preferred UI languages
+  (`Windows/Shell/ProcessLanguages`, `SetProcessPreferredUILanguages` with `UiLanguage.WindowsLanguageNames`: `zh-CN`
+  first, because WinUI ships `zh-CN\Microsoft.ui.xaml.dll.mui`, then `zh-Hans`) and the Windows App SDK's
+  `PrimaryLanguageOverride`, when the settings are read and after the first-start choice, before any window is built.
+  Logged once: "Interface language: zh-Hans (WinUI's own text: zh-CN, zh-Hans)."
+- **Guards** (CLAUDE.md §4): `TranslationCoverageTests` (Core, 14) scan `src` with a small C# lexer
+  (`CSharpSourceScanner`): every literal and constant handed to `UiText.Translate`/`Format` has an entry, every entry
+  is still a literal in `src` or a key in XAML; Core's template lists have entries; group icon names stay unique in
+  every language; the date patterns parse; and the Chinese output of the new pieces. `TranslationTemplateTests`
+  (Windows, 6) check the Windows lists and produce every shortcut problem, registration state and run result. Mutation
+  check: a planted untranslated literal, constant and template, and a renamed literal, made both guards fail.
+- **English on purpose** (`docs/localization.md`): product and tab names (Everything, ShareX, PowerShell, Pwsh, Cmd,
+  Claude, Codex, Win+R, Win+PrtScn), key names and menu accelerators (`Ctrl+P`, `Enter`), the search toggles' `Aa`, `W`
+  and `.*`, text from outside the app (Windows' and .NET's error messages such as a regex's "Not enough )'s.", the
+  network stack's reasons, the installer's report), and stored content.
+- **Also fixed:**
+  - Everything's status read "Not installed (not installed)." in English and Chinese; it says "Not installed." now.
+  - The prompt tabs' "60+ matching of …" passed its "+" as a value, which the Chinese template left out (it claimed
+    exactly 60): two whole sentences now (Chinese "至少匹配 60 条").
+  - Two features shared the word 忽略: "Forget forever" (永久忽略) and "Ignored apps" (忽略的应用). "Forget forever" is
+    永久忘记 now, Windows' own Chinese verb for "Forget" (忘记此网络), in the catalog's 17 strings of the feature and
+    in the Chinese README; 忽略 keeps meaning "ignore".
+  - `catalog.py`'s XAML scans read only files under `src` (a published app's `Microsoft.UI.Xaml` folder under
+    `artifacts/` broke them).
+  - Documentation gaps the docs hook never saw (it skips the scratchpad, where the branch's worktree lives) were filled
+    in every file the branch touches.
+
+**Merging with the uncommitted AI work** (§2.35 in the shared tree, not committed): the local merge carried it
+forward. Five of its files were also changed by the PR; they were backed up, set to `HEAD`, merged, and written back as
+a three-way merge (4 clean; in `ClipboardFlyout.xaml` the AI editor row kept, the PR's keys moved onto the search box
+and its toggles). Its strings are English only until they get catalog entries; when it lands, the guards above fail
+until they do.
+
+**Verified:** see §5.
+
+**Not built / open:**
+- ~~The owner's open choices from the review~~: answered the same day and built on `feat/localization-choices` (below);
+  WinUI's own control text follows the choice since the gap work.
+- Right-to-left layout for a future Hebrew or Arabic catalog: decided against (below).
+- .NET's regex parse errors ("Not enough )'s.") stay English; `RegexParseException.Error` would allow our own sentences.
+
+**The second round of choices (2026-11-08, later), built on the branch `feat/localization-choices`.** The owner asked:
+"Use ask html questions tool for the choices. And what else we need to complete and finish supporting any language
+(not just two hardcoded, we will add Spanish, Russian, Hebrew later on." Two rounds of HTML questions (pages in session
+7f64d66b's scratchpad, `choices/`) gave:
+- **Plurals: one key per form.** `UiText.Plural(n, $"{n:N0} item", $"{n:N0} items")`; each catalog gives the forms its
+  language needs under `{English other form}#{category}`. Every catalog's header carries its CLDR rules in CLDR's own
+  syntax, samples included (`"plurals": { "one": "i = 1 and v = 0 @integer 1", … }`), so a new language needs no code.
+  `Core/Localization/PluralRules` parses and evaluates them for whole counts (all CLDR operators; `n`/`i` = the count,
+  decimal operands 0); the tests run every `@integer` sample through its rule. 35 English "s"-suffix plurals and
+  1-vs-N ternaries became `UiText.Plural` (footers, captions, Settings status lines, the forgotten list, the group
+  tooltip, the update dialog); a missing form, or one whose placeholders do not fit, falls back to English. Two counts in
+  one sentence are two plurals (the prompts card's sends are worded first, then placed).
+- **Right to left: "Hebrew words, LTR layout".** Nothing to build: a Hebrew catalog will show its words in the current
+  layout.
+- **Translators: "Claude + native review"**, with the owner's comment "Only for English, Simplified Chinese which was
+  contributed / You review and you approve, we wont do the other languages right now." So no Spanish, Russian or Hebrew
+  now, and Claude reviews the contributed Chinese. `catalog.py rename` marks every moved translation for review
+  (`"$review"` in the catalog, cleared by `catalog.py reviewed`), so nothing goes stale silently.
+- **Keys: "English text as key"**, with the owner's comment "And if we need a hash key then allow hash key too". All 563
+  hash keys became the English text (`catalog.py migrate`, in the catalogs and in 188 XAML uses); `en.json` maps each
+  text to itself and is the list of every UI string; XAML reads `{loc:Tr Text='Paste'}` again. Hash keys stay allowed
+  (`{loc:Tr Key=T…}`, `catalog.py add --hash`) for a text XAML cannot quote or a very long one; C#'s `Translate` still
+  finds a hash-keyed text by its English. **WinUI's XAML compiler takes no backslash escapes in a markup extension's
+  quoted value** (`Text='Windows\' list'` failed with WMC0615 "Type 'loc' used after '{' must be a Markup Extension");
+  `Text=&quot;Windows' list&quot;` compiles and showed right on screen, so the 12 texts with an apostrophe use it.
+- **Switching: a "Restart now" button.** Settings › App › Language saves the choice at once and shows *Restart now*
+  (accent, left of the list) while the saved language resolves to another one than the one on screen
+  (`SettingsViewModel.IsLanguageRestartPending`). `AppController.RestartAsync` starts `BetterClipboard.exe
+  --restart-after pid:startTicks` through ShellExecute (no inherited handles; same environment, so an isolated instance
+  comes back as itself) and exits the usual way; the new process waits up to 30 s for that exact process (id **and**
+  start time: an id alone can be reused) before it takes the single-instance lock, then opens Settings in the new
+  language. A failed start keeps the old process running and logs why. `UiText.Language` is still set only at startup
+  and by the first-start picker: a language never changes under windows that are up.
+- **WinUI's own text and dates: "Follow the app".** Not built on this branch: the other session that works on the
+  translation gaps (below) has `UiText.DateCulture` and `UiLanguage.WindowsLanguageNames` (the resource loader's names
+  for WinUI's own control text) in its uncommitted work.
+- **Partial languages: "Partial, English fallback"**, with the owner's comment "But dont show any percentages". A
+  catalog may lack strings (English shows); `UiText.Coverage` counts what it lacks (a plural string counts once and is
+  lacking until every form its rules need is there); a language lacking more than one string in ten
+  (`UiText.MaximumMissingShare`) is not offered (`UiText.Languages`; `UiText.AllShipped` lists all), and the log says
+  how many strings it lacks. No percentage anywhere in the UI; the tests print counts.
+
+**Also on the branch:** `UiText.UsesSimplifiedChinese` is gone (the one Chinese-only helper; the tests use `Resolve`);
+`tools/localization/smoke-windows.ps1` reads its languages and each one's word for "Shortcut" from the catalogs (with a
+pattern: two English texts that differ only in letter case would be duplicate keys to PowerShell's JSON reader);
+`catalog.py` gained `add --hash`, `add-plural`, `remove`, `missing`, `reviewed` and `migrate`, and `check` now reports
+broken entries only (missing strings are counted).
+
+**The code and the catalogs are checked against each other** (`LocalizationTests.CodeAndCatalogsAgree`, with
+`UiTextSourceScan`, a small C# lexer: comments, char literals, regular, verbatim and interpolated strings with nested
+holes): every XAML `Text=` and `Key=`, every literal passed to `UiText.Translate` / `Format`, and every `Plural` pair
+must be in `en.json` as written (interpolated strings compared as the composite format the runtime looks up), and every
+`en.json` string must still appear somewhere in the sources. Its first run found two old bugs: the regular-expression
+timeout message was never translated (the code formats `{0:0}`, the catalog had `{0}`), and "{0:0.0} MB" (the update
+download) was not in the catalogs; and five strings nothing used any more ("Copy", "English", "OK", "Save", the summon
+log fragment). A planted file with a new `Translate`, `Plural` and `Format` literal made it fail on all three.
+
+**Two sessions, one result.** While this round was asked, another session (c18a1e65) took `feat/localization` into its
+own worktree, merged `main`'s `3f0ff87` into it (`be6d30d`), and closed the translation gaps there (`bde5c83`, the
+section above). This round was built on its own branch, `feat/localization-choices` (`0720940`, made from `be6d30d`).
+On the owner's "Pull main and merge to main your changes" (2026-11-08) the two were joined, and then landed on `main`:
+- **`bde5c83` into `feat/localization-choices`.** The catalogs: the gap work's (737 strings, hash keys), re-keyed by
+  `catalog.py migrate`, with this round's plural rules, plural strings and "Restart now" on top; the gap work's
+  whole-phrase counts ("1 file" / "{0:N0} files", "kept out 1 time, last {0}") and its two "60+ matching" sentences
+  became plural strings (the "+" one keeps its Chinese 至少匹配), and "Forget forever"'s new 永久忘记 carried into the
+  forgotten list's plural string. `UiText`: this round's file with the gap work's purely additive members
+  (`TranslateFormatted`, `DateCulture`, the template shapes). `UiLanguage`: both (plural rules, culture, the Windows
+  language names). `catalog.py`: this round's, with the gap work's `add-file`, its XAML-scan fix (files under `src`
+  only) and its documentation. The gap work's `TranslationCoverageTests` and `TranslationTemplateTests` learned
+  English-text keys (an entry is the text itself, or its hash key; XAML's `Text=` counts as a use); both source scans
+  stay (`CSharpSourceScanner` follows constants, `UiTextSourceScan` checks plural strings and XAML). The plural forms
+  passed to `UiText.Plural` no longer count as uses of a plain entry with the same text.
+- **Then into `main`,** after a pull of GitHub's merge of PR #1 (`a347f06`, a tree equal to the PR head already in
+  `main`). `main`'s own work since `3f0ff87` met it there: the tabs row's menu (§2.40) and the local dev builds (§2.39)
+  had added 19 strings under hash keys, now English-text keys with their Chinese; the dev builds' 11 failure sentences
+  (`LocalBuildFeed`, `UpdateService`), written as plain English, are `UpdateMessages` templates now, with Chinese, so
+  the dialog shows them translated like every other update failure; `UpdateText` keeps both `main`'s `OfferAction` /
+  `ApproveButton` and the gap work's `ProblemText`. The gap work's `CSharpSourceScanner.StripComments` skipped strings
+  without knowing interpolation holes, so a hole holding a string of its own (`main`'s new
+  `$"… {(local ? "a local build" : …)} …"`) made it read the rest of `AppController.Updates.cs` inside out and miss its
+  literals; it skips strings with the hole-aware reader now. The shared working tree's uncommitted AI work (§2.35) was
+  kept, its `{loc:Tr Key=T…}` lines rewritten to the English-text keys so its labels still resolve. Its own texts do
+  not go through the catalogs yet (plain English in `ClipboardFlyout.AI.cs` and its XAML), so the guards pass with it
+  (built with this merge in a scratch checkout: 0 errors, Core 1,493 and Windows 380 passed) and its panel shows English
+  in Simplified Chinese until those texts go through `UiText.Translate` / `{loc:Tr Text=…}` with catalog entries
+  (`catalog.py add`, [`docs/localization.md`](docs/localization.md)).
+
+**Verified** (rows in §5): on the branch, Core 1,363 (57 new: `PluralRulesTests` 50, with CLDR samples of English,
+Russian, Hebrew, Spanish and Arabic; `LocalizationTests` 7 new) and Windows 371, all green, and the app on a disposable
+Windows 11 desktop (deleted afterwards); after joining the gap work, Core 1,377 and Windows 377; on `main` with its
+own work since `3f0ff87`, Core 1,446 and Windows 380 (2 skipped, 1 explicit), all green.
+
+**Russian, Spanish and Hebrew, a description on every row, right-to-left text (2026-11-09).** User request: "Learn the
+localization system, understand each translation row by reading the code / And start producing a description in
+English per translation row / And a translation to new languages - Russian, Spanish, Hebrew (UI stays RTL)". Two HTML
+questions settled what the request left open: Hebrew's layout, **"Keep left-to-right"**; where descriptions go,
+**"A // comment at the end of the json translation line"** (the owner's own answer, over a `$descriptions` object and a
+separate file).
+- **Descriptions:** every `en.json` row (790, plural forms included) ends with `// …`, written from the code that shows
+  the string: where it shows, what each `{0}` holds, how much room there is, which words to keep, and which sentence a
+  fragment belongs to. A plural string's `#one` row carries its description plus a fixed sentence, its `#other` row a
+  fixed note. The loader skips comments (`UiText.CatalogParseOptions`, `JsonCommentHandling.Skip`: trailing commas stay
+  an error). `catalog.py` parses and writes them in its canonical layout (the old catalogs round-tripped byte for byte
+  before the first write), and gained `describe`, `--description`/`-d` on `add` and `add-plural`, `$description` in
+  `add-file`, descriptions in `missing`, and `check` failing on a row without one.
+  `LocalizationTests.EnglishCatalog_EveryRowHasItsDescription` reads `en.json` with comments as tokens and fails on a
+  row without a same-line `//` description, or a comment anywhere else (the tool's layout would drop it).
+- **Three catalogs:** `ru.json`, `es.json`, `he.json`, complete (CLDR plural rules in each header: Russian one/few/many/
+  other, Spanish one/many/other, Hebrew one/two/other), translated by Claude from the code and the descriptions, no
+  native speaker's review yet. Russian templates that would have to inflect an inserted translation use a colon or the
+  nominative ("в группах: 4"). Flags drawn by `tools/make_flags.py`: Russia, Spain (the civil flag, without the coat of
+  arms, a blur at 36 × 24 DIPs), Israel (stripes and star from the official 160-unit height, the star as two even-odd
+  triangle bands). Windows' `he-IL`, `ru-RU`, `es-MX`, `es-419` reach them through their parent cultures.
+- **Right-to-left text in left-to-right windows.** A first pass put a right-to-left mark after each Hebrew sentence's
+  final punctuation (357 rows). Insufficient by UAX #9: in a left-to-right paragraph a Hebrew sentence with an English
+  word in the middle shows its Hebrew stretches in the wrong order around it, and one that starts with a number reads
+  backwards ("5 פריטים" as "items 5"). Built instead (`UiLanguage.IsRightToLeft`): the header's `"direction": "rtl"`
+  (anything but `ltr`/`rtl` leaves the catalog out), and at load every translation holding a strong right-to-left
+  character (`UiText.HoldsRightToLeftText`: Hebrew, Arabic and the other right-to-left blocks, beyond the BMP too, or
+  U+200F / U+061C) is wrapped in U+202B … U+202C. Values without one stay plain (`", "`, the date patterns,
+  `"PowerShell ({0})"`, `"{0}: {1}"`); `"{0} ({1})"` opts in with a leading U+200F. The marks of the first pass were
+  removed (360). Code that joins translated pieces into one line goes through `UiText.JoinLine`: the card captions
+  (`ClipItemViewModel`, `.Prompts`, `.Shells`), the forgotten list's details (`ForgottenText`), the third-party credit,
+  and two sentence pairs in `UpdateText`. `UpdateText.AsSentence` looks past trailing format characters and puts its
+  period inside the embedding. `ClipStore.ValidGroupName` drops explicit direction controls (U+202A–U+202E,
+  U+2066–U+2069), because a group created in Hebrew gets its icon's embedded name. `catalog.py check` refuses those
+  controls in any catalog.
+- **A Latin word's trailing signs, and the Chinese full stop** (found in the release QA of 2026-11-09, fixed in
+  `9c7ba87`). Hebrew showed "Notepad++" as "++Notepad" wherever the name ended a stretch of right-to-left text:
+  by UAX #9 a run of neutral signs between a left-to-right word and right-to-left text, or the end of an embedding,
+  takes the embedding's direction. It hit 26 places in 21 Hebrew rows (Settings' "Files opened in Notepad++"), the
+  captions `JoinLine` builds, and values put into Hebrew templates. `UiText.KeepTrailingSignsWithTheirWord` puts
+  U+200E after a run of `+` or `#` that ends a Latin word, in every text that holds a right-to-left embedding
+  (`EmbedRightToLeft`, and the `Finish` step of `Format`, `Plural` and `TranslateFormatted`). Signs inside a word
+  (`Win+V`, `C++17`) and after a digit (`60+`) are left alone, and the other languages come back as the same string.
+  `UpdateText.AsSentence` ends a title that closes in a Han or kana character with 。 (Settings read "是最新发布版.").
+  Left as the translator wrote it: Chinese sentences joined with a space after 。 (`UpdateText`'s two joins, and
+  catalog templates such as `"{0} 此副本…"`).
+- **Found on the way, fixed:** two code spots showed English in every language: Settings › Command line's PATH line
+  (`" · on your PATH (new terminals run it as bclip)"` concatenated in code; now `"{0} · on your PATH …"` /
+  `"{0} · not on your PATH"`), and an archived prompt card's label (`$"{agent} {"slash command"|"prompt"}"`; now
+  `"{0} slash command"` / `"{0} prompt"`). Chinese `"{0} prompt"` was `"{0} 条提示词"`: 条 counts, and `{0}` is an
+  agent's name, so it read "Claude Code 条提示词"; now `"{0} 提示词"`.
+- **Room, measured:** with Segoe UI at 14 px (Pillow), the search box shows about 222 px of text before its toggles
+  (calibrated on the Russian placeholder the test desktop showed cut: "Поиск по всему, что вы копировал"). Nine
+  translations were shortened to fit (Russian 4, Spanish 3, Hebrew 2); English itself is cut in two of them (the
+  Everything tab's 238 px, the prompt tabs' 262 px). The six placeholder descriptions now state the room.
+- **Docs:** [`docs/localization.md`](docs/localization.md) (descriptions, right-to-left, the tool, known gaps), the
+  README's language passages and their Chinese translation.
+
+**Verified** (rows in §5): Core 1,566 and Windows 394 (2 skipped, 1 explicit) on HEAD plus only this change, in a
+private worktree; in the shared tree with the uncommitted AI work, Core 1,613 and Windows 396 + 1 known timing test
+(`ClientHangUp_CancelsHandler`, 3 of 3 alone). A disposable claude-desktops Windows 11 desktop showed the picker with
+all five languages and flags, Settings and the panel in Hebrew, Russian and Spanish, and the fixes live.
+
+**Settings' language box: flags in the closed box and on "Use Windows setting" (2026-11-09).** User request: "In settings
+the language dropdown box, selected item should be saying "<EngFlag> English" and Use Windows settings should also have
+a flag". One HTML question with three rendered mockups settled what it left open; the owner chose **"Plus a Windows
+hint"**:
+- **The open list:** "Use Windows setting" shows the flag of the language Windows' setting picks now (it had a globe),
+  then its label and that language's name; every language as before (flag, own name, English name).
+- **The closed box:** the language in effect with its flag: "🇺🇸 English · Windows setting" while BetterClipboard follows
+  Windows (the hint dimmed; a new catalog string "Windows setting", in all five catalogs), "🇨🇳 简体中文" for a language
+  picked.
+- **How:** a WinUI ComboBox draws its closed box with its items' template. `ComboBox::SetContentPresenter`
+  (microsoft-ui-xaml, `ComboBox_Partial.cpp`) copies the chosen container's ContentTemplate and selector onto the closed
+  box's presenter at every selection change, so a second template set from outside would be overwritten. The one item
+  template holds `Views/LanguageOptionView`, which looks where it sits once Loaded (a `ComboBoxItem` above it: a list
+  row; the `ComboBox` first: the closed box) and draws itself for that place. `LanguageOptionViewModel` gives the Windows
+  row its flag and both rows `SelectedName`, `SelectedNameLanguageTag` and `SelectedHint`; `HasFlag` is gone (always
+  true now).
+- **Two faults the test desktop showed, fixed:** (1) the hint "· לפי הגדרת Windows" drew its dot at the right end: a
+  TextBlock takes its paragraph direction from its first strong letter, so the line became right to left; the detail
+  text now has `TextReadingOrder="UseFlowDirection"`, and the dot stays out of the translation (inside the embedded
+  Hebrew it would land at the run's right end). (2) In Hebrew with *Restart now* beside it, the closed box ran past the
+  card's edge with its chevron: the card holds its content to 380 px and a horizontal StackPanel gives the box unlimited
+  width. The card's content is a Grid now (the button `Auto`, the box `*`, `MinWidth` 200 instead of 240), and the view
+  is a Grid whose detail column trims with an ellipsis.
+
+**Verified** (rows in §5): the localization guards (116) and both suites; a disposable claude-desktops Windows 11
+desktop with HEAD (`5956bda`) plus only this change: English picked, following Windows, 简体中文 picked with
+*Restart now*, and the Hebrew interface following Windows with Hebrew's *Restart now*.
+
+**The language question, asked until it is answered (2026-11-09).** User request: "Make sure that on first launch,
+user gets a dialog for choosing language / Also should be true for users that just updated and never saw the dialog."
+- **Before:** the picker asked only in a data folder without a history (`AppPaths.HasHistory`). Every user who updated
+  kept a history and was never asked: from 0.2.9, which has no languages, and from the development builds since
+  2026-11-08. Windows' language was then used without a word. No settings value could tell either, because `"system"`
+  is both the default (never asked) and *Use Windows setting* chosen in Settings.
+- **Now:** `AppSettings.LanguageChosen` (bool, false by default) records that the question was answered. The picker
+  sets it whichever way it closes (each way saves a language), and so does any change in *Settings › App › Language*
+  (`SettingsViewModel.OnLanguageIndexChanged`; `Update` is muted while the settings load, so loading never sets it).
+  `LanguageChoice.ShouldAsk(languageChosen, interfaceLanguage)` asks while it is false and the saved language is blank
+  or `system`. An explicit language is never asked over: an administrator's pre-seeded file, and every user who
+  answered the earlier picker (it saved an explicit tag).
+- **Who is asked once more:**
+  - users of 0.2.9 and older, at the first start after the update. The update restarts the app with `--background`;
+    the picker shows anyway, before the panel's warm-up and before Settings;
+  - users of the development builds since 2026-11-08 who never saw it;
+  - users who chose *Use Windows setting* in Settings of a build from before this change (it saved `system` without
+    the flag: development builds only);
+  - after an exit from the tray while the picker is open, which saves nothing. Before, the next start never asked
+    again, because the history existed by then.
+- **The log** is the only use left of `HasHistory`: "Interface language chosen at the first start: …" or "Interface
+  language chosen at a start with a history already kept (an update from a version that did not ask, or an earlier
+  start that closed without a choice): …".
+- **Footgun:** a version that does not know `LanguageChosen` drops it when it saves `settings.json` (0.2.9 drops
+  `InterfaceLanguage` too). A user who goes back to 0.2.9 and updates again is asked once more. An administrator who
+  wants "follow Windows" without the picker pre-seeds `"InterfaceLanguage": "system"` with `"LanguageChosen": true`.
+- **Pieces:** `AppSettings.LanguageChosen`; `LanguageChoice.ShouldAsk`; `AppController.Start` and
+  `AskForLanguageAsync(showSettingsAfter, afterUpdate)`; `SettingsViewModel.OnLanguageIndexChanged`;
+  `LocalizationTests.Start_AsksUntilALanguageIsChosen` (10 cases) and
+  `SettingsFiles_FromBeforeTheLanguageAsk_UntilAnswered` (a 0.2.9-style file asks; answered and read back, it does
+  not; `system` answered does not).
+
+**Verified** (rows in §5): Core 1,648 of 1,648 on HEAD (`9324621`) plus only this change, in a private worktree, and
+1,695 of 1,695 in the shared tree with the uncommitted AI work; a disposable claude-desktops Windows 11 desktop
+updated from the released 0.2.9 to this change the way the update button does, and showed the picker.
+
+### 2.38 Where the panel opens: next to the text cursor, next to the mouse, or centered on the main or the current screen (built 2026-11-08)
+
+User request (2026-11-08): "Add setting that chooses where the BetterClipboard menu will appear 1. Near cursor (like now,
+default like now) 2. center of main screen 3. center of current screen (supporting multiple monitors)". (§2.37 is left to
+the localization branch, `feat/localization`.)
+- **One question asked** (the term had two readings, see the memory note on asking): which monitor counts as current when
+  the window the user types in and the mouse are on different monitors. The owner chose **"Where I'm typing"**, over
+  "Where the mouse is" and "Both, as two choices".
+- **What existed:** *Settings › Pasting › Panel position* already had "Next to the text cursor" (the default), "Next to
+  the mouse" and "Center of the screen" (the monitor of the foreground window, else the mouse's). Neither CLAUDE.md nor
+  the README's Settings list named it beyond "where the panel opens", and the owner did not find it. "Next to the mouse"
+  stays: removing a choice someone may use would be a regression.
+
+**What the user gets.**
+- **Settings › Shortcut › Panel position**, moved there from *Pasting*, right under the shortcuts: four choices.
+  - *Next to the text cursor*: the default, unchanged.
+  - *Next to the mouse*: unchanged.
+  - *Center of the main screen* (new): the middle of the main display's work area, whatever was in front.
+  - *Center of the current screen*: the screen the user is typing on (the rule below).
+- The card's description says what "current" means: "The current screen is the one you are typing on, or the one with
+  the mouse when you are on the desktop."
+- **A centered panel is centered as a whole, groups column included** (`FlyoutPositioner.Place`). The column opened or
+  closed while the panel shows still grows or shrinks it on the left, so the list stays put; the next summon centers it
+  again. Before, a centered panel centered the list and hung the column on its left.
+- **Centered on the main screen, the warm-up puts the cloaked window exactly where every summon will** (`WarmUpBounds`):
+  the first Win+V then needs no move and no resize ("Panel on screen 62 ms after the shortcut … (first summon)" on the
+  test desktop).
+- **Every placement keeps the remembered size across monitors with different scales** (the fix below).
+
+**"The current screen", the owner's rule** (`FlyoutPositioner.ChooseScreen`, pure):
+1. The caret's monitor, while the caret lies inside the window the user was in (its middle point, `CaretMiddle`). Why
+   "inside": some apps park their caret in a hidden helper window at the screen's corner, which would pull the panel to
+   the main monitor. A caret on the desktop (renaming an icon) counts, because the desktop's window spans every monitor.
+2. Else the monitor showing most of that window (`MonitorFromWindow`), when the window marks a screen: visible, not
+   minimized, and not the desktop (`Progman`, `WorkerW`: `MonitorLookup.IsDesktopWindowClass`). The desktop's window
+   spans every monitor, and "the monitor showing most of it" was arbitrary: before, a click on the second monitor's
+   desktop could put the panel on the first.
+3. Else the mouse's monitor: after a click on the desktop, from the tray, with nothing active.
+- The facts about the window come from `MonitorLookup.DescribeTarget` (`TargetWindowFacts`: bounds, marks a screen), read
+  at the summon only for this placement. The choice is a `PanelScreen` (a point, a window, or the main monitor), looked up
+  by `MonitorLookup.FromScreen`; the main monitor is `MonitorFromPoint((0, 0), MONITOR_DEFAULTTOPRIMARY)`, since its
+  top-left corner is the screen origin by definition.
+- Next to the text cursor and next to the mouse keep their old monitor rule exactly (the point below the caret's left
+  end, else the mouse).
+
+**Stored as before, plus one member** (`AppSettings`).
+- `Placement` keeps its three names (`NearCaret`, `NearCursor`, `CenterScreen`); the new `CenterOnMainScreen` (bool, off by
+  default) tells the two centered choices apart. `SettingsViewModel.PlacementIndex` maps the list's four entries onto
+  the two members (`PlacementIndexOf`, `OnPlacementIndexChanged`; both are written in one update).
+- **Why not a fourth enum member:** the placement is written by name (`JsonStringEnumConverter`), and a name an older
+  version does not know makes it throw while reading and set the **whole** settings file aside as corrupt (§2.28's
+  footgun). With a member of its own, an older version reads `CenterScreen` and centers on the current screen.
+  `PanelPositionSettingsTests.Placement_KeepsItsThreeReleasedNames` fails if a member is ever added; the enum's remarks
+  say why.
+- Verified on the test desktop: with "Center of the main screen" chosen, 0.2.9 started with every setting, logged no
+  "unreadable" warning, set nothing aside, and centered the panel its own way. 0.2.9 rewrites the file only when a setting
+  changes, so the choice was still there after updating back. Footgun: once an older version saves the file, the member
+  is dropped, and the next newer version centers on the current screen until the main screen is chosen again.
+
+**Monitors with different scales: the panel came out 25 % too large or 20 % too small** (found 2026-11-08 on the
+owner's PC: two monitors at 100 %, one at 125 %).
+- **Windows' part** ([`probe_dpi_move.cs`](tools/probes/probe_dpi_move.cs), a cloaked tool window): a
+  per-monitor-v2 window moved by `SetWindowPos` onto a monitor with another scale gets `WM_DPICHANGED` **inside** the
+  move, suggesting the asked rectangle scaled once more by the ratio of the two scales. Asked 500 × 700 on the 125 %
+  monitor, suggested 625 × 875; asked 400 × 560 back on 100 %, suggested 320 × 448. The top-left corner is kept.
+- **WinUI's part** ([`dpi_move_lab`](tools/probes/dpi_move_lab), a WinUI 3 window set up like the panel, cloaked,
+  never activated): it takes the suggestion. `AppWindow.MoveAndResize` to the 125 % monitor left 625 × 875 right after the
+  call and 300 ms later; back on the main monitor, 320 × 448. Asking a second time held exactly, both ways.
+- **So every summon that moved the panel onto a monitor with another scale opened it at the wrong size** **[inferred
+  from the lab: the panel makes the same calls]**, in every placement since the panel existed: next to a caret on the
+  125 % monitor after a summon on a 100 % one, and back. Too large, it also runs off the work area, since the corner is
+  kept: the owner's remembered 729 × 754 DIPs would become about 1,140 × 1,180 pixels on a monitor whose work area is
+  1,020 pixels high (computed, not seen). Nobody reported it; the right monitor may rarely be used for Win+V.
+- **The fix** (`ClipboardFlyout.MoveAndResizeExactly`, ClipboardFlyout.Placement.cs): move and resize, compare the bounds,
+  ask once more when they differ. On the second call the window is already on its monitor, so nothing rescales it. Used
+  by `PresentAsync` (both of its moves) and the warm-up. The first correction of a session is logged, content-free:
+  "The panel came out 625x875 instead of 500x700 (moved to a monitor with another scale?); its bounds were set again:
+  500x700." Bounds that still differ come from a limit (the minimum size on a smaller work area), which a third call
+  would not change.
+- The size the user remembers is never touched: `WindowSizeHook.UserResized` fires only for a resize the user made with
+  a border, never for these programmatic moves (§2.23).
+
+**Pieces.**
+- Core: `AppSettings.CenterOnMainScreen`, `FlyoutPlacement` remarks (never add a member).
+- Windows: `Input/FlyoutPositioner.ChooseScreen` and `Place`; `PanelScreen`, `PanelScreenKind`, `TargetWindowFacts`;
+  `MonitorLookup.FromScreen`, `Main`, `DescribeTarget`, `IsDesktopWindowClass`; `NativeMethods.IsWindowVisible`,
+  `GetWindowRect`, `GetClassName`.
+- App: `Views/ClipboardFlyout.Placement.cs` (new: `SummonBounds`, `MoveAndResizeExactly`); `ShowAt(context, placement,
+  centerOnMainScreen)`; `WarmUpBounds`; `PresentAsync`; `AppController.ShowFlyout`; `SettingsViewModel.PlacementIndex`;
+  the card in `SettingsWindow.xaml`.
+- Strings: three new catalog keys in English and Simplified Chinese ("Center of the main screen" `Ted615dd586a6` 主屏幕中央,
+  "Center of the current screen" `T4b75609443c3` 当前屏幕中央, the new description `T88640766017a`); the unused "Center of
+  the screen" `T13e9b2fec983` and "Where the clipboard panel opens." `T6173999ce066` are gone. The keys follow PR #1's
+  scheme ("T" + the first 12 hex digits of the English text's SHA-256).
+
+**Verified** (rows in §5): 35 new tests (Core 8, Windows 27), three mutations caught; the whole suite 1,636 (1,633
+passed, 3 opt-in skipped); a Windows 11 test desktop (one monitor, 1600 × 900) for every choice, the column, the warm-up,
+a restart, the way to 0.2.9 and back, and the Chinese card; the lab and the probe on the owner's three real monitors,
+invisibly.
+
+**Limits / not built:**
+- **Not run on several monitors in the app itself:** the test desktops have one monitor, and a summon on the owner's PC
+  would have put a panel over their work (they were busy in Chrome). The rule is unit-tested on the owner's layout
+  (negative coordinates of the left monitor, the 125 % right one), the real lookups are tested on this PC's three
+  monitors, and the scale fix with the same calls in the lab.
+- A remembered position ("where I last dragged it"), and a choice of a specific monitor, were not asked for.
+- A centered panel whose groups column is toggled while it shows is off-center by the column until the next summon.
+- The tray's *Open clipboard* and `--show-flyout` from a script use the mouse or the foreground window like any summon:
+  centered on the current screen, the tray's panel opens on the mouse's monitor.
+
+### 2.39 Local dev builds: the dev-builds folder, `publish-dev.ps1`, and the dev rule (built 2026-11-08)
+
+User request (2026-11-08): "We made many changes and now i want my local app to update to a local version through the
+update button. Any time we are in a dev install, latest version from github is higher than the dev we have - unless we
+have a newer dev then it suggests the newer dev. Have for local updates a dedicated user folder that we can publish to and
+then our local can update easily. Also make a local skill 'local-dev' (commit it too)".
+- **Two questions asked** (memory: ask when a term flips behavior). The second sentence reads two ways that differ in the
+  most common case, a dev build ahead of the last release with no newer local build: the owner chose **"Always, unless a
+  newer dev"** (a dev install is always offered GitHub's latest release, also when it is older) over "Only when it's
+  newer". And **"Yes, install it now"** for the first dev build on this PC (their 0.2.9 cannot read the folder).
+- **The skill:** [`.claude/skills/local-dev/SKILL.md`](.claude/skills/local-dev/SKILL.md), a project skill in the repo.
+
+**The rule** (`UpdateCatalog.FindUpdate(current, releases, localBuilds, architecture)`, pure, tested):
+1. A **local build** newer than the running version is offered, whatever GitHub has.
+2. Otherwise **GitHub's newest complete stable release**: for a **development build** (`UpdateCatalog.IsDevBuild`: the
+   first pre-release identifier is `dev`, any case) **always**, also when it is older, as the way back to the official
+   version; for any other build only when it is newer (the rule since §2.29).
+
+| Installed | GitHub | Local folder | Offered |
+|---|---|---|---|
+| 0.2.10-dev.12 | 0.2.9 | none newer | 0.2.9 (the way back) |
+| 0.2.10-dev.12 | 0.2.9 | 0.2.10-dev.15 | 0.2.10-dev.15 |
+| 0.2.10-dev.12 | 0.2.10 | none newer | 0.2.10 |
+| 0.2.10-dev.12 | 0.2.10 | 0.2.10-dev.15 | 0.2.10-dev.15 |
+| 0.2.10-dev.12 | 0.2.10 | 0.2.11-dev.3 | 0.2.11-dev.3 |
+
+- **Consequences, all deliberate:** a dev install's update button is lit whenever GitHub's list is known (*Skip this
+  version* quiets it for that release); dev builds never get the weekly reminder (`UpdateReminder.IsWanted`, §2.30); a
+  **release** install on a PC with a dev-builds folder is offered newer dev builds too, so the cycle goes on after an
+  official release was installed through the button — **for releases that have this code, 0.2.10 on.** 0.2.9 predates
+  the folder: the way back to it leaves dev builds until `publish-dev.ps1 -Install` runs again (it happened, see the
+  limits below).
+- `FindUpdate(current, releases, architecture)` (GitHub alone) applies the same dev rule. The one existing test that
+  expected nothing for a dev build ahead of every release (`FindUpdate_OffersNothingWhenUpToDate`, case
+  `0.2.8-dev.abc`) now expects the latest release (`FindUpdate_ADevelopmentBuildIsAlwaysOfferedTheLatestRelease`).
+
+**What the user sees** (`UpdateText`; 14 new strings in both catalogs, `en.json` and `zh-Hans.json`):
+- **A local build:** tooltip "Dev build available: BetterClipboard 0.2.10-dev.15.g77faa1f"; dialog title "BetterClipboard
+  … is available"; detail "You have 0.2.10-dev.14.g3e48a10. Published 10 min ago. It is a development build from the
+  dev-builds folder on this PC: updating copies it from there, checks it, and restarts BetterClipboard. Your history is
+  kept."; *Update and restart*, *Later*, *Skip this version*; "What is new" = the notes of every local build newer than
+  the running one, newest first (`UpdateCatalog.SelectChangelog(current, releases, localBuilds, offer)`); no "View on
+  GitHub" (`UpdateView`: a local build has no page). While it is copied: "Copying BetterClipboard …: 25 %",
+  "Checking the copy…", "Comparing the copy with the build's SHA-256 checksum."
+- **The way back:** tooltip "Back to the release: BetterClipboard 0.2.9"; title "BetterClipboard 0.2.9 is the latest
+  release"; detail "You have 0.2.10-dev…, a development build that is newer than this release. Installing it replaces the
+  development build with the official release from GitHub and restarts BetterClipboard. Your history is kept.";
+  *Install and restart* (`UpdateText.ApproveButton`); Settings' button and the tray menu: "Install 0.2.9…"
+  (`UpdateText.OfferAction`, which also fixes Settings' untranslated "Release notes…" fallback).
+- `UpdateSnapshot`: `LocalBuildCount`, `IsDevBuild`, `IsLocalOffer`, `OffersOlderVersion`. Log lines name the kind:
+  "Update check: the latest release, 0.2.9, is offered as the way back from this development build (running …)";
+  "Updates: … a development build (GitHub's latest release is always offered as the way back)."
+
+**The folder** (`AppPaths.DevBuildsDirectory` = `<data directory>\dev-builds`; `Core/Updates/LocalBuildFeed`):
+
+```text
+%LOCALAPPDATA%\BetterClipboard\dev-builds\
+  0.2.10-dev.15.g77faa1f\
+    BetterClipboard-0.2.10-dev.15.g77faa1f-win-x64.zip   the release-shaped zip (package.ps1)
+    SHA256SUMS.txt                                        sha256sum format; must list the zip
+    install.ps1                                           the build's own installer (for -Install)
+    notes.md                                              the commits since the previous build here
+    build.json                                            {"version", "commit", "subject", "publishedUtc"}; written last
+```
+
+- **Complete builds only:** the folder's name equals `build.json`'s version, the zip for this PC's architecture exists
+  and is not empty, and a `SHA256SUMS.txt` lists it. Dot-folders (`.publishing-…`) and anything else are ignored; every
+  failure is per build and swallowed (`Read` never throws). Caps: 64 folders, `build.json` 64 KB, notes 256 KB (cut to
+  GitHub's 200,000 characters), checksum list 64 KB.
+- **Who reads it:** only a copy the installer installed (`UpdateServiceOptions.LocalBuildsDirectory`, set by
+  `AppController.StartUpdates` for `UpdateInstallKind.Installer`). Chocolatey, all-users and hand-extracted copies never:
+  they could only point at a download page, and a local build has none. An isolated instance reads its own data
+  directory's folder. Nothing creates the folder but the publish script, so on other PCs it costs one look at a missing
+  folder and one name-filtered watch on the data folder.
+- **Trust: integrity, not authenticity.** The folder belongs to the user, like the install folder, which the same user
+  can replace at will (§2.6.1's threat model). Checked: a file to read lies inside the folder (`IsInside`, full paths, so
+  `..` cannot step out), the package's size is still the offered one, and the copy's SHA-256 is the one the build's own
+  list states. A local build's asset has no second witness (`Sha256` is `null`; GitHub's digest exists only for releases).
+
+**When the app looks** (`UpdateService.RefreshLocalBuilds`, under a lock of its own; cheap, blocking, never on the UI
+thread): at `Start`; at every check (so *Check now* looks too) and every hourly tick; when the dialog opens
+(`EnsureFreshAsync`, on the pool, also with automatic checks off: the folder is not the network); and when
+`Windows/Updates/LocalBuildsWatcher` reports. Not while an approved update installs. A change raises `Changed` once and
+logs "Local builds: N in the dev-builds folder; BetterClipboard X is offered (running Y)." (or "…, none newer than the
+running Y."); an unchanged folder logs nothing.
+- **The watcher:** the folder recursively while it exists, plus the data directory non-recursively for the folder's own
+  name only (`NotifyFilters.DirectoryName`), so its creation by the first publish and its removal are seen; a report once
+  the folder was quiet 500 ms (a publish raises dozens of events); a failed watch is set up again and reported.
+  Measured on the VM: the log line 0.5 s after the build folder was renamed into place.
+
+**Installing a local build** (`UpdateService.RunInstallAsync`, local branch): the build's `SHA256SUMS.txt` is read from
+disk (`LocalBuildFeed.ReadChecksumsAsync`), the zip is copied into `updates\` (`CopyPackageAsync`: `.part` first, SHA-256
+while copying, progress ten times a second, refused when outside the folder, resized or gone), verified, and handed to the
+same `ScriptUpdateInstaller` with the same contract command line (§2.29): the build's own `install.ps1 -Update`. No
+request leaves the PC. Messages say "the build's checksum list" and "Publish the build again" where GitHub's say
+"the release's".
+
+**Publishing** ([`tools/release/publish-dev.ps1`](tools/release/publish-dev.ps1); pwsh 7 or Windows PowerShell 5.1):
+1. **Version** `<next release>-dev.<commits since the last v* tag>.g<short sha>`. The next release is
+   `Directory.Build.props`' `<Version>` at that commit, or its next patch when `v<that>` is tagged already (released).
+   The count makes later commits sort higher (SemVer compares numeric identifiers as numbers, of any length); the `g`
+   keeps the hash from being a number (a numeric identifier with a leading zero is not SemVer, and the app would
+   normalize it away from the zip's name). A release outranks every dev build of its own number.
+2. **Builds the commit, never the working tree:** a temporary `git worktree` in `%TEMP%`, then that commit's
+   `package.ps1` with the new `-SkipArchives` switch (no `.7z`, no 7-Zip; the release workflow never passes it; an older
+   commit's `package.ps1` without the switch builds the archives too, which are not published). Uncommitted work —
+   yours or another session's — is never in a published build; the script warns when the tree has changes.
+3. **Publishes** into `.publishing-<id>`, then renames it to `<version>`: the app never sees half a build. `notes.md`
+   lists the commits since the newest published build whose commit is an ancestor (else since the last release tag),
+   decoded as UTF-8 (`[Console]::OutputEncoding` is set around every git call: commit subjects hold dashes and arrows).
+4. **Prunes:** the newest `-Keep` (5) builds stay; builds that an official release supersedes go; `.publishing-…`
+   leftovers older than an hour go.
+5. **Reports** what the installed copy (`installer.json`) will do: offer it, has it already, or predates the folder.
+6. **`-Install`** (the bootstrap): the build's own `install.ps1 -Package <zip> -NoLaunch` in Windows PowerShell 5.1
+   without `PSModulePath`, then BetterClipboard started with `--background` through Explorer and a temporary shortcut
+   (the user's environment; an isolated instance is started directly, Explorer would drop its data-folder variable).
+- Measured on this PC (x64, warm NuGet cache): 63 to 96 s per build, most of it `dotnet publish` in Release.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- `-Install` cannot run in a test desktop (it needs the repository and the .NET SDK): it ran here, as the bootstrap.
+  Its two halves ran in the VM: `install.ps1 -Package` of a dev build, and the update path.
+- The way back installs an older version over a newer one. The store is safe (`ClipStore.SchemaVersion` has been 1
+  since the start; every schema change is additive), but an older version drops settings members it does not know when it
+  saves (the documented footguns, e.g. `SkipAllUsersStartup`, `CenterOnMainScreen`, `HotkeyHistory`).
+- **The way back to 0.2.9 leaves dev builds** (found 2026-11-08; the owner: "I think i accidentally updated to real
+  release version and now i dont get suggested to upgrade to a dev version").
+  - **What happened:** the owner had installed three dev builds through the lit button, each approved 0.2–2.3 s after
+    its offer. At 17:48:56 the same lit button offered the way back ("the latest release, 0.2.9, is offered as the way
+    back"), and it was approved 0.6 s later. 0.2.9 cannot read the folder, so nothing offered dev builds after that.
+  - **Asked** whether to guard the way back, with three mockups: a button lit only for something newer, with the way
+    back as a plain button in the dialog; a confirmation; or no way back. The owner chose none ("0.29.0 doesnt have dev
+    intergration, just install latest dev instead for me please").
+  - **Cure:** `publish-dev.ps1 -Install -Ref <the newest build's commit>`, which installs a build that is published
+    already without building it (§5).
+  - **Temporary:** once 0.2.10 is released, the way back lands on a release that reads the folder, and the next dev
+    build published after it is offered again.
+- Builds are for this PC only: no shared folder for other PCs, no signing, no Settings line about the folder.
+- `notes.md` lists commit subjects; a build of an unrelated branch starts its notes at the last release tag.
+
+### 2.40 Arranging the tabs: right-click › Move left, Move right, Hide, Show all hidden (built 2026-11-08)
+
+User request (2026-11-08): "Now lets work on the tabs row, i want you to be able to right click and: Move left, Move
+right, Hide, Show all hidden. And the order to be persisted."
+- **Since 2026-11-09** *Hide* reads *Hide tab*, and *Hide tab & clipboard rows* follows it; *Show all hidden* brings the
+  rows back too (§2.42).
+- **Two questions asked** (HTML pages with the rendered menu, memory "HTML questions for choices"). The owner chose:
+  - **"Hide the tab only"** over "also switch its reading off". Hiding takes a tab out of the row and nothing else: the
+    Settings switches of the other apps' tabs stay on, Command Prompt windows are still read, prompts still archived,
+    and nothing is ever deleted. Switching Cmd off would have deleted its kept commands.
+  - **"All always stays"**, with the comment **"And cant be moved"**. So "All" is never hidden, never moved, and no tab
+    moves before it.
+
+**What the user gets.**
+- **Right-click a tab** (or a touch press-and-hold; or `Menu` / `Shift+F10` while a tab has the keyboard focus, which it
+  has after a click on it): *Move left* (Back `E72B`), *Move right* (Forward `E72A`), a separator, *Hide* (Hide `ED1A`),
+  *Show all hidden (N)* (View `E890`). All four glyphs checked by rendering.
+- **Right-click the row's empty space:** *Show all hidden (N)* alone.
+- **Grayed out, never left out:** the moves at either end and on "All", *Hide* on "All", and *Show all hidden* while
+  nothing is hidden (then without a count).
+- **A move** goes one place among the tabs that show. Tabs not shown right now (hidden, or another app's tab that is
+  not there) are passed over and keep their places, so one that comes back stands where it stood. A tab moved beyond the
+  strip's visible part is scrolled into view.
+- **Hiding the tab you are in** switches the panel to "All", which then also becomes the tab the next Win+V opens in.
+- **Saved** at once in `settings.json`: `TabOrder`, the whole order after a move, written empty again once it equals
+  the default; and `HiddenTabs`. Both survive restarts. The Left and Right keys follow the order and skip hidden tabs.
+
+**Pieces.**
+- **Core `Presentation/TabArrangement`** (pure, unit-tested):
+  - `Arrange(defaults, stored)`: the stored order completed (a tab it lacks goes right after its default predecessor),
+    names read leniently, "All" first;
+  - `CanMove` and `Move`: before the nearest shown tab on the left, after the nearest shown tab on the right, never past
+    "All";
+  - `CanHide`; `ToStored` (empty for the default order, so a later version's default reaches users who never moved a tab).
+- **Core `AppSettings`:** `TabOrder` and `HiddenTabs` (filter names); `TryParseTab` (names only, unlike `ParseTab` it
+  tells an unknown name apart); `Normalize` keeps known names once and never lets "All" be hidden.
+- **App `Views/ClipboardFlyout.TabArrangement.cs`** (new): the default order is read from the XAML once, before
+  anything moves (`defaultTabOrder`), so the XAML stays the one place it is written; the menu (`ShowTabMenu`),
+  `MoveTab`, `HideTab`, `ShowAllHiddenTabs`, `SaveTabArrangement`, and `ApplyTabOrder`, which moves the SelectorBar's own
+  items (it has no other way to order them).
+- **Visibility:** a tab shows while its own conditions hold and it is not hidden. `SetTabVisible`, `UpdateShareXTab`,
+  `UpdateRunTab` and `UpdateEverythingTab` check `IsTabHidden`, so does `IsTabAvailable` (a hidden remembered tab opens the
+  panel in "All"), and the new `UpdateBuiltInTabs` does it for Pinned, Text, Images, Links and Files.
+- **Strings:** five new catalog entries in `en.json` and `zh-Hans.json` (向左移动, 向右移动, 隐藏, 显示所有隐藏的标签页,
+  显示所有隐藏的标签页（{0}）).
+
+**Moving the bar's items, and the selection** **[verified on the test desktop]**. `ApplyTabOrder` takes an item out of
+`Filters.Items` and puts it back in its place; the item is the same element with its handlers (the per-tab
+`PointerExited` and `RightTapped`). Taking the selected tab out can drop or move the bar's selection, so
+`Filters_SelectionChanged` ignores everything while the items move (`rearrangingTabs`), and the shown tab is selected
+again inside that guard. Then nothing counts as the user's choice and nothing reloads. Moving the selected tab (Images,
+then Pwsh by the keyboard) kept it selected with its list unchanged. Before the bar loads (the stored order at startup)
+no selection care is needed: `SelectFilter` sets the items' own flags until then (§2.28).
+
+**Verified** (rows in §5): 25 Core tests (`TabArrangementTests`, two mutations caught), the whole Core suite, and the
+menu, every action, persistence across a restart, the keyboard route and the Chinese UI on a Windows 11 test desktop.
+
+**Limits / not built:**
+- No Settings page for the order (the menu is the only way; *Show all hidden* undoes every hide).
+- No "Reset order" (moving the tabs back stores the default again, empty).
+- No drag and drop of tabs to reorder them.
+- A tab name a version does not know is dropped from the lists when the settings load. An older version that saves the
+  file drops both members (the usual footgun): the default order, every tab shown.
+
+### 2.41 Notepad++: its unsaved "new" tabs kept and updated, and the files it opens (built 2026-11-08)
+
+User request (2026-11-08): "learn how we do integrations and Add notepad++ integration, showing 2 kinds of collected info,
+1. is all the "new NNN" tabs that it remembers, their content and also capability to update if the content changes. if
+content changes more than 20% then create a new copy. 2. When a file is opened in notepad++, its full path is as if was
+copied to the notepad++ tab. also atomically, moving from old date to new when same file reopened."
+
+**The owner's choices** (three HTML questions; the pages are in session 9f3b7bdf's scratchpad, `q/`):
+- **"More than 20%": "Only lost text counts"**, with the comment "But dont monitor every 7s".
+  - Added text never splits. Text that disappears (deleted or rewritten) counts, added up since the copy started, against
+    the most text the copy held.
+  - A tab is read once it rests (a minute), not at each of Notepad++'s 7-second backups.
+- **Placement: "Like copies, edits stay put".**
+  - Entries live in All, Text, Files and the Notepad++ tab like any copy, and an opened or reopened file goes to the top.
+  - A tab's update changes its card in place, with an "edited …" time. Only a new copy (the split) goes to the top.
+- **Detection: "Ask Notepad++ (exact)".** Plugin messages to a running Notepad++, plus a 64 KB buffer BetterClipboard places
+  in Notepad++'s process to read paths, instead of guessing from window titles or recent-file lists.
+
+**What the user gets.**
+- **A Notepad++ tab** after Snipping (tooltip "Unsaved Notepad++ tabs and the files you open in Notepad++").
+  - Shown while one of its two switches is on and the history holds something it lists (the witness of §2.36).
+  - It lists (`ClipFilter.NotepadPlusPlus` = 14): origin `NotepadPlusPlusTab` (12) or `NotepadPlusPlusFile` (13), a source
+    path `…\notepad++.exe`, or the source name "Notepad++". So copies made in Notepad++ show there too.
+- **Unsaved tabs:** one card per tab, labeled "Notepad++ tab".
+  - Caption "Notepad++ · new 3 · 5 min ago · edited 1 min ago". The tab's name is `clips.source_title`; "edited" shows while
+    `clips.edited_utc` is newer than the card's time.
+  - Renaming the tab renames the card's title; the entry stays the same.
+- **Opened files:** the full path as text (`CF_UNICODETEXT`; a path card, so the Files tab lists it too, §2.13), caption
+  "Notepad++ · 2 min ago · path". Opening the file again bumps the same entry (its content hash is the path's).
+- **Settings › Integrations:** two cards, both on by default (`AppSettings.KeepNotepadPlusPlusTabs`,
+  `RecordNotepadPlusPlusFiles`).
+  - *Notepad++ unsaved tabs* (E70B QuickNote): "Notepad++ 8.9.1 found. / It remembers 2 unsaved tabs; a tab is read once
+    it has rested for a minute. / 4 tab versions recorded since BetterClipboard started.", or why not: not installed, off,
+    Notepad++'s snapshot setting off, still looking for its folder.
+  - *Files opened in Notepad++* (E8E5 OpenFile): "Watching Notepad++ (3 files open). / 4 files recorded since
+    BetterClipboard started.", or not running, or why it cannot be asked (translated through
+    `NotepadPlusPlusClient.ProblemTemplates`, §2.37).
+- **Settings › Third party:** Notepad++ (Don Ho) under *Works with*.
+- **`bclip list -f notepad++`** (also `notepadpp`, `npp`): origins `notepad++-tab` and `notepad++-file`; JSON `sourceTitle`
+  and `edited`.
+
+**Notepad++'s facts.** **[verified]** in Notepad++ 8.9.1's source (`refs/notepad-plus-plus` at `f617e4e`, GPL-3.0: studied
+for interoperability, nothing copied), on this PC's Notepad++ with a structure-only inventory (`npp_inventory.py` and
+`npp_ipc_probe.cs` in session 9f3b7bdf's scratchpad; no tab name, path or text printed), and live in a test desktop.
+- **Backups.** An unsaved tab's text lives in `<settings folder>\backup\<tab name>@yyyy-MM-dd_HHmmss` (local time of its
+  first backup).
+  - Untitled tabs are written to `<name>.tmp` and swapped in with `ReplaceFile`: a reader sees the old file or the new
+    one, never half of one.
+  - A renamed tab's backup is renamed and keeps its stamp. A name may hold '@', so the stamp is after the last one.
+  - Encoding: UTF-8 without BOM by default (199 of this PC's 208 backups), UTF-8 or UTF-16 with a BOM, or the session's
+    code page.
+- **The snapshot timer.** Notepad++ rewrites a changed tab's backup every 7 s (`snapshotBackupTiming`) while "Enable
+  session snapshot and periodic backup" is on (the default). Off: no backup files, nothing to read; Settings says so.
+- **`session.xml`** names each tab (`filename`: a full path, or the untitled name) and its backup's full path.
+  - Rewritten on exit and whenever a backup file is created or deleted: not on a rename, not when a file opens.
+  - TinyXML writes it in place, so a read can catch it half-written. The parse then fails, and it is read again after
+    the next change.
+- **Startup order** (`Notepad_plus_Window::init`): the last session is loaded before the window is shown, and the
+  command line's files are opened after. So the first look once the window is visible is a baseline: the restored session
+  is not an opening, the command line's files are.
+- **Plugin messages** (`NPPMSG` = `WM_USER + 1000`):
+  - `NPPM_GETNBOPENFILES` (+7). With `ALL_OPEN_FILES` it counts both views, and the hidden second view always holds an
+    empty placeholder document.
+  - `NPPM_GETNPPVERSION` (+50), `NPPM_GETBUFFERIDFROMPOS` (+59), `NPPM_GETCURRENTBUFFERID` (+60).
+  - `NPPM_GETFULLPATHFROMBUFFERID` (+58) copies into a pointer in Notepad++'s own address space, without a bound: the
+    length is asked first with a null pointer.
+  - A buffer id is the buffer's memory address, so a closed document's id can come back for another one.
+- **Settings folder:** `-settingsDir=`; else the exe's folder when `doLocalConf.xml` lies next to it (the portable build;
+  ignored directly under Program Files); else `%APPDATA%\Notepad++`. Cloud settings move the backups, not the session.
+- **Signature:** `notepad++.exe` is Authenticode-signed `CN="NOTEPAD++", O="NOTEPAD++"`.
+- **Measured on this PC:** 329 open documents listed in 24 ms, all their paths in 0.27 s.
+
+**Design.**
+- **Tracked documents** (`Core/Documents`, `Storage/ClipStore.Documents.cs`): a generic mapping `tracked_documents(scope,
+  doc_key, clip_id ON DELETE SET NULL, content_hash, lost_chars, peak_length, title, seen_utc)`.
+  - `ClipStore.RecordDocument` reads the mapping and the entry's text, decides (`TrackedDocumentRule`), writes the entry
+    (in place, or a new copy through `UpsertCore`) and moves the mapping, in one SQLite transaction: the request's
+    "atomically". Outcomes: Created, Updated, NewCopy, Unchanged, Suppressed, Skipped.
+  - **In place:** text, kind, preview, search text, hash, size and formats are replaced; the place (`last_used_utc`), the
+    pin and the groups stay; `clips.edited_utc` is set. When another entry already holds exactly the new text (hashes are
+    unique), the mapping moves there and both versions stay.
+  - **A deleted entry** leaves the mapping's last hash: that text is never recorded again, and the document's next change
+    becomes a new entry.
+- **The rule** (`TrackedDocumentRule`, `Content/TextLoss`).
+  - Lost = the stored text's characters that are not in a longest common subsequence with the new text, from the edit
+    distance D as `(stored − current + D) / 2`.
+  - Cost: the common prefix and suffix are skipped, then Myers' O((N+M)·D), stopped once the loss is past what is allowed
+    and at a work budget (40 M comparisons, about ¼ s). Past the budget the loss is estimated from sampled 16-character
+    shingles (one in eight, chosen by hash).
+  - Split when `(lost so far + lost) × 5 > peak`, in integers: exactly a fifth does not split. The old entry keeps the
+    text it last held; the new copy starts at lost 0, peak = its length.
+- **Origins** (`ClipOrigin`).
+  - `NotepadPlusPlusTab` (12), ShareX's hybrid. A new event: pause (except for the first activation's import), ignored apps
+    (`notepad++`), the size limit and Forget forever apply, and a duplicate is bumped. Like an import, it never lifts a
+    tombstone and is skipped when older than the last clear, because every start reads the tabs again.
+  - `NotepadPlusPlusFile` (13), a new event like `RunDialog`: bumped, skipped while paused, and it lifts a tombstone
+    (opening a file is explicit).
+- **The tabs half** (`NotepadPlusPlusTabWatcher`).
+  - Folder watchers on the settings folders (`session.xml`) and their backup folders. A change only marks a tab, which is
+    read once it was quiet for `QuietTime` (1 minute), at the latest `MaxDelay` (5 minutes) after its first unread change.
+    A 5-second timer looks at the marks; nothing is polled.
+  - Files are opened with every sharing mode and closed at once. Only the session's untitled tabs count: a saved file's
+    backup with unsaved changes is not a "new" tab.
+  - Renames: the watcher's Renamed event moves the tab (`ClipStore.RenameDocument`: the mapping's key and the entry's
+    title). A rename made while BetterClipboard was not running is matched by the stamp.
+  - A tab the session no longer names is forgotten: its mapping goes, the entry stays. Versions go to the store in slices
+    of 50.
+- **The files half** (`NotepadPlusPlusFileWatcher`, `NotepadPlusPlusClient`, `Core/NotepadPlusPlus/NotepadPlusPlusOpenTracker`).
+  - One window thread. A WinEvent hook (`EVENT_OBJECT_NAMECHANGE`, Notepad++'s process only) looks 150 ms after a title
+    change, and every 5 s a scan finds Notepad++ windows and asks each one's document count.
+  - A look whose title and count did not change asks nothing more. A title change with the same count reads only the
+    front document, which still catches a Save As.
+  - The tracker: a new buffer id whose path is a full path is an opening, an untitled one never. The first visible look is
+    the baseline. The command line's files (`NotepadPlusPlusCommandLine`: Notepad++'s own splitting rules re-implemented,
+    the line read with `NtQueryInformationProcess` class 60) count for a process started while BetterClipboard watched.
+- **Owner check** (`NotepadPlusPlusOwnerVerifier`): the window's process must be `notepad++.exe` with a valid Authenticode
+  signature by O=NOTEPAD++. It shares the Everything check's code (`EverythingOwnerVerifier.VerifySignature` and
+  `Organization`, now internal). No message goes to any other window of class "Notepad++".
+- **The client.** Every message goes with `SendMessageTimeout` (500 ms, aborted at once when Notepad++ hangs).
+  `VirtualAllocEx` once, at the first path read (64 KB, `PAGE_READWRITE`), `ReadProcessMemory` per path, `VirtualFreeEx` on
+  dispose. A Notepad++ running as administrator while BetterClipboard is not refuses `OpenProcess` (error 5): reported,
+  not retried in a loop.
+- **Life cycle** (`NotepadPlusPlusIntegration`, owned by `AppController.NotepadPlusPlus.cs`).
+  - The first activation imports every tab Notepad++ remembers (state `notepadpp.tabs.imported`); later starts catch up,
+    recording only what changed.
+  - Off forgets the mappings and the marker; the entries stay, and on again imports without duplicates.
+  - Located again every 5 minutes and when Settings opens. `BETTERCLIPBOARD_NOTEPADPP_DIR` replaces every real Notepad++
+    folder (tests, isolated instances).
+
+**Pieces.**
+- Core: `Content/TextLoss`, `Documents/` (`TrackedDocument`, `TrackedDocumentRule`), `NotepadPlusPlus/` (`Sources`,
+  `Session`, `Backup`, `Config`, `CommandLine`, `OpenTracker`), `Storage/ClipStore.Documents.cs` (with `clips.source_title`
+  and `clips.edited_utc`, added idempotently like the groups' column), `Services/ClipHistoryService.Documents.cs`, the
+  tab's witness in `ClipHistoryService.TabContent.cs`.
+- Windows: `Integrations/NotepadPlusPlus{Client,Locator,TabWatcher,FileWatcher,Integration}.cs`,
+  `Interop/NativeMethods.NotepadPlusPlus.cs`.
+- App: `AppController.NotepadPlusPlus.cs`, `Views/ClipboardFlyout.NotepadPlusPlus.cs`,
+  `ViewModels/SettingsViewModel.NotepadPlusPlus.cs`, the two Settings cards, the tab, the card's caption and label.
+- Strings: 24 entries and 4 plural strings in both catalogs (`catalog.py add-file`, `add-plural`).
+
+**Found by the live check, fixed:**
+- **Every card of a known app read "… · Unknown app".** The tab-name branch went between the app's `if` and its `else if`,
+  which then belonged to the new `if`. Seen as "Notepad++ · Unknown app · 6 min ago" on a copy made in Notepad++. Fixed in
+  `ClipItemViewModel.BuildCaption`; a scan of the whole change (§4) found no other case.
+- **"6 documents open" over 5 tabs:** Notepad++'s count includes the hidden second view's placeholder. The status counts
+  files now (`NotepadPlusPlusOpenTracker.OpenFileCount`: distinct full paths).
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- A file opened again while it is still open in Notepad++ (a double-click in Explorer on it) only switches tabs: no
+  reopen is seen. No signal tells it apart without a plugin.
+- Files opened while BetterClipboard was not running, and the files Notepad++ restores at its start, are not openings.
+- A Notepad++ running as administrator while BetterClipboard is not cannot be asked (its unsaved tabs are still read:
+  they are files).
+- Not run live: `-multiInst` with several settings folders, cloud settings, the portable build, a legacy code page.
+- No Notepad++ plugin, and nothing is ever written to Notepad++.
+
+### 2.42 Hide tab & clipboard rows: a tab hidden together with its entries (built 2026-11-09)
+
+User request (2026-11-09): "Rename Hide -> Hide Tab. Add another option Hide Tab & Clipboard Rows, the show all hidden
+restores this hide too."
+- **Four questions asked** (HTML pages per option, memory "HTML questions for choices"; the pages are in session a6fd5958's
+  scratchpad, `q/`). The owner chose:
+  - **Where the rows go:** "Other": **"They become hidden, everywhere except for ones dragged/copied to groups"**. Read as:
+    an entry the tab lists is left out of every list the panel shows — unless it is in a group, which keeps it wherever
+    it shows (All included). Pinned entries are hidden like the rest: the offered option that also spared pinned ones
+    was narrowed to groups.
+  - **Which tabs:** every tab but All (Recommended).
+  - **Labels:** sentence case, "Hide tab" and "Hide tab & clipboard rows" (Recommended), like the menu's other items.
+  - **The footer** says how many are hidden (Recommended).
+
+**What the user gets.**
+- **The tab menu:** *Move left*, *Move right*, a separator, *Hide tab*, *Hide tab & clipboard rows*, *Show all hidden
+  (N)*. Both hides use the Hide glyph (`ED1A`), are grayed out only on All, and N counts hidden tabs, either kind.
+- ***Hide tab & clipboard rows*** hides the tab like *Hide tab*, and leaves its entries out of every list: All, the
+  other tabs (Text, Files, Pinned…), searches, the stored halves of the Everything, shell and prompt tabs. Entries in a
+  group stay. Hiding the tab you are in goes to All, as before.
+- **The footer** of the stored-history tabs reads "1,240 items · 6 pinned · 37 hidden" while rows are hidden; the total
+  still counts them.
+- ***Show all hidden*** brings back the tabs and their rows, and reloads the list.
+- **Nothing else changes:** nothing is deleted or kept from being recorded, the integrations keep reading, and `bclip`
+  lists everything (the hiding is the panel's).
+- **Kept** in `settings.json`: `HiddenTabRows`, always a subset of `HiddenTabs`.
+
+**How.**
+- **Core `AppSettings.HiddenTabRows`** (tab names): `Normalize` keeps known names that are also in `HiddenTabs`, so a tab
+  in the row never has its rows hidden. Footgun: an older version saving the file drops it, and the rows show while their
+  tabs stay hidden.
+- **Core `ClipQuery.HiddenRows`** and `ClipStore.HiddenRowsCondition`: `(coalesce((p1) OR (p2) …, 0) AND NOT EXISTS
+  (SELECT 1 FROM clip_groups hg WHERE hg.clip_id = c.id))`, each `pN` the tab's own `FilterPredicate`, so a tab's rows
+  are exactly what the tab listed; `Query` adds `NOT` of it.
+  - **The `coalesce` is load-bearing:** ShareX's `source_app_path LIKE …` is NULL for an entry without a path, and Files'
+    `path_count > 0` for a row the backfill has not decided. `NOT NULL` would have dropped such entries from every list
+    (a mutation without it fails `Query_AnEntryTheFilterCannotDecide_StaysListed`).
+- **Core `ClipStore.GetStats(hiddenRows)`** counts the same condition in its one pass (`StoreStats.HiddenCount`);
+  `ClipHistoryService.GetStatsAsync(hiddenRows)` copies the list on the caller's thread.
+- **App `FlyoutViewModel`:** `HiddenRows` (set by the panel, sorted and distinct) goes into every query it makes — the
+  main list, and the stored halves of the Everything, shell and prompt tabs — and into its `ViewKey`, so a list loaded
+  before a change is stale, also in the hidden panel. The footer appends " · {0:N0} hidden".
+- **App `ClipboardFlyout.TabArrangement.cs`:** `hiddenRowTabs`, `HideTab(tab, withRows)` (the rows are set before the
+  tabs change, so the switch to All loads without them; otherwise the list shown is reloaded), `ShowAllHiddenTabs` clears
+  both sets and reloads when rows come back, `SaveTabArrangement` writes `HiddenTabRows` with the rest.
+- **Strings** (`catalog.py remove "Hide"` and `add-file`): "Hide tab", "Hide tab & clipboard rows" and " · {0:N0} hidden"
+  in all five catalogs, with descriptions; the two "Show all hidden" descriptions say the rows come back. Translations
+  (by Claude, like §2.37's): 隐藏标签页 / 隐藏标签页及其剪贴板条目 / 已隐藏 {0:N0} 项; Скрыть вкладку / Скрыть вкладку и её
+  строки в буфере обмена / скрыто: {0:N0}; Ocultar pestaña / Ocultar pestaña y sus filas del portapapeles / {0:N0} ocultos;
+  הסתר את הכרטיסייה / הסתר את הכרטיסייה ואת השורות שלה בלוח / {0:N0} הוסתרו.
+
+**Verified** (rows in §5): 6 Core tests (`HiddenTabRowsTests`) with a mutation check, the suites, and the menu on a
+Windows 11 test desktop.
+
+**Limits / not built:**
+- No way to show one tab back alone (*Show all hidden* is the only undo, as for *Hide tab*).
+- A group's own footer ("5 in Work") and the Everything, shell and prompt tabs' footers do not mention hidden rows; group
+  views never hide any.
+- The Run tab's footer ("N commands kept") counts every Win+R command, hidden ones included.
+
+### 2.43 Settings search, and *Delete stored…* on every integration card (built 2026-11-09)
+
+User request (2026-11-09): "1. Add search to settings which fuzzly match to anything of that setting. 2. Every integration
+should have Delete stored button with a confimation dialog with preview and examples 3. Manaul QA but DO NOT DELETE
+ANYTHING ON THIS PC". Four HTML questions (pages in session b8a49ba2's scratchpad, `q/`); the owner chose:
+- **Search: "Filter the page"** (Recommended): a box pinned under the title bar; the page keeps only the matching
+  settings, in their order under their section titles, with the matched letters highlighted, a count beside the box, Esc
+  clears.
+- **Scope: "Everything its tab lists"** (Recommended), with the comment **"But we leave the source alone, always. for
+  example sharex screenshots are still in sharex's folder"**: a source app's own files are never touched; only
+  BetterClipboard's copies go. Pinned and grouped items are kept unless ticked.
+- **Dialog: "Parts, counts, examples"** (Recommended): one row per part with a checkbox, its count and size and its newest
+  examples (thumbnails or lines, "+N more"), a note on what is never touched, "Also turn off …", a red "Delete N items",
+  Cancel the default.
+- **QA: "Delete the VM after QA"**: every deletion in a claude-desktops Windows desktop with BC-TEST data; nothing on the
+  owner's PC.
+
+**The search** (`Core/Presentation/SettingsSearch`, pure and tested; `App/Views/SettingsWindow.Search.cs`).
+- **The box:** `SearchBox` in the window's second row (`MaxWidth` 880, like the page), `Ctrl+F` / `Ctrl+E` from anywhere in
+  the window; spelling checker and text prediction off (`SearchBox_Loaded`: "claude", "sharex" and "pwsh" were underlined
+  as misspelled). The count beside it ("4 settings match", "No matches") is a polite live region. Esc clears the search
+  and puts the page back at the scroll position it had when the search started; Esc on an empty box gives the keyboard
+  to the page.
+- **The filter:** a matching card stays where it is; other cards and sections without a match collapse, the hero hides;
+  none: "No setting matches “…”." with a hint. A new query scrolls to the top; a status line that changes while a search
+  shows searches again after 250 ms, keeping the position.
+- **What a setting is searched by** (`DocumentOf`): its title and description (the two highlighted fields), its section's
+  title, translator-written keywords (`SettingsCard.Keywords`, a catalog string on 41 cards, never shown: "screenshots,
+  print screen, PrtScn, snip, Win+Shift+S"), everything else on the card — text blocks, button and option contents, list
+  rows (`ISearchableItem`), tooltips, accessible names, placeholders; never a switch's On/Off or a number box's digits,
+  which would find every card — and the English of every translated text (`UiText.EnglishOf`, reverse catalogs built on
+  first use), so "shortcut" finds 快捷键's card.
+- **Matching** (class remarks are the full spec): texts folded (case, base letters of diacritics, format characters and
+  marks dropped — Hebrew's embedding, combining accents), at most 8 words, every word must match somewhere (AND). Per word
+  the best of: a whole word (1.0), a word's start (0.85), initials of consecutive words (0.7, "rfe" → Release from
+  Explorer), inside a word (0.6; a single letter only at a word's start) — the ways *as written*; then, only when the
+  setting has the word as written nowhere, the *fuzzy* ways: its letters in order from a word's start within
+  `max(2n, n + 3)` characters and never across white space (≤ 0.5; "clpbrd" → clipboard, "winv" → Win+V), or a typo
+  (optimal string alignment: one from 5 letters, two from 8; a word's start with one typo, "paxsword"). Weights: title 3,
+  keywords 2.2, section 1.8, description 1, other 0.7. Highlights map back to the shown text through embeddings and
+  combining marks (`FoldedText.ToOriginal`).
+- **Which settings show** (`SettingsSearch.Shown`): when any setting has every word as written, only those; fuzzy matches
+  are the fallback for a mistyped word. Found in the QA: "theme" listed 17 settings ("these" by a typo, "the mouse" by
+  letters running across a space) around the one titled "Theme"; now it lists that one, and "pasword" still finds its
+  two settings. The score decides nothing else: the page keeps its own order.
+
+**Delete stored…** (`Core/Storage/StoredData`, `ClipStore.Stored.cs`, `Services/ClipHistoryService.Stored.cs`,
+`Presentation/StoredText`; `App/AppController.Stored.cs`, `ViewModels/DeleteStoredViewModel.cs`,
+`SettingsViewModel.Stored.cs`, `Views/DeleteStoredView.xaml`, `SettingsWindow.Stored.cs`; `DangerButtonStyle` in App.xaml).
+- **Ten cards** (`StoredSource`), each a union of *parts* (`StoredData.PartsOf`). An entry part is slices of a tab's own
+  filter (`FilterPredicate`, NULL-safe) narrowed by origins and by protection, so a part never reaches beyond its tab:
+
+  | Card | Parts (ticked by default unless marked) |
+  |---|---|
+  | ShareX screenshots | Screenshots ShareX saved (origin ShareX) · Copied by ShareX (the tab's other entries) |
+  | Snipping Tool and Win+PrtScn | Screenshots Windows saved (origin WindowsScreenshot) · Copied by Snipping Tool or Win+PrtScn |
+  | Notepad++ unsaved tabs | Versions of unsaved tabs · Copied in Notepad++ (on both Notepad++ cards) |
+  | Files opened in Notepad++ | Paths of files opened in Notepad++ · Copied in Notepad++ |
+  | Everything | Picks you kept from the tab · Copied in Everything · Picks you hid (unticked; the `everything.hidden` list) |
+  | Win+R history | Commands run with Win+R (both Win+R origins) · Copied first, then run with Win+R |
+  | Pwsh tab | Commands you kept from the tab · Commands you hid (unticked; `pwsh.hidden`) |
+  | Cmd tab | Commands kept from Command Prompt windows (`cmd.kept`) · Commands you kept from the tab · Commands you hid (unticked) |
+  | Claude Code prompts | Archived prompts · Prompts you kept from the tab · Copied in Claude Code |
+  | Codex prompts | Archived prompts · Prompts you kept from the tab |
+
+  Every card with entry parts also has **Pinned or in a group** (the same slices, protected; unticked). Empty parts are
+  left out of the dialog.
+- **Counting:** `ClipStore.SummarizeStored` counts every card's unions in one pass (two `MATERIALIZED` CTEs: each row's
+  protection and each distinct tab filter evaluated once; written naively, 27 unions took 0.9 s over 20,000 entries, this
+  way ~0.5 s — the probe in session b8a49ba2's scratchpad, `probe_stored/`). Settings counts on open and again 2 s after
+  the last history, prompt or shell change; a card's button is enabled only while it has something (`Stored`), and is
+  named "Delete stored: {card title}" for UI Automation and screen readers.
+- **Deleting** (`ClipStore.DeleteStored`, one transaction): the entries go exactly as if deleted one by one from the panel
+  — their content is tombstoned (30 days), so the next ShareX or Screenshots catch-up, the Windows import and a re-import
+  of Windows' Win+R list do not bring them back, while a new live copy is recorded again; groups lose them; a tracked
+  document (a Notepad++ tab) keeps its last text, which is not recorded again until it changes; then an incremental
+  vacuum. Archives: the agent's reader is stopped, its prompts, files, tombstones and import mark are cleared, and it is
+  started again when its switch is on — which reads what the agent still has at once, as a first import (the dialog's
+  note says so). Lists: a hidden list is emptied (its commands or picks show in their tab again); the Cmd tab's kept list
+  is emptied and `CmdHistorySource.ForgetKeptAsync` forgets it in memory while remembering what each open window held, so
+  an open window's old commands are not kept again (checked past its next 30-second read). Never touched: the source
+  apps' files and lists (ShareX's and the Screenshots folder's pictures, Notepad++'s backups, PowerShell's history file,
+  Windows' `RunMRU`, Claude Code's and Codex's files — each checked by hash or listing in the QA).
+- **The dialog** (`ContentDialog`, `ContentDialogMaxWidth` 640): "Delete what BetterClipboard stored from {source}?", a
+  summary ("5 items stored · 6.2 MB · newest 11 min ago"), the parts (count · size, up to 4 newest examples: thumbnails for
+  pictures, monospace lines for paths and commands, a count only for hidden lists, which keep fingerprints), the note,
+  "Also turn off “{card title}”" while the switch is on (flipped before the deletion, so nothing is recorded meanwhile), and
+  the red "Delete N items" (plural strings; disabled with nothing ticked) next to Cancel, the default button — Enter and
+  Esc cancel. A failed deletion keeps the dialog open with the reason. Texts that may name a shortcut go through
+  `StoredText.KeepShortcutsTogether` (word joiners around the "+" of "Win+PrtScn": DirectWrite broke the title as "…Win" /
+  "+PrtScn?").
+- **Logs** (content-free): "Deleted stored data: N history entries, N archived prompt(s), N list(s) emptied." and
+  "Settings › {source}: Delete stored removed …". The old *Delete stored prompts…* button of the two prompt cards, its view
+  model members and its 4 strings are gone: *Delete stored…* replaces it.
+
+**Found and fixed in the QA** (rows in §5): the page shrank to the width of its content and was centered when a search
+left only short texts or none (WinUI's scroller lays its content out at the content's own width and centers it: the page
+now gets an explicit width from the scroller's size, `Scroller_SizeChanged`); the fuzzy noise above; the title break inside
+"Win+PrtScn"; the Snipping part labeled "Copied by Snipping Tool" although its entry was a Win+PrtScn screenshot (a
+clipboard copy whose file merged in: now "… or Win+PrtScn"); Russian's "Также выключить ««Ножницы» и Win+PrtScn»"
+(nested guillemets; now a colon, and the string's description says why); "reading stopped" logged twice when "Also turn
+off" and the deletion both stopped a prompt reader (`AgentPromptsIntegration.SetEnabledAsync` is serialized now); the
+spelling checker in the search box.
+
+**Also on the way:** `catalog.py remove` left a plural string's other languages' forms (`#few`, `#many`, `#two`)
+behind; it removes them now. 85 new strings and 3 plural strings in all five catalogs (translated by Claude, like §2.37's),
+each with its description.
+
+**Limits / not built:**
+- The Everything card's hidden picks were not seen live (no Everything in the test desktop); unit-tested.
+- Hebrew and Chinese dialogs were not seen on screen (Russian, the longest, was).
+- Deleting cannot be undone (as a delete in the panel); the counts are not refreshed while a dialog is open.
+- Line breaks inside "Win+PrtScn" elsewhere in the app (a card's description in Russian showed "…от Win" / "+PrtScn") are
+  older than this change and not fixed: §6.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 1,564 tests (1,561 run; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 2,042 tests (Core 1,645, Windows 397; opt-in tests + 1 explicit measurement skipped)
 pwsh tools/release/test-update.ps1 -Version X.Y.Z -PackageDirectory artifacts/release   # install.ps1's update mode
                                                                # against a package; scratch folders only (§2.29)
 pwsh tools/release/test-iex.ps1                                # install.ps1's param block survives `irm | iex`
@@ -3478,6 +4682,9 @@ pwsh tools/release/test-iex.ps1                                # install.ps1's p
 pwsh tools/release/test-all-users.ps1 -Version X.Y.Z -PackageDirectory artifacts/release -ConfirmMachineChanges
                                                                # install.ps1 -AllUsers for real, as administrator and
                                                                # as SYSTEM: CI or a disposable VM only (§2.34)
+pwsh tools/release/publish-dev.ps1 [-Install]                  # a dev build of HEAD's commit into this PC's
+                                                               # dev-builds folder: the installed app's update
+                                                               # button offers it (§2.39, skill local-dev)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -3498,6 +4705,12 @@ graceful quit (drains queued captures). **The exe is locked while running — `-
 Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe --background` — a scoped
 instance (§2.9), so `--exit` with the same variable set stops only it; **without** the variable, `--exit`
 stops the user's installed app.
+
+**The language picker** (§2.37) shows at every start until a language is chosen: a new scratch folder
+(`BETTERCLIPBOARD_DATA_DIR=<a new scratch folder> BetterClipboard.exe`), or a `settings.json` that names no language
+and has no `"LanguageChosen": true` (what the installer's `-Hotkey` and 0.2.9 leave). Strings: `python tools/localization/catalog.py
+add "English" -d "Where it shows, what {0} holds" zh-Hans="中文"` / `describe "English" "…"` / `rename "Old" "New"` /
+`check` ([`docs/localization.md`](docs/localization.md)).
 
 **Side by side for the user** ("Launch for me quickly", 2026-10-01): `python tools/launch_dev.py` runs a
 **copy** of the solution build next to the installed app. `--exit` stops it, `--exit --clean` also deletes it
@@ -3705,6 +4918,19 @@ Snipping tab (2026-10-01), with a copy of the dev build:
       `Join-Path ''` refuses an empty path.
     - [`tools/release/test-all-users.ps1`](tools/release/test-all-users.ps1) runs it for real in CI, as administrator
       and as SYSTEM.
+  - **Since 2026-11-08: a leftover that cannot be removed is set aside** (`Remove-Leftover`, `Remove-StaleLeftovers`).
+    - **The bug:** an install or update started by deleting `<install>.new` and `<install>.old` from earlier runs, and
+      failed on the first file it could not delete. On the owner's PC, ShareX held `DWriteCore.dll` of the folder
+      the update to 0.2.9 had renamed to `.old` (the folder is on the user PATH, §2.9), so that update's own clean-up
+      (silent) left `.old` with that one file, and from then on every install and every update failed at its start:
+      "Cannot remove item …\BetterClipboard.old\DWriteCore.dll: Access to the path is denied" (found by the
+      first `publish-dev.ps1 -Install`, §2.39, which stopped before changing anything).
+    - **Now:** a leftover that cannot be deleted is renamed to `<install>.old-stale-<time>` (a loaded DLL does not
+      keep its folder from being renamed) and a later run, or the uninstall, removes it once nothing holds it. Only a
+      folder that can be neither deleted nor renamed (a file open without delete sharing) still stops the run, with a
+      sentence that says what to close. After a successful swap the clean-up is best effort and never fails the run.
+    - **Who gets it:** every install and update that runs this `install.ps1`. The update button runs the new
+      package's own installer, so a copy updates past the trap once the package it updates to has the fix.
   - **A Chocolatey copy** (`lib\betterclipboard\tools\app`, §3.2) is respected:
     - install warns about it and leaves a startup entry that starts it;
     - `-Uninstall` keeps a startup entry that starts that copy; its own entry or a stale one goes, or, while that copy
@@ -3769,7 +4995,27 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   - Keep the `^`: `--grep` matches line by line, so the anchor skips a message that merely quotes the command
     mid-line. Without it, a later commit message that quotes it becomes "the newest draft" although it holds no notes
     (nearly happened 2026-10-02). Never start a line of a commit message with the marker unless the notes follow it.
+  - **The notes follow the earlier releases' format, minus anything about older versions** (the owner, 2026-11-08:
+    "Go over our last 10 releases, follow their format", then, after editing the v0.2.10 draft themselves: "Also no
+    mentions of older versions"): the title line `BetterClipboard X.Y.Z` alone (the owner's edit cut its summary);
+    the install command; one bold lead-in paragraph per feature, with bullets; **Fixed**; the files table; the
+    code-signing note. Nothing that names an older release: no "You have 0.2.x" lines, no "What came in X.Y.Z …"
+    pointer, no "An older BetterClipboard can still open your history", and no "since an earlier update" in a fix.
+    No headings and no summary list. Wrapped at 117 columns like the earlier notes, never inside a link, a code span
+    or an emphasis: GitHub shows a line break at each wrap (v0.2.9's `body_html`), which every release page has, and
+    the update dialog follows CommonMark and joins the lines.
+  - **An outside contributor is thanked in one line, right after the title line**, naming what they brought and
+    their bare `@login` (the owner, 2026-11-08, of a five-line paragraph and a language section: "Horrible, simplify
+    and minimize the language addition to a single line"). Keep that line within the 117 columns, so GitHub never
+    breaks it. Read the login with `gh pr view <n> --json author,commits`. On the release page GitHub links the
+    mention, notifies the person and lists them under the release's contributors; the update dialog shows plain
+    text. Check a draft with GitHub's own renderer (`gh api markdown --input <json>`, `mode` `gfm`, `context`
+    `Nucs/BetterClipboard`), which publishes nothing. First used for v0.2.10 (pull request #1, Simplified Chinese).
 - **Dev build on this PC** ("Build and install dev", 2026-10-01): the same install, of `main`'s latest commit.
+  - **Since 2026-11-08: `tools/release/publish-dev.ps1`** (§2.39, skill `local-dev`). It does the worktree, the
+    version (`X.Y.Z-dev.<count>.g<sha>`) and the package, and publishes to the dev-builds folder; the installed app's
+    update button installs it. `-Install` once for a copy that predates the folder (0.2.9 and older). The steps below
+    are what it automates.
   - Build from a separate worktree at that commit (`git worktree add --detach <scratch>/wt <sha>`), never from the
     shared tree: other sessions' uncommitted, half-done work would ship into the user's real app. Remove the worktree
     afterwards.
@@ -4292,8 +5538,8 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   - Use a select-only action for cards and list items, and seed `PasteOnSelect: false` in e2e settings as a
     second guard (a click then only copies). Tabs (`SelectorBarItem`) have no Invoke, but select them the same way.
 - **Summon a test panel only in a quiet moment, and know which window is the terminal.**
-  - Why: the panel takes the keyboard when it opens, with the first card selected. An Enter the user meant for
-    their terminal pastes that card: a BC-TEST item through the real clipboard into the terminal. `PasteOnSelect`
+  - Why: the panel takes the keyboard when it opens, with a card selected (the newest copy, §2.28). An Enter the user
+    meant for their terminal pastes that card: a BC-TEST item through the real clipboard into the terminal. `PasteOnSelect`
     does not stop it, because it covers clicks only.
   - The guard: the terminal in front for two checks in a row **and** no user input for ≥ 3 s (`GetLastInputInfo`)
     (`prompts_ui.py`, 2026-10-01).
@@ -4315,16 +5561,32 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   with eight tabs, "Everythin" with nine) although every UIA rectangle lay inside the window. Zoom into a screenshot
   of the last tab; rectangles alone did not show it. (That widening is gone, §2.23. The remembered panel size is an
   outer size too — `FlyoutSizing` converts outer pixels, the same `AppWindow.Size` and `MoveAndResize` use.)
+- **A window the program moves onto a monitor with another scale is rescaled a second time** (§2.38). Windows answers
+  the move with `WM_DPICHANGED` inside it, suggesting the asked rectangle scaled once more, and WinUI takes the
+  suggestion: asked 500 × 700 on a 125 % monitor, the window came out 625 × 875. Move the panel with
+  `ClipboardFlyout.MoveAndResizeExactly` (it asks again when the bounds differ) wherever the move can change monitors;
+  `AppWindow.MoveAndResize` alone is fine only on the panel's own monitor (the groups column). Any other window that is
+  moved by code between monitors needs the same. `tools/probes/dpi_move_lab` checks it after a Windows App SDK update.
+- **Never add a member to an enum the settings file stores by name** (`FlyoutPlacement`, `AppTheme`). A version that does
+  not know the name throws while reading and sets the whole settings file aside as corrupt (§2.28). A new choice gets a
+  member of `AppSettings` of its own that refines the old value (`CenterOnMainScreen`, §2.38), or a name read leniently
+  (`LastTab`, §2.28). `PanelPositionSettingsTests.Placement_KeepsItsThreeReleasedNames` guards `FlyoutPlacement`.
 - **Items of an `ItemsView`/`SelectorBar` inside a scrolling viewer are virtualized.** The ItemsView template's
   `ItemsRepeater` has `HorizontalCacheLength="0"` and follows every scrolling ancestor's viewport, so items out of view
   are not realized: they have no size, the content width is an estimate, and UIA cannot see them (their rectangles read
   (0, 0, 0, 0)). The tab carousel raises the cache (§2.23). Anything else that measures or reaches items of such a list
   must do the same, or work only with what is realized.
-- **Capturing the pointer on an ancestor leaves a pressed WinUI item stale.** An `ItemContainer` (SelectorBarItem,
-  ItemsView items) forgets a press only on its own exit, cancel or `PointerCaptureLost`; a capture taken by an ancestor
-  gives it none, so it stays drawn pressed and still counts as pressed. Let the item capture first and take the capture
-  from it (`ClipboardFlyout.TakeOverTabPress`), and ignore the item's `PointerCaptureLost` bubbling into the ancestor's
-  handler (check `OriginalSource`).
+- **A pressed WinUI item stays pressed unless it sees its press end.** An `ItemContainer` (SelectorBarItem, ItemsView
+  items) forgets a mouse press only on a release over itself, a cancel or `PointerCaptureLost` — in the WinUI we ship
+  (2.3.9) not on its exit (fixed upstream 2026-07-25, PR 16243757; §2.23 "Dragging a tab off itself").
+  - So a release elsewhere, and a capture taken by an ancestor, leave it drawn pressed (grayed) and still counting as
+    pressed. After a right-button press it also refuses every left click.
+  - Make it forget with a capture it gives straight back (`ClipboardFlyout.ForgetTabPress`): when the pointer leaves it
+    (`Tab_PointerExited`), and before an ancestor captures (`TakeOverTabPress`).
+  - A capture never moves between elements: `CapturePointer` returns false while another element holds the pointer
+    (until 2026-11-08 this entry said to take the capture from the item, which WinUI never allows). Release the item's
+    capture first, then capture the ancestor.
+  - Ignore the item's `PointerCaptureLost` bubbling into the ancestor's handler (check `OriginalSource`).
 - **The panel is never hidden: it is concealed** (§2.27). Every way it goes away calls `Conceal` (cloak, hide once to
   hand the foreground on, show again without activation), and `IsOpen` is the `presented` flag — `AppWindow.IsVisible` is
   true all the time once the warm-up ran. New code that hides or shows the panel's window directly breaks the instant
@@ -4413,12 +5675,70 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   `settings.png`, `update.png`) show the code of `7d7df8d` (2026-10-09) with invented demo data from a claude-desktops
   Windows desktop, never the user's screen.
   When a change makes one of them wrong, retake that photo the same way (§3.4).
+  The title carries the app icon, `src/BetterClipboard.App/Assets/AppIcon.png` (256 px, from `tools/make_icon.py`; the
+  Chocolatey `iconUrl` loads the same file, so keep it there). At 40 px with `align="top"` it sits within 2 px of the
+  centre of the title's capitals (GitHub's styles, Segoe UI, measured 2026-11-08). `align="middle"` or `"center"` hangs
+  it 11 px low, and no `align` raises it 5 px. GitHub links every image to its own file, so the `alt` names that link.
+- **Every new piece of UI text goes through `UiText`, keyed by its English text, with an entry in `en.json`** (§2.37).
+  XAML: `{loc:Tr Text='…'}` (`Text=&quot;…&quot;` when the text has an apostrophe: WinUI's XAML compiler takes no
+  backslash escapes); C#: `UiText.Translate("…")`, `UiText.Format($"…")`, and for a count
+  `UiText.Plural(n, $"{n:N0} item", $"{n:N0} items")` — never an English "s" passed as a value. Add strings with
+  `python tools/localization/catalog.py add "English" zh-Hans="中文"` (`add-plural` for counts). Changing an English text
+  changes its key: `LocalizationTests.CodeAndCatalogsAgree` fails until `en.json` follows; change it with
+  `catalog.py rename` (translations kept, marked for review), then the literal. A hash key (`{loc:Tr Key=T…}`) only for a
+  text XAML cannot quote or a very long one.
+  A new language is a catalog (with its `$language` header) and, if needed, a flag in `tools/make_flags.py`: no code.
+  `TranslationCoverageTests` fail for a translated text without an entry and for an entry nothing uses any more
+  (`catalog.py remove`).
+  - **Whole phrases.** Never build a translated sentence from English words passed as values (`{isAre}`, `{itThem}`,
+    a noun, a "+"): a translation leaves them out or keeps them English. Write one sentence per form ("1 file" /
+    "{0:N0} files"; one key / several keys), join lists with `UiText.Translate(", ")` and `"{0} and {1}"`.
+  - **Text a component words in English for its log, installer or tests and the UI also shows** is translated where it
+    is shown, through the component's template list: `UiText.TranslateFormatted(text, Component.XTemplates)`. A new
+    sentence goes into the list (best as a named constant the producer formats, as `UpdateMessages` does) and into
+    every catalog; `TranslationTemplateTests` / `TranslationCoverageTests.CoreTemplateLists_HaveEntries` check them.
+  - **Names BetterClipboard stores for a copy's source** ("Command Prompt", "Snipping Tool") stay English in the store:
+    the tabs filter by them. Show them with `SourceNames.Display`, and add a new made-up name to `SourceNames.Templates`.
+  - **Dates** go through `RelativeTimeFormatter` (day and month names follow `UiText.DateCulture`); a new date pattern
+    is a catalog entry like `d MMM`.
+  - **Every new string comes with its description** (2026-11-09): `catalog.py add "…" -d "…"`. It says where the string
+    shows, what each `{0}` holds, how much room there is and which words to keep; `check` and
+    `LocalizationTests.EnglishCatalog_EveryRowHasItsDescription` fail on a row without one. A new string also needs
+    its Russian, Spanish and Hebrew (or it shows in English there, and a language lacking more than one string in ten
+    is no longer offered).
+  - **A line the code joins from translated pieces goes through `UiText.JoinLine`** (a caption "app · time · size",
+    two sentences on one line): in Hebrew the line is then ordered right to left as a whole. A plain `string.Join` or
+    `$"{a} · {b}"` lays Hebrew pieces out from the left.
+  - **Never look at a translation's first or last character without skipping format characters:** a Hebrew text comes
+    wrapped in U+202B … U+202C (§2.37), so `text[^1]` is the closing mark (`UpdateText.AsSentence` is the pattern). A
+    translation stored as data (a group's default name) is stripped by the store.
+  - **A Latin word that ends in signs keeps them only with a left-to-right mark after them** (Notepad++, C#) when
+    right-to-left text follows or the line ends: Hebrew showed "++Notepad" until 2026-11-09 (§2.37). `UiText` adds
+    U+200E to every right-to-left text it makes; text that reaches the screen around it (a new route that embeds
+    Hebrew itself) needs the same (`KeepTrailingSignsWithTheirWord`). Write the mark as `\u200E`: the Edit tool and
+    the Write tool both put the raw, invisible character into a file again that day.
+  - **A translation must fit the room its description names.** Measure, don't guess: Pillow's
+    `ImageFont.truetype(r"C:\Windows\Fonts\segoeui.ttf", 14).getlength(text)` against the English (the search box
+    shows about 222 px of text).
+- **Logs and `bclip` stay English** (§2.37). Never pass `UiText` output to `AppLog`: when a text is both shown and
+  logged, build it twice. `bclip` pins English in `Main`, and its tables call `RelativeTimeFormatter` with
+  `localized: false`. `LocalizationTests.NoLogLineIsBuiltFromTranslatedText` sees only a log call that names `UiText`
+  itself, not a translated value handed over in a variable.
+- **A README change goes into its translations** (`docs/translations/*.md`, §2.37), in the same commit when the
+  wording is clear. The translations say at their top that the English README prevails, and they keep the English
+  section ids as explicit `<a id=…>` anchors, so `#privacy` and `#code-signing-policy` work in every language.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
   - An integration with another maker's app: add its `Integration` entry with the feature. **No test notices a
     missing one.**
   - Links follow the official-link rule: the final https address, no `aka.ms`, no `/en-us/`.
+- **A folder on the PATH lends its DLLs to every program on the PC** (2026-11-08): Windows' DLL search ends with the
+  PATH, so a program that asks for a DLL it does not ship (ShareX: `DWriteCore.dll`) loads the copy from the install
+  folder that *Add bclip to PATH* listed, and holds that file until it exits. Expect files of the install folder to
+  be in use by unrelated programs: anything that deletes or replaces them (`install.ps1`, an uninstall, a test) must
+  tolerate it — `install.ps1` sets such folders aside (§3.1). Find the holder with the Restart Manager
+  (`RmGetList`): it names processes that `Get-Process … .Modules` cannot read.
 - **Never `New-Item -Path <registry key> -Force` on a key that may exist.** In the registry provider it deletes the
   existing key with every value and subkey in it and creates it empty (PowerShell 5.1 and 7, verified 2026-10-03).
   `install.ps1` did it to `HKCU\…\Run` from v0.1.0 to 0.2.5 — every install erased every other app's startup entry —
@@ -4592,6 +5912,12 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   `Test-ProcessRuns`), and never let "could not stop it" end a script that has already closed the user's app.
 - **An edit and the command that needs it do not go into one batch of tool calls:** they run at the same time, and
   the command reads the file from before the edit (2026-10-10: a "fixed" script ran unfixed).
+- **A block inserted right after an `if`'s closing brace takes over the `else` that follows** (2026-11-08, §2.41). The
+  Notepad++ tab's name went between the card caption's `if (source app known)` and its `else if (live copy)`: the
+  "Unknown app" fallback then followed the new `if`, and every copy of a known app read "Notepad++ · Unknown app". It
+  compiles, and no unit test sees a view model's caption; the live check did. Insert new statements before the `if` or
+  after its whole chain, and scan a change for the shape: an added line followed by an unchanged `else`, or an added
+  `else` after unchanged code (`scan_else.py` in session 9f3b7bdf's scratchpad reads a `git diff`).
 - **Everything the app sends over the network is named in the README's *Privacy* section,** which is the privacy policy
   that code signing asks for (§3.3): what is requested, from whom, what the request shows, and how to switch it off. A
   new request (telemetry, a crash report, a second update source) needs its paragraph there, a Settings switch, an
@@ -4606,6 +5932,15 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     dismisses the bubble also reaches the button.
 - **`ScrollViewer.ChangeView` on a scroller that is not on screen yet is dropped,** without an error. Reset a flyout's
   scroll position in its `Opened` event, not in `Opening`.
+- **A WinUI `ScrollViewer` lays its content out at the content's own width and centers it** when that is narrower than
+  the viewport, whatever the content's `HorizontalAlignment="Stretch"` says (horizontal scrolling is off by default, so
+  the width is limited, not stretched). A page whose children can all collapse or turn short — Settings while a search
+  shows "No setting matches" or one short card — shrank and moved to the middle of the window (2026-11-09, §2.43). Give
+  such a page an explicit width from the scroller's size (`SettingsWindow.Scroller_SizeChanged`).
+- **DirectWrite breaks a line before the "+" of "Win+PrtScn"** ("…Win" / "+PrtScn?"; Unicode's rules forbid it, Windows'
+  line breaker does it). Text that may wrap and can name a shortcut goes through `StoredText.KeepShortcutsTogether`
+  (word joiners, U+2060, around each "+" between two letters or digits; screen readers skip them). The rest of the app
+  does not do this yet (§6).
 - **A program started through Explorer gets Explorer's environment,** not the caller's: `BETTERCLIPBOARD_DATA_DIR` and
   the other overrides are lost. That is right for a fresh install from an elevated prompt (`Start-AppUnelevated`) and
   wrong wherever an instance must come back as itself (`Start-AppAsBefore`, §2.29).
@@ -4675,6 +6010,13 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   (`~/.claude/scripts/check-docs.py`) climbs from a method to its doc comment only over lines that end with `]`. A
   comment after `[InlineData(…)]` stops the climb, and the hook then reports "no /// doc comment" for a method that has
   one. Older theories have such comments: the hook checks only the lines that an edit touched.
+- **The documentation hook skips the session scratchpad** (its `SKIP_PATH` matches `temp\claude\…\scratchpad\`), and
+  files changed by a script are never seen by a PostToolUse hook at all. Work in a private worktree under the scratchpad
+  (the way to land work beside other sessions) is therefore never checked: run the hook's `find_gaps` on the changed
+  files yourself before committing (2026-11-08: it found 27 gaps in 7 files of `feat/localization`, all filled).
+- **A resumable edit script must not decide "already applied" by the old text being absent** when the new text
+  contains the old one: the old text is still found, and a re-run applies the edit again. On 2026-11-08 that doubled a
+  line in `AppController.Start` (caught by its log line appearing twice in a test desktop).
 - **claude-desktops Windows desktops, lessons of the rich-preview research (2026-10-16, §2.33):**
   - A long-lived helper started from `run_command` with `Start-Process -RedirectStandardOutput` inherits the agent's
     pipes: the call does not return, and the desktop's later calls queued behind it for minutes. Start helpers with the
@@ -4696,6 +6038,14 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     A PowerShell UI Automation script run with `run_command` read and flipped its switches through `TogglePattern`.
   - `create_desktop` for Windows took longer than the MCP client's 300-s silence limit and was reported as failed,
     although the desktop came up: check `list_desktops` before creating another.
+- **Dev builds for the owner's PC go through `tools/release/publish-dev.ps1`** (§2.39): built from a commit in a
+  temporary worktree, never from the shared tree (another session's uncommitted work would ship), and offered by the
+  update button instead of installed behind the owner's back. `-Install` restarts their app: only on their request.
+  A development build's update button is lit by design (the way back to GitHub's latest release): not a bug to fix.
+- **`git config` inside a `git worktree` writes the shared repository's config** (`.git/config`), not the worktree's,
+  unless given `--worktree` (with `extensions.worktreeConfig` on). On 2026-11-09 `git config core.autocrlf false` in a
+  private worktree turned it off for the main tree that other sessions work in; it was put back to `true` at once. Pass
+  settings per command instead (`git -c core.autocrlf=false …`).
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -4705,6 +6055,41 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **The 0.2.10 release candidate `5e4e731`: an update from the real 0.2.9, and the two features added after the merge request** (2026-11-10, the owner: "Lets merge and release a version"; asked one question, because `main` had gained `9324621` (Settings search, *Delete stored…*) and `5e4e731` (the language picker until a language is chosen) after merge request #2 was opened, the owner chose "Include + quick QA"). **Exactly `5e4e731`** in a private worktree: a `--no-incremental` solution build with 0 errors and 0 documentation warnings; the whole suite 0 failed, 3 opt-in skipped. **A disposable claude-desktops Windows 11 desktop** ("bc-rel-0210", Tiny11 25H2, 1600×900; deleted afterwards with its persist folder): the real 0.2.9 installed with the README's installer (`-Version 0.2.9`, SHA-256 OK, Win+V taken over); two BC-TEST copies and a Win+R `winver` recorded by it. Then a self-contained package of `5e4e731` (`0.2.10-dev.42.g5e4e731`, published into a scratch data folder, so the owner's update button saw nothing) applied as 0.2.9's update button would: the package's own `install.ps1 -Update -Package … -PackageSha256 … -InstallDir … -ResultPath … -LogPath …`, exit 0, result `ok`, 0.2.9 closed and the new copy started with `--background`. The picker ("Choose your language", English suggested) showed at once; Enter saved `en` with `LanguageChosen` true and kept 0.2.9's other settings; the log "Interface language chosen at a start with a history already kept …", 0 WRN/ERR. The panel listed 0.2.9's two copies and `winver`, with the Run tab. **Settings search:** "clpbrd" gave "8 settings match" under their section titles with the matched letters marked; Esc emptied the box. ***Delete stored: Win+R history*:** "1 item stored · 14 B", the part "Commands run with Win+R" with its example `winver`, the note on Windows' own list, *Also turn off*, a red *Delete 1 item* and *Cancel*; Esc closed it with nothing deleted; *Delete 1 item* deleted exactly one entry ("Deleted stored data: 1 history entry …"), `RunMRU` still held `winver`, and the panel lost its Run tab and kept both copies. **Hebrew** chosen in Settings, *Restart now*: no picker (`LanguageChosen`), and the search "notepad++" found 3 settings with the whole name marked (the U+200E that `9c7ba87` puts after "Notepad++" is folded away by the search). The notes draft gained a **Settings.** section for the three (in this commit's message) | claude-desktops MCP tools; the UI Automation helper of the 2026-11-09 pass (recovered from the session's log, with its fix); `review_build.sh` and `publish-dev.ps1` with a scratch `BETTERCLIPBOARD_DATA_DIR` | ✅ |
+| **The language question after an update, live** (2026-11-09, §2.37). A disposable claude-desktops Windows 11 desktop ("bc-ask", Tiny11 25H2, en-US, 1600×900; deleted afterwards with its persist folder). The released 0.2.9 installed with the README's installer (`-Version 0.2.9 -NoLaunch`, SHA-256 OK), started in the background, two BC-TEST copies made; its own `settings.json` written by 0.2.9 (`--set-update-check on` while it was closed: 3,812 bytes, no language member); started again. A self-contained package of HEAD (`9324621`) plus only this change (`0.2.10-dev.ask`), applied the way the update button does: the package's own `install.ps1 -Update -Package … -PackageSha256 … -InstallDir … -ResultPath … -LogPath …` (SHA-256 OK, 0.2.9 closed gracefully, the folder swapped, the app started again with `--background`). **The picker showed at once**, before any other window, with the five languages and English suggested, next to the notification "BetterClipboard was updated to 0.2.10-dev.ask". Down ×4: the heading "Elige tu idioma"; Enter: `InterfaceLanguage` `es` and `LanguageChosen` true, 0.2.9's values kept (`CheckForUpdates`, `OpenHotkey`); the log "Interface language chosen at a start with a history already kept (…): es (Windows suggested en)", then the panel's warm-up; Win+V: the panel in Spanish with both copies made in 0.2.9. `--exit` and a plain start: no picker, Settings in Spanish. Settings › Idioma › *Usar la configuración de Windows*: saved `system` with `LanguageChosen` true, the box "🇺🇸 English · según Windows" with *Reiniciar ahora*; the restart: English, no picker. A new data folder (an isolated instance next to it): the picker; Esc kept English ("Interface language chosen at the first start: en", `LanguageChosen` true). No warning or error in the regular instance's log lines read; the isolated instance's only warning was Win+V taken (1409), which the regular instance held | claude-desktops MCP tools (`run_command`, `launch`, `press_keys`, `click`, `type_text`, screenshots) | ✅ Not run: an exit from the tray while the picker is open (the next start asks again), an update from a development build that had the earlier rule |
+| The language question, unit tests (2026-11-09, §2.37): `LocalizationTests.Start_AsksUntilALanguageIsChosen` (10 cases: never chosen with `system` in any case, blank or missing asks; an explicit language, a language not shipped, and every answered case do not) and `SettingsFiles_FromBeforeTheLanguageAsk_UntilAnswered` (a 0.2.9-style `settings.json` reads as `system` and unanswered, so it asks; answered with `es` and read back, it does not; `system` answered does not). The localization guards 77 of 77; Core 1,648 of 1,648 on HEAD (`9324621`) plus only this change in a private worktree, and 1,695 of 1,695 in the shared tree with the uncommitted AI work; the solution builds with 0 errors | the test executables | ✅ |
+| **Settings search and *Delete stored…*, live** (2026-11-09, §2.43; the owner: "Manaul QA but DO NOT DELETE ANYTHING ON THIS PC"). A disposable claude-desktops Windows 11 desktop ("bc-qa-stored", Tiny11 25H2, 1600×900; deleted afterwards with its persist folder), self-contained builds of the worktree (`0.2.10-dev.qa1` to `qa4`) installed with `install.ps1 -Package`, BC-TEST data only: a fake ShareX folder (`BETTERCLIPBOARD_SHAREX_DIR`, 3 screenshots) and 2 ShareX-attributed copies, Win+PrtScn shots, Notepad++ 8.9.9 (an unsaved tab, an opened file, a copy), an Everything-attributed copy, 2 Win+R runs, a PSReadLine history file, an open Command Prompt window, Claude Code's and Codex's history files; kept, pinned and hidden items made in the panel. **Search:** "sharex", "pasword" (letters in order, highlighted), "clpbrd hist", "rfe" (initials), "sqlite" (Built with's rows), "theme" (17 settings at first, 1 after the fix), "zzqx" (the empty state, centered at first, aligned with the box after the fix), "snipping" with one card (aligned after the fix), Russian "ножниц" and English "theme" in the Russian UI (through the English); Esc restored the page's scroll position; no spelling squiggles (qa3). **Dialogs:** ShareX — parts 2 / 2 / 1 with thumbnails, the red count 4 → 5 with the pinned part, gray with nothing ticked; deleting the saved screenshots kept the pinned one and the copies and the 3 PNGs; re-saving a deleted screenshot's file brought nothing back (re-saving the pinned one's bumped it); *Also turn off* switched ShareX off (logged before the deletion) and saved it; the pinned part alone, then the button gray. Snipping — `Screenshot (1).png` and `(2).png` intact; Esc cancels. Notepad++ tabs (the backup file intact) and files (Enter cancels; the file intact). Everything. Win+R (`RunMRU` identical). Pwsh — kept entry and hidden list, the history file's hash identical, the hidden command back in the tab, the pinned one kept. Cmd — kept list and entry, "0 commands kept" also after the open window's next read. Claude Code — with the switch on the archive was read again at once (5 prompts, the file's hash identical), with *Also turn off* nothing came back. Codex — *Also turn off*, the file's hash identical. Russian — the dialog, "Удалить 1 элемент", and (qa4) "Также выключить: «Ножницы» и Win+PrtScn". The app's log: 196 lines, 0 WRN/ERR | claude-desktops MCP tools (`click`, `press_keys`, `type_text`, `scroll`, region screenshots); `bclip list -f …` / `prompts`, hashes and listings of the sources in the guest; `uia_layout.ps1` (UI Automation rectangles) | ✅ after seven fixes found here (§2.43 "Found and fixed in the QA"). Not seen live: the Everything card's hidden picks, Hebrew and Chinese dialogs |
+| Settings search and *Delete stored…*, unit tests (2026-11-09, §2.43): `SettingsSearchTests` 40, `StoredDataTests` 17; the whole suite in the worktree: 2,042 = 2,039 passed + 3 opt-in skipped, 0 failed (Core 1,645, Windows 397); a solution build with only the known CS0108; `catalog.py check` 0 missing and 0 to review in every language; the summarizing SQL measured with a scratch probe (20,000 encrypted BC-TEST entries: 27 unions in ~0.5 s, from 0.9 s written naively) | the test executables, `dotnet test --solution`, `probe_stored/probe.cs` (session b8a49ba2's scratchpad) | ✅ |
+| **The 0.2.10 merge request: QA of every feature, and two text faults fixed** (2026-11-09, the owner: "Create a merge request (not draft) / Then install that version on my local (as dev) / Then manual qa each feature until proven stable and not misused"). Merge request #2, `release/0.2.10` from `fe1e229`, not a draft; CI passed. **On this PC:** `publish-dev.ps1 -Install` (this shell's tokens and overrides stripped; only the installed copy ran) replaced `0.2.10-dev.36.g7dce6ca` with `0.2.10-dev.38.gfe1e229`: log 0 WRN/ERR. **In a disposable claude-desktops Windows 11 desktop** ("bc-qa-0210", Tiny11 25H2, 1600×900; deleted afterwards with its persist folder), the same package through its `install.ps1 -Package`, BC-TEST data only, read through UI Automation: (1) the first-start picker's heading turned 选择语言 with the row, and Enter opened Settings in Chinese; the closed language box "🇨🇳 简体中文"; six rows (the Windows setting, English, 简体中文, עברית, Русский, Español); *Restart now* into English, Hebrew and Russian. (2) Two pins and three copies through `bclip`: Win+V selected the newest copy under the pins, Up the lowest pin, and Esc, Win+V and Enter pasted "BC-TEST copy three" into Notepad. (3) The Run tab appeared after the first Win+R (`winver`, source Win+R), the Snipping tab after the first Win+PrtScn. (4) A tab's menu: *Move left*, *Move right*, *Hide tab*, *Hide tab & clipboard rows*, *Show all hidden* (grayed while nothing is hidden); *Move right* on Pinned; *Hide tab & clipboard rows* on Run took the tab and `winver` out of All, and *Show all hidden (1)* brought both back (`HiddenTabs` and `HiddenTabRows` empty again); a left-button drag of a tab left it drawn like the others; a right-button drag opened no menu, and a click then selected the tab; the order kept over two restarts. (5) *Panel position*'s four choices: the main screen's center saved `CenterScreen` + `CenterOnMainScreen` and centered the panel in the 1600×852 work area; next to the mouse at (300, 200) gave (284,209)-(684,769). (6) Notepad++ 8.9.9 (signed O=NOTEPAD++; 8.9.1's download answered 504) installed silently: a file opened in it became a path entry, a new tab's text an entry after its minute of rest, a small edit updated that entry, replacing the text kept the old version as an entry of its own, and opening the file again moved its entry up without a second one; the Notepad++ tab between Snipping and Run. (7) A `BetterClipboard.old` whose `DWriteCore.dll` another process kept mapped (a delete refused): `install.ps1 -Package` installed over it, exit 0. (8) The dev install's update button: "Back to the release: BetterClipboard 0.2.9". **Found, text only:** the Hebrew Notepad++ tab's file caption read "++Notepad · לפני 3 דק׳ · נתיב", and Chinese Settings' update line "BetterClipboard 0.2.9 是最新发布版.". Fixed in `9c7ba87` (§2.37; 16 new cases; the whole suite 1,985 = 1,982 passed + 3 opt-in skipped). **After the fix,** `0.2.10-dev.39.g9c7ba87` in the same desktop: the Hebrew panel's three Notepad++ captions and its tab read "Notepad++", Settings' "קבצים שנפתחו ב-Notepad++" shows the signs at the word's end (pixels enlarged), and Chinese reads "是最新发布版。"; installed here with `publish-dev.ps1 -Install -Ref 9c7ba87` (16 s): log 0 WRN/ERR, Win+V by `RegisterHotKey`, the panel prepared in 523 ms. Left as is: Chinese sentences joined with a space after 。 (the catalog's own templates do it too) | claude-desktops MCP tools; a UI Automation helper in the guest; `bclip`; `publish-dev.ps1`; `bc_processes.ps1` and `verify_install.ps1` in session 2e2fae95's scratchpad | ✅ after the two text fixes |
+| **Settings' language box: flags in the closed box and on "Use Windows setting"** (2026-11-09, §2.37). A disposable claude-desktops Windows 11 desktop ("bc-flags", Tiny11 25H2, en-US, 1600×900; deleted afterwards with its persist folder), a self-contained package of HEAD (`5956bda`) plus only this change, built in a worktree on C: (`0.2.10-dev.flags`, then `flags2` with the fixes). The first-start picker (a settings file saying `system` still counts as no choice), English kept: the closed box "🇺🇸 English". The open list: "🇺🇸 Use Windows setting  English" (the globe gone), then the five languages as before. Following Windows: "🇺🇸 English · Windows setting", the hint dimmed, the chevron in place. 简体中文 picked: "🇨🇳 简体中文" with *Restart now*. עברית picked and restarted: "🇮🇱 עברית"; the Hebrew list's Windows row "לפי הגדרת Windows  English". Following Windows in Hebrew, with Hebrew's *Restart now* beside it, the first build drew "English  Windows לפי הגדרת ·" (the dot at the right end) and ran past the card's edge, hiding the chevron; `flags2` drew "English · …לפי הגדרת" inside the card (the dot after the name, the trimmed Hebrew ending with its ellipsis at the left). Locally: the localization guards 116 of 116; Core 1,619; Windows 394 and `ClientHangUp_CancelsHandler` (3 of 3 alone) | claude-desktops MCP tools (`launch`, `click`, region screenshots upscaled with Pillow), UI Automation in the guest to scroll the box into view | ✅ Not run: Russian and Spanish with the hint (the guest's Windows is English, so the hint shows in English or in the language picked before a restart), the dark theme |
+| **Back on dev builds a second time** (2026-11-09, the owner: "install local dev version"; §2.39's limits). The way back happened again: at 06:32:52 the update check offered 0.2.9 as the way back from `0.2.10-dev.30.g5bd6be5`, it was approved at 06:32:57, and 0.2.9 ran from 06:33:17 without dev offers. `publish-dev.ps1 -Install`, from the shared tree with this shell's tokens and overrides stripped, built `7dce6ca` in a temporary worktree (the tree's 9 uncommitted files left out, with its warning), published `0.2.10-dev.36.g7dce6ca` (zip 71.5 MB, `72ca0f04…`; the oldest build, dev.16, pruned) and installed it with the build's own `install.ps1 -Package`: 0.2.9 closed gracefully, "Win+V was already released", the app started through Explorer; 83 s in all. Afterwards: one BetterClipboard, `--background`, parent `explorer.exe`; exe `0.2.10-dev.36.g7dce6ca+7dce6ca…`; `installer.json` and the Installed-apps entry that version; Run value names unchanged (BetterClipboard, IDMan); `DisabledHotkeys` `V`; the install folder still on the user PATH; the Start menu shortcut there. Its environment: 79 names without `CLAUDECODE` and `MSYSTEM` (this shell, the control: 141 with both). Log after "starting": 0 WRN/ERR; "Local builds: 5 in the dev-builds folder, none newer than the running 0.2.10-dev.36.g7dce6ca."; the button is lit with the way back again, as the owner's rule says | `publish-dev.ps1 -Install`, session ba470c2c's `running_state.ps1` and `env_names.py` | ✅ |
+| **Hide tab & clipboard rows, live** (2026-11-09, §2.42). A self-contained package (`0.2.10-dev.hiderows+8cb562e`: `8cb562e` plus the change; `c2a6aba`, which came after, changed one CLAUDE.md line) on a fresh claude-desktops Windows 11 desktop (Tiny11 25H2, 2 cores), English chosen in the first-start picker. Data: Win+R `winver` and `calc`, a plain text copy; `calc` put in a new group (card menu › Groups). Read through UI Automation after each step. (1) The Run tab's menu: *Move left*, *Move right*, *Hide tab*, *Hide tab & clipboard rows*, *Show all hidden* (grayed); the long label whole. (2) *Hide tab & clipboard rows* on Run: the tab gone; All lists the text copy and `calc` (grouped), not `winver`; footer "3 items · 1 hidden"; `HiddenTabs` and `HiddenTabRows` both `Run`; log "Tabs: Run hidden with its rows.". (3) The Text tab the same two; a search for `winver` in All: "No matches", for `calc`: `calc`. (4) `--exit` and a new start: the same tabs, rows and footer. (5) *Show all hidden (1)* from the Files tab's menu: Run and `winver` back, footer "3 items", both lists empty. (6) *Hide tab* on Run: the tab gone, all three cards stay, footer "3 items". (7) In the Run tab, *Hide tab & clipboard rows*: the panel went to All, loaded without `winver`, footer "3 items · 1 hidden", `LastTab` All. App log: 0 WRN/ERR. The desktop was deleted with its storage | claude-desktops MCP tools | ✅ |
+| Unit tests (2026-11-09, §2.42): `HiddenTabRowsTests`, 6 (the setting's defaults, normalization and round trip; the rows left out of All, the kind tabs, Pinned and searches while grouped entries stay; two tabs at once; entries a filter cannot decide staying listed; the footer's count). Mutation check: without the `coalesce`, `Query_AnEntryTheFilterCannotDecide_StaysListed` fails; without the group exception, `Query_LeavesTheTabsRowsOut_ExceptGroupedOnes` and `GetStats_CountsTheHiddenRows` fail. Core 1,572 of 1,572; Windows 397 (394 passed, 2 opt-in skipped, 1 explicit not run); a `--no-incremental` solution build: 0 errors, no warning in a changed file; `catalog.py check`: 0 missing, 0 to review in every language; the documentation hook's `find_gaps` on the changed lines: 0 | the test executables in a private worktree | ✅ |
+| **Review before the 0.2.10 release** (2026-11-09, the owner: "Do review before release / Then we will create merge request"). The merge request's range `origin/main..main` at `8cb562e`: 28 commits, 159 files, +27,403 / −1,990. **Build and tests of exactly that commit** in a private worktree (no uncommitted work of any session): a `--no-incremental` solution build with 0 errors and 0 documentation warnings; `dotnet test --solution` 1,963 = 1,960 passed + 3 opt-in skipped, 0 failed, twice. **Scans of the added lines:** no binary files; the largest new files are the three catalogs (ru 132 KB, he 110 KB, es 98 KB); no secret-like strings; no email address; no raw bidi control or other invisible character (the catalogs write their marks as `\uXXXX`); no new network address in `src` (only XAML/SVG namespaces and Notepad++'s site as a Settings link). One personal path, `C:\Users\ELI\…`, quoted in a CLAUDE.md row and in `9dc3a06`'s message; the message is published with the push either way. **Code read where a release user is exposed:** `install.ps1`'s leftover handling (`Remove-Leftover`, `Remove-StaleLeftovers`) on both the install and the update path (`-Update` goes through the same swap); `UpdateCatalog.FindUpdate` (a release still gets only a newer release; the dev rules apply only to `-dev` versions and to a dev-builds folder, which only `publish-dev.ps1` creates); the store (`SchemaVersion` still 1, every addition `IF NOT EXISTS` or checked before `ALTER TABLE … ADD COLUMN`, `tracked_documents.clip_id … ON DELETE SET NULL`; 0.2.9 reads the new origins 12 and 13 through a plain cast and `CliCommandProcessor`'s `_ => "copied"`, so the way back to 0.2.9 still opens the history); the startup (`--restart-after` waits only for the same process id and start time, at most 30 s; the first-start picker); `NotepadPlusPlusClient` (path length asked first and refused above the 64 KB buffer, one `PAGE_READWRITE` allocation freed in `Dispose`, the three access rights it needs, `UNICODE_STRING` offsets right on x64 and ARM64); the new `LibraryImport`s; the WinEvent hook's delegate held in a field; `package.ps1`'s default unchanged (`-SkipArchives` is opt-in); `ci.yml` runs on every pull request. README: every feature in the notes, and Notepad++'s two rows in *Privacy*. **Notes:** the draft gained Russian, Spanish and Hebrew in its one language line, which still credits Johnson-Tang2019 with the Chinese only | `git worktree` + `dotnet build` / `dotnet test`, `git diff` scans (scratch scripts in session 2e2fae95's scratchpad), reading the diffs | ✅ no blocker found. For the owner: Russian, Spanish and Hebrew are machine-translated without a native review and are chosen by itself for users whose Windows is in those languages (the default *Use Windows setting*), also when they update; the multi-monitor size fix is still unseen in the app on several monitors |
+| **Russian, Spanish and Hebrew, right-to-left text, live** (2026-11-09, §2.37). A disposable claude-desktops Windows 11 desktop ("bc-rtl", Tiny11 25H2, en-US, 1600×900; deleted afterwards with its persist folder) ran a self-contained x64 package of HEAD (`2869ff4`) plus only this change, built in a private worktree (`0.2.10-dev.rtl`, then `rtl2` with the fitted placeholders), unpacked to `C:\bc` and started plainly. **Picker:** English, 简体中文, עברית, Русский, Español, each with its flag; Down ×2 put the heading and hint in Hebrew, the hint's period at the left end (where a Hebrew sentence ends; without the embedding a left-to-right paragraph puts it at the right); Enter opened Settings in Hebrew at once. **Hebrew:** Settings' cards read right to left inside the left-to-right layout ("פתיחת BetterClipboard" with the name at the left; wrapped descriptions with each line's first word at its right end and the last line's period at the far left; the stats chip "3 פריטים · 232 B · …"). The panel: the placeholder's "…" at the left; captions reading from the right ("אפליקציה לא ידועה · עכשיו · נתיב", unknown app · now · path); footer and key hints; the icon picker; the empty state with a qualifier ("… שמכיל "zzz" (מילים שלמות).", brackets mirrored: the `"{0} ({1})"` template that opts in with U+200F). UI Automation: every Hebrew label wrapped once (U+202B … U+202C), a nested pair only where a translated piece sits in a template (the group button "קבוצה כוכב, 0 פריטים"); a group made from the star with no name typed was stored as "כוכב" without marks; English-only names unmarked. **Russian:** the search box's placeholder ("Поиск по всему, что вы копировал…") and the shortcut box's ("Нажмите сочетание или введите ег") were cut; after shortening (rtl2) both fit, as does the Cmd tab's; the Cmd tab's key hint is cut at "Del скр…" next to a long status (the hint trims by design). **Spanish:** Settings from the top to Third party, and the panel, fit; the fixed PATH line read "C:\bc\bclip.exe · no está en tu PATH". Logs: "Interface language: he (WinUI's own text: he-IL, he)", 0 WRN/ERR | claude-desktops MCP tools (`launch`, `press_keys`, `click`, `scroll`, region screenshots upscaled with Pillow to read the glyph order); a UI Automation script in the guest printing each button name's bidi code points | ✅ Not run: Narrator, the dark theme, a real GPU, Arabic |
+| Russian, Spanish and Hebrew, unit tests (2026-11-09, §2.37): `RightToLeftTextTests` 28 (new); `LocalizationTests` (resolution cases for he, ru and es, `es-419` and `ES-ar` included; the three languages' names and flags; every `en.json` row described; the description check on small catalogs: missing, empty, next-line and stray comments, a URL's `//`); `GroupStoreTests.Groups_NamesLoseDirectionControls`. On HEAD plus only this change, in a private worktree: Core 1,566 and Windows 394 (2 opt-in skipped, 1 explicit), 0 failed, 0 doc warnings. In the shared tree with the uncommitted AI work: Core 1,613; Windows 396 and `ClientHangUp_CancelsHandler` (3 of 3 alone); an earlier run there had `QuickSuccessiveCopies_AreAllCaptured` (1 of 3 alone at 55 % CPU), both known timing tests (§6). `catalog.py check`: 0 missing in es, he, ru and zh-Hans; planted errors on a scratch copy (U+202B in a Russian value, `"direction": "rlt"`) made it exit 1 naming both | the test executables; `catalog.py` | ✅ |
+| **Notepad++, live** (2026-11-08, §2.41). A disposable claude-desktops Windows 11 desktop ("win-npp", 1600×900; deleted afterwards with its persist folder), Notepad++ 8.9.1 from its GitHub release (SHA-256 and the NOTEPAD++ signature checked), a self-contained build of the change from a private worktree (`0.2.10-dev.npp`) unpacked to `C:\bc` and started with `--background`; BC-TEST text only. (1) **First activation:** "Notepad++ tabs: 2 new, 0 updated in place, 0 kept as a new copy (first import)". (2) **Files:** a file opened in Notepad++ was recorded about a second later ("Notepad++: 1 file opened."); switching tabs, and choosing a file that was already open, recorded nothing; closing a file and opening it again bumped the same entry (use count 2). (3) **The rest rule:** after an edit, nothing at 15 s; the tab was read about 61 s after its last save. (4) **In place:** the same entry id and place, caption "… · edited …". (5) **More than a fifth lost:** a new copy, the old entry kept; the new text equaled a copy made earlier in Notepad++, so the tab's mapping moved to that entry, which took the tab's title. (6) **Rename** "new 1" → "Errands": Notepad++ renamed the backup with its stamp, the same entry was titled "Errands", and `session.xml` still said "new 1" until Notepad++ exited. (7) **Restart** with `notepad++.exe C:\bc-test\third.txt`: "started with 1 file(s) to open", `third.txt` recorded, the restored `notes.md` and `second.txt` not. (8) The panel's Notepad++ tab, its tooltip, the captions ("Notepad++ · Errands · 10 min ago · edited 7 min ago", "Notepad++ · 8 min ago · path"), both Settings cards and the Third party row. **Two bugs found here:** every copy of a known app read "Notepad++ · Unknown app · …" (an `else if` captured by the new `if`), and the files card said "6 documents open" over 5 tabs; both fixed, a second build (`npp2`) installed over it showed "Notepad++ · 14 min ago" and "Watching Notepad++ (3 files open).". The app's log: 60 lines, 0 WRN/ERR. Published as the dev build `0.2.10-dev.30.g5bd6be5` for the owner's update button; the installed `0.2.10-dev.19.g3cbefdc` logged it as offered within a second | claude-desktops MCP tools (`press_keys`, `type_text`, `launch`, `find_elements`, `element_action`, screenshots, `run_command` with `bclip list -f npp --json`) | ✅ after the two fixes. Not run: `-multiInst`, cloud settings, the portable build, a legacy code page, a Notepad++ running as administrator next to a non-elevated BetterClipboard |
+| Notepad++, unit tests (2026-11-08, §2.41): Core 77 — `TrackedDocumentRuleTests` 24 (the loss against a brute-force LCS, the estimate past the budget, the length shortcut, the question page's example ending with three entries, typing from nothing never splitting, exactly a fifth not splitting, small deletions adding up, grow then delete, the peak), `TrackedDocumentStoreTests` 13 (first version and unchanged, in place keeping place, pin and groups, a new copy keeping the old version, a deleted entry's text staying gone while a change comes back, imports respecting tombstones and the last clear, a duplicate kept in place by an import and bumped live, an update onto an existing text, renames, the filter, a reopened file moving its one entry, the schema on an older store, the service's capture rules, events and the tab's witness), `NotepadPlusPlusTests` 40 (the session, the config, every backup encoding, the tracker's baseline, startup files, openings and file count, the captures, the command line's splitting). Windows 17 — `NotepadPlusPlusTabWatcherTests` 5, `NotepadPlusPlusIntegrationTests` 2, `NotepadPlusPlusClientTests` 9 (a fake Notepad++ window in the test process answering the plugin messages from a buffer, an untrusted owner refused, the file watcher's hand-over, the portable locator, the real-signature check), and `TranslationTemplateTests.NotepadPlusPlusProblems_Translate`. On `bcd1145` plus the change: Core 1,524 passed; Windows 397 (394 passed, 2 opt-in skipped, 1 explicit not run). A planted untranslated literal in the new view model failed both language guards (`EveryTextTheCodeTranslatesHasAnEntry`, `CodeAndCatalogsAgree`). The first full run failed `RunHistoryIntegrationTests.LiveRuns_AreRecorded_AndReRunsMoveUp` once (a counter read right after the list it follows; 6 of 6 alone): the test now waits for the counter (§4) | the test executables, `dotnet test --solution`, a private worktree | ✅ |
+| **Arranging the tabs** (2026-11-08, §2.40). A claude-desktops Windows 11 desktop (Tiny11 25H2, 1600×900, golden 20261025-1036; deleted afterwards), a self-contained Release build of a private worktree at `effd7fa` plus the change; ten tabs (BC-TEST PowerShell and Claude Code histories in the guest's profile), two BC-TEST copies. Menus: on All every item grayed out (nothing hidden yet); on Pinned *Move left* grayed (nothing passes All); on the last shown tab (Claude, with Codex and Everything absent after it) *Move right* grayed. Pinned moved right (All Text Pinned Images…); the selected Images moved left and stayed selected, its list unchanged; Images hidden while shown, so the panel went to All; Links hidden, *Show all hidden (1)*, then *(2)*. A right-click on the row's empty space offered *Show all hidden (2)* alone. `→` ×3 from All went All, Text, Pinned, Files, skipping the hidden ones. `settings.json`: the full `TabOrder`, `HiddenTabs` [Images, Links], `LastTab` Files; after `--exit` and a restart the same row, opened in Files. A click on Pwsh, then `Shift+F10`: the tab's menu below it with the keyboard on *Move left*; Enter moved the selected Pwsh before Files. *Show all hidden* brought both back in their places (`HiddenTabs` empty). Files moved right past Cmd, beyond the strip's visible edge, and the strip scrolled to show it. In Chinese (`InterfaceLanguage` zh-Hans, edited while stopped): the arranged order kept, the menu 向左移动 / 向右移动 / 隐藏 / 显示所有隐藏的标签页（1）. The app log: 0 WRN/ERR in both runs. Locally: Core 1,334 of 1,334 (25 new; two mutations — a move past All, All not forced first — failed 7), Windows 374 (372 passed, 2 opt-in skipped), a `--no-incremental` App build with no documentation warnings, the documentation hook's check 0 gaps on every changed file | claude-desktops MCP tools (`click` with the right button, `press_keys`, region screenshots, `run_command`), the app log | ✅ Not run: touch press-and-hold, a physical mouse, the dark theme |
+| **The first dev build on this PC, through `publish-dev.ps1 -Install`** (2026-11-08, the owner's "Yes, install it now"; §2.39). Only the installed 0.2.9 ran (PID 102244), so the installer closed nothing else. Run from the shared tree with this shell's tokens and overrides stripped; the script warned that the other session's 9 uncommitted files are not in the build. (1) At 83c0e5a: `0.2.10-dev.14.g83c0e5a` built and published, then its installer stopped at the held `.old` leftover (the row below) with nothing changed. (2) At 9dc3a06 (the fix): `0.2.10-dev.15.g9dc3a06` built, published and installed in 105 s: "its folder was set aside as BetterClipboard.old-stale-20261108163933", 0.2.9 closed, the folders swapped, and the app started through Explorer (`--background`, parent explorer.exe, PID 119920). Afterwards: exe `0.2.10-dev.15.g9dc3a06+9dc3a06…`; `installer.json` and the Installed-apps entry that version (`onUserPath` now true: the installer saw the PATH entry Settings had made); Run value names unchanged (BetterClipboard, IDMan); `DisabledHotkeys` still `V`, no Explorer restart; the set-aside folder stays while ShareX holds its DLL. Log: "Local builds: 2 in the dev-builds folder, none newer than the running 0.2.10-dev.15.g9dc3a06.", "… a development build (GitHub's latest release is always offered as the way back).", 0 WRN/ERR. The cached release list (checked 14:05 by 0.2.9) gives it 0.2.9 as the way back without a request; no log line said so, hence the offer in the start line from the next commit on. The commit that records this was then published as the next dev build, for the owner to install with the update button | `publish-dev.ps1`, PowerShell checks of the process, the records and the log | ✅ |
+| **Back on dev builds after the way back to 0.2.9** (2026-11-08, the owner: "just install latest dev instead for me please"; §2.39's limits). The installed copy had gone 0.2.10-dev.15 → dev.18 → dev.19 → dev.30 through the button. At 17:48:57 the way back was approved, and 0.2.9 ran without dev offers. Only that 0.2.9 ran (PID 67188). `publish-dev.ps1 -Install -Ref 5bd6be5`, from the shared tree with this shell's tokens and overrides stripped: "0.2.10-dev.30.g5bd6be5 is published already … nothing to build". Then the build's own `install.ps1 -Package` checked the zip (`ca07ab80…`, as its `SHA256SUMS.txt` says), closed 0.2.9 gracefully, swapped the folders ("Win+V was already released") and started the app through Explorer; 17 s in all. Afterwards: one BetterClipboard, `--background`, whose parent (the `explorer.exe` that opened the shortcut) had exited; exe `0.2.10-dev.30.g5bd6be5+5bd6be5…`; `installer.json` and the Installed-apps entry that version; Run value names unchanged (BetterClipboard, IDMan); `DisabledHotkeys` `V`. Its environment: 79 names without `CLAUDECODE` and `MSYSTEM` (this shell, the control: 141 with both). Log after "starting": 0 WRN/ERR; "Local builds: 5 in the dev-builds folder, none newer than the running 0.2.10-dev.30.g5bd6be5."; "… a development build …; offered from what is known: BetterClipboard 0.2.9 (the way back to the latest release)" — the button is lit with the way back again, as the owner's rule says. The bootstrap's set-aside folder now holds only `DWriteCore.dll`, which ShareX (PID 21444) still has loaded | `publish-dev.ps1 -Install`, scratch `running_state.ps1`, `env_names.py` (variable names from the process's PEB, never values), `who_holds.ps1` (Restart Manager), session ba470c2c | ✅ |
+| **`install.ps1` and a leftover another program holds** (2026-11-08, §3.1). The first `publish-dev.ps1 -Install` on this PC stopped at the installer's first step: "Cannot remove item C:\Users\ELI\AppData\Local\Programs\BetterClipboard.old\DWriteCore.dll: Access to the path is denied" — before the running 0.2.9 was closed or anything replaced (checked: same process, same version). The Restart Manager named the holder: ShareX (started 2026-11-06 by Explorer), whose module list showed `DWriteCore.dll` loaded from BetterClipboard's install folder, which is on the owner's user PATH (`installer.json` says `onUserPath: false`: the entry came from Settings). The fix, `Remove-Leftover` and `Remove-StaleLeftovers`, taken out of the script's syntax tree and run against a copy of `DWriteCore.dll` that a child process loaded with `LoadLibraryW` in a scratch `<install>.old`: the delete is refused as in the bug; the folder is set aside as `BetterClipboard.old-stale-<time>` with only the held DLL left in it; a later look keeps it while it is held and removes it once the child is gone; a file open without delete sharing stops the run with the new sentence, and `-BestEffort` never throws. 12 of 12 in PowerShell 7.5.8 and 12 of 12 in Windows PowerShell 5.1; `test-iex.ps1` passes in both | scratch `test_leftovers.ps1`, `who_holds.ps1` (Restart Manager), session ba470c2c | ✅ The real case: the bootstrap on this PC (its own row) |
+| **Local dev builds through the update button, end to end** (2026-11-08, §2.39). A disposable claude-desktops Windows 11 desktop (Tiny11 25H2, 26200, 1600×900, golden 20261025-1036; deleted afterwards with its storage). Two builds of my private branch (the code of this change; only the log wording and the docs came after), published by the real `publish-dev.ps1`: A `0.2.10-dev.14.g3e48a10` (the feature) and B `0.2.10-dev.15.g77faa1f` (the commit after it). (1) **Bootstrap:** A's own `install.ps1 -Package <zip> -NoLaunch` from a copy on C: (SHA-256 OK against the build's `SHA256SUMS.txt`, Win+V taken over, Explorer restarted, `installer.json` 0.2.10-dev.14.g3e48a10), then started with `--background`: "Updates: … a development build (GitHub's latest release is always offered as the way back)". (2) **The way back offered:** 61 s after the start, "Update check: BetterClipboard 0.2.9 is available (running 0.2.10-dev.14…)" (wording since refined); the button lit; tooltip "Back to the release: BetterClipboard 0.2.9"; dialog "BetterClipboard 0.2.9 is the latest release", the development-build detail, *Install and restart* / *Later* / *Skip this version*, "The latest release" with 0.2.9's real notes and "View on GitHub". (3) **B published** the script's way (copied into `dev-builds\.publishing-qa1`, renamed to its version): "Local builds: 1 in the dev-builds folder; BetterClipboard 0.2.10-dev.15.g77faa1f is offered (running 0.2.10-dev.14…)" 0.5 s after the rename; tooltip "Dev build available: BetterClipboard 0.2.10-dev.15.g77faa1f"; dialog with "Published 10 min ago. It is a development build from the dev-builds folder on this PC …", *Update and restart*, "What is new" = "Since 0.2.10-dev.14.g3e48a10: wip: local-dev skill (77faa1f)", no "View on GitHub". (4) **Update A → B:** approved 14:16:46 ("copying … (74,706,941 bytes) from the dev-builds folder"), verified 14:16:48 ("matches the build's checksum list"), the app exited 14:17:13, B started 14:17:19: "The update to 0.2.10-dev.15.g77faa1f was installed.", "Local builds: 1 in the dev-builds folder, none newer than the running 0.2.10-dev.15…"; exe `0.2.10-dev.15.g77faa1f+77faa1f…`; `installer.json` and `updates\` (cache only) right; 33 s from the click. (5) **B → back to 0.2.9:** the button lit at once (cached list); *Install and restart*: 0.2.9 downloaded from GitHub and verified in 6 s, 0.2.9's own `install.ps1 -Update` swapped the folder, 0.2.9 running 30 s after the click ("The update to 0.2.9 was installed."); exe, `installer.json` and the Installed-apps entry 0.2.9. The app's log over all of it: 59 lines, 0 WRN/ERR | claude-desktops MCP tools (`run_command`, `launch`, `press_keys`, `move_mouse`, `click`, screenshots) | ✅ Not run there: `publish-dev.ps1 -Install` itself (needs the repository and the SDK in the guest; its two halves ran) |
+| `publish-dev.ps1` on this PC into a scratch data folder (`BETTERCLIPBOARD_DATA_DIR`, so nothing of the owner's was read or written; 2026-11-08): three real builds, 96 s, 84 s and 63 s (x64, Release, self-contained; 71.2 MB zips); each folder held the zip, `SHA256SUMS.txt` (equal to `sha256sum`), `install.ps1`, `notes.md` and `build.json`; the first build's notes listed the 11 commits since v0.2.9, the next one's started "Since 0.2.10-dev.14.g3e48a10:"; the temporary worktree and its folder were gone afterwards; the zip held 476 entries with `install.ps1`, `BetterClipboard.exe` and `bclip.exe` at its root. The script's functions taken out of its syntax tree: 31 of 31 checks in PowerShell 7 under StrictMode 3, the script's own mode (the first version of these checks ran without it and missed a crash of the closing report, which the third publish on this PC hit after its build was in place: "The property 'Count' cannot be found" for the one-identifier pre-release `0.2.10-dev`; fixed, and the unfixed script fails the new checks) (SemVer order as the app's, versions at HEAD, at the v0.2.9 tag and at the bump commit, tag and ancestor questions, the folder's builds newest first, notes from the previous build without mojibake); Windows PowerShell 5.1 parses both changed scripts | scratch `test_publish_functions.ps1` (session ba470c2c) | ✅ The first run of those checks found `@()` around `Invoke-Git` nesting its lines (CLAUDE.md §4's trap): fixed before any publish |
+| Local dev builds, unit tests (2026-11-08): Core 44 new — `LocalBuildFeedTests` 14 (complete builds newest first; 11 kinds of folder that are not a build; nothing there; notes cut and a byte order mark dropped; the copy hashed with progress; files outside the folder, a resized package and a missing one refused without a partial copy; a cancelled copy; `IsInside` with `..`), `LocalBuildCatalogTests` 21 (what a development build is; the owner's table and two more rows; release builds and release candidates; incomplete and misplaced entries; the notes of local builds and the fallback to the running build's own; the cap), `LocalBuildTextTests` 4 (a local build's words, the way back's, no reminder for development builds, Chinese), `UpdateServiceTests` 4 (offered at start and installed from the folder with no request; the folder followed, also by the dialog with automatic checks off; a changed package refused, and a copy without the folder never reads it; the way back, then a newer local build taking over), plus one expectation changed by the owner's rule (a dev build ahead of every release is offered the latest one). Windows 3 new (`LocalBuildsWatcherTests`, 3 of 3 runs green). The whole suite on the private branch: 1,683 = 1,680 passed + 3 opt-in skipped, 0 failed; a `--no-incremental` rebuild: 0 errors, 0 doc warnings, no new warning | `dotnet test --solution`, the test executables with `-class` | ✅ |
+| **Where the panel opens** (2026-11-08, §2.38). A disposable claude-desktops Windows 11 Pro 25H2 desktop (26200, one monitor 1600×900 at 100 %, work area 1600×852, golden 20261025-1036; deleted afterwards), a self-contained package of a private worktree at `94ebf20` plus this change (`0.2.10-dev.placement`), installed with `install.ps1 -Package … -NoLaunch`. Settings: *Panel position* under *Shortcut*, right below the shortcut list, with the new description and four entries in order, *Next to the text cursor* selected on a fresh install; picking the mouse, the main screen and the current screen wrote `NearCursor`/false, `CenterScreen`/true and `CenterScreen`/false, and a reopened Settings showed each stored pair as its entry (the main screen, the current screen). Win+V from Notepad with its caret at Ln 7, Col 6: next to the caret, (352,251)-(752,811) as before. Next to the mouse with the pointer at (300,200): (284,209)-(684,769). Center of the main screen: (600,146)-(1000,706), the exact middle of the work area; with the groups column (Ctrl+G) it grew left to (556,146)-(1000,706) while shown, and the next summon centered it whole at (578,146)-(1022,706). Center of the current screen: centered from Notepad and after Win+D and a click on the desktop (the foreground was then `Progman`/the desktop). Restart in main-screen mode: the warm-up put the cloaked window at (600,146)-(1000,706), and the first Win+V took 62 ms with no resize. With the main screen chosen, v0.2.9 from GitHub over it: started with every setting (no "unreadable" warning, no `settings.json.corrupt-*`), centered the panel its own way, left the file as it was; after the new build again, Settings showed *Center of the main screen*. Chinese (`InterfaceLanguage` zh-Hans): 面板位置, the new description, 文本光标旁边 / 鼠标旁边 / 主屏幕中央 / 当前屏幕中央. The app's log over five starts: 77 lines, 0 WRN/ERR | claude-desktops MCP tools (`press_keys`, `click`, `move_mouse`, screenshots, `run_command`); a content-free helper reading the panel's window rectangle, its cloak, the foreground window, the mouse and the two settings (session 8cfb9b70's scratchpad, `vm/state.ps1`) | ✅ Not run in the app: several monitors (one monitor in the test desktops) |
+| **Moving a WinUI window onto a monitor with another scale** (2026-11-08, §2.38), on the owner's PC: three monitors, (-1920,6)-(0,1038) at 100 %, the main one at 100 %, (1920,0)-(3840,1020) at 125 %. `tools/probes/probe_dpi_move.cs` (a cloaked, non-activating Win32 tool window): `WM_DPICHANGED` came inside `SetWindowPos`, suggesting 625×875 for an asked 500×700 on the 125 % monitor and 320×448 for 400×560 back on the main one; with the suggestion taken (`--apply`) the window ended at those sizes. `tools/probes/dpi_move_lab` (a WinUI 3 window set up like the panel, cloaked before it was shown, never activated): `AppWindow.MoveAndResize` left 625×875 and 320×448, the same 300 ms later; with `--fix` (ask again when the bounds differ) 500×700 and 400×560 exactly, both ways, also 300 ms later. The foreground window was the same before and after every run | the probe and the lab, run on the owner's real monitors while they worked; nothing showed on screen | ✅ the cause and the fix; the app's own summon across these monitors was not run (it would have shown the panel over the owner's work) |
+| Panel placement, unit tests (2026-11-08, §2.38): `PanelPlacementTests` (Windows, 27: next to the caret and the mouse keep their rule; the main screen ignores what was captured; eight cases of the current screen on the owner's layout — the caret in the window, no caret, a caret parked outside, the desktop, a caret on the desktop, a minimized window, a window that closed, the tray; an unknown placement; centering with the column on the 125 % monitor, on the monitor with negative coordinates, shrunk to a small work area; the caret placement unchanged; the desktop's class names; the real main monitor and every real monitor's lookup; real windows: none, a dead handle, hidden, shown cloaked, minimized, and the desktop's window) and `PanelPositionSettingsTests` (Core, 8: defaults, a file from before, every stored pair round-trips under a name released versions know, the enum keeps its three names, an unknown placement falls back). Three mutations each failed a test: trusting any caret, counting the desktop as a screen, centering without the column. The whole suite at `94ebf20` plus this change: 1,636 = 1,633 passed + 3 opt-in skipped, 0 failed | the test executables, `dotnet test --solution`, a private worktree | ✅ |
+| **The translation gaps closed, in Chinese on an English Windows** (2026-11-08, §2.37, branch `feat/localization` after the merge of `3f0ff87`). A disposable claude-desktops Windows 11 desktop (Tiny11 25H2, en-US display and formats, 1600×900; deleted with its storage afterwards), a self-contained package of the worktree (`0.2.10-dev.gaps`, then `gaps2` with the last fixes), installed with `install.ps1 -Package … -NoLaunch -NoUpdateCheck` and the command line switched on in `settings.json`; BC-TEST items through `bclip`. The first start's picker → 简体中文 → Settings in Chinese: the chip 正在采集, the Win+V row 已注册。, the Explorer card's new whole sentence (Win+V 已从资源管理器释放：资源管理器不再注册它，因此 BetterClipboard 可以注册。), the capture line (… — 读取前没有任何内容被覆盖。), Third party (· 独立应用, 公共领域, … 许可条款, the uses), the shortcut box's help text. A UI Automation dump of Settings had no English sentence left (the Ignored apps list is user data). `ctrl+v` + 添加 → "Ctrl+V 是所有应用的粘贴键，BetterClipboard 自身也用 Ctrl+V 粘贴。请选择其他快捷键，例如 Ctrl+Shift+V。". The panel: placeholder 搜索复制过的全部内容…, footer ↵ 粘贴 · ⇧↵ 纯文本 · Ctrl+P 固定 · Del 删除, the path card bclip · 刚刚 · 路径; zqx with W and Aa → 历史中没有符合条件的内容：包含“zqx”（全字匹配、区分大小写）。; `(` with .* → 正则表达式无效 (the reason "Not enough )'s." is .NET's); **a right-click in the search box showed WinUI's own menu in Chinese (粘贴 / 取消操作 / 全选)**; the icon picker 新建分组, the star → a group named 星标 with the help text Ctrl+单击或 Shift+单击可同时显示多个分组; the card menu's 分组. The forgotten list: 文本 · 24 个字符 / 来自 bclip · 于 刚刚 忽略 · 已拦截 1 次，上次为 刚刚 (before the term change to 忘记). The guest's clock moved +3 days → bclip · 周日 16:05 · 路径, +40 days → 11月8日 (then put back). Found there and fixed: the language line logged twice (a doubled call from a re-run edit script), Everything's 未安装（未安装）。; then `gaps2`: one log line "Interface language: zh-Hans (WinUI's own text: zh-CN, zh-Hans).", 未安装。, cards named 路径：… and 文本：…, the group kept across the restart, 0 WRN/ERR | claude-desktops MCP tools (`launch` through Explorer, `click`, `press_keys`, `type_text`, screenshots, `run_command`); `uia_dump.ps1` (session c18a1e65's scratchpad, `vm/`) | ✅ Not run: the forget term 忘记, the "60+" sentence and the catalog tool's scan fix (made after the desktop pass; covered by the guards and the catalog check), the dark theme, Narrator |
+| Translation guards and the gap work's unit tests (2026-11-08): `TranslationCoverageTests` (Core, 14) and `TranslationTemplateTests` (Windows, 6). Mutation check: a probe file with an untranslated literal, an untranslated constant and a template, plus a renamed literal in `ClipboardFlyout.xaml.cs`, made both source guards fail with all four named; files restored byte for byte. The whole suite after the merge of `3f0ff87`: 1,697 = 1,694 passed + 3 opt-in skipped, 0 failed (Core 1,320, Windows 377); a `--no-incremental` build with no new warning (the cref slip it showed was fixed). `catalog.py check` ok; the docs hook's checker on every file the branch changes: 0 gaps (27 filled) | the test executables, `dotnet test --solution`, session c18a1e65's `mutation.py`, `run_doc_check.py` | ✅ |
+| **Interface languages, first-start picker, English-only logs and bclip** (2026-11-08, §2.37, branch `feat/localization` on `94ebf20`). A disposable claude-desktops Windows 11 desktop (Tiny11 25H2, 26200, en-US, 1600×900, no GPU; deleted afterwards) ran a self-contained x64 package of the branch (`0.2.10-dev.loc`). **First start, plain launch:** the picker before any other window: "Choose your language", *English* (US flag) selected, *简体中文* (China flag) with "Chinese (Simplified)", the round green check; `↓` switched the heading and hint to "选择语言" / "以后可以在设置中更改。"; `Enter` saved `zh-Hans` and Settings opened in Chinese at once (no restart); *设置 › 应用 › 语言* listed 跟随 Windows (globe, "English"), English and 简体中文 with their flags; Win+V opened the panel in Chinese (剪贴板, 全部 / 已固定 / 文本 / 图片 / 链接 / 文件 / 截图, "未知应用 · 刚刚", "1 项"). **Logs** English throughout ("Interface language chosen at the first start: zh-Hans (Windows suggested en)", the update and import lines); the panel's warm-up ran after the choice. **Second start:** no picker. **`bclip`** with the app in Chinese: `list` printed "just now", `status` and an app-side error ("History has fewer than 9 items.") English. **A data folder with a `settings.json` but no history** (as `install.ps1 -Hotkey` leaves it): the picker showed; a click on the check saved `en` and kept the pre-written `Alt+Win+V`; Settings in English. **A `--background` first start in the dark theme:** the picker showed (after the height fix: no empty band under the list); `Esc` kept English. 0 WRN/ERR in all three logs. Gaps seen, deferred by the owner: the search box's placeholder, the footer's key hints and the "Capturing" chip stay English | `create_desktop`, `desktop_call` (`launch`, `press_keys`, `click`, `find_elements`, `screenshot`, `run_command`), `record` (297 s), `tools/release/package.ps1` | ✅ |
+| Interface languages, unit tests (2026-11-08): `LocalizationTests` 54 cases (13 from PR #1, adapted to the catalogs' `$language` header). A planted `AppLog.Warn($"…{UiText.Translate(…)}…")` in a scratch file made `NoLogLineIsBuiltFromTranslatedText` fail; removed. `catalog.py` on a scratch copy: `rename` moved a string's key in both catalogs and both XAML references, `check` passed, an unknown text exited 2; its layout reproduced the PR's catalogs byte for byte before the first write. The whole suite on `94ebf20` + the branch: 1,642 tests, 1,639 passed, 3 skipped, 0 failed; a `--no-incremental` rebuild with 0 errors and no doc warnings | the test executables, `dotnet test --solution` | ✅ |
+| **The localization branches joined and landed on `main`** (2026-11-08, the owner: "Pull main and merge to main your changes"). `bde5c83` (the gap work) merged into `feat/localization-choices` (`2781ec9`): Core 1,377 and Windows 377, 0 failed. Then a branch from `main` (`3cbefdc`) took GitHub's `a347f06` (an empty change) and that branch: the catalogs re-keyed and `catalog.py check` ok (zh-Hans 0 missing, 0 to review), no `{loc:Tr Key=…}` left in the XAML, Core 1,446 and Windows 380 (2 skipped, 1 explicit), 0 failed; `CSharpSourceScanner`'s comment stripping fixed (it lost the rest of a file after a hole holding a string, which `main`'s new code has). Landed on `main` with the shared tree's uncommitted AI work kept | the test executables, `catalog.py`, the merge scripts in session 7f64d66b's scratchpad | ✅ Not run in the app after the merges (the branch's own live check ran before them) |
+| **Interface languages, the second round** (2026-11-08, §2.37, branch `feat/localization-choices` on `be6d30d`). Unit tests: Core 1,363 (57 new: `PluralRulesTests` 50 — categories of whole counts in English, Russian, Hebrew, Spanish and Arabic, every CLDR `@integer` sample in its category, all operators, extreme counts, 12 broken rules refused; `LocalizationTests` 7 new — English-text keys, hash keys, plural forms and fallbacks, coverage and the offer rule, the code and the catalogs agreeing), Windows 371 (2 skipped, 1 explicit), 0 failed. `CodeAndCatalogsAgree` mutation-checked: a planted file with an unregistered `Translate`, `Plural` and `Format` literal failed all three (the interpolated `$"Hello {x:X8} and {{braces}}"` read as `Hello {0:X8} and {{braces}}`). `catalog.py` on the real catalogs: `migrate` 563 keys and 188 XAML uses (again: nothing to convert), `rename` marked the Chinese for review, `reviewed` cleared it, `check` ok. Live on a disposable claude-desktops Windows 11 desktop (`0.2.10-dev.loc2`, deleted with its persist folder): the first-start picker; Settings in English with every one of the 19 texts with an apostrophe right (`Text=&quot;…&quot;`); 简体中文 chosen → *Restart now* left of the list; the language on screen chosen again → no button; *Restart now* → "Restarting (Settings' Restart now).", the new process 2.3 s later ("restarted from Settings"), Settings in Chinese; one copy → "1 项 · 34 B · 已固定 0 项 · 已分组 0 项"; *Use Windows setting* → *立即重启* → English in 0.7 s, "1 item · 34 B · 0 pinned · 0 in groups", the panel's footer "1 item", "0 commands kept (newest 1,000)."; the log 0 WRN/ERR | test executables, `catalog.py`, claude-desktops MCP tools, UI Automation scripts in the guest | ✅ Not run: a catalog below the offer threshold in a real build (unit-tested), the restart from an elevated or an isolated instance |
+| **PR #1 merged into the local `main`** (2026-11-08, `8c5814a`, not pushed). Before (2026-11-07), the PR head `29032d9` in a scratch worktree: 0 build errors, 1,577 tests (1,574 passed, 3 skipped, 0 failed); no network calls, no hidden Unicode, the workflow read-only. The merge with `0447913` (README icon) had no conflicts. The uncommitted AI work in the shared tree was carried forward (5 files backed up, set to `HEAD`, three-way merged back; 1 conflict resolved in `ClipboardFlyout.xaml`); `git status` listed the same files before and after, and main + PR + that work built in a scratch copy with 0 errors, 1,624 tests, 0 failed | `git merge-file`, a scratch worktree with the working files copied in | ✅ |
+| **The newest copy is selected under the pins** (2026-11-08, §2.28). A disposable claude-desktops Windows 11 Pro 25H2 desktop (26200, 1600×900 at 100 %, golden 20261025-1036), self-contained packages of a private worktree at `1ef565b` plus this change (`0.2.10-dev.armed` to `armed5`), installed with `install.ps1 -Package … -NoLaunch -NoUpdateCheck`; BC-TEST items through `bclip put` / `pin`; the list read through UI Automation (selected row, rows in view, scroll percent), Notepad as the paste target. **3 pins + 3 copies:** Win+V selects "copy three" (row 3) with the list at its top; Up → "pin alpha", the lowest pin; Esc, Win+V → row 3 again; Enter pastes "BC-TEST copy three" into Notepad (read back through UI Automation). **Searches:** "o" (one pin and three copies match) → the first copy below the pin; "pin" (pins only) → the top pin; Esc → back to row 3. **Tabs:** Pinned → its top pin; Text → row 3. **Ctrl+P on the armed copy:** it moves to the top of the pins and stays selected; first build: the list ended 32 px down with that card cut off (the layout pass kept the visible rows in place after the move and answered `ChangeView(0)` with offset 32, seen with temporary logging) — fixed by setting the offset again after `UpdateLayout`: offset 0. **9 pins:** Win+V → "copy three" (row 9) on the list's lower edge, offset 298 = row bottom 674 − viewport 376, the lowest pins above it; Up → "pin alpha". **60 more copies, list wheeled to offset 4520, Esc, Win+V:** back to offset 298 with "bulk 60" selected. **A pin pasted last** (Up, Enter on "pin alpha": now the most recently used item) → pins first: "bulk 60" still selected; "Show pinned items first" off (settings file, restart) → recency order, row 0 ("pin alpha") selected. **Setting flipped in Settings without a restart:** first build: back on → the hidden list still in recency order and row 1 selected, under a pin of the old order (the order was not part of `IsListCurrent`, at HEAD too) — fixed (`ViewKey.PinnedFirst`, and the rule checks that the pins lead the list): off → Win+V reloads in recency order and selects row 0; on → pins first, "bulk 60" under the pins. **Ctrl+P with 9 pins:** the re-selected card ("bulk 60", now a pin at row 1) was out of view after the reload's scroll — fixed (`OnHistoryChanged` scrolls it into view): row 1 at the top edge, selected. Final build: reopen → "bulk 59" under 10 pins; Up → "pin bravo". The Settings card reads "Pinned items are listed before everything else. The panel still selects your newest copy, just below them." The app log of every run: 0 WRN/ERR. Locally: Core 1,236 (16 new: `ArmedRow` cases, Up from the armed row, rows asked, nulls; a store-backed page with a pasted pin, a search, recency order, the Pinned tab), the full suite 1,580 = 1,577 passed + 3 opt-in skipped, 0 failed; a `--no-incremental` solution build with no new warnings (no doc warnings). Rebased onto `a03c1d3` before the commit (the Simplified Chinese UI `8c5814a`, the tabs that wait for content): conflicts only in CLAUDE.md and the Settings description, which moved into the catalogs (key `T7ffed93d48ee`); the rebased tree: 1,601 = 1,598 passed + 3 opt-in skipped, 0 failed (Core 1,257, the catalogs' completeness test included), 0 errors and no new warnings; not run live after the rebase (the Chinese sentence was not seen on screen) | claude-desktops MCP tools (`press_keys`, `click`, `scroll`, `find_elements`, screenshots); guest scripts `C:\qa\state.ps1`, `seed.ps1`, `toggle-pins.ps1` (session b7fa198f, not kept: the desktop was deleted with its persist folder) | ✅ after the three fixes it found. Not run: a real GPU, touch and pen, the groups column walk from row 0 (unchanged code, unit-tested), the first summon of a session with more pins than the top shows (whether one frame shows the top first) |
+| **The Run and Snipping tabs wait for content, live** (2026-11-08, §2.36). A self-contained package of the change (`0.2.10-dev.tabs+1ef565b`: `1ef565b` plus the patch, from a private worktree, before the merge of the Simplified Chinese UI, `8c5814a`, which changed no tab logic) on a fresh claude-desktops Windows 11 desktop (Tiny11 25H2, 26200, 1600×900), whose Win+R list and Screenshots folder did not exist; started with `--background`. The tabs were read through UI Automation after each step (`find_elements`, and a PowerShell UIA walk that also lists tabs scrolled out of the strip). (1) Fresh: All, Pinned, Text, Images, Links, Files, Cmd — no Run, no Snipping. (2) Win+R `winver`: "Win+R: 1 new run found (watch), 1 recorded."; the next Win+V had a Run tab between Files and Cmd, with "Win+R command: winver". (3) Win+PrtScn: Windows created the folder with `Screenshot (1).png`; the next Win+V made the app look again ("Watching the Screenshots folder again", "Imported 1 screenshot saved while BetterClipboard was not watching"), and the Snipping tab appeared in the open panel, its card "Win+PrtScn · just now · 1600 × 900". (4) ← ← to the Run tab (the tabs wrap around), Del on its only card: the panel fell back to All, and the strip read All, Pinned, Text, Images, Links, Files, Snipping, Cmd. (5) `--exit` and a new start: `LastTab` was saved as Run; the panel opened in All, with Snipping (looked up at the start) and without Run. (6) Win+R `calc` while the panel was hidden: the next Win+V opened in the Run tab (back as the tab last chosen) with "Win+R command: calc" alone (the deleted `winver` did not come back). The app's log over both runs: 0 WRN/ERR. The desktop was deleted with its storage | claude-desktops MCP tools | ✅ |
+| Unit tests (2026-11-08, §2.36): `TabContentTests`, 8 (the store's lookups for Run and for Snipping pictures, and of one entry; the service through a first and a last run, a first import, Snipping Tool's pictures and text, a picture copied again from Paint, a screenshot file copied again from Paint, a clear, a start over a store that has both, a prune and Forget forever). Mutation check: without the import's lookup, `Service_RunTab_FilledByTheFirstImport` fails; without the "witness left the tab" branch, `Service_SnippingTab_CountsScreenshotsAndSnippingToolPictures` fails. On `8c5814a` plus the patch: Core 1,241 of 1,241 (13 of them the Simplified Chinese UI's); Windows 344 (342 passed, 2 opt-in skipped, 1 explicit not run); a `--no-incremental` solution build: 0 errors, no warning in a changed file. Query plans and timings: a scratch probe (session a6fd5958's scratchpad, `probe_tabs/`) | the test executables in a private worktree | ✅ |
 | **v0.2.9 released** (2026-10-26, "Do we have anything to release?", then "Release new version"). Bump `79d5d59` (0.2.8 → 0.2.9; the notes draft is in its message) on `1de68ea` (Start with Windows for every user, §2.34) and `b5ac0e0` (the `irm \| iex` fix, §3.1); the rest since v0.2.8 is docs and research. The push range `baca929..79d5d59` (8 commits, 42 files) was scanned first: no secret-like added lines, no personal email address, three PNGs with BC-TEST content only (looked at). `main` pushed at 05:26Z; raw.githubusercontent served the fixed `install.ps1` at once (same hash as the blob). **CI passed only after three test-only commits:** run 40274246627 on `79d5d59` failed attempt 1 (`Codex_HistoryLockedByAWriter_IsReadOnceUnlocked`), attempt 2 (`WindowsScreenshotsIntegrationTests.FirstActivation_NoBackfill_ThenLive`) and attempt 3 (tests passed; the new step "Installer for every user" failed 8 of 36: its admin install ran Windows PowerShell 5.1 with PowerShell 7's `PSModulePath`, "Get-FileHash is not recognized", fixed in `676ec40`); run 40275737053 on `676ec40` failed on the lock test again; `a4aa62b` made the lock test and both counter tests wait on conditions; run 40277011148 failed on the third listed flake (`Watch_NeverLocksTheWriterOut_AndWaitsForTheEnd`), fixed in `4da86bd` (§4, §6). Run 40277654488 on `4da86bd` passed at the first attempt: 1,564 tests (1,560 passed, 4 skipped), the update mode, `test-iex.ps1` in 7.6.7 and 5.1, Chocolatey 32 of 32 twice, and **`test-all-users.ps1` 36 of 36, its first pass on GitHub**. Tag `v0.2.9`: annotated, on `4da86bd`, message identical to `79d5d59`'s draft. Release run 40278303399 passed at the first attempt (5.5 min); published 06:16:14Z, Latest. So for 50 minutes `irm \| iex` served the new installer with the 0.2.8 app. Assets: zips x64 74,534,777 / ARM64 72,030,825 bytes, `.7z` 45,315,407 / 41,152,840, `betterclipboard.0.2.9.nupkg` 86,514,705 (attached only: no `CHOCOLATEY_API_KEY`, the step warned), `install.ps1`, `SHA256SUMS.txt`. All four sums equal GitHub's digests; the body is the notes plus the code-signing footer, no mojibake; the `install.ps1` asset and the one in the x64 zip equal the blob except CRLF; the x64 zip's `BetterClipboard.exe` and `bclip.exe` report `0.2.9+4da86bd…`. Not installed on this PC (not asked): it runs `0.2.8+03f5058` with the automatic check on, so its update button offers 0.2.9 | `gh run view --log`, `gh api …/releases/tags/v0.2.9`, `gh release download`, scratch scripts in session 1c552075's scratchpad (`release-0.2.9/`) | ✅ |
 | **`install.ps1 -AllUsers`, for real** (2026-10-18, §2.34). A package of the working tree (`0.2.9-allusers`, x64) on a disposable claude-desktops VM (Windows 11 Pro 25H2, 26200, admin "Docker", UAC off, Windows PowerShell 5.1). `tools/release/test-all-users.ps1 -ConfirmMachineChanges`. The first run: 29 of 36; every run as SYSTEM stopped at its first line, because SYSTEM has no Start menu folder and `Join-Path ''` throws, a fault since v0.1.0. The `-Hotkey` refusal passed only by that accident, so the check now reads the reason. After the fix: **36 of 36**. As the administrator with `-AllUsers -AddToPath`: Program Files with the package's version; protected rights with no ordinary writer; the PC's Run value with `--all-users-startup` and none of the user's own; the PC's Installed-apps entry with `-Uninstall -AllUsers`; the shortcut for every user and none of the user's own; the PC's PATH and not the user's; Win+V taken over for that user; every other startup entry kept. Then all of it removed by `-Uninstall -AllUsers`, with Win+V given back. As SYSTEM: `-Hotkey` refused for the right reason with nothing installed; without `-AllUsers`, the install for every user by itself, nothing in SYSTEM's own registry, the user's `DisabledHotkeys` untouched, Explorer not restarted, the log naming the reason; then `-Uninstall` as SYSTEM removed everything | the test script (new, in CI) with the fixed installer put into the test zip | ✅ |
 | **Start with Windows for every user at sign-in** (the same VM, an install as SYSTEM, four reboots). 1st sign-in: BetterClipboard ran in the user's session with `--background --all-users-startup`, no window; Settings showed the switch on, with "It is set up to start for every user of this PC; turning this off changes that only for you.", the update switch disabled, and "This copy is installed for every user of this PC and an administrator updates it, so BetterClipboard does not check by itself. Check now still asks GitHub." Switch off: `SkipAllUsersStartup: true`, the PC's value kept, no user value written. 2nd sign-in: nothing started; the log said "Not started by the sign-in entry for every user: this user turned Start with Windows off in Settings." Started by hand, the switch read off; on: the setting false, still no user value. A second `--background` start while it ran: ended with exit code 0, no window. A user value for the same program: 3rd sign-in, exactly one process, the user's (`--background` without the marker); the log has the step-aside line at 18:02:10 and the user's start at 18:02:11. The PC's Installed-apps command run as Settings › Apps runs it: graceful close, the PC's value, the user's leftover value, folder, entry and shortcut removed, history kept. Chocolatey as SYSTEM: the entry for every user by itself; 4th sign-in, the package's copy ran from it | UI Automation in the guest (`TogglePattern` on the switch), `Win32_Process` command lines, the app's log, `settings.json`, the registry | ✅ |
@@ -4836,6 +6221,55 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 ## 6. Roadmap / known gaps
 
+- **Line breaks inside a shortcut, app-wide** (found 2026-11-09 in the §2.43 QA): DirectWrite breaks "Win+PrtScn" before
+  its "+" at a line's end — seen in the Russian Snipping card's description ("…от Win" / "+PrtScn"). The Delete stored
+  dialog glues its texts (`StoredText.KeepShortcutsTogether`); the rest of the app does not. Doing it once where
+  catalogs load (like the Hebrew embedding) would cover every translated text, but tests compare exact strings, and
+  `UiText.EnglishOf` would have to see the same text.
+- **Settings search and *Delete stored…*** (2026-11-09, §2.43), next steps:
+  - see the Everything card's hidden picks, and the dialogs in Hebrew and Chinese, on screen;
+  - the search could also open the matching card's section in a future collapsed layout, and rank by score when a
+    query matches many settings (the page keeps its order today);
+  - a *Delete stored…* for Windows' own import (the entries Win+V's history brought in) was not asked for.
+- **Notepad++** (2026-11-08, §2.41), next steps:
+  - see a file opened again while it is still open in Notepad++ (today only a switch to its tab). It needs a signal from
+    inside Notepad++: a tiny plugin that forwards `NPPN_FILEOPENED` and `NPPN_BUFFERACTIVATED`, which would also replace
+    the 5-second count question. A plugin is installed into Notepad++'s folder, so it is the owner's call;
+  - run live what the test desktop did not: `-multiInst` with `-settingsDir=`, the portable build, cloud settings, a
+    legacy code page, an elevated Notepad++;
+  - the same tracked-document store for other editors' unsaved buffers (VS Code's hot exit, for one; where and how it
+    keeps them is not researched yet); the rule and the store are not Notepad++-specific (`scope`).
+- **Local dev builds** (2026-11-08, §2.39), next steps:
+  - a line in *Settings › Updates* naming the dev-builds folder and how many builds it holds, with a button that
+    opens it;
+  - `publish-dev.ps1 -Remote <PC>`: publish to another PC's folder over the network (its own checksum list already
+    guards the copy);
+  - offer every local build in the dialog, not only the newest (pick an older dev build, for bisecting).
+- **`bclip` on the PATH without the app's DLLs** (found 2026-11-08, §2.9, §4): *Add bclip to PATH* lists the whole
+  install folder, so other programs load its runtime DLLs (ShareX held `DWriteCore.dll`). A folder of its own with
+  only a launcher for `bclip` (a small native shim, or a `bclip.cmd`) would keep that from happening; existing PATH
+  entries would move over at the next install.
+- **Where the panel opens** (2026-11-08, §2.38), next steps:
+  - see the app's own summon move between monitors with different scales: on the owner's PC (three monitors, one at
+    125 %) when they want to try it, or in a test desktop with two displays. The cause and the fix are proven with the
+    lab only; look for the log line "The panel came out … instead of …" once per session;
+  - the same check for the image viewer and the update dialog, windows of their own that follow the panel's monitor;
+  - optional, not asked for: "where I last left it", and a fixed monitor.
+- **Interface languages** (§2.37; the deferred gaps were closed on 2026-11-08, "Complete the gaps", and the owner's
+  choices built the same day), next steps:
+  - the uncommitted AI conversation's strings (§2.35 in the shared tree) need catalog entries when it lands: the guards
+    fail until they have them (`catalog.py add -d "…"`, or `add-file` for many), each with its description, and with
+    Russian, Spanish and Hebrew too;
+  - a native speaker's review of Russian, Spanish and Hebrew (translated by Claude on 2026-11-09, §2.37);
+  - right-aligned right-to-left paragraphs, if the owner wants Hebrew's lines to start flush at the right
+    (`TextAlignment="DetectFromContent"` on the text blocks): today they are aligned left with the rest of the
+    left-to-right layout, so a wrapped Hebrew sentence's lines start ragged;
+  - the footer's key hint is cut at its end in Russian's Cmd tab ("Del скр…"), where the status is long;
+  - our own sentences for .NET's regex parse errors (`RegexParseException.Error`), which stay English;
+  - a review of the Chinese wording (the owner: "You review and you approve"), especially the new 永久忘记 for
+    "Forget forever";
+  - the README's translation has no marker of the English version it follows (a hash in a comment that a check
+    compares would tell when it falls behind).
 - **Start with Windows for every user and `install.ps1 -AllUsers`** (2026-10-18, §2.34), next steps:
   - run the uninstall's own elevation (`Invoke-ElevatedUninstall`) with UAC on, and see whether Settings › Apps asks
     for consent by itself for the PC's entry;
@@ -4903,7 +6337,10 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   - the Menu key in the groups column for the group's own menu, and a key that creates a group;
   - an announcement for screen readers when the arrow keys step through the groups;
   - save the tab last chosen also when the app exits while the panel is open;
-  - optional: remember the groups shown, and a Settings switch for "always open in All".
+  - optional: remember the groups shown, and a Settings switch for "always open in All";
+  - the newest copy under the pins (2026-11-08): check whether the first summon of a session, with more pins than the
+    list's top shows, draws one frame at the top before the measured scroll (its list is never laid out while cloaked);
+    with more pins than a page (60) the list starts on its top pin, which loading on to the first copy would fix.
 - ~~**Bug (found 2026-10-03, §3.4): the first Win+V after a start leaves the search box without keyboard focus.**~~
   Fixed 2026-10-09 (`0718a9b`, `db9750c`; §2.5 "The first summon of a session"): the box takes the focus once its tree
   has loaded, and the panel is built and rendered off-screen 3 s after startup, so keys typed 100 ms or more after the

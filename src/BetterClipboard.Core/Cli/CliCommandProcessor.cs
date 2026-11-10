@@ -145,6 +145,7 @@ public sealed class CliCommandProcessor
     /// <summary>Converts an entry into its wire form.</summary>
     /// <param name="entry">The entry.</param>
     /// <returns>The item (without full text or matches).</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="entry"/> is <see langword="null"/>.</exception>
     public static CliItem ToItem(ClipEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
@@ -169,6 +170,8 @@ public sealed class CliCommandProcessor
                 ClipOrigin.ClaudeCode => "claude",
                 ClipOrigin.Codex => "codex",
                 ClipOrigin.WindowsScreenshot => "screenshot",
+                ClipOrigin.NotepadPlusPlusTab => "notepad++-tab",
+                ClipOrigin.NotepadPlusPlusFile => "notepad++-file",
                 _ => "copied",
             },
             FirstCopied = entry.CreatedUtc,
@@ -180,6 +183,8 @@ public sealed class CliCommandProcessor
             ImageHeight = entry.ImageHeight,
             Paths = entry.IsPathText ? entry.PathCount : null,
             LastRun = entry.LastRunUtc,
+            SourceTitle = entry.SourceTitle,
+            Edited = entry.EditedUtc,
         };
     }
 
@@ -218,6 +223,7 @@ public sealed class CliCommandProcessor
             "claude" or "claude-code" => ClipFilter.ClaudeCode,
             "codex" => ClipFilter.Codex,
             "snipping" or "snip" or "screenshots" => ClipFilter.Snipping,
+            "notepad++" or "notepadpp" or "npp" => ClipFilter.NotepadPlusPlus,
             _ => (ClipFilter)(-1),
         };
         return Enum.IsDefined(filter);

@@ -46,21 +46,25 @@ public sealed partial class ClipboardFlyout
         SetTabVisible(CmdFilter, controller.IsCmdTabAvailable, ClipFilter.Cmd);
     }
 
-    /// <summary>Shows or hides one tab, leaving it for "All" when it disappears while selected.</summary>
+    /// <summary>
+    /// Shows or hides one tab, leaving it for "All" when it disappears while selected. It shows while its own conditions
+    /// hold and the user did not hide it (ClipboardFlyout.TabArrangement.cs): a hidden tab stays out of the row.
+    /// </summary>
     /// <param name="tab">The tab.</param>
-    /// <param name="available">Whether it should show.</param>
+    /// <param name="available">Whether its own conditions let it show (its app is there, its setting on…).</param>
     /// <param name="filter">Its filter.</param>
     /// <returns><see langword="true"/> when its visibility changed.</returns>
     private bool SetTabVisible(SelectorBarItem tab, bool available, ClipFilter filter)
     {
-        var visibility = available ? Visibility.Visible : Visibility.Collapsed;
+        bool shown = available && !IsTabHidden(filter);
+        var visibility = shown ? Visibility.Visible : Visibility.Collapsed;
         if (tab.Visibility == visibility)
         {
             return false;
         }
 
         tab.Visibility = visibility;
-        if (!available && ViewModel.Filter == filter)
+        if (!shown && ViewModel.Filter == filter)
         {
             SelectFilter(ClipFilter.All);
         }

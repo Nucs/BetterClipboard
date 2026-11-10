@@ -89,6 +89,19 @@ public sealed class ClipEntry
     /// <summary>Whether the entry was ever run as a Win+R command (<see cref="LastRunUtc"/> set): it can be run again.</summary>
     public bool HasRunHistory => LastRunUtc is not null;
 
+    /// <summary>
+    /// The document inside the source app the content came from, when an integration knows it — the name of a Notepad++
+    /// tab ("new 3") whose text this is; <see langword="null"/> otherwise. Shown in the card's caption after the app.
+    /// </summary>
+    public string? SourceTitle { get; init; }
+
+    /// <summary>
+    /// When the entry's text was last replaced in place by an integration that tracks a document (a Notepad++ tab's newer
+    /// version, <see cref="Documents.TrackedDocumentRule"/>); <see langword="null"/> when it never was. An update in place
+    /// keeps the entry's place in the list (<see cref="LastUsedUtc"/> does not move), so the card tells this time apart.
+    /// </summary>
+    public DateTimeOffset? EditedUtc { get; init; }
+
     /// <summary>Whether any rich text format (HTML/RTF) is stored, i.e. "paste as plain text" differs from paste.</summary>
     public bool HasRichFormats =>
         FormatNames.Contains(ClipFormatNames.Html) || FormatNames.Contains(ClipFormatNames.Rtf);

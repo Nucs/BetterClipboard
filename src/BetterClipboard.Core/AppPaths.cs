@@ -100,6 +100,14 @@ public sealed class AppPaths
     public string UpdatesDirectory => Path.Combine(DataDirectory, "updates");
 
     /// <summary>
+    /// The dev-builds folder: development builds published on this PC by <c>tools/release/publish-dev.ps1</c>, which a
+    /// copy the installer installed offers through its update button before GitHub's releases
+    /// (<see cref="Updates.LocalBuildFeed"/>). Nothing creates it but the publish script, so it exists only on a developer's
+    /// PC; an isolated instance (<see cref="DataDirectoryVariable"/>) has its own, inside its own data directory.
+    /// </summary>
+    public string DevBuildsDirectory => Path.Combine(DataDirectory, Updates.LocalBuildFeed.DirectoryName);
+
+    /// <summary>
     /// <c>installer.json</c>, which <c>install.ps1</c> writes on every install: what was installed where. The updater
     /// reads its <c>installDir</c> to tell a copy the installer owns from one extracted by hand
     /// (<see cref="Updates.InstalledCopy"/>).
@@ -115,5 +123,30 @@ public sealed class AppPaths
     {
         Directory.CreateDirectory(DataDirectory);
         Directory.CreateDirectory(LogDirectory);
+    }
+
+    /// <summary>
+    /// Whether this data folder ever held a history: anything in <see cref="StoresDirectory"/> (a store of any machine
+    /// or user, a quarantined one included) or a v0.1 plaintext database. False only before the app's very first start
+    /// here: installers may write <see cref="SettingsPath"/> before that start, but none of them creates a store.
+    /// </summary>
+    /// <remarks>
+    /// Must be read before the store is opened, which creates it. Until 2026-11-09 it decided whether the language picker
+    /// asked; now the picker asks whenever no language was chosen (<c>Localization.LanguageChoice.ShouldAsk</c>), and
+    /// this only words its log line ("chosen at the first start" or "chosen at a start with a history already kept").
+    /// A folder that cannot be read counts as holding a history.
+    /// </remarks>
+    /// <returns>Whether a history was kept here before.</returns>
+    public bool HasHistory()
+    {
+        try
+        {
+            return File.Exists(LegacyDatabasePath)
+                || (Directory.Exists(StoresDirectory) && Directory.EnumerateFileSystemEntries(StoresDirectory).Any());
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
     }
 }

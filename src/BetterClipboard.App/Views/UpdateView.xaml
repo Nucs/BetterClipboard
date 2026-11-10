@@ -87,7 +87,7 @@
                 IsOpen="False" />
             <ProgressBar
                 x:Name="Progress"
-                AutomationProperties.Name="{loc:Tr Key=Te08dc19e0c25}"
+                AutomationProperties.Name="{loc:Tr Text='Update progress'}"
                 Maximum="100"
                 Visibility="Collapsed" />
 
@@ -125,10 +125,10 @@
                     Margin="0,-4,-6,-4"
                     Padding="6,3,6,3"
                     HorizontalAlignment="Right"
-                    AutomationProperties.Name="{loc:Tr Key=Tc5fc0fb39bdb}"
+                    AutomationProperties.Name="{loc:Tr Text='View the release on GitHub'}"
                     Click="ReleasePageLink_Click">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="{loc:Tr Key=T20672423d716}" />
+                        <TextBlock Text="{loc:Tr Text='View on GitHub'}" />
                         <FontIcon FontSize="12" Glyph="&#xE8A7;" />
                     </StackPanel>
                 </HyperlinkButton>
@@ -143,7 +143,7 @@
             Margin="0,8,-8,0"
             Padding="0,0,14,0"
             VerticalAlignment="Top"
-            AutomationProperties.Name="{loc:Tr Key=T1254829bd999}"
+            AutomationProperties.Name="{loc:Tr Text='Release notes'}"
             HorizontalScrollBarVisibility="Disabled"
             HorizontalScrollMode="Disabled"
             VerticalScrollBarVisibility="Auto">

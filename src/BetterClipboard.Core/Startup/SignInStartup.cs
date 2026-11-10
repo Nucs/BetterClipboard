@@ -1,3 +1,5 @@
+using BetterClipboard.Core.Localization;
+
 namespace BetterClipboard.Core.Startup;
 
 /// <summary>
@@ -283,15 +285,17 @@ public static class SignInStartup
     public static string Describe(SignInEntries entries, string executablePath)
     {
         ArgumentNullException.ThrowIfNull(entries);
-        const string Plain = "Start quietly in the notification area when you sign in.";
+        // Settings shows these lines, so they follow the interface language; the second sentence is a template around the
+        // first, so a language that writes sentences without a space between them can.
+        var plain = UiText.Translate("Start quietly in the notification area when you sign in.");
         if (!Names(entries.AllUsersCommand, executablePath))
         {
-            return Plain;
+            return plain;
         }
 
         return entries.AllUsersDisabledInWindows
-            ? $"{Plain} Its entry for every user of this PC is turned off in Windows' startup apps, so turning this on adds one just for you."
-            : $"{Plain} It is set up to start for every user of this PC; turning this off changes that only for you.";
+            ? UiText.Format($"{plain} Its entry for every user of this PC is turned off in Windows' startup apps, so turning this on adds one just for you.")
+            : UiText.Format($"{plain} It is set up to start for every user of this PC; turning this off changes that only for you.");
     }
 
     /// <summary>Whether the user has an entry of their own whose program exists: one that Windows will try to start.</summary>

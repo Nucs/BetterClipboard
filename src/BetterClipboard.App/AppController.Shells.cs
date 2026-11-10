@@ -39,8 +39,8 @@ public sealed partial class AppController
     public bool IsPowerShellTabAvailable => settings?.Current.ShowPowerShellTab == true && powerShellHasHistory;
 
     /// <summary>
-    /// Whether the panel shows its Cmd tab: the setting. Like the Run tab it waits for nothing — cmd exists on every
-    /// Windows, and an empty tab explains how it fills.
+    /// Whether the panel shows its Cmd tab: the setting. It waits for nothing — cmd exists on every Windows, and an empty
+    /// tab explains how it fills (unlike the Run and Snipping tabs, which show only once the history has their entries).
     /// </summary>
     public bool IsCmdTabAvailable => settings?.Current.ShowCmdTab == true;
 

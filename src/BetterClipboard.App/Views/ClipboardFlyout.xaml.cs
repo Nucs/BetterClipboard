@@ -73,12 +73,13 @@ namespace BetterClipboard.App.Views;
 /// </para>
 /// <para>
 /// <b>Getting around</b> (ClipboardFlyout.Navigation.cs). A summon opens in the tab the user last chose
-/// (<see cref="AppSettings.LastTab"/>). Up and Down move through the rows, Left and Right through the tabs in a circle, and
-/// Up from the top row walks into the groups column, onto the first group shown (the clipboard icon when none is), where
-/// Up and Down then step through the groups until Right goes back to the list. Each step shows its group, and Space,
-/// Enter or Down on the lowest group go back to the list with it — unless several groups are merged: then the keys only
-/// move a ring, and Space or Enter adds the group under it to the view or takes it out. The mouse selects the row it is
-/// over, once it really moved.
+/// (<see cref="AppSettings.LastTab"/>), with the newest copy selected — below the pinned cards while they are listed first,
+/// so Enter pastes the copy just made and Up goes to the lowest pin. Up and Down move through the rows, Left and Right
+/// through the tabs in a circle, and Up from the top row walks into the groups column, onto the first group shown (the
+/// clipboard icon when none is), where Up and Down then step through the groups until Right goes back to the list. Each
+/// step shows its group, and Space, Enter or Down on the lowest group go back to the list with it — unless several groups
+/// are merged: then the keys only move a ring, and Space or Enter adds the group under it to the view or takes it out. The
+/// mouse selects the row it is over, once it really moved.
 /// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout : Window
@@ -180,6 +181,7 @@ public sealed partial class ClipboardFlyout : Window
         controller.HistoryChanged += OnHistoryChanged;
         controller.ShareXStatusChanged += OnShareXStatusChanged;
         controller.SnippingStatusChanged += OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged += OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged += OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged += OnRunHistoryStatusChanged;
         controller.ShellHistoryStatusChanged += OnShellHistoryStatusChanged;
@@ -195,6 +197,10 @@ public sealed partial class ClipboardFlyout : Window
 
         // The filter tabs scroll sideways when they do not fit (arrows, wheel, drags): ClipboardFlyout.TabStrip.cs.
         InitializeTabStrip();
+
+        // The tabs in the order the user arranged, without those hidden, and their right-click menu:
+        // ClipboardFlyout.TabArrangement.cs. Before the bar loads, so the first frame already shows the user's order.
+        InitializeTabArrangement();
 
         // The update button left of Pause, and the dialog it opens: ClipboardFlyout.Update.cs.
         InitializeUpdateButton();
@@ -245,12 +251,13 @@ public sealed partial class ClipboardFlyout : Window
         Root.PointerCanceled += Root_PointerEnded;
         Root.PointerCaptureLost += Root_PointerEnded;
 
-        // Like Win+V, the top item is always "armed": after every (re)load — typing a search, switching
-        // a filter — select the first card so Enter pastes the best match immediately. Unconditionally: a reload patches
-        // the list (FlyoutViewModel.ApplyEntries) instead of clearing it, so a card that is still listed keeps its
-        // selection, which may no longer be the first card (it used to be lost with the clear), and the list keeps its
-        // scroll position (the clear used to reset it): SelectIndex also scrolls the first card into view. Callers that keep
-        // a card selected across their reload (a history change, a prompt tab) select it again after awaiting the reload.
+        // Like Win+V, the newest copy is always "armed": after every (re)load — typing a search, switching a filter — select
+        // it so Enter pastes the best match immediately. That is the first card, or the first one below the pinned cards
+        // while they are listed first (ArmCard; Up from it reaches the pins). Unconditionally: a reload patches the list
+        // (FlyoutViewModel.ApplyEntries) instead of clearing it, so a card that is still listed keeps its selection, which
+        // may no longer be the armed one (it used to be lost with the clear), and the list keeps its scroll position (the
+        // clear used to reset it): ArmCard also brings the list back to its top. Callers that keep a card selected across
+        // their reload (a history change, a prompt tab) select it again after awaiting the reload.
         ViewModel.Reloaded += (_, _) =>
         {
             // The rows changed under a mouse that may lie on the list: until it really moves, it must not take the
@@ -258,7 +265,7 @@ public sealed partial class ClipboardFlyout : Window
             SuspendPointerSelection();
             if (ViewModel.Items.Count > 0)
             {
-                SelectIndex(0);
+                ArmCard();
             }
         };
     }
@@ -311,7 +318,8 @@ public sealed partial class ClipboardFlyout : Window
         {
             if (cloaking)
             {
-                AppWindow.MoveAndResize(WarmUpBounds());
+                // Exactly: the window may land on a monitor with another scale than the one it was created on.
+                MoveAndResizeExactly(WarmUpBounds());
             }
             else
             {
@@ -366,12 +374,21 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// Where the warm-up shows the cloaked window: the remembered size (and the groups column, if open) at the scale of the
-    /// monitor under the pointer, at that monitor's work-area corner — where a summon on that monitor needs no resize.
+    /// monitor under the pointer, at that monitor's work-area corner — where a summon on that monitor needs no resize. With
+    /// the panel centered on the main screen, exactly where every summon will put it.
     /// </summary>
     /// <returns>The bounds in physical screen pixels.</returns>
     private RectInt32 WarmUpBounds()
     {
         var settings = controller.Settings.Current;
+
+        // Centered on the main screen, the next summon's bounds depend on nothing the shortcut captures: shown there now,
+        // the first summon needs neither a move nor a resize — and no monitor change with another scale.
+        if (settings.Placement == FlyoutPlacement.CenterScreen && settings.CenterOnMainScreen)
+        {
+            return SummonBounds(ForegroundContext.CursorOnly(), settings.Placement, centerOnMainScreen: true, settings.ShowGroupsPane);
+        }
+
         var cursor = ForegroundContext.CursorOnly().Cursor;
         var (workArea, scale) = MonitorLookup.FromPoint(cursor);
         // The same arithmetic as ShowAt (the column added in whole pixels after the list's size), so the sizes match exactly.
@@ -385,13 +402,15 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the flyout for a summon: positions it by the caret, puts it on screen at once with the list as it was prepared
-    /// while concealed (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately).
-    /// The list is reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
+    /// Shows the flyout for a summon: positions it by the placement setting (next to the caret by default;
+    /// ClipboardFlyout.Placement.cs), puts it on screen at once with the list as it was prepared while concealed
+    /// (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately). The list is
+    /// reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
     /// </summary>
     /// <param name="context">Caret/cursor snapshot.</param>
-    /// <param name="placement">Placement preference.</param>
-    public async void ShowAt(ForegroundContext context, FlyoutPlacement placement)
+    /// <param name="placement">Placement preference (<see cref="AppSettings.Placement"/>).</param>
+    /// <param name="centerOnMainScreen">With a centered placement, center on the main screen (<see cref="AppSettings.CenterOnMainScreen"/>).</param>
+    public async void ShowAt(ForegroundContext context, FlyoutPlacement placement, bool centerOnMainScreen)
     {
         try
         {
@@ -430,32 +449,15 @@ public sealed partial class ClipboardFlyout : Window
             // Show and take focus FIRST, load after (and only if needed): keys typed right after the shortcut must land in
             // our search box. Loading first (even for a few ms, more on a cold start) lets fast typists' keys leak into the
             // document underneath. A list that is not current briefly shows its previous (near-identical) content.
-            var anchorPoint = placement == FlyoutPlacement.CenterScreen && context.TargetWindow != 0
-                ? default
-                : (context.Caret is { } caret && placement == FlyoutPlacement.NearCaret
-                    ? new ScreenPoint(caret.Left, caret.Bottom)
-                    : context.Cursor);
-            var (workArea, scale) = placement == FlyoutPlacement.CenterScreen && context.TargetWindow != 0
-                ? MonitorLookup.FromWindow(context.TargetWindow)
-                : MonitorLookup.FromPoint(anchorPoint);
-
-            // The size the user last dragged the panel to (without the column, added below), in this monitor's pixels;
-            // Compute shrinks it to a smaller work area without changing what is remembered.
-            var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
-            var bounds = FlyoutPositioner.Compute(placement, context, workArea, width, height, (int)Math.Round(GapDip * scale));
-            if (groupsPaneOpen)
-            {
-                // Place the list where it always goes, then add the column on its left.
-                bounds = FlyoutPositioner.ExtendLeft(bounds, (int)Math.Round(GroupsPaneDip * scale), workArea);
-            }
-
-            var rect = new RectInt32(bounds.Left, bounds.Top, bounds.Width, bounds.Height);
+            // Where: the screen and the spot the placement setting asks for, at the remembered size in that screen's pixels,
+            // the groups column included (ClipboardFlyout.Placement.cs).
+            var rect = SummonBounds(context, placement, centerOnMainScreen, groupsPaneOpen);
 
             // Relative times ("5 min ago") are recomputed before the panel shows, so its first frame has them right.
             ViewModel.RefreshCaptions();
 
             // The panel may appear right under the mouse, and Windows then tells it that the pointer "moved": the mouse
-            // selects no row until it has really left the spot it is on now, so the first card stays the armed one.
+            // selects no row until it has really left the spot it is on now, so the armed card stays the selected one.
             SuspendPointerSelection();
 
             // On screen in one step: no fade, no slide, no DWM animation (ClipboardFlyout.Summon.cs has the numbers).
@@ -481,7 +483,7 @@ public sealed partial class ClipboardFlyout : Window
                 await ViewModel.ReloadAsync();
             }
 
-            SelectIndex(0);
+            ResetListPosition();
             LogSummon(context, onScreen, reload);
 
             // Second line of defence for the first summon: if no element of the panel has the keyboard yet (the box's
@@ -547,6 +549,7 @@ public sealed partial class ClipboardFlyout : Window
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
         controller.SnippingStatusChanged -= OnSnippingStatusChanged;
+        controller.NotepadPlusPlusStatusChanged -= OnNotepadPlusPlusStatusChanged;
         controller.EverythingStatusChanged -= OnEverythingStatusChanged;
         controller.RunHistoryStatusChanged -= OnRunHistoryStatusChanged;
         controller.PromptsStatusChanged -= OnPromptsStatusChanged;
@@ -621,8 +624,9 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Keeps the list current: in place or by a coalesced reload while visible, by a background refresh while concealed (so
-    /// the next summon finds it ready, ClipboardFlyout.Summon.cs).
+    /// Keeps the list current: in place or by a coalesced reload while visible — the card the user had selected stays
+    /// selected and in view — and by a background refresh while concealed (so the next summon finds it ready,
+    /// ClipboardFlyout.Summon.cs).
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="change">What changed.</param>
@@ -661,6 +665,11 @@ public sealed partial class ClipboardFlyout : Window
                 if (selected is { } id && ViewModel.Items.FirstOrDefault(i => i.Id == id) is { } again)
                 {
                     ItemsList.SelectedItem = again;
+
+                    // The reload brought the list to its own armed card (ArmCard), which below many pins lies a screenful
+                    // away from the card selected again here — the copy just pinned with Ctrl+P sits up among the pins.
+                    // Brought back into view, so the user's card stays on screen (the list only moves when it is not).
+                    ItemsList.ScrollIntoView(again);
                 }
             }
         }
@@ -811,7 +820,13 @@ public sealed partial class ClipboardFlyout : Window
                 break;
             case VirtualKey.Application:
             case VirtualKey.F10 when shift:
-                if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
+                if (FindTab(e.OriginalSource as DependencyObject) is { } focusedTab)
+                {
+                    // A tab has the keyboard (after a click on it): the key is for the tab's menu, the keyboard's way to
+                    // the right-click one (ClipboardFlyout.TabArrangement.cs). Opened below the tab, like a context menu.
+                    ShowTabMenu(focusedTab, focusedTab, new global::Windows.Foundation.Point(8, focusedTab.ActualHeight));
+                }
+                else if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
                 {
                     var menu = ShowItemMenu(forMenu, container, new global::Windows.Foundation.Point(24, 24));
 
@@ -1079,6 +1094,13 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="args">Change data.</param>
     private void Filters_SelectionChanged(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
     {
+        if (rearrangingTabs)
+        {
+            // The bar's items are being moved (ClipboardFlyout.TabArrangement.cs): a selection lost and found again on
+            // the way is no change of tab, and the move selects the shown tab again itself.
+            return;
+        }
+
         if (sender.SelectedItem?.Tag is string tag && Enum.TryParse<ClipFilter>(tag, out var filter))
         {
             ViewModel.Filter = filter;
@@ -1260,7 +1282,7 @@ public sealed partial class ClipboardFlyout : Window
         if (item.Pick is null && item.Entry.HasRunHistory)
         {
             menu.Items.Add(MenuItem(UiText.Translate("Run"), RunGlyph, "Ctrl+Enter", () => _ = RunItemAsync(item, asAdministrator: false)));
-            menu.Items.Add(MenuItem("Run as administrator", RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
+            menu.Items.Add(MenuItem(UiText.Translate("Run as administrator"), RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1547,7 +1569,8 @@ public sealed partial class ClipboardFlyout : Window
     /// <remarks>
     /// The search waits for its debounce first (<see cref="FlyoutViewModel.SettleSearchAsync"/>): typed and Enter at once
     /// used to paste the card selected before the search ran (QA pass 2026-10-09: "delta" + Enter pasted the newest item).
-    /// After the wait the first match is selected, unless the user moved the selection meanwhile. A second Enter while this
+    /// After the wait the armed match is selected — the first one, or the first below the pinned matches while pins are
+    /// listed first (<see cref="ArmCard"/>) — unless the user moved the selection meanwhile. A second Enter while this
     /// waits is ignored, so one keystroke never pastes twice.
     /// </remarks>
     /// <param name="ctrl">Ctrl was held (run a Win+R command).</param>
@@ -1569,8 +1592,10 @@ public sealed partial class ClipboardFlyout : Window
                 return; // dismissed while the search ran: nothing is pasted behind the user's back
             }
 
-            // Fall back to the first card if the selection was lost (e.g. mid-reload).
-            if ((Selected ?? ViewModel.Items.FirstOrDefault()) is { } toPaste)
+            // Fall back to the card a load arms if the selection was lost (e.g. mid-reload): the same card the list would
+            // show selected, never a pin above the newest copy.
+            int armed = ArmedIndex();
+            if ((Selected ?? (armed >= 0 ? ViewModel.Items[armed] : null)) is { } toPaste)
             {
                 // Ctrl+Enter on a Win+R command runs it like the Run dialog (Ctrl+Shift+Enter as administrator);
                 // on any other card it pastes, as it always did.
@@ -1698,12 +1723,13 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the Everything tab only while the setting is on and Everything is installed or running. If it disappears
-    /// while selected, falls back to "All" so the list never stays filtered by an invisible tab.
+    /// Shows the Everything tab only while the setting is on and Everything is installed or running, and the user did not
+    /// hide the tab (ClipboardFlyout.TabArrangement.cs). If it disappears while selected, falls back to "All" so the list
+    /// never stays filtered by an invisible tab.
     /// </summary>
     private void UpdateEverythingTab()
     {
-        bool available = controller.IsEverythingTabAvailable;
+        bool available = controller.IsEverythingTabAvailable && !IsTabHidden(ClipFilter.Everything);
         EverythingFilter.Visibility = available ? Visibility.Visible : Visibility.Collapsed;
         if (!available && ViewModel.Filter == ClipFilter.Everything)
         {
@@ -1735,7 +1761,7 @@ public sealed partial class ClipboardFlyout : Window
     /// <returns>The submenu.</returns>
     private MenuFlyoutSubItem BuildGroupsSubMenu(ClipItemViewModel item)
     {
-        var submenu = new MenuFlyoutSubItem { Text = "Groups", Icon = new FontIcon { Glyph = "\uE8EC" } };
+        var submenu = new MenuFlyoutSubItem { Text = UiText.Translate("Groups"), Icon = new FontIcon { Glyph = "\uE8EC" } };
         if (ViewModel.Groups.Count == 0)
         {
             submenu.Items.Add(new MenuFlyoutItem { Text = UiText.Translate("No groups yet: open the groups column (Ctrl+G) and press +"), IsEnabled = false });
@@ -1942,13 +1968,14 @@ public sealed partial class ClipboardFlyout : Window
             Tag = group.Id,
             AllowDrop = true,
         };
-        string count = group.ItemCount == 1 ? "1 item" : UiText.Format($"{group.ItemCount:N0} items");
+        string count = UiText.Plural(group.ItemCount, $"{group.ItemCount:N0} item", $"{group.ItemCount:N0} items");
 
         // The tooltip is where a mouse user meets the multi-selection; screen readers get it as help text (their
         // route is the icon menu's "Add to view", since an invoke is a plain click).
-        ToolTipService.SetToolTip(button, $"{group.Name} · {count}\n{MultiSelectHint}");
+        var multiSelectHint = UiText.Translate(MultiSelectHint);
+        ToolTipService.SetToolTip(button, $"{group.Name} · {count}\n{multiSelectHint}");
         AutomationProperties.SetName(button, UiText.Format($"{group.Name} group, {count}"));
-        AutomationProperties.SetHelpText(button, MultiSelectHint);
+        AutomationProperties.SetHelpText(button, multiSelectHint);
         button.Click += (_, _) => ClickGroup(group.Id);
         button.RightTapped += (_, e) =>
         {
@@ -2006,9 +2033,9 @@ public sealed partial class ClipboardFlyout : Window
     /// or empty.
     /// </returns>
     private static string GroupItemStatus(bool shown, bool keyboard) =>
-        shown && keyboard ? ShownAndKeyboardItemStatus
-        : shown ? ShownItemStatus
-        : keyboard ? KeyboardItemStatus
+        shown && keyboard ? UiText.Translate(ShownAndKeyboardItemStatus)
+        : shown ? UiText.Translate(ShownItemStatus)
+        : keyboard ? UiText.Translate(KeyboardItemStatus)
         : string.Empty;
 
     /// <summary>The group-icon style for a state (see App.xaml: whole styles, so brushes follow the flyout's theme).</summary>
@@ -2194,7 +2221,7 @@ public sealed partial class ClipboardFlyout : Window
         if (!selection.IsEmpty && !(selection.Ids is [var only] && only == group.Id))
         {
             bool shown = selection.Contains(group.Id);
-            menu.Items.Add(MenuItem(shown ? UiText.Translate("Remove from view") : UiText.Translate("Add to view"), shown ? "\uE738" : "\uE710", "Ctrl+Click",
+            menu.Items.Add(MenuItem(shown ? UiText.Translate("Remove from view") : UiText.Translate("Add to view"), shown ? "\uE738" : "\uE710", UiText.Translate("Ctrl+Click"),
                 () => ViewModel.ToggleGroupInView(group.Id)));
             menu.Items.Add(new MenuFlyoutSeparator());
         }
@@ -2221,7 +2248,7 @@ public sealed partial class ClipboardFlyout : Window
         var panel = new StackPanel { Width = 280, Spacing = 10 };
         panel.Children.Add(new TextBlock
         {
-            Text = existing is null ? "New group" : UiText.Format($"Icon for {existing.Name}"),
+            Text = existing is null ? UiText.Translate("New group") : UiText.Format($"Icon for {existing.Name}"),
             Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"],
         });
 
@@ -2237,8 +2264,10 @@ public sealed partial class ClipboardFlyout : Window
         foreach (var icon in GroupIconCatalog.All)
         {
             var choice = new Button { Style = GroupStyle(selected: existing?.Glyph == icon.Glyph), Content = icon.Glyph };
-            ToolTipService.SetToolTip(choice, icon.Name);
-            AutomationProperties.SetName(choice, icon.Name);
+            // The catalog's names are English; shown, and used as a new group's default name, in the interface language.
+            var iconName = UiText.Translate(icon.Name);
+            ToolTipService.SetToolTip(choice, iconName);
+            AutomationProperties.SetName(choice, iconName);
             choice.Click += (_, _) =>
             {
                 flyout.Hide();
@@ -2274,7 +2303,7 @@ public sealed partial class ClipboardFlyout : Window
         {
             if (existing is null)
             {
-                string name = string.IsNullOrWhiteSpace(typedName) ? icon.Name : typedName.Trim();
+                string name = string.IsNullOrWhiteSpace(typedName) ? UiText.Translate(icon.Name) : typedName.Trim();
                 await controller.History.CreateGroupAsync(name, icon.Glyph);
             }
             else if (existing.Glyph != icon.Glyph)
@@ -2295,7 +2324,7 @@ public sealed partial class ClipboardFlyout : Window
     {
         var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220 };
         AutomationProperties.SetName(box, UiText.Translate("Group name"));
-        var save = new Button { Content = "Rename", HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
+        var save = new Button { Content = UiText.Translate("Rename"), HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         var panel = new StackPanel { Spacing = 10 };
         panel.Children.Add(new TextBlock { Text = UiText.Translate("Rename group"), Style = (Style)Application.Current.Resources["BodyStrongTextBlockStyle"] });
         panel.Children.Add(box);
@@ -2410,22 +2439,24 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the ShareX tab only while ShareX is installed. If it disappears while selected, falls back to
-    /// "All" so the list never stays filtered by an invisible tab.
+    /// Shows the ShareX tab only while ShareX is installed and the user did not hide the tab
+    /// (ClipboardFlyout.TabArrangement.cs). If it disappears while selected, falls back to "All" so the list never stays
+    /// filtered by an invisible tab.
     /// </summary>
     private void UpdateShareXTab()
     {
-        bool installed = controller.ShareX.IsInstalled;
-        ShareXFilter.Visibility = installed ? Visibility.Visible : Visibility.Collapsed;
-        if (!installed && ViewModel.Filter == ClipFilter.ShareX)
+        bool shown = controller.ShareX.IsInstalled && !IsTabHidden(ClipFilter.ShareX);
+        ShareXFilter.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        if (!shown && ViewModel.Filter == ClipFilter.ShareX)
         {
             SelectFilter(ClipFilter.All);
         }
     }
 
     /// <summary>
-    /// The Win+R history was switched on or off, read, or recorded a run (UI thread): show or hide the Run tab, and prepare
-    /// the hidden panel for it when it is the tab the user last chose and has just come (back).
+    /// The Win+R history was switched on or off, read, or recorded a run, or the history gained its first Win+R command or
+    /// lost its last (UI thread): show or hide the Run tab, and prepare the hidden panel for it when it is the tab the user
+    /// last chose and has just come (back).
     /// </summary>
     /// <param name="sender">Controller.</param>
     /// <param name="e">Unused.</param>
@@ -2436,13 +2467,15 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Shows the Run tab only while Settings › Win+R history is on. If it disappears while selected, falls back to
-    /// "All" so the list never stays filtered by an invisible tab. The tab strip scrolls when the tabs no longer fit
-    /// (its arrows follow the strip's new width by themselves).
+    /// Shows the Run tab only while Settings › Win+R history is on and the history holds a command run with Win+R
+    /// (<see cref="AppController.IsRunTabAvailable"/>). If it disappears while selected — switched off, or its last entry
+    /// deleted from the open tab — falls back to "All" so the list never stays filtered by an invisible tab. The tab strip
+    /// scrolls when the tabs no longer fit (its arrows follow the strip's new width by themselves). A tab the user hid
+    /// (ClipboardFlyout.TabArrangement.cs) stays out, whatever the history holds.
     /// </summary>
     private void UpdateRunTab()
     {
-        bool available = controller.IsRunTabAvailable;
+        bool available = controller.IsRunTabAvailable && !IsTabHidden(ClipFilter.Run);
         var visibility = available ? Visibility.Visible : Visibility.Collapsed;
         if (RunFilter.Visibility == visibility)
         {
@@ -2483,7 +2516,7 @@ public sealed partial class ClipboardFlyout : Window
         var result = await controller.RunCommandAsync(item.Entry, asAdministrator, hwnd);
         if (IsOpen && result is { Outcome: not RunCommandOutcome.Started } refused)
         {
-            ViewModel.StatusText = UiText.Format($"Not run: {refused.Describe()}");
+            ViewModel.StatusText = UiText.Format($"Not run: {UiText.TranslateFormatted(refused.Describe(), RunCommandResult.DescriptionTemplates)}");
         }
     }
 

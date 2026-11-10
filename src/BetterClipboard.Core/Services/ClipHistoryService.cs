@@ -163,6 +163,10 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
             {
                 store.Prune(rulesProvider().Retention, time.GetUtcNow());
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
+
+                // The batch raised no event per entry: a tab that had nothing may have something now (the first import
+                // of Windows' Win+R list fills the Run tab this way).
+                FindMissingTabContent();
             }
 
             return created;
@@ -478,6 +482,19 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     public Task<StoreStats> GetStatsAsync() => Task.Run(store.GetStats);
 
     /// <summary>
+    /// Reads aggregate statistics on the thread pool, counting the entries the panel leaves out for the tabs hidden with
+    /// their rows (<see cref="StoreStats.HiddenCount"/>, for the footer's "· N hidden").
+    /// </summary>
+    /// <param name="hiddenRows">The tabs hidden with their rows; copied here, so the caller may change its list afterwards.</param>
+    /// <returns>The statistics.</returns>
+    public Task<StoreStats> GetStatsAsync(IReadOnlyList<ClipFilter>? hiddenRows)
+    {
+        // Copied on the caller's thread: the pool runs the read later, and the caller's list may change meanwhile.
+        var tabs = hiddenRows?.ToArray();
+        return Task.Run(() => store.GetStats(tabs));
+    }
+
+    /// <summary>
     /// Reads integration state kept with this history (see <see cref="ClipStore.GetStateValue"/>) on the
     /// thread pool.
     /// </summary>
@@ -659,10 +676,16 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         shutdown.Dispose();
     }
 
-    /// <summary>Worker loop: executes queued work items strictly in order.</summary>
+    /// <summary>
+    /// Worker loop: first looks up which of the tabs that show only with something in them have it
+    /// (<see cref="HasRunHistory"/>, <see cref="HasSnippingImages"/>), then executes queued work items strictly in order.
+    /// </summary>
     /// <returns>A task completing when the queue is completed and drained, or cancelled.</returns>
     private async Task RunAsync()
     {
+        // Before the first work item, so every change after it starts from a known answer (logs its own failures).
+        FindMissingTabContent();
+
         await foreach (var work in queue.Reader.ReadAllAsync(shutdown.Token).ConfigureAwait(false))
         {
             // Work items capture their own exceptions (see EnqueueAsync/TryEnqueueCapture); this catch is
@@ -729,9 +752,11 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         // Windows already remembered (RunDialogHistory) are an import, like Windows' own clipboard history. A file
         // pasted, copied or kept from the Everything tab is a new event too: pause means nothing new is recorded. So is
         // a command pasted, copied or kept from a shell tab (Pwsh, Cmd), and a prompt from a prompt tab (Claude, Codex). A
-        // screenshot Snipping Tool or Win+PrtScn just saved is a new event exactly like a ShareX one.
+        // screenshot Snipping Tool or Win+PrtScn just saved is a new event exactly like a ShareX one. So are a file just opened
+        // in Notepad++ and a Notepad++ tab's new text.
         bool isNewEvent = capture.Origin is ClipOrigin.Captured or ClipOrigin.ShareX or ClipOrigin.RunDialog or ClipOrigin.Everything
-            or ClipOrigin.PowerShell or ClipOrigin.Cmd or ClipOrigin.ClaudeCode or ClipOrigin.Codex or ClipOrigin.WindowsScreenshot;
+            or ClipOrigin.PowerShell or ClipOrigin.Cmd or ClipOrigin.ClaudeCode or ClipOrigin.Codex or ClipOrigin.WindowsScreenshot
+            or ClipOrigin.NotepadPlusPlusFile or ClipOrigin.NotepadPlusPlusTab;
         if (isNewEvent && rules.IsPaused)
         {
             return null;
@@ -836,6 +861,10 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         {
             AppLog.Error("A history change subscriber threw.", ex);
         }
+
+        // Every change passes here, on the worker, after it was stored: whether the Run and Snipping tabs have anything
+        // follows it before the work item completes (ClipHistoryService.TabContent.cs).
+        TrackTabContent(args);
     }
 
     /// <summary>Raises <see cref="GroupsChanged"/>, shielding the worker from subscriber exceptions.</summary>

@@ -17,6 +17,7 @@ public static class Program
     /// nothing when BetterClipboard already runs; <c>--all-users-startup</c> (with it, from the sign-in entry an
     /// installation for every user wrote) first asks whether this user wants it (<see cref="ContinueFromAllUsersEntry"/>);
     /// <c>--show-flyout</c> / <c>--exit</c> drive an already-running instance;
+    /// <c>--restart-after pid:startTicks</c> (from Settings' <em>Restart now</em>) waits for the process it replaces;
     /// <c>--read-console-history &lt;pid&gt;</c> is the Cmd tab's helper, <c>--set-hotkeys [--validate] SHORTCUT...</c>
     /// the installer's way to pick the shortcuts, and <c>--set-update-check on|off</c> its way to install with the
     /// automatic update check off (see remarks).
@@ -73,6 +74,13 @@ public static class Program
             return 0;
         }
 
+        // Settings' Restart now starts this process before the old one exits: wait for it, so this start becomes the app
+        // instead of handing a plain launch to the instance that is about to quit (which would open its Settings again).
+        if (options.RestartAfter is { } replaced)
+        {
+            WaitForReplacedProcess(replaced);
+        }
+
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
         // Scoped by data directory: an isolated dev/test run (BETTERCLIPBOARD_DATA_DIR) gets its own lock and
@@ -110,6 +118,34 @@ public static class Program
         });
 
         return 0;
+    }
+
+    /// <summary>
+    /// Waits, at most 30 seconds, for the process a restart replaces to end: an exit drains queued captures first, which
+    /// usually takes well under a second.
+    /// </summary>
+    /// <param name="target">The process, by id and start time.</param>
+    /// <remarks>
+    /// A process with that id but another start time is a stranger that got the id after the old one ended: nothing to
+    /// wait for. When the old process is still there after 30 seconds, the start goes on; the single-instance lock then
+    /// hands it to the old process as a plain launch, which opens its Settings, so the restart is never lost silently.
+    /// Runs before the log is opened, so it logs nothing (the controller logs that it was a restart).
+    /// </remarks>
+    private static void WaitForReplacedProcess(RestartTarget target)
+    {
+        try
+        {
+            using var old = System.Diagnostics.Process.GetProcessById(target.ProcessId);
+            if (old.StartTime.ToUniversalTime().Ticks == target.StartTicks)
+            {
+                old.WaitForExit(TimeSpan.FromSeconds(30));
+            }
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // ArgumentException: it has already ended. The others: it ended while being asked, or cannot be read; either
+            // way there is nothing left to wait for.
+        }
     }
 
     /// <summary>

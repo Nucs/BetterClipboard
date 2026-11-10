@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
@@ -39,6 +40,38 @@ public static class EverythingOwnerVerifier
     /// <summary>Verdicts by file version (path|size|last write ticks).</summary>
     private static readonly ConcurrentDictionary<string, EverythingTrust> Cache = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The reason when the window's process cannot be opened.</summary>
+    private const string ProcessNotInspected = "its process could not be inspected (it may be elevated or gone)";
+
+    /// <summary>{0}: the image's file name, which is not Everything's.</summary>
+    private const string NotEverythingProcess = "its process is {0}, not Everything.exe";
+
+    /// <summary>The reason when the image cannot be read.</summary>
+    private const string ExecutableUnreadable = "its executable could not be read";
+
+    /// <summary>{0}: <c>WinVerifyTrust</c>'s result (an HRESULT, shown in hex).</summary>
+    private const string NoValidSignature = "its executable has no valid signature (0x{0:X8})";
+
+    /// <summary>The reason when the signature is valid but its certificate cannot be read.</summary>
+    private const string SignerUnreadable = "its signer could not be read";
+
+    /// <summary>{0}: the voidtools organization that signed it (the trusted verdict's reason).</summary>
+    private const string SignedBy = "signed by {0}";
+
+    /// <summary>{0}: the organization that signed it instead of voidtools.</summary>
+    private const string SignedByOther = "it is signed by {0}, not voidtools";
+
+    /// <summary>What <see cref="SignedByOther"/> names when the certificate names no organization.</summary>
+    private const string UnknownOrganization = "an unknown organization";
+
+    /// <summary>
+    /// Every reason a verdict gives (<see cref="EverythingTrust.Reason"/>), as composite formats. The log keeps the
+    /// English; Settings shows a reason in the interface language through <c>UiText.TranslateFormatted</c>, so a new
+    /// reason must be one of these constants and have an entry in every catalog (the tests check the catalogs).
+    /// </summary>
+    public static IReadOnlyList<string> ReasonTemplates { get; } =
+        [ProcessNotInspected, NotEverythingProcess, ExecutableUnreadable, NoValidSignature, SignerUnreadable, SignedBy, SignedByOther, UnknownOrganization];
+
     /// <summary>
     /// Checks the process behind a window handle's process id (see class remarks).
     /// </summary>
@@ -48,7 +81,7 @@ public static class EverythingOwnerVerifier
     {
         var path = Clipboard.SourceAppResolver.TryGetImagePath(processId);
         return path is null
-            ? new EverythingTrust(false, null, null, "its process could not be inspected (it may be elevated or gone)")
+            ? new EverythingTrust(false, null, null, ProcessNotInspected)
             : VerifyFile(path);
     }
 
@@ -63,7 +96,7 @@ public static class EverythingOwnerVerifier
         var name = Path.GetFileName(path);
         if (!name.StartsWith("Everything", StringComparison.OrdinalIgnoreCase) || !name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
         {
-            return new EverythingTrust(false, path, null, $"its process is {name}, not Everything.exe");
+            return new EverythingTrust(false, path, null, string.Format(CultureInfo.InvariantCulture, NotEverythingProcess, name));
         }
 
         string key;
@@ -74,7 +107,7 @@ public static class EverythingOwnerVerifier
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            return new EverythingTrust(false, path, null, "its executable could not be read");
+            return new EverythingTrust(false, path, null, ExecutableUnreadable);
         }
 
         return Cache.GetOrAdd(key, _ => Check(path));
@@ -88,7 +121,7 @@ public static class EverythingOwnerVerifier
         int status = VerifySignature(path);
         if (status != 0)
         {
-            return new EverythingTrust(false, path, null, $"its executable has no valid signature (0x{status:X8})");
+            return new EverythingTrust(false, path, null, string.Format(CultureInfo.InvariantCulture, NoValidSignature, status));
         }
 
         string? organization;
@@ -102,20 +135,21 @@ public static class EverythingOwnerVerifier
         }
         catch (Exception ex) when (ex is CryptographicException or IOException or UnauthorizedAccessException)
         {
-            return new EverythingTrust(false, path, null, "its signer could not be read");
+            return new EverythingTrust(false, path, null, SignerUnreadable);
         }
 
         return organization is not null && TrustedOrganizations.Contains(organization)
-            ? new EverythingTrust(true, path, organization, "signed by " + organization)
-            : new EverythingTrust(false, path, organization, $"it is signed by {organization ?? "an unknown organization"}, not voidtools");
+            ? new EverythingTrust(true, path, organization, string.Format(CultureInfo.InvariantCulture, SignedBy, organization))
+            : new EverythingTrust(false, path, organization, string.Format(CultureInfo.InvariantCulture, SignedByOther, organization ?? UnknownOrganization));
     }
 
     /// <summary>
-    /// <c>WinVerifyTrust</c> with the Authenticode policy: no UI, no revocation check, chain from local caches only.
+    /// <c>WinVerifyTrust</c> with the Authenticode policy: no UI, no revocation check, chain from local caches only. Shared
+    /// with <see cref="NotepadPlusPlusOwnerVerifier"/>.
     /// </summary>
     /// <param name="path">File to verify.</param>
     /// <returns>0 when valid and trusted; the error code otherwise.</returns>
-    private static int VerifySignature(string path)
+    internal static int VerifySignature(string path)
     {
         // The path must stay valid for the whole call: pinned unmanaged copy, freed in finally.
         nint pathPointer = Marshal.StringToHGlobalUni(path);
@@ -147,10 +181,13 @@ public static class EverythingOwnerVerifier
         }
     }
 
-    /// <summary>The certificate subject's organization (<c>O=</c>, OID 2.5.4.10), or <see langword="null"/>.</summary>
+    /// <summary>
+    /// The certificate subject's organization (<c>O=</c>, OID 2.5.4.10), or <see langword="null"/>. Shared with
+    /// <see cref="NotepadPlusPlusOwnerVerifier"/>.
+    /// </summary>
     /// <param name="certificate">The signer certificate.</param>
     /// <returns>The organization.</returns>
-    private static string? Organization(X509Certificate2 certificate)
+    internal static string? Organization(X509Certificate2 certificate)
     {
         foreach (var rdn in certificate.SubjectName.EnumerateRelativeDistinguishedNames())
         {

@@ -16,9 +16,9 @@ using Windows.System;
 namespace BetterClipboard.App.Views;
 
 /// <summary>
-/// Getting around the panel: the tab a summon starts in (the one the user last chose), the arrow keys beyond plain Up and
-/// Down (Left and Right through the tabs in a circle, Up from the top row into the groups column), and the mouse selecting
-/// the row it is over.
+/// Getting around the panel: the tab a summon starts in (the one the user last chose), the row every load selects (the
+/// newest copy, below the pinned rows when they come first), the arrow keys beyond plain Up and Down (Left and Right through
+/// the tabs in a circle, Up from the top row into the groups column), and the mouse selecting the row it is over.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -28,6 +28,14 @@ namespace BetterClipboard.App.Views;
 /// its setting off, another app's tab not ready yet after a start) the summon starts in "All" without forgetting it, and
 /// the hidden panel goes back to it when it returns (<see cref="ReturnToRememberedTabWhileConcealed"/>). The groups shown
 /// and the search text are not remembered: a summon still starts over the whole history with an empty search box.
+/// </para>
+/// <para>
+/// <b>The armed card</b> (<see cref="ArmCard"/>, rule: <see cref="PanelNavigation.ArmedRow{T}"/>). Every load of the list —
+/// a summon, a search, another tab, another group — selects the newest copy, the card a plain Enter pastes. With pinned
+/// cards listed first (<see cref="AppSettings.PinnedOnTop"/>, the default) that is the first card below them, not the top
+/// pin: Win+V and Enter paste the copy just made, and Up from it goes to the lowest pin (user report, 2026-11-08). The list
+/// still stands at its top, pins in view, unless the pins push the armed card out of the top's view: then it stops just low
+/// enough to show that card whole (<see cref="ScrollToTopShowing"/>).
 /// </para>
 /// <para>
 /// <b>The arrow keys</b> (rules: <see cref="PanelNavigation"/>). The search box keeps the keyboard focus the whole time, so
@@ -186,14 +194,16 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Whether a tab shows right now, by the same conditions the <c>Update…Tab</c> methods apply to the tabs of other
-    /// apps; the six built-in tabs always show.
+    /// apps; the six built-in tabs always show. A tab the user hid (right-click › <i>Hide</i>, every tab but All) does
+    /// not, whatever its conditions: a summon then opens in All (ClipboardFlyout.TabArrangement.cs).
     /// </summary>
     /// <param name="filter">The tab's filter.</param>
     /// <returns><see langword="true"/> when the panel has that tab and it is visible (or about to be made visible).</returns>
-    private bool IsTabAvailable(ClipFilter filter) => filter switch
+    private bool IsTabAvailable(ClipFilter filter) => !IsTabHidden(filter) && filter switch
     {
         ClipFilter.ShareX => controller.ShareX.IsInstalled,
         ClipFilter.Snipping => controller.IsSnippingTabAvailable,
+        ClipFilter.NotepadPlusPlus => controller.IsNotepadPlusPlusTabAvailable,
         ClipFilter.Run => controller.IsRunTabAvailable,
         ClipFilter.PowerShell => controller.IsPowerShellTabAvailable,
         ClipFilter.Cmd => controller.IsCmdTabAvailable,
@@ -277,6 +287,7 @@ public sealed partial class ClipboardFlyout
     {
         UpdateShareXTab();
         UpdateSnippingTab();
+        UpdateNotepadPlusPlusTab();
         UpdateEverythingTab();
         UpdateRunTab();
         UpdateShellTabs();
@@ -312,6 +323,108 @@ public sealed partial class ClipboardFlyout
         {
             PrepareForNextSummon();
         }
+    }
+
+    /// <summary>
+    /// The row a load of the list selects (<see cref="PanelNavigation.ArmedRow{T}"/>): the newest copy — the first card
+    /// below the pinned cards while they are listed first, the top card otherwise.
+    /// </summary>
+    /// <remarks>
+    /// The setting (<see cref="AppSettings.PinnedOnTop"/>) is read now, and the rule also checks the cards themselves: a list
+    /// keeps the order of the load that made it, so right after the setting is turned on the shown list may still have its
+    /// pins among the copies — it then starts on its top card, like any list in recency order, never under a pin of the old
+    /// order. The next summon reloads such a list (the order is part of <c>FlyoutViewModel.IsListCurrent</c>).
+    /// </remarks>
+    /// <returns>The row's index; -1 for an empty list.</returns>
+    private int ArmedIndex() =>
+        PanelNavigation.ArmedRow(ViewModel.Items, static card => card.IsPinned, controller.Settings.Current.PinnedOnTop);
+
+    /// <summary>
+    /// Selects the armed card (<see cref="ArmedIndex"/>) after a load of the list, so a plain Enter pastes the newest copy, and
+    /// brings the list back to its top. Below pinned cards, the list stops at its top only while that shows the armed card
+    /// whole (<see cref="ScrollToTopShowing"/>).
+    /// </summary>
+    /// <remarks>
+    /// The top card (no pins listed first, or nothing but pins) goes through <see cref="SelectIndex"/>, exactly as every load
+    /// selected it before pins were skipped: <c>ScrollIntoView</c> of the top card is the list's top. Only a card below pins
+    /// takes the measured path.
+    /// </remarks>
+    /// <returns>
+    /// <see langword="true"/> when the armed card sits below pinned cards and this scrolled the list itself (to its top, or
+    /// just low enough); <see langword="false"/> when it selected the top card the old way, or nothing in an empty list — a
+    /// caller that wants the list at its very top (the hidden panel's reset) then scrolls there itself.
+    /// </returns>
+    private bool ArmCard()
+    {
+        int index = ArmedIndex();
+        if (index <= 0)
+        {
+            SelectIndex(0); // a no-op for an empty list
+            return false;
+        }
+
+        // Selected without SelectIndex's ScrollIntoView: brought into view from wherever the list stands, the card would end
+        // at the top edge of a list left scrolled down, with every pin above it — where Up goes next — out of sight.
+        ItemsList.SelectedIndex = index;
+        ScrollToTopShowing(index);
+        return true;
+    }
+
+    /// <summary>
+    /// Scrolls the list to its top or, when the top does not show the row at <paramref name="index"/> whole (many pins, tall
+    /// cards), just far enough down that it does: the row then sits on the list's lower edge, with as many rows above it as
+    /// fit. Without animation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The list is laid out here (<c>UpdateLayout</c>): a load has just patched its rows, and their places — and the
+    /// containers to measure — exist only after the next layout pass. The top is asked for first, so the rows laid out and
+    /// realized are the ones near it.
+    /// </para>
+    /// <para>
+    /// The row's lower edge is taken in the coordinates of the scroll viewer's content, which is what a vertical offset counts
+    /// in (0 is the top of the list), so the answer does not depend on where the list stood before.
+    /// </para>
+    /// <para>
+    /// <b>The offset is set again after the layout pass, also when it is the top.</b> The pass can scroll the list by
+    /// itself: when rows are inserted above the rows on screen, the list keeps those rows where they were. Seen 2026-11-08
+    /// with Ctrl+P on the armed copy: the reload moved the newly pinned card to the top, the pass answered the request for
+    /// the top with an offset of 32 (the list's whole scroll range), and the card, selected again by the history handler,
+    /// showed with its upper part cut off.
+    /// </para>
+    /// <para>
+    /// Fallbacks, both to <c>ListView.ScrollIntoView</c>, which brings the row in by itself: no scroll viewer or viewport yet
+    /// (the list's template is not applied: a summon before the warm-up), and a row that has no container after the layout.
+    /// The latter is every load before the panel's first time on screen — until then the cloaked window lays out none of
+    /// the list's rows (measured 2026-11-08: no container and no scroll range after <c>UpdateLayout</c>, in the warm-up and
+    /// in a refresh before the first summon; once it has been shown, a concealed list lays out normally) — and a row far
+    /// below the top, beyond the rows the panel keeps ready, which the top cannot show anyway. The summon positions the
+    /// list again once the panel is on screen (<see cref="ResetListPosition"/>), so the fallback only has to be harmless:
+    /// it asks for a row that the top shows whole, or that must be brought into view anyway.
+    /// </para>
+    /// </remarks>
+    /// <param name="index">The row that must be in view (the armed card); within the list.</param>
+    private void ScrollToTopShowing(int index)
+    {
+        var card = ViewModel.Items[index];
+        if (scrollViewer is not { } viewer || viewer.Content is not UIElement content)
+        {
+            ItemsList.ScrollIntoView(card);
+            return;
+        }
+
+        viewer.ChangeView(null, 0, null, disableAnimation: true);
+        ItemsList.UpdateLayout();
+        if (viewer.ViewportHeight <= 0 || ItemsList.ContainerFromIndex(index) is not FrameworkElement row)
+        {
+            ItemsList.ScrollIntoView(card);
+            return;
+        }
+
+        double bottom = row.TransformToVisual(content).TransformPoint(new global::Windows.Foundation.Point(0, row.ActualHeight)).Y;
+
+        // Unconditionally (see the remarks): the layout pass above may have moved the list away from the top by itself.
+        viewer.ChangeView(null, Math.Max(0, bottom - viewer.ViewportHeight), null, disableAnimation: true);
     }
 
     /// <summary>
@@ -414,7 +527,7 @@ public sealed partial class ClipboardFlyout
         // selection: left behind, its focus rectangle would sit on a tab that is no longer the selected one.
         bool focusInStrip = Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is SelectorBarItem;
 
-        // Reloads the list (which arms its first card), and glides the strip to the tab while the panel is open.
+        // Reloads the list (which arms its newest copy, ArmCard), and glides the strip to the tab while the panel is open.
         SelectFilter(filter);
         RememberTab(filter);
         if (focusInStrip)
@@ -578,7 +691,7 @@ public sealed partial class ClipboardFlyout
         if (move.LeavesGroups)
         {
             // The lower end of the column is the way back to the list. The group stays shown: the step that landed on it
-            // showed it, and its first card is the selected one.
+            // showed it, and its armed card (the newest copy, ArmCard) is the selected one.
             LeaveGroupsNavigation();
             return;
         }
@@ -690,7 +803,7 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Space or Enter during a walk that shows: the keys go back to the tabs and the rows, with the group they are on.
     /// Nothing that is shown changes: every step of such a walk showed the group it landed on, so the group under the
-    /// keys is the one shown already (on the clipboard icon: the whole history), and its first card is the selected one.
+    /// keys is the one shown already (on the clipboard icon: the whole history), and its armed card is the selected one.
     /// </summary>
     /// <remarks>
     /// The same end as Right, on the keys a hand rests on after choosing. Left and Right switch tabs at once afterwards,
@@ -780,7 +893,7 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// The keyboard or the panel itself set the selection (an arrow key, a reload that armed the first card, a summon):
+    /// The keyboard or the panel itself set the selection (an arrow key, a reload that armed its card, a summon):
     /// the mouse selects nothing until it has really left the spot it is on now (<see cref="PointerSelectionGate"/>), and
     /// the list's moves are watched for that moment.
     /// </summary>

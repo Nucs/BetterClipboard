@@ -32,6 +32,14 @@ namespace BetterClipboard.App;
 /// feed (<see cref="UpdateSource.FeedVariable"/>), so a variable set in the user's environment cannot redirect the
 /// installed app's updates.
 /// </para>
+/// <para>
+/// <b>Local builds</b> (since 2026-11-08). A copy installed by <c>install.ps1</c> also reads the dev-builds folder in its
+/// data directory (<see cref="AppPaths.DevBuildsDirectory"/>), where <c>tools/release/publish-dev.ps1</c> publishes
+/// development builds, and offers a newer one there before anything from GitHub (<see cref="UpdateCatalog"/>). A
+/// <see cref="LocalBuildsWatcher"/> tells the service when the folder changed, so the update button lights up as soon as
+/// a build is published. Nothing creates the folder but that script: on any other PC this costs one look at a folder that
+/// does not exist, and one watch on the data folder for its name.
+/// </para>
 /// </remarks>
 public sealed partial class AppController
 {
@@ -52,6 +60,12 @@ public sealed partial class AppController
 
     /// <summary>Where releases come from: GitHub, or a stand-in feed for an isolated test instance.</summary>
     private UpdateSource updateSource = UpdateSource.GitHub;
+
+    /// <summary>
+    /// Watches the dev-builds folder for a copy that reads it (one the installer installed); <see langword="null"/> for
+    /// every other copy and when the update system did not start. Disposed with the update service.
+    /// </summary>
+    private LocalBuildsWatcher? localBuildsWatcher;
 
     /// <summary>
     /// When <see cref="NoteUpdateReminderShown"/> last started a new week in this session, or <see langword="null"/>.
@@ -95,6 +109,10 @@ public sealed partial class AppController
             updateSource = ResolveUpdateSource();
             var appDirectory = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
             var kind = InstalledCopyLocator.Detect(appDirectory, paths.InstallerStatePath, isolatedInstance: paths.InstanceScope is not null);
+
+            // Only a copy that can install a build by itself reads the dev-builds folder: the others could only point at
+            // a download page, and a local build has none.
+            var localBuilds = kind == UpdateInstallKind.Installer ? paths.DevBuildsDirectory : null;
             var service = new UpdateService(
                 new UpdateClient(updateSource, Version),
                 new UpdateServiceOptions
@@ -111,6 +129,7 @@ public sealed partial class AppController
                     // may not be able to install anything). An isolated instance stays silent unless a test gave it a feed.
                     AllowAutomaticChecks = kind is not (UpdateInstallKind.Chocolatey or UpdateInstallKind.AllUsers) && (paths.InstanceScope is null || updateSource.IsOverride),
                     Installer = kind == UpdateInstallKind.Installer ? new ScriptUpdateInstaller() : null,
+                    LocalBuildsDirectory = localBuilds,
                 });
             service.Changed += (_, _) => ui.TryEnqueue(() => UpdateStatusChanged?.Invoke(this, EventArgs.Empty));
 
@@ -118,7 +137,15 @@ public sealed partial class AppController
             var last = service.TakeLastResult();
             updates = service;
             service.Start();
-            AppLog.Info($"Updates: this copy is {DescribeInstallKind(kind)}; automatic check {(service.Current.AutomaticChecks ? "on" : "off")}.");
+            StartLocalBuildsWatcher(localBuilds);
+            var snapshot = service.Current;
+
+            // What the start already offers (from the cached release list or the dev-builds folder): the next check may be
+            // a day away, and without this line a lit update button has no trace in the log until then.
+            var offered = snapshot.Offer is { } offer
+                ? $"; offered from what is known: BetterClipboard {offer.Release.Version} ({(snapshot.IsLocalOffer ? "a local build" : snapshot.OffersOlderVersion ? "the way back to the latest release" : "an update")})"
+                : string.Empty;
+            AppLog.Info($"Updates: this copy is {DescribeInstallKind(kind)}; automatic check {(snapshot.AutomaticChecks ? "on" : "off")}{(snapshot.IsDevBuild ? "; a development build (GitHub's latest release is always offered as the way back)" : string.Empty)}{offered}.");
             if (last is not null)
             {
                 ReportLastUpdate(last);
@@ -128,6 +155,34 @@ public sealed partial class AppController
         {
             // Optional like the integrations: the rest of the app keeps working without it.
             AppLog.Error("Starting the update system failed.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Watches the dev-builds folder and has the update service look into it whenever it changed. A failure only costs the
+    /// immediacy: the service still looks hourly, at every check and when the update dialog opens.
+    /// </summary>
+    /// <param name="directory">The dev-builds folder, or <see langword="null"/> for a copy that does not read it.</param>
+    private void StartLocalBuildsWatcher(string? directory)
+    {
+        if (directory is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var watcher = new LocalBuildsWatcher(directory);
+
+            // The watcher reports on a pool thread, where the service's folder read belongs; its change event then reaches
+            // the UI thread through the subscription above.
+            watcher.Changed += (_, _) => updates?.RefreshLocalBuilds();
+            watcher.Start();
+            localBuildsWatcher = watcher;
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
+        {
+            AppLog.Info($"The dev-builds folder is not watched ({ex.GetType().Name}); local builds are looked at hourly and when the update dialog opens.");
         }
     }
 
@@ -160,15 +215,15 @@ public sealed partial class AppController
         return UpdateSource.GitHub;
     }
 
-    /// <summary>Words an install kind for the log.</summary>
+    /// <summary>Words an install kind for the log, in English whatever the interface language: the log is the developer's.</summary>
     /// <param name="kind">The kind.</param>
     /// <returns>A short description.</returns>
     private static string DescribeInstallKind(UpdateInstallKind kind) => kind switch
     {
-        UpdateInstallKind.Installer => UiText.Translate("installed by the installer (it can update itself)"),
-        UpdateInstallKind.Chocolatey => UiText.Translate("a Chocolatey install (Chocolatey updates it)"),
-        UpdateInstallKind.AllUsers => UiText.Translate("installed for every user of this PC (an administrator updates it)"),
-        _ => UiText.Translate("not installed by the installer (updates come from the download page)"),
+        UpdateInstallKind.Installer => "installed by the installer (it can update itself)",
+        UpdateInstallKind.Chocolatey => "a Chocolatey install (Chocolatey updates it)",
+        UpdateInstallKind.AllUsers => "installed for every user of this PC (an administrator updates it)",
+        _ => "not installed by the installer (updates come from the download page)",
     };
 
     /// <summary>
@@ -181,12 +236,13 @@ public sealed partial class AppController
         if (result.Succeeded)
         {
             AppLog.Info($"The update to {Version} was installed.");
-            tray?.ShowNotification(UiText.Format($"BetterClipboard was updated to {Version}"), "The update button in the panel shows what is new.");
+            tray?.ShowNotification(UiText.Format($"BetterClipboard was updated to {Version}"), UiText.Translate("The update button in the panel shows what is new."));
             return;
         }
 
+        // The log keeps English; the notification below follows the interface language.
+        AppLog.Warn($"The update{(result.Version.Length > 0 ? $" to {result.Version}" : string.Empty)} was not installed: {result.Error}");
         var version = result.Version.Length > 0 ? UiText.Format($" to {result.Version}") : string.Empty;
-        AppLog.Warn($"The update{version} was not installed: {result.Error}");
         var reason = result.Error.Length > MaxNotificationText ? result.Error[..MaxNotificationText] + "…" : result.Error;
         tray?.ShowNotification(
             UiText.Format($"The update{version} was not installed"),
@@ -376,6 +432,9 @@ public sealed partial class AppController
     /// <returns>A task completing when nothing of the update service runs any more.</returns>
     private async Task DisposeUpdatesAsync()
     {
+        // The watcher first: a report arriving after this point must not reach a service that is going away.
+        localBuildsWatcher?.Dispose();
+        localBuildsWatcher = null;
         if (updates is { } service)
         {
             updates = null;
