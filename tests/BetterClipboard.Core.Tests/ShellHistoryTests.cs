@@ -177,27 +177,82 @@ public sealed class CmdHistoryTests
 }
 
 /// <summary>
-/// Tests for the shell tabs' rows (<see cref="ShellTab"/>): stored entries first, live commands after, shown once,
-/// never when forgotten, hidden until typed again.
+/// Tests for the shell tabs' rows (<see cref="ShellTab"/>): newest first by each row's newest activity (kept commands where
+/// their time or their place in PowerShell's history puts them, no longer all first), pins on top when asked, shown once,
+/// never when forgotten, hidden until typed again, the live half capped without losing a kept command.
 /// </summary>
 public sealed class ShellTabTests
 {
-    /// <summary>Stored entries come first (pinned on top when asked, then most recently used), then live commands in their order.</summary>
+    /// <summary>
+    /// With the Command Prompt's times, kept commands go where their last use falls among the live commands — until
+    /// 2026-11-11 every stored entry came first — and pinned ones lead only when asked.
+    /// </summary>
     [Fact]
-    public void Merge_StoredFirstThenLiveCommands()
+    public void Merge_NewestFirst_PinnedOnTopWhenAsked()
     {
         var older = Entry(1, "BC-TEST kept old", TestData.Now.AddHours(-2));
         var pinned = Entry(2, "BC-TEST kept pinned", TestData.Now.AddHours(-3), pinned: true);
         var newer = Entry(3, "BC-TEST kept new", TestData.Now);
-        var live = new[] { Command("BC-TEST live 1"), Command("BC-TEST live 2") };
+        var live = new[] { CmdCommand("BC-TEST live 1", TestData.Now.AddMinutes(-1)), CmdCommand("BC-TEST live 2", TestData.Now.AddHours(-2.5)) };
 
         var rows = ShellTab.Merge([older, pinned, newer], live, [], new HashSet<string>(), pinnedFirst: true);
-        Assert.Equal([2L, 3L, 1L], rows.Where(r => r.Entry is not null).Select(r => r.Entry!.Id));
-        Assert.Equal(["BC-TEST live 1", "BC-TEST live 2"], rows.Where(r => r.Command is not null).Select(r => r.Command!.Text));
-        Assert.Equal(5, rows.Count);
+        Assert.Equal(["#2", "#3", "BC-TEST live 1", "#1", "BC-TEST live 2"], Describe(rows));
+        Assert.Equal(TestData.Now.AddHours(-2), rows[3].Time);
 
-        var unpinnedOrder = ShellTab.Merge([older, pinned, newer], [], [], new HashSet<string>(), pinnedFirst: false);
-        Assert.Equal([3L, 1L, 2L], unpinnedOrder.Select(r => r.Entry!.Id));
+        var unpinnedOrder = ShellTab.Merge([older, pinned, newer], live, [], new HashSet<string>(), pinnedFirst: false);
+        Assert.Equal(["#3", "BC-TEST live 1", "#1", "BC-TEST live 2", "#2"], Describe(unpinnedOrder));
+    }
+
+    /// <summary>A kept Command Prompt command typed again since its last use shows once, at the newer time (the card shows it).</summary>
+    [Fact]
+    public void Merge_Cmd_AKeptCommandTypedAgain_TakesItsNewerTime()
+    {
+        var kept = Entry(1, "BC-TEST dir", TestData.Now.AddDays(-3));
+        var live = new[] { CmdCommand("BC-TEST cls", TestData.Now.AddMinutes(-1)), CmdCommand("BC-TEST dir", TestData.Now.AddMinutes(-2)), CmdCommand("BC-TEST ver", TestData.Now.AddHours(-1)) };
+
+        var rows = ShellTab.Merge([kept], live, [], new HashSet<string>(), pinnedFirst: true);
+        Assert.Equal(["BC-TEST cls", "#1", "BC-TEST ver"], Describe(rows));
+        Assert.Equal(TestData.Now.AddMinutes(-2), rows[1].Time);
+    }
+
+    /// <summary>
+    /// PowerShell's commands carry no times: they keep the file's order, a kept command shows where PowerShell's history has
+    /// it (with its last use as its time), and only one used after the newest command was typed leads.
+    /// </summary>
+    [Fact]
+    public void Merge_PowerShell_KeptCommandsAtTheirPlace()
+    {
+        var keptLongAgo = Entry(1, "BC-TEST git status", TestData.Now.AddDays(-7));
+        var usedJustNow = Entry(2, "BC-TEST dotnet test", TestData.Now);
+        var live = new[] { Command("BC-TEST cd src"), Command("BC-TEST git status"), Command("BC-TEST dotnet test"), Command("BC-TEST ls") };
+
+        var rows = ShellTab.Merge([keptLongAgo, usedJustNow], live, [], new HashSet<string>(), pinnedFirst: true, newestTypedUtc: TestData.Now.AddMinutes(-5));
+        Assert.Equal(["#2", "BC-TEST cd src", "#1", "BC-TEST ls"], Describe(rows));
+        Assert.Equal(TestData.Now.AddDays(-7), rows[2].Time);
+        Assert.Null(rows[1].Time);
+
+        // A command typed after the use: the kept card waits at its command's place in PowerShell's history.
+        var typedSince = ShellTab.Merge([keptLongAgo, usedJustNow], live, [], new HashSet<string>(), pinnedFirst: true, newestTypedUtc: TestData.Now.AddMinutes(1));
+        Assert.Equal(["BC-TEST cd src", "#1", "#2", "BC-TEST ls"], Describe(typedSince));
+    }
+
+    /// <summary>The live commands are capped; every stored entry stays, also one placed after the last command shown.</summary>
+    [Fact]
+    public void CapCommands_KeepsEveryStoredEntry()
+    {
+        var rows = new List<ShellTabRow>
+        {
+            new(null, Command("BC-TEST a")),
+            new(Entry(1, "BC-TEST kept", TestData.Now), null),
+            new(null, Command("BC-TEST b")),
+            new(null, Command("BC-TEST c")),
+            new(Entry(2, "BC-TEST old", TestData.Now.AddDays(-1)), null),
+        };
+
+        Assert.Equal(["BC-TEST a", "#1", "BC-TEST b", "#2"], Describe(ShellTab.CapCommands(rows, 2)));
+        Assert.Equal(["#1", "#2"], Describe(ShellTab.CapCommands(rows, 0)));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ShellTab.CapCommands(rows, -1));
+        Assert.Throws<ArgumentNullException>(() => ShellTab.CapCommands(null!, 1));
     }
 
     /// <summary>A live command that is also stored shows once (as the entry); a forgotten one never; a repeat once.</summary>
@@ -273,6 +328,18 @@ public sealed class ShellTabTests
     /// <param name="count">How often typed.</param>
     /// <returns>The command.</returns>
     private static ShellCommand Command(string text, int count = 1) => new(ShellKind.PowerShell, text, count, null, "PowerShell");
+
+    /// <summary>Builds a live Command Prompt command, which carries when it was last seen typed.</summary>
+    /// <param name="text">Its text.</param>
+    /// <param name="seen">When it was last seen.</param>
+    /// <returns>The command.</returns>
+    private static ShellCommand CmdCommand(string text, DateTimeOffset seen) => new(ShellKind.Cmd, text, 1, seen, "Command Prompt");
+
+    /// <summary>The rows as "#id" for stored entries and the text for live commands.</summary>
+    /// <param name="rows">The rows.</param>
+    /// <returns>The descriptions, in order.</returns>
+    private static List<string> Describe(IEnumerable<ShellTabRow> rows) =>
+        rows.Select(r => r.Entry is { } entry ? $"#{entry.Id}" : r.Command!.Text).ToList();
 }
 
 /// <summary>Tests for telling a person's cmd windows from the ones tools start (<see cref="InteractiveConsoles"/>).</summary>

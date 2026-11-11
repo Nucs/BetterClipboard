@@ -70,6 +70,28 @@ public sealed class PowerShellHistorySourceTests : IDisposable
         Assert.Equal(["BC-TEST second", "BC-TEST first"], source.ReadCommands().Select(c => c.Text));
     }
 
+    /// <summary>
+    /// When the newest command was typed (what the Pwsh tab weighs a command used from the panel against): the last write
+    /// of the file it came from — the most recently written file that holds a command, an empty newer one says nothing —
+    /// and nothing before the first read or without a command.
+    /// </summary>
+    [Fact]
+    public void ReadCommands_KnowsWhenTheNewestCommandWasTyped()
+    {
+        var typed = new DateTime(2026, 11, 10, 9, 30, 0, DateTimeKind.Utc);
+        var vscode = Write("Visual Studio Code Host_history.txt", "BC-TEST vscode\r\n", typed);
+        Write("ConsoleHost_history.txt", string.Empty, typed.AddHours(1));
+        var source = new PowerShellHistorySource(folder);
+        Assert.Null(source.LastNewestCommandUtc);
+
+        Assert.Equal(["BC-TEST vscode"], source.ReadCommands().Select(c => c.Text));
+        Assert.Equal(new DateTimeOffset(typed), source.LastNewestCommandUtc);
+
+        File.Delete(vscode);
+        Assert.Empty(source.ReadCommands());
+        Assert.Null(source.LastNewestCommandUtc);
+    }
+
     /// <summary>No folder, or a folder without history files: no tab, no commands, no exception.</summary>
     [Fact]
     public void Absent_HasNoHistory()

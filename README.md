@@ -595,9 +595,10 @@ if Windows remembers none, with the first one you run.
   programs start (build tools, AI agents) are skipped. A window closed within 30 seconds of its last read loses
   the commands typed since.
 
-Neither tab fills your history: a command becomes a history item only when you paste, copy, pin or group it.
-`Del` hides a command until you type it again, and *Forget forever* keeps one out for good. PowerShell's file and
-the Command Prompt windows are never changed.
+Neither tab fills your history: a command becomes a history item only when you paste, copy, pin or group it. It
+still shows once, in its place among the commands: on top only while you used it after the newest one. `Del` hides
+a command until you type it again, and *Forget forever* keeps one out for good. PowerShell's file and the Command
+Prompt windows are never changed.
 
 ### Everything
 
@@ -625,7 +626,8 @@ cleanup removes old prompts from its history.
   moment the agent writes it; BetterClipboard reads only the new bytes.
 - **The Claude and Codex tabs** list one card per prompt, newest first, with its project folder, when you last
   sent it and how often. `Enter` pastes it, `Ctrl+P` keeps it in your clipboard history, and `Del` deletes it
-  until you send it again.
+  until you send it again. A prompt you pasted or pinned shows once, at the later of when you used it and when you
+  last sent it.
 - **Kept apart:** prompts never appear under *All*, and they never count against your history's limits.
 - **Only yours:** Codex's subagents and `codex exec` runs are left out. Images are counted, not kept.
 - `bclip prompts` lists and searches them from a terminal. *Delete stored…* on the card in Settings deletes what

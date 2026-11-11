@@ -1,20 +1,27 @@
 using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Prompts;
 using BetterClipboard.Core.Storage;
 
 namespace BetterClipboard.App.ViewModels;
 
 /// <summary>
-/// The prompt tabs' half of the flyout state (Claude, Codex; CLAUDE.md §2.21): loading a tab's rows — prompts kept from it
-/// as history entries first, then the archive, one card per text, paged — and its empty state and footer.
+/// The prompt tabs' half of the flyout state (Claude, Codex; CLAUDE.md §2.21): loading a tab's rows — the prompts kept from
+/// it as history entries and the archive, one card per text, newest first by each one's newest activity
+/// (<see cref="MergedTabOrder{TItem}"/>), paged — and its empty state and footer.
 /// </summary>
+/// <remarks>
+/// Until 2026-11-11 the kept prompts were listed above the whole archive, whatever their age. Pasting a prompt from the tab
+/// keeps it, so the first prompt ever pasted from there stayed the tab's first row for good, above every prompt sent since
+/// (reported: "The first row in Claude tab is always old one").
+/// </remarks>
 public sealed partial class FlyoutViewModel
 {
     /// <summary>The prompt tabs' key hints: Enter pastes the prompt; Ctrl+P keeps it pinned; Delete removes it from the archive.</summary>
     public const string PromptKeyHint = "↵ paste · Ctrl+P pin · Del delete";
 
-    /// <summary>Most kept prompts (history entries) a prompt tab loads above the archive.</summary>
+    /// <summary>Most kept prompts (history entries) a prompt tab loads to merge with the archive.</summary>
     public const int MaxKeptPrompts = 200;
 
     /// <summary>Archive rows loaded so far in the current prompt tab (the next page's offset).</summary>
@@ -23,8 +30,14 @@ public sealed partial class FlyoutViewModel
     /// <summary>The next synthetic (negative) id for a prompt card; continues across pages so ids stay unique.</summary>
     private long nextPromptCardId = -1;
 
-    /// <summary>The kept prompts' text hashes, excluded from the archive pages so one text is one card.</summary>
+    /// <summary>The kept prompts' text hashes: a Delete on such a card deletes its archived twin too (<see cref="IsKeptPrompt"/>).</summary>
     private IReadOnlyCollection<string> keptPromptHashes = [];
+
+    /// <summary>
+    /// The current prompt tab's merge of kept prompts and archive pages (one per load, <see langword="null"/> outside a prompt
+    /// tab): it holds the kept prompts whose place lies on a page not loaded yet, and the texts already shown.
+    /// </summary>
+    private MergedTabOrder<PromptSummary>? promptOrder;
 
     /// <summary>The archive's counts at the last load of a prompt tab, for its footer and empty state.</summary>
     private PromptStats lastPromptStats = PromptStats.Empty;
@@ -66,23 +79,27 @@ public sealed partial class FlyoutViewModel
     {
         var agent = CurrentAgent;
         var history = controller.History;
+        bool pinnedFirst = controller.Settings.Current.PinnedOnTop;
         var stored = await history.QueryAsync(new ClipQuery
         {
             SearchText = SearchText,
             SearchOptions = CurrentSearchOptions,
             Filter = Filter,
             Limit = MaxKeptPrompts,
-            PinnedFirst = controller.Settings.Current.PinnedOnTop,
+
+            // With pins first, every pin is among the ones loaded; without, the most recently used ones are.
+            PinnedFirst = pinnedFirst,
             HiddenRows = HiddenRows,
         }, cancellationToken);
-        var kept = stored.Select(e => e.ContentHash).ToHashSet(StringComparer.Ordinal);
+
+        // The archive is not told to leave the kept texts out: a kept text's archive row is where the merge learns that it
+        // was sent again later, and places the kept card there (one card per text either way).
         var rows = await history.QueryPromptsAsync(new PromptQuery
         {
             Agent = agent,
             SearchText = SearchText,
             SearchOptions = CurrentSearchOptions,
             Limit = PageSize,
-            ExcludeTextHashes = kept,
         }, includeText: false, cancellationToken);
         var stats = await history.GetPromptStatsAsync(agent);
         if (cancellationToken.IsCancellationRequested)
@@ -90,38 +107,40 @@ public sealed partial class FlyoutViewModel
             return;
         }
 
-        // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
-        var cards = new List<ClipItemViewModel>(stored.Count + rows.Count);
-        foreach (var entry in stored)
-        {
-            cards.Add(CreateItem(entry));
-        }
-
+        var order = new MergedTabOrder<PromptSummary>(stored, pinnedFirst, p => p.TextHash, p => p.LastSentUtc);
         nextPromptCardId = -1;
-        foreach (var row in rows)
-        {
-            cards.Add(ClipItemViewModel.ForPrompt(row, nextPromptCardId--));
-        }
+        bool last = rows.Count < PageSize;
 
-        ReplaceItems(cards);
-        keptPromptHashes = kept;
+        // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
+        ReplaceItems(PromptCards(order.Next(rows, last)));
+        promptOrder = order;
+        keptPromptHashes = stored.Select(e => e.ContentHash).ToHashSet(StringComparer.Ordinal);
         lastPromptStats = stats;
         promptOffset = rows.Count;
         loaded = Items.Count;
-        hasMore = rows.Count == PageSize;
+        hasMore = !last;
         HasPatternError = false;
         UpdateEmptyState();
         Reloaded?.Invoke(this, EventArgs.Empty);
         await UpdateStatusAsync();
     }
 
-    /// <summary>Appends the next page of a prompt tab's archive rows (scrolled near the end).</summary>
+    /// <summary>
+    /// Appends the next page of a prompt tab's archive rows (scrolled near the end), with the kept prompts whose place lies
+    /// among them — or, at the archive's end, every kept prompt still waiting.
+    /// </summary>
     /// <param name="cancellationToken">The current load's token (a newer load supersedes it).</param>
     /// <returns>A task completing when appended.</returns>
     /// <exception cref="OperationCanceledException">Superseded by a newer load.</exception>
     /// <exception cref="SearchTooSlowException">The search's regular expression ran out of time on a prompt.</exception>
     private async Task LoadMorePromptsAsync(CancellationToken cancellationToken)
     {
+        if (promptOrder is not { } order)
+        {
+            hasMore = false;
+            return;
+        }
+
         var rows = await controller.History.QueryPromptsAsync(new PromptQuery
         {
             Agent = CurrentAgent,
@@ -129,23 +148,41 @@ public sealed partial class FlyoutViewModel
             SearchOptions = CurrentSearchOptions,
             Offset = promptOffset,
             Limit = PageSize,
-            ExcludeTextHashes = keptPromptHashes,
         }, includeText: false, cancellationToken);
-        if (cancellationToken.IsCancellationRequested)
+
+        // A newer load replaced the order meanwhile: its own pages follow from its own first page.
+        if (cancellationToken.IsCancellationRequested || !ReferenceEquals(order, promptOrder))
         {
             return;
         }
 
-        // A prompt sent while scrolling shifts the offsets by one: skip a text already shown.
-        var shown = Items.Where(i => i.Prompt is not null).Select(i => i.Prompt!.TextHash).ToHashSet(StringComparer.Ordinal);
-        foreach (var row in rows.Where(r => shown.Add(r.TextHash)))
+        // A prompt sent while scrolling shifts the offsets by one: the order never shows a text twice.
+        bool last = rows.Count < PageSize;
+        foreach (var card in PromptCards(order.Next(rows, last)))
         {
-            Items.Add(ClipItemViewModel.ForPrompt(row, nextPromptCardId--));
+            Items.Add(card);
         }
 
         promptOffset += rows.Count;
         loaded = Items.Count;
-        hasMore = rows.Count == PageSize;
+        hasMore = !last;
+    }
+
+    /// <summary>
+    /// The cards of merged prompt-tab rows: a kept prompt's history entry (showing its newer send time when it was sent again
+    /// since it was kept), or an archived prompt (a fresh negative id each).
+    /// </summary>
+    /// <param name="rows">The rows, in display order.</param>
+    /// <returns>The cards, in the same order.</returns>
+    private List<ClipItemViewModel> PromptCards(IReadOnlyList<MergedTabRow<PromptSummary>> rows)
+    {
+        var cards = new List<ClipItemViewModel>(rows.Count);
+        foreach (var row in rows)
+        {
+            cards.Add(row.Entry is { } entry ? CreateItem(entry, row.Time) : ClipItemViewModel.ForPrompt(row.Item!, nextPromptCardId--));
+        }
+
+        return cards;
     }
 
     /// <summary>The empty prompt tab's wording: no matches, a first import still running, or how the tab fills.</summary>
@@ -197,7 +234,8 @@ public sealed partial class FlyoutViewModel
                 $"Importing… {progress.Done:N0} of {progress.Total:N0} files · {lastPromptStats.Distinct:N0} prompts so far");
         }
 
-        int keptShown = Items.Count(i => i.Prompt is null);
+        // The kept prompts shown, and the ones whose place lies on a page not loaded yet (older than every prompt shown).
+        int keptShown = Items.Count(i => i.Prompt is null) + (promptOrder?.WaitingCount ?? 0);
         var kept = keptShown > 0 ? UiText.Format($" · {keptShown:N0} kept") : string.Empty;
         if (!string.IsNullOrWhiteSpace(SearchText))
         {

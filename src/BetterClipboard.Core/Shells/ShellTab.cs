@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 
 namespace BetterClipboard.Core.Shells;
 
@@ -17,10 +18,16 @@ namespace BetterClipboard.Core.Shells;
 /// copies, pins or groups it.
 /// </para>
 /// <para>
-/// <b>Merging.</b> Stored entries first (the commands the user actually used or kept), pinned ones on top when the
-/// "pinned on top" setting asks for it, then most recently used; then the live commands in the source's order
-/// (newest first). A live command that is also stored (same content hash) shows once, as the entry, which carries
-/// pins and groups. Forgotten commands never show; hidden ones neither.
+/// <b>Merging</b> (<see cref="MergedTabOrder{TItem}"/>): newest first by each row's newest activity — a stored entry's
+/// last use, a live command's last time seen typed — with pinned entries on top when the "pinned on top" setting asks for
+/// it. A live command that is also stored (same content hash) shows once, as the entry, which carries pins and groups, at
+/// the newer of the two times. PowerShell's commands carry no times: they keep the file's order, a kept command shows
+/// where PowerShell's history has it, and only a command used after the newest one PowerShell saved
+/// (<c>newestTypedUtc</c>) goes above them all. Forgotten commands never show; hidden ones neither.
+/// </para>
+/// <para>
+/// Until 2026-11-11 every stored entry came first, whatever its age: a command pasted from the tab once stayed its first
+/// row for good (the same fault as the prompt tabs', CLAUDE.md §2.21).
 /// </para>
 /// <para>
 /// <b>Hiding.</b> Delete on a live command cannot delete anything from the shell (BetterClipboard only reads), so it
@@ -48,47 +55,70 @@ public static class ShellTab
     /// Merges stored entries and live commands into a tab's rows (see class remarks).
     /// </summary>
     /// <param name="stored">The tab's stored entries, any order.</param>
-    /// <param name="commands">Live commands, newest first; a text listed twice shows once.</param>
+    /// <param name="commands">
+    /// Live commands, newest first; a text listed twice shows once (its first listing decides whether it is hidden).
+    /// </param>
     /// <param name="hidden">Hidden commands (<see cref="ParseHidden"/>).</param>
     /// <param name="forgottenFingerprints">The commands' <see cref="ShellCommand.Fingerprint"/>s that are on the "Forget forever" list.</param>
     /// <param name="pinnedFirst">Put pinned entries on top (the "pinned on top" setting).</param>
-    /// <returns>The rows in display order.</returns>
+    /// <param name="newestTypedUtc">
+    /// For a shell whose commands carry no times (PowerShell): when its newest command was typed — the history file's last
+    /// write. A stored entry used at or after it goes above every command. <see langword="null"/> for the Command Prompt,
+    /// whose commands carry their own times.
+    /// </param>
+    /// <returns>The rows in display order, each with the time it sorts by (<see cref="ShellTabRow.Time"/>).</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     public static IReadOnlyList<ShellTabRow> Merge(
         IReadOnlyList<ClipEntry> stored,
         IReadOnlyList<ShellCommand> commands,
         IReadOnlyList<HiddenCommand> hidden,
         IReadOnlySet<string> forgottenFingerprints,
-        bool pinnedFirst)
+        bool pinnedFirst,
+        DateTimeOffset? newestTypedUtc = null)
     {
         ArgumentNullException.ThrowIfNull(stored);
         ArgumentNullException.ThrowIfNull(commands);
         ArgumentNullException.ThrowIfNull(hidden);
         ArgumentNullException.ThrowIfNull(forgottenFingerprints);
 
-        var rows = new List<ShellTabRow>(stored.Count + commands.Count);
-        rows.AddRange(stored
-            .OrderByDescending(e => pinnedFirst && e.IsPinned)
-            .ThenByDescending(e => e.LastUsedUtc)
-            .Select(e => new ShellTabRow(e, null)));
-
-        var storedHashes = stored.Select(e => e.ContentHash).ToHashSet(StringComparer.Ordinal);
+        // Filtered before the merge: a forgotten or hidden command never shows, and so never places its stored twin either
+        // (that entry then goes by its own last use). A repeat is dropped before the hide is checked, as before.
         var hiddenCounts = ToLookup(hidden);
         var listed = new HashSet<string>(StringComparer.Ordinal);
+        var shown = new List<ShellCommand>(commands.Count);
         foreach (var command in commands)
         {
             if (!listed.Add(command.ContentHash)
-                || storedHashes.Contains(command.ContentHash)
                 || forgottenFingerprints.Contains(command.Fingerprint)
                 || IsHidden(command, hiddenCounts))
             {
                 continue;
             }
 
-            rows.Add(new ShellTabRow(null, command));
+            shown.Add(command);
         }
 
-        return rows;
+        var order = new MergedTabOrder<ShellCommand>(stored, pinnedFirst, c => c.ContentHash, c => c.LastSeen);
+        return order.Next(shown, last: true, newestTypedUtc)
+            .Select(r => new ShellTabRow(r.Entry, r.Item, r.Time))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Caps the live commands of merged rows (<see cref="Merge"/>) at <paramref name="maxCommands"/>, keeping every stored
+    /// entry wherever it is — a kept command whose place lies past the cap follows the last command shown.
+    /// </summary>
+    /// <param name="rows">The merged rows, in display order.</param>
+    /// <param name="maxCommands">Most live commands to keep (the first ones).</param>
+    /// <returns>The rows kept, in the same order.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="rows"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxCommands"/> is negative.</exception>
+    public static IReadOnlyList<ShellTabRow> CapCommands(IReadOnlyList<ShellTabRow> rows, int maxCommands)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        ArgumentOutOfRangeException.ThrowIfNegative(maxCommands);
+        int commands = 0;
+        return rows.Where(r => r.Entry is not null || ++commands <= maxCommands).ToList();
     }
 
     /// <summary>Whether a command is hidden: hidden at its current count or a higher one (not typed since).</summary>
@@ -187,7 +217,12 @@ public static class ShellTab
 /// <summary>One row of a shell tab: a stored entry or a live command — exactly one of them.</summary>
 /// <param name="Entry">A history entry kept from the tab, or <see langword="null"/> for a live command.</param>
 /// <param name="Command">A live command, or <see langword="null"/> for a stored entry.</param>
-public sealed record ShellTabRow(ClipEntry? Entry, ShellCommand? Command);
+/// <param name="Time">
+/// The time the row sorts by (<see cref="MergedTabRow{TItem}.Time"/>): an entry's last use, or its command's last time
+/// seen typed when that is newer — the card shows it; a live command's own time; <see langword="null"/> for a PowerShell
+/// command (its file keeps no times).
+/// </param>
+public sealed record ShellTabRow(ClipEntry? Entry, ShellCommand? Command, DateTimeOffset? Time = null);
 
 /// <summary>A hidden command: its content hash and the count it had when hidden.</summary>
 /// <param name="ContentHash">The command's <see cref="ShellCommand.ContentHash"/>.</param>

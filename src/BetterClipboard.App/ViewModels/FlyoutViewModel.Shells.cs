@@ -60,12 +60,13 @@ public sealed partial class FlyoutViewModel
             return;
         }
 
-        // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
+        // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems). A kept
+        // command typed again since shows that newer time, the one its place in the list follows.
         var cards = new List<ClipItemViewModel>(rows.Count);
         long syntheticId = -1;
         foreach (var row in rows)
         {
-            cards.Add(row.Entry is { } stored ? CreateItem(stored) : ClipItemViewModel.ForCommand(row.Command!, syntheticId--));
+            cards.Add(row.Entry is { } stored ? CreateItem(stored, row.Time) : ClipItemViewModel.ForCommand(row.Command!, syntheticId--));
         }
 
         ReplaceItems(cards);
@@ -79,8 +80,8 @@ public sealed partial class FlyoutViewModel
 
     /// <summary>
     /// Loads a shell tab's rows: the stored entries kept from it and the shell's live commands, both narrowed by the
-    /// search box (same toggles as the history), merged without forgotten or hidden commands, the live ones capped at
-    /// <see cref="ShellTab.MaxCommands"/>.
+    /// search box (same toggles as the history), merged newest first without forgotten or hidden commands
+    /// (<see cref="ShellTab.Merge"/>), the live ones capped at <see cref="ShellTab.MaxCommands"/>.
     /// </summary>
     /// <param name="cancellationToken">Cancels a superseded load.</param>
     /// <returns>The rows in display order.</returns>
@@ -103,6 +104,10 @@ public sealed partial class FlyoutViewModel
 
         var all = await controller.GetShellCommandsAsync(shell, cancellationToken);
 
+        // PowerShell's commands carry no times: when its newest one was typed is all the merge can weigh a command used
+        // from the panel against (read right after the read that set it). The Command Prompt's carry their own.
+        var newestTyped = shell == ShellKind.PowerShell ? controller.PowerShellNewestCommandUtc : null;
+
         // Off the UI thread: a backtracking pattern may take up to its timeout per command.
         var search = SearchText;
         var options = CurrentSearchOptions;
@@ -118,11 +123,10 @@ public sealed partial class FlyoutViewModel
         var forgotten = await history.FindForgottenAsync(candidates.Select(c => c.Fingerprint).ToList());
         var stored = await storedTask;
         lastShellCommands = matching;
-        var rows = ShellTab.Merge(stored, candidates, hidden, forgotten, controller.Settings.Current.PinnedOnTop);
+        var rows = ShellTab.Merge(stored, candidates, hidden, forgotten, controller.Settings.Current.PinnedOnTop, newestTyped);
 
-        // The live half is capped; stored rows come first and always stay.
-        int storedRows = rows.Count(r => r.Entry is not null);
-        return rows.Take(storedRows + ShellTab.MaxCommands).ToList();
+        // The live half is capped; every stored row stays (one whose place lies past the cap follows the last command).
+        return ShellTab.CapCommands(rows, ShellTab.MaxCommands);
     }
 
     /// <summary>The empty shell tab's wording: no matches, or how the tab fills (and why it may not).</summary>

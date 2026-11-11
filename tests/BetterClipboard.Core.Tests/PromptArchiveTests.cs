@@ -1,6 +1,7 @@
 using System.Text;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Prompts;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Storage;
@@ -772,6 +773,39 @@ public sealed class PromptStoreTests : IDisposable
         Classified(TestData.Text("BC-TEST other"));
         Assert.Equal(["BC-TEST copied by claude", "BC-TEST kept claude"], store.Query(new ClipQuery { Filter = ClipFilter.ClaudeCode }).Select(e => e.Preview).Order());
         Assert.Equal(["BC-TEST kept codex"], store.Query(new ClipQuery { Filter = ClipFilter.Codex }).Select(e => e.Preview));
+    }
+
+    /// <summary>
+    /// The Claude tab's order on real data (reported 2026-11-11: "The first row in Claude tab is always old one"): a prompt
+    /// kept from the tab is a history entry whose content hash is its archived text's hash, so the merge shows it once —
+    /// where its newest activity puts it (a kept "continue" sent again five minutes ago, there), no longer above every
+    /// prompt sent since it was kept.
+    /// </summary>
+    [Fact]
+    public void KeptPrompts_JoinTheArchiveByTime()
+    {
+        var at = TestData.Now;
+        Ingest(
+            Claude("BC-TEST old prompt", at.AddDays(-3), key: "a"),
+            Claude("BC-TEST continue", at.AddDays(-2), key: "b"),
+            Claude("BC-TEST yesterday", at.AddDays(-1), key: "c"),
+            Claude("BC-TEST continue", at.AddMinutes(-5), key: "d"),
+            Claude("BC-TEST just now", at.AddMinutes(-1), key: "e"));
+
+        // Kept from the tab three and two days ago: a history entry each, origin and source as a paste from the tab stores them.
+        var source = PromptAgents.SourceOf(PromptAgent.ClaudeCode);
+        Classified(TestData.Text("BC-TEST old prompt", at.AddDays(-3), ClipOrigin.ClaudeCode, source: source));
+        Classified(TestData.Text("BC-TEST continue", at.AddDays(-2), ClipOrigin.ClaudeCode, source: source));
+
+        var stored = store.Query(new ClipQuery { Filter = ClipFilter.ClaudeCode, PinnedFirst = true }, TestContext.Current.CancellationToken);
+        var page = Query(new PromptQuery { Agent = PromptAgent.ClaudeCode });
+        var rows = new MergedTabOrder<PromptSummary>(stored, pinnedFirst: true, p => p.TextHash, p => p.LastSentUtc).Next(page, last: true);
+
+        Assert.Equal(
+            ["BC-TEST just now", "kept: BC-TEST continue", "BC-TEST yesterday", "kept: BC-TEST old prompt"],
+            rows.Select(r => r.Entry is { } entry ? "kept: " + entry.Preview : r.Item!.Preview));
+        Assert.Equal(at.AddMinutes(-5), rows[1].Time);
+        Assert.Equal(at.AddDays(-3), rows[3].Time);
     }
 
     /// <summary>Stores a capture like the service would.</summary>
