@@ -241,7 +241,10 @@ with another scale; a cloaked tool window, never seen, so it runs on a PC in use
 scales, §2.38),
 [`dpi_move_lab`](tools/probes/dpi_move_lab) (a WinUI 3 app: whether a window set up like the panel keeps the bounds
 `AppWindow.MoveAndResize` gave it on such a monitor, and with `--fix` whether asking again holds; cloaked and never
-activated, so it runs on a PC in use, §2.38).
+activated, so it runs on a PC in use, §2.38),
+[`probe_memmap.cs`](tools/probes/probe_memmap.cs) (what a running BetterClipboard's memory is: committed, charged and resident per
+kind — native heap, .NET heap, each DLL, GPU memory, stacks; read-only, with no window, no injected thread and no dump,
+so it can map the owner's own app, §2.45).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -4760,7 +4763,8 @@ HTML questions (pages in session f1d22507's scratchpad, `q/`); the owner chose:
 Windows 11 desktop ("bc-mem": no GPU, a seeded BC-TEST store of 3,300 entries and 15,000 prompts), and this PC's real GPU
 with isolated instances only.
 - **The installed 0.2.10 on the owner's PC** after two days: 267 MB private, ~9 MB of it live .NET objects. The rest was
-  native: the process heap (~93 MB: WinUI's XAML objects, text layouts, decoded images) and the graphics driver (~90 MB).
+  native: the process heap (~93 MB: WinUI's XAML objects, text layouts, decoded images) and private allocations outside
+  any heap (~93 MB, 22 MB of it GPU write-combined memory); "What is left" below has the measured split.
 - **Settings in 0.2.10** (VM):
   - the first open added 103 MB of private memory (76 → 179 MB), and every later open and close added another 17 to
     22 MB for good (4 more cycles: 172 → 249 MB);
@@ -4850,6 +4854,35 @@ with isolated instances only.
   0.2.10 grew 166 → 262 MB in five cycles. The fix gave back 51 MB three seconds after the first close and levelled off at
   190 to 193 MB.
 
+**What is left, measured 2026-11-12** with [`probe_memmap.cs`](tools/probes/probe_memmap.cs) on this PC (NVIDIA GPU). "Charged"
+is what Private Bytes and Task Manager's "Commit size" count; "resident" is the private working set, Task Manager's
+"Memory" column. The new build ran isolated on the seeded BC-TEST store, idle after its reclaim; 0.2.10 is the owner's
+installed copy after 2.5 days of use.
+
+| Kind (charged / resident) | New build, idle | 0.2.10, after 2.5 days |
+|---|---|---|
+| Native heap: WinUI's XAML trees, text layouts, DirectWrite, COM, SQLite caches | 34.8 / 7.1 MB | 97.1 / 51.3 MB |
+| NVIDIA driver DLLs' writable data (`nvwgf2umx.dll` 25.0, `nvppex.dll` 3.7, `nvgpucomp64.dll` 3.3) | 32.0 / 0.1 MB | 32.0 / 0.1 MB |
+| Write-combined memory the GPU reads (the driver's upload heaps) | 20.1 / 0.0 MB | 21.7 / 2.0 MB |
+| Other private allocations, owner not visible from outside | 6.5 / 1.1 MB | 72.7 / 4.9 MB |
+| Other DLLs' writable data | 4.2 / 1.1 MB | 5.3 / 2.1 MB |
+| .NET GC heap | 4.2 / 1.4 MB | 11.9 / 10.6 MB |
+| Thread stacks (66 and 75 threads) | 1.7 / 0.1 MB | 2.0 / 0.3 MB |
+| **Private Bytes / "Memory"** | **110 / 12 MB** (108 / 6.8 right after the reclaim) | **255 / 77 MB** |
+
+- **The rest of the address space is not charged:** DLL code (445–474 MB committed, shared with other processes), mapped
+  files (fonts, the font cache, locale data) and pagefile-backed sections (245–257 MB, mostly the CFG bitmap).
+- **0.2.10's "other private allocations"** are two 32 MB reservations (27.3 and 11.2 MB charged) and five 5.2 MB
+  blocks: no heap header, no visible owner, almost nothing resident. In the new build the reservations hold 1.6 MB and the
+  blocks are gone; most likely graphics resources of the Settings windows 0.2.10 kept alive **[inferred]**.
+- **The new build's heap is the segment heap** (`app.manifest`). Its page segments carry encoded signatures; the probe
+  groups them by the (signature ^ address) that every segment of one context shares, and a check of three 16 MB
+  reservations (29 MB) confirmed them as one context's segments.
+- **What is left is mostly the price of two things.** The instant summon keeps the panel's window and its XAML tree
+  alive, cloaked (§2.27): most of the 35 MB heap. Rendering with the GPU loads the NVIDIA driver: 52 MB charged and
+  almost nothing resident. The GPU's own memory ("Dedicated GPU memory" in Task Manager: 84 MB for 0.2.10) is video
+  memory, not RAM.
+
 **Found on the way: a timing test that followed the test assembly's folder.**
 - `CliPipeServerTests.ClientHangUp_CancelsHandler` hung up on a fixed 300-ms timer. When the request had not reached the
   handler by then, the handler never ran and the test timed out.
@@ -4862,7 +4895,8 @@ with isolated instances only.
 **Limits / not built:**
 - The first open of Settings leaves one-time caches behind (+50 to 60 MB private: XAML templates and resources, and five
   window-size surfaces that later opens reuse). They are not given back.
-- The graphics driver's share (~90 MB on a real GPU) is outside the app's reach.
+- The NVIDIA driver's share (52 MB of the idle 110 on this PC: its DLLs' writable data and write-combined GPU memory,
+  charged but hardly resident) is outside the app's reach while it renders with the GPU.
 - 3 GDI handles per Settings open remain (most likely the window icon).
 - The README's Settings photo (§3.4) still shows the old title bar.
 - The trim makes the first summon after a pause slower by about 13 ms (median, VM); more once Windows has reused the RAM.
@@ -6290,6 +6324,7 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **What the memory is now, on this PC** (2026-11-12, §2.45; the owner: "What is consuming memory now"). `tools/probes/probe_memmap.cs` (new: read-only, no window, no injected thread, no dump) on the owner's installed 0.2.10 (2.5 days up: Private Bytes 255 MB, "Memory" 77 MB; native heap 97 MB charged / 51 MB resident, other private allocations 73 / 5 MB, NVIDIA DLL data 32 MB, write-combined 22 MB, .NET 12 MB) and on an isolated `0.2.11-dev.4.gc5dc861` with a seeded BC-TEST store (3,300 entries, 15,000 prompts), idle 60 s after its reclaim ("gave back 49 MB of private memory (158 → 109 MB)"): Private Bytes 108–110 MB, "Memory" 6.8–12 MB; native heap 34.8 / 7.1 MB, NVIDIA DLL data 32.0 MB, write-combined 20.1 MB, other private 6.5 MB, other DLL data 4.2 MB, .NET 4.2 MB, stacks 1.7 MB. The segment-heap grouping was checked separately: three 16 MB reservations share one context's (signature ^ address), the linked fourth belongs to the other context. The isolated instance's log: 0 WRN/ERR; the owner's app was only read | `probe_memmap.cs`, a signature check (session f1d22507's scratchpad, `memmap/sigcheck.cs`), GPU Process Memory counters | ✅ |
 | **Memory, the final build, live** (2026-11-12, §2.45; the owner: "Optimize memory end to end"). A claude-desktops Windows 11 desktop ("bc-mem", Tiny11 25H2, no GPU, golden 20261025-1036; deleted afterwards), a self-contained Release publish of the change (`0.2.11-dev.mem+e0b40be`, before the log's one-decimal wording), isolated instances on copies of a seeded BC-TEST store (3,300 entries, 17 pinned, 30 in groups, 15,000 prompts). **8 Settings opens and closes:** private 87 MB at the start, 179 MB open, 137 MB after the first close, then 154 / 154 / 156 / 157 / 159 / 160 / 160 MB; the private working set 5.9–11.6 MB six seconds after each close; GDI 44 → 71 (+3 a cycle), USER 58 → 66. **Panel uses with the trim** (four summons through the instance's own shortcut, 40 s apart): the private working set 3.7–6.7 MB before each summon, 19–28 MB with the panel open, private 55–60 MB. **Title bar:** Windows' own, light in the light theme and dark in the dark one (screenshots), with the search box and the hero below it as before. The four runs' logs: 0 WRN/ERR; the reclaims logged "gave back 39 MB … (176 → 137 MB)" after Settings closed and "gave back 37 MB … (84 → 47 MB)" after the start's list refresh | `cycles.ps1`, `trimtest.ps1`, `shot.ps1`, `mem.ps1` (session f1d22507's scratchpad, `vm/scripts`): `GetProcessMemoryInfo` and `GetGuiResources` per step | ✅ |
 | Memory before the change, and where it went (2026-11-12, §2.45). **0.2.10 on the same desktop:** start 87 MB private; Settings open 179 MB; after 4 more opens and closes 249 MB, a forced full collection giving back nothing, five Settings windows in a heap dump, GDI 52 → 191. **Experiments** with diagnostic builds (never committed): with the window's and timers' handlers removed, no window in the heap dump and a plateau; the GDI growth per open and close was 24–32 with the extended title bar (either API) and 3 without it. Images tab paged, then hidden 45 s: 98.8 MB (0.2.10) against 67.6 MB (the change); idle after the start 87 against 46 MB. Trim on against off (6 summons each): working set before a summon 3.8–6.7 against 24.6–37 MB, summon median 41 against 28 ms. **This PC's real GPU** (isolated instances, nothing on screen): the installed 0.2.10 held 267 MB private after two days with ~9 MB of live .NET objects (VMMap: process heap ~93 MB, driver ~90 MB); Settings cycled cloaked by a diagnostic build: 166 → 262 MB in five cycles (0.2.10) against 162 → 190–193 MB (the change); the final publish idle after the start: "gave back 49 MB of private memory (163 → 114 MB)", .NET heap 3 MB | VMMap (`-p PID out.csv`), dotnet-counters, dotnet-gcdump and dotnet-dump (the desktop needed the .NET 10.0.15 runtime), the scripts above, `local_run.ps1` | ✅ |
 | Memory, unit tests and the suite (2026-11-12, §2.45): `MemoryReclaimTests` 11 (Core) and `ProcessMemoryTests` 2 (Windows, a collection that runs alone: a reclaim blocks every thread and trims the test process). `CliPipeServerTests.ClientHangUp_CancelsHandler` failed 10 of 10 full runs of the change's worktree and 0 of 7 of HEAD's; instrumented, its handler started at 1–2 ms in HEAD's order and never in the other; the same binaries copied to other folders passed 4 of 4 and HEAD's failed once: xunit's order follows the assembly's path. Rewritten to hang up once its handler runs: 4 of 4 full runs from the failing folder, 3 of 3 alone; with the server's hang-up handling removed it fails. The whole suite on `e0b40be` plus the change: Core 1,682 passed; Windows 400 (397 passed, 2 opt-in skipped, 1 explicit not run); a Release publish with only the known CS0108 | the test executables, two worktrees, a mutation of `CliPipeServer` | ✅ |
@@ -6469,7 +6504,10 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   - the one-time caches of the first Settings open (+50 to 60 MB private): find out which of them a smaller window, or
     fewer cards built at once, would avoid;
   - run it on a standard user account, ARM64 and several monitors, and watch the owner's installed copy over a few days
-    (the log's "Memory after …" lines).
+    (the log's "Memory after …" lines);
+  - what is left (§2.45's table) costs speed to cut: tearing the cloaked panel down while idle brings back the slow first
+    summon (§2.27: 630 ms against 100 ms), and rendering without the GPU slows every frame. Worth measuring first: fewer
+    cards kept realized while the panel is hidden, SQLite's cache per pooled connection, thumbnails dropped while hidden.
 - **Line breaks inside a shortcut, app-wide** (found 2026-11-09 in the §2.43 QA): DirectWrite breaks "Win+PrtScn" before
   its "+" at a line's end — seen in the Russian Snipping card's description ("…от Win" / "+PrtScn"). The Delete stored
   dialog glues its texts (`StoredText.KeepShortcutsTogether`); the rest of the app does not. Doing it once where
