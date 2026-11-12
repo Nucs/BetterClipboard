@@ -365,6 +365,10 @@ public sealed partial class AppController
             _ = ImportWindowsHistoryAsync();
         }
 
+        // The start's imports, catch-ups and the panel's warm-up leave garbage behind, much of it native memory that only
+        // a collection gives back (AppController.Memory.cs).
+        RequestMemoryReclaim("the start", StartupReclaimDelay);
+
         // A start whose user never chose a language asks for it before any other window is built: a first start, and the
         // first start after an update from a version that never asked. The panel and Settings read their labels when they
         // are built, so waiting for the choice spares a restart. Capture, shortcuts and the tray already run meanwhile;
@@ -406,6 +410,9 @@ public sealed partial class AppController
             languageWindow.Present();
             var chosen = await languageWindow.Choice;
             languageWindow = null;
+
+            // The picker's window and its flags are garbage now: given back once it is torn down (AppController.Memory.cs).
+            RequestMemoryReclaim("the language picker closed", SettingsClosedReclaimDelay);
 
             // Closed by an exit from the tray: the tray and the settings are being disposed, so nothing is saved, and the
             // question stays unanswered: the next start asks again.
@@ -526,7 +533,7 @@ public sealed partial class AppController
         if (settingsWindow is null)
         {
             settingsWindow = new SettingsWindow(this);
-            settingsWindow.Closed += (_, _) => settingsWindow = null;
+            settingsWindow.Closed += OnSettingsWindowClosed;
         }
 
         settingsWindow.Present();
@@ -543,6 +550,29 @@ public sealed partial class AppController
 
         // Same for Notepad++: a copy installed or started meanwhile shows in its cards at once.
         RefreshNotepadPlusPlus();
+    }
+
+    /// <summary>
+    /// The Settings window closed: forget it, take this handler off it, and give its memory back once its XAML tree is torn
+    /// down (AppController.Memory.cs).
+    /// </summary>
+    /// <remarks>
+    /// The handler unsubscribes itself: a <see cref="Microsoft.UI.Xaml.Window"/> is not covered by WinUI's reference
+    /// tracking, so any handler left on a closed window keeps the native window (and through it, its event plumbing) alive
+    /// (SettingsWindow.OnClosed has the measurements).
+    /// </remarks>
+    /// <param name="sender">The closed window.</param>
+    /// <param name="args">Close data.</param>
+    private void OnSettingsWindowClosed(object sender, WindowEventArgs args)
+    {
+        if (sender is SettingsWindow closed)
+        {
+            closed.Closed -= OnSettingsWindowClosed;
+        }
+
+        // Only one Settings window exists at a time (ShowSettings focuses it instead of making another).
+        settingsWindow = null;
+        RequestMemoryReclaim("Settings closed", SettingsClosedReclaimDelay);
     }
 
     /// <summary>
@@ -905,13 +935,19 @@ public sealed partial class AppController
     /// <exception cref="OperationCanceledException">The load was cancelled.</exception>
     public async Task<byte[]?> GetImagePngAsync(long id, CancellationToken cancellationToken = default)
     {
-        var formats = await History.GetFormatsAsync(id).ConfigureAwait(false);
+        // Only the picture the panel shows is read: an entry copied from an app may hold a PNG and a DIB of tens of
+        // megabytes side by side, and every hover over an image card preloads its picture (ClipboardFlyout.ImagePreview).
+        var primary = await History.GetFirstFormatAsync(id, ContentClassifier.PrimaryImageFormats).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        if (primary is null)
+        {
+            return null;
+        }
 
-        // Prefer the stored PNG as-is (lossless, no re-encode); fall back to encoding whatever bitmap format is stored.
-        var png = formats.FirstOrDefault(f => f.Name is ClipFormatNames.Png or ClipFormatNames.PngMime)?.Data;
-        png ??= await imageExporter.ToPngAsync(formats, cancellationToken).ConfigureAwait(false);
-        return png;
+        // Prefer the stored PNG as-is (lossless, no re-encode); fall back to encoding the stored bitmap.
+        return primary.Name is ClipFormatNames.Png or ClipFormatNames.PngMime
+            ? primary.Data
+            : await imageExporter.ToPngAsync([primary], cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Opens the data folder in Explorer.</summary>

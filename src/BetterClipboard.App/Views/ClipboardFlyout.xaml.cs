@@ -2255,7 +2255,9 @@ public sealed partial class ClipboardFlyout : Window
         TextBox? nameBox = null;
         if (existing is null)
         {
-            nameBox = new TextBox { PlaceholderText = UiText.Translate("Name (optional)"), MaxLength = ClipGroup.MaxNameLength };
+            // No spelling checker (here and in the rename box): a group name is a label, and the checker, once a box with it
+            // had the keyboard, would stay loaded in the app for good (CLAUDE.md §2.45).
+            nameBox = new TextBox { PlaceholderText = UiText.Translate("Name (optional)"), MaxLength = ClipGroup.MaxNameLength, IsSpellCheckEnabled = false, IsTextPredictionEnabled = false };
             AutomationProperties.SetName(nameBox, UiText.Translate("Group name"));
             panel.Children.Add(nameBox);
         }
@@ -2322,7 +2324,7 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="anchor">Placement target.</param>
     private void ShowRenameFlyout(ClipGroup group, FrameworkElement anchor)
     {
-        var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220 };
+        var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220, IsSpellCheckEnabled = false, IsTextPredictionEnabled = false };
         AutomationProperties.SetName(box, UiText.Translate("Group name"));
         var save = new Button { Content = UiText.Translate("Rename"), HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         var panel = new StackPanel { Spacing = 10 };

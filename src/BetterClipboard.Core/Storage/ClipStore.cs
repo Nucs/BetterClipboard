@@ -971,6 +971,57 @@ public sealed partial class ClipStore
         return GetFormats(connection, id);
     }
 
+    /// <summary>
+    /// Loads one payload of an entry: the first of <paramref name="names"/> that it stores, in the order the names are given
+    /// (and, among payloads of one name, the first stored). Only that payload is read.
+    /// </summary>
+    /// <remarks>
+    /// For an image the panel shows full size: an entry copied from an app can hold a PNG next to a DIB of tens of megabytes
+    /// (a 4K screenshot's DIBV5 is 33 MB), and <see cref="GetFormats(long)"/> would read all of them to use one. The names
+    /// are read first — they come before the payload in each row, so no overflow page is read — then the one payload.
+    /// </remarks>
+    /// <param name="id">The entry id.</param>
+    /// <param name="names">Format names, most wanted first (e.g. <see cref="Content.ContentClassifier.PrimaryImageFormats"/>).</param>
+    /// <returns>The payload, or <see langword="null"/> when the entry stores none of them or does not exist.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="names"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public ClipFormatData? GetFirstFormat(long id, IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        using var connection = Open();
+        var stored = new List<(long Ordinal, string Name)>();
+        using (var list = Command(connection, "SELECT ordinal, name FROM clip_formats WHERE clip_id = $id ORDER BY ordinal;"))
+        {
+            list.Parameters.AddWithValue("$id", id);
+            using var reader = list.ExecuteReader();
+            while (reader.Read())
+            {
+                stored.Add((reader.GetInt64(0), reader.GetString(1)));
+            }
+        }
+
+        foreach (var name in names)
+        {
+            foreach (var (ordinal, storedName) in stored)
+            {
+                if (!string.Equals(storedName, name, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                using var read = Command(connection, "SELECT data FROM clip_formats WHERE clip_id = $id AND ordinal = $ordinal;");
+                read.Parameters.AddWithValue("$id", id);
+                read.Parameters.AddWithValue("$ordinal", ordinal);
+                using var reader = read.ExecuteReader();
+
+                // Deleted between the two reads (another thread's delete): the entry is gone, so is its picture.
+                return reader.Read() ? new ClipFormatData(storedName, (byte[])reader.GetValue(0)) : null;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Loads an entry's payloads through an existing connection (e.g. inside a transaction).</summary>
     /// <param name="connection">Open connection.</param>
     /// <param name="id">The entry id.</param>

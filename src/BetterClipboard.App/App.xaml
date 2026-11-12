@@ -463,6 +463,13 @@
                 x:Key="SearchBoxTextBoxStyle"
                 BasedOn="{StaticResource AutoSuggestBoxTextBoxStyle}"
                 TargetType="TextBox">
+                <!--
+                    No spelling checker and no text prediction in the search box: squiggles under search words are noise, and
+                    the box takes the keyboard at every summon, so the checker (Windows' spelling engine with the dictionary of
+                    every installed language) would stay loaded in the app for good (CLAUDE.md §2.45).
+                -->
+                <Setter Property="IsSpellCheckEnabled" Value="False" />
+                <Setter Property="IsTextPredictionEnabled" Value="False" />
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="TextBox">

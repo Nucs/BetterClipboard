@@ -152,6 +152,17 @@ internal sealed class UpdateDialog
     }
 
     /// <summary>
+    /// Closes the dialog for good: the window that owns it is closing. Besides <see cref="Hide"/> (which also ends the
+    /// subscription to the update status), the view's timer lets go of the view, or the two would keep the closed window
+    /// in memory (<see cref="UpdateView.DetachTimers"/>, CLAUDE.md §2.45).
+    /// </summary>
+    public void Detach()
+    {
+        Hide();
+        view.DetachTimers();
+    }
+
+    /// <summary>
     /// The bubble is about to appear: decide where, show the current state, follow its changes, and make the release
     /// list current.
     /// </summary>

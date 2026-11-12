@@ -313,14 +313,34 @@ public sealed partial class UpdateView : UserControl
         var timer = DispatcherQueue.CreateTimer();
         timer.Interval = CopiedFeedback;
         timer.IsRepeating = false;
-        timer.Tick += (_, _) =>
-        {
-            if (lastSnapshot is { } snapshot)
-            {
-                RenderButtons(snapshot);
-            }
-        };
+        timer.Tick += CopiedTimer_Tick;
         return timer;
+    }
+
+    /// <summary>The "Copied" feedback has shown long enough: the buttons of the last state come back.</summary>
+    /// <param name="sender">The timer.</param>
+    /// <param name="args">Nothing.</param>
+    private void CopiedTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        if (lastSnapshot is { } snapshot)
+        {
+            RenderButtons(snapshot);
+        }
+    }
+
+    /// <summary>
+    /// Stops the "Copied" timer and takes this view's handler off it (its window is closing; CLAUDE.md §2.45). A
+    /// <see cref="DispatcherQueueTimer"/> is outside WinUI's reference tracking, so a handler left on it and this view's
+    /// reference to the timer would keep each other — and the window around this view — in memory for good.
+    /// </summary>
+    internal void DetachTimers()
+    {
+        if (copiedTimer is { } timer)
+        {
+            timer.Stop();
+            timer.Tick -= CopiedTimer_Tick;
+            copiedTimer = null;
+        }
     }
 
     /// <summary>

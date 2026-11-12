@@ -94,7 +94,7 @@ public sealed partial class LanguageWindow : Window
         ApplyLanguage(Options[LanguageList.SelectedIndex].Language ?? UiText.English);
 
         // Closing the window (its close button, Alt+F4, the app exiting) is a choice too: the selected row.
-        Closed += (_, _) => Finish();
+        Closed += OnClosed;
     }
 
     /// <summary>The rows, one per shipped language, English first (<see cref="UiText.Languages"/>).</summary>
@@ -170,6 +170,19 @@ public sealed partial class LanguageWindow : Window
     {
         var selected = LanguageList.SelectedItem as LanguageOptionViewModel;
         choice.TrySetResult(selected?.Language ?? UiText.English);
+    }
+
+    /// <summary>
+    /// The window closed (its close button, Alt+F4, the app exiting, or <see cref="FinishAndClose"/>): that is a choice too,
+    /// the selected row's. The handler takes itself off: a <see cref="Window"/> is outside WinUI's reference tracking, so a
+    /// handler left on it that holds this window would keep the closed picker in memory for good (CLAUDE.md §2.45).
+    /// </summary>
+    /// <param name="sender">This window.</param>
+    /// <param name="args">Close data.</param>
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        Closed -= OnClosed;
+        Finish();
     }
 
     /// <summary>Finishes with the selection and closes the window.</summary>

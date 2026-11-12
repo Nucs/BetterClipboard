@@ -273,6 +273,12 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// Starts loading the thumbnail if this is an image entry and it has not been requested yet.
     /// Safe to call repeatedly (container recycling calls it on every realization).
     /// </summary>
+    /// <remarks>
+    /// The image is handed to the card (<see cref="Thumbnail"/>) before its bytes are set: a bitmap that is already shown
+    /// when its source arrives is decoded at the size it is drawn (WinUI's decode to render size), about 230 × 128 DIPs in
+    /// a card, instead of the thumbnail's full 720 × 400 pixels — a quarter or less of the memory per card, for every image
+    /// card realized in the list. A bitmap given its source first is decoded at its natural size, as before 2026-11-12.
+    /// </remarks>
     public async void EnsureThumbnail()
     {
         if (thumbnailRequested || !Entry.HasThumbnail)
@@ -293,12 +299,14 @@ public sealed partial class ClipItemViewModel : ObservableObject
             await stream.WriteAsync(bytes.AsBuffer());
             stream.Seek(0);
             var bitmap = new BitmapImage();
-            await bitmap.SetSourceAsync(stream);
             Thumbnail = bitmap;
+            await bitmap.SetSourceAsync(stream);
         }
         catch (Exception ex)
         {
-            // async void: an escaping exception would crash the app; a missing thumbnail is harmless.
+            // async void: an escaping exception would crash the app; a missing thumbnail is harmless. A bitmap that never got
+            // its picture must not stand in for one (the image peek falls back to the thumbnail).
+            Thumbnail = null;
             AppLog.Warn($"Thumbnail for entry {Id} failed: {ex.Message}");
         }
     }

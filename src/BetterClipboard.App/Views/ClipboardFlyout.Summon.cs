@@ -119,6 +119,12 @@ public sealed partial class ClipboardFlyout
         // the window is gone: the write is queued, so it never sits between a paste's conceal and its Ctrl+V.
         SaveRememberedTab();
         PrepareForNextSummon();
+
+        // What this use left behind — the full-size picture of the image peek, the cards of a search — is given back once
+        // no summon follows for a while (AppController.Memory.cs): most of it is native memory WinUI frees only when the
+        // .NET objects holding it are collected.
+        ReleaseImageCache();
+        controller.NotePanelPutAway();
     }
 
     /// <summary>
@@ -199,6 +205,10 @@ public sealed partial class ClipboardFlyout
         {
             ResetListPosition();
         }
+
+        // The cards this refresh replaced hold native memory until a collection; copies come in bursts, so this asks for
+        // one after the burst (AppController.Memory.cs).
+        controller.NoteConcealedListRefreshed();
     }
 
     /// <summary>

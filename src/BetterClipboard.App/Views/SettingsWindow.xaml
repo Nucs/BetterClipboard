@@ -69,33 +69,15 @@
                 </Grid>
             </DataTemplate>
         </Grid.Resources>
+        <!--
+          No title bar of our own: Windows draws it (icon, title, buttons), in the app's theme (SettingsWindow.ApplyCaptionTheme).
+          An extended title bar (ExtendsContentIntoTitleBar, either WinUI API) leaked about 30 GDI handles at every open and
+          close of this window, measured 2026-11-12; the owner chose Windows' own title bar (CLAUDE.md §2.45).
+        -->
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-
-        <!--  Title bar  -->
-        <Grid
-            x:Name="TitleBar"
-            Height="40"
-            Padding="16,0,0,0"
-            ColumnSpacing="10">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <Image
-                Width="16"
-                Height="16"
-                VerticalAlignment="Center"
-                Source="ms-appx:///Assets/AppIcon32.png" />
-            <TextBlock
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Style="{StaticResource CaptionTextBlockStyle}"
-                Text="BetterClipboard" />
-        </Grid>
 
         <!--
           The search (CLAUDE.md §2.43; SettingsWindow.Search.cs): pinned above the page, so it stays while the results scroll,
@@ -103,9 +85,8 @@
           count beside it is a polite live region for screen readers. No suggestion list: the page itself is the result.
         -->
         <Grid
-            Grid.Row="1"
             MaxWidth="880"
-            Padding="32,2,32,10"
+            Padding="32,10,32,10"
             ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
@@ -130,7 +111,7 @@
 
         <ScrollViewer
             x:Name="Scroller"
-            Grid.Row="2"
+            Grid.Row="1"
             Padding="0,0,0,24"
             IsTabStop="True"
             SizeChanged="Scroller_SizeChanged">
@@ -239,6 +220,8 @@
                                 AutomationProperties.HelpText="{loc:Tr Text='Press the keys of the shortcut, or type its name, then press Enter.'}"
                                 AutomationProperties.Name="{loc:Tr Text='Add a shortcut that opens BetterClipboard'}"
                                 GotFocus="HotkeyBox_GotFocus"
+                                IsSpellCheckEnabled="False"
+                                IsTextPredictionEnabled="False"
                                 KeyDown="HotkeyBox_KeyDown"
                                 LostFocus="HotkeyBox_LostFocus"
                                 PlaceholderText="{loc:Tr Text='Press a shortcut, or type one'}"
@@ -487,11 +470,16 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <!-- MaxHeight + scrolling: the built-in list alone is ~65 lines. -->
+                            <!--
+                                MaxHeight + scrolling: the built-in list alone is ~65 lines. No spelling checker: every line
+                                is a program's name, and the checker would underline all of them and stay loaded (§2.45).
+                            -->
                             <TextBox
                                 MinHeight="64"
                                 MaxHeight="240"
                                 AcceptsReturn="True"
+                                IsSpellCheckEnabled="False"
+                                IsTextPredictionEnabled="False"
                                 PlaceholderText="KeePass"
                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
                                 Text="{x:Bind ViewModel.IgnoredAppsText, Mode=TwoWay}"

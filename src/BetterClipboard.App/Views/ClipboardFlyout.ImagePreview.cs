@@ -175,6 +175,13 @@ public sealed partial class ClipboardFlyout
         CloseViewer();
     }
 
+    /// <summary>
+    /// Forgets the full-size picture kept for the peek and the viewer (the panel was put away). It is the largest single
+    /// thing the panel holds — a decoded 4K screenshot is 33 MB — and only a peek or viewer of the same card in the same use
+    /// needs it again; the next use decodes it again from the store.
+    /// </summary>
+    private void ReleaseImageCache() => imageCache = null;
+
     /// <summary>The card behind an event source, or <see langword="null"/>.</summary>
     /// <param name="sender">An element in a card's template.</param>
     /// <returns>The card view model, or <see langword="null"/>.</returns>
