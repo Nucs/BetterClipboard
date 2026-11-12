@@ -277,6 +277,11 @@ Everything below ran on 2026-11-12 and 2026-11-13 in one disposable Windows 11 2
 | Silent restart of the installed package | The new process ran from the `WindowsApps` folder (`--background --restart-after …`) with the same data folder: "the shortcuts were held during the switch", the hook installed again, 0 warnings |
 | Removing the package (the loose registration several times, and the installed package) | No package, no data folder, no aliases, no process, the `WindowsApps` folder gone; the real Run key empty and `DisabledHotkeys` absent. Win+V opened Windows' own clipboard panel right afterwards |
 
+The other editions share the changed start-up code, so the unpackaged build was run once more after the change, as
+an isolated instance on the owner's PC while nobody used it: it started in the tray and ended on `--exit` with 0
+warnings, and its Settings showed *Release from Explorer*, the update switch and *Start with Windows*, and none of
+the Store edition's cards.
+
 Faults the live runs found, all fixed and covered by tests where a test can see them: the setup crashed on the
 theme (the settings were not loaded yet); it ignored the replaced copy's language; the copy step used a file list
 made before the other copy closed; PowerShell refused the uninstall's command line (two report parameters belonged
