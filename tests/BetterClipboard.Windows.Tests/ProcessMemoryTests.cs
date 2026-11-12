@@ -4,7 +4,8 @@ namespace BetterClipboard.Windows.Tests;
 
 /// <summary>
 /// Runs alone: a reclaim blocks every thread of the test process for two full collections and trims its working set, which
-/// slowed the timing-sensitive tests running beside it into failing (the pipe server's hang-up test, 2026-11-12).
+/// would slow the timing-sensitive tests running beside it. (The pipe server's hang-up test that failed on 2026-11-12 was
+/// not slowed by it, as first thought: it failed by the test order of one folder, CLAUDE.md §2.45.)
 /// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
 public sealed class ProcessMemoryCollection

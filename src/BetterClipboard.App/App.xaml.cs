@@ -13,6 +13,9 @@ public partial class App : Application
 {
     private readonly StartupOptions options;
     private readonly SingleInstance instance;
+
+    /// <summary>What a silent restart's process held before the old one let go (CLAUDE.md §2.46); handed to the controller.</summary>
+    private readonly RestartBridge? bridge;
     private AppController? controller;
 
     /// <summary>
@@ -20,10 +23,15 @@ public partial class App : Application
     /// </summary>
     /// <param name="options">Parsed command line.</param>
     /// <param name="instance">The (primary) single-instance guard, used to receive activation requests.</param>
-    public App(StartupOptions options, SingleInstance instance)
+    /// <param name="bridge">
+    /// For a silent restart (CLAUDE.md §2.46): the shortcuts and the tray icon this process held before the old one let go;
+    /// <see langword="null"/> for any other start.
+    /// </param>
+    public App(StartupOptions options, SingleInstance instance, RestartBridge? bridge = null)
     {
         this.options = options;
         this.instance = instance;
+        this.bridge = bridge;
         InitializeComponent();
 
         // A tray utility must survive closing its last window; only "Exit" ends the process.
@@ -42,7 +50,13 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         var dispatcher = DispatcherQueue.GetForCurrentThread();
-        controller = new AppController(dispatcher, options);
+        controller = new AppController(dispatcher, options)
+        {
+            RestartBridge = bridge,
+
+            // A silent restart hands the commands sent from then on to the next process (CLAUDE.md §2.46).
+            StopListeningForCommands = instance.StopListening,
+        };
         try
         {
             controller.Start();
@@ -53,6 +67,9 @@ public partial class App : Application
             // rather than lingering as a tray icon that silently records nothing.
             AppLog.Error("Startup failed.", ex);
             AppLog.Shutdown();
+
+            // A silent restart's bridge would hold the shortcuts until its timer let go: give them back now.
+            bridge?.Dispose();
             Exit();
             return;
         }

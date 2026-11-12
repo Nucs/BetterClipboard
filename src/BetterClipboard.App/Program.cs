@@ -17,7 +17,9 @@ public static class Program
     /// nothing when BetterClipboard already runs; <c>--all-users-startup</c> (with it, from the sign-in entry an
     /// installation for every user wrote) first asks whether this user wants it (<see cref="ContinueFromAllUsersEntry"/>);
     /// <c>--show-flyout</c> / <c>--exit</c> drive an already-running instance;
-    /// <c>--restart-after pid:startTicks</c> (from Settings' <em>Restart now</em>) waits for the process it replaces;
+    /// <c>--restart-after pid:startTicks</c> (from Settings' <em>Restart now</em>) waits for the process it replaces, and with
+    /// <c>--background</c> (and <c>--clipboard-sequence N</c>) is the silent restart after Settings, which first takes the
+    /// shortcuts and the tray icon over (<see cref="RestartBridge"/>, CLAUDE.md §2.46);
     /// <c>--read-console-history &lt;pid&gt;</c> is the Cmd tab's helper, <c>--set-hotkeys [--validate] SHORTCUT...</c>
     /// the installer's way to pick the shortcuts, and <c>--set-update-check on|off</c> its way to install with the
     /// automatic update check off (see remarks).
@@ -74,9 +76,29 @@ public static class Program
             return 0;
         }
 
+        // A silent restart (CLAUDE.md §2.46) first takes the shortcuts and the tray icon over from the old process, so nothing
+        // goes missing while the two change places, then waits for the old one to end.
+        RestartBridge? bridge = null;
+        IDisposable? keptCommands = null;
+        if (options.IsSilentRestart && options.RestartAfter is { } silentlyReplaced)
+        {
+            string name = Core.AppPaths.ResolveDefault().InstanceName;
+            keptCommands = SingleInstance.KeepCommandsAlive(name);
+            bridge = RestartBridge.Start(Core.AppPaths.ResolveDefault());
+            SetNamedEvent(SingleInstance.RestartReadyEventName(name));
+            if (!WaitForSilentlyReplacedProcess(silentlyReplaced, SingleInstance.RestartCancelEventName(name)))
+            {
+                // Called off (the panel opened meanwhile) or the old process never ended: end quietly. Never go on to hand a
+                // plain launch to the old process, which would open its Settings.
+                bridge.Dispose();
+                keptCommands.Dispose();
+                return 0;
+            }
+        }
+
         // Settings' Restart now starts this process before the old one exits: wait for it, so this start becomes the app
         // instead of handing a plain launch to the instance that is about to quit (which would open its Settings again).
-        if (options.RestartAfter is { } replaced)
+        else if (options.RestartAfter is { } replaced)
         {
             WaitForReplacedProcess(replaced);
         }
@@ -86,8 +108,19 @@ public static class Program
         // Scoped by data directory: an isolated dev/test run (BETTERCLIPBOARD_DATA_DIR) gets its own lock and
         // command events, so it neither blocks nor receives the installed app's --exit/--show-flyout.
         using var instance = SingleInstance.Acquire(Core.AppPaths.ResolveDefault().InstanceName);
+
+        // The lock's own handles to the command events now keep a command sent during the switch.
+        keptCommands?.Dispose();
         if (!instance.IsPrimary)
         {
+            if (bridge is not null)
+            {
+                // Another start became BetterClipboard in the moment between the two processes (bclip starts one when it finds
+                // none): nothing to take over, and nothing to show.
+                bridge.Dispose();
+                return 0;
+            }
+
             if (options.Background && options.Command == InstanceCommand.Activate)
             {
                 // A start into the tray that finds BetterClipboard running has nothing left to do. Signalled, it would
@@ -104,6 +137,7 @@ public static class Program
 
         if (options.Command == InstanceCommand.Exit)
         {
+            bridge?.Dispose();
             return 0; // "--exit" with nothing running: nothing to do.
         }
 
@@ -114,10 +148,79 @@ public static class Program
             SynchronizationContext.SetSynchronizationContext(context);
 
             // The XAML framework keeps the Application alive (Application.Current); no reference needed here.
-            new App(options, instance);
+            new App(options, instance, bridge);
         });
 
         return 0;
+    }
+
+    /// <summary>
+    /// Sets a named event another process created (a silent restart's "ready" signal); nothing happens when it does not
+    /// exist (the old process ended already, or it is not waiting).
+    /// </summary>
+    /// <param name="name">The event's kernel object name.</param>
+    private static void SetNamedEvent(string name)
+    {
+        if (EventWaitHandle.TryOpenExisting(name, out var signal))
+        {
+            using (signal)
+            {
+                signal.Set();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Waits for the process a silent restart replaces to end, or for it to call the restart off (CLAUDE.md §2.46).
+    /// </summary>
+    /// <param name="target">The process, by id and start time.</param>
+    /// <param name="cancelEventName">The event the old process sets when it calls the restart off.</param>
+    /// <returns>
+    /// <see langword="true"/> when the old process has ended (or was gone already): take over. <see langword="false"/> when it
+    /// called the restart off, or was still there after two minutes: end quietly.
+    /// </returns>
+    /// <remarks>
+    /// Unlike <see cref="WaitForReplacedProcess"/>, a process still running after the wait is never handed a plain launch:
+    /// that would open its Settings, and a silent restart shows nothing. Two minutes, not thirty seconds: once it has
+    /// started to exit, the old process drains its queued captures and integrations first, and leaving early here would
+    /// leave nobody once it is done. Runs before the log is opened, so it logs nothing.
+    /// </remarks>
+    private static bool WaitForSilentlyReplacedProcess(RestartTarget target, string cancelEventName)
+    {
+        EventWaitHandle? cancel = EventWaitHandle.TryOpenExisting(cancelEventName, out var opened) ? opened : null;
+        try
+        {
+            using var old = System.Diagnostics.Process.GetProcessById(target.ProcessId);
+            if (old.StartTime.ToUniversalTime().Ticks != target.StartTicks)
+            {
+                return true; // a stranger with the old id: the old process ended already
+            }
+
+            using var exited = new ProcessExitHandle(old.Handle);
+            WaitHandle[] handles = cancel is null ? [exited] : [exited, cancel];
+            return WaitHandle.WaitAny(handles, TimeSpan.FromMinutes(2)) == 0;
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // ArgumentException: it has already ended. The others: it ended while being asked, or cannot be read.
+            return true;
+        }
+        finally
+        {
+            cancel?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A process handle as a <see cref="WaitHandle"/> (signaled when the process ends), so its end can be waited on together
+    /// with an event. Borrows the handle: the <see cref="System.Diagnostics.Process"/> that owns it closes it.
+    /// </summary>
+    private sealed class ProcessExitHandle : WaitHandle
+    {
+        /// <summary>Wraps the handle without taking ownership.</summary>
+        /// <param name="processHandle">A process handle with SYNCHRONIZE access.</param>
+        public ProcessExitHandle(nint processHandle) =>
+            SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(processHandle, ownsHandle: false);
     }
 
     /// <summary>

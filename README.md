@@ -292,6 +292,12 @@ type, typos included; `Esc` clears it. Its sections:
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
 
+**Closing Settings gives its memory back.** Settings leaves memory behind that only a new process returns (about 80 to
+100 MB), so a few seconds after you close it, once the panel is closed and keyboard and mouse have paused, BetterClipboard
+quietly replaces itself with a fresh copy. Nothing opens or flickers, and the pointer does not change: the tray icon stays
+where it is, the shortcuts keep working (one pressed in that second opens the panel a moment later), and a copy made
+meanwhile is recorded.
+
 <p align="center">
   <img src="docs/images/settings.png" width="694" alt="BetterClipboard Settings: the app's name and three chips (Capturing; Win+V; 7 items, 3.3 MB, 1 pinned, 5 in groups). Then the Shortcut section: the box that records a shortcut with its Add button and menu, the Win+V row, the switch that takes over shortcuts owned by Windows, and Release from Explorer. Then the History section: maximum items, days to keep, largest item.">
 </p>

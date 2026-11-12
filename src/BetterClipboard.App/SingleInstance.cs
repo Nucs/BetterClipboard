@@ -83,6 +83,48 @@ public sealed class SingleInstance : IDisposable
     public void Signal(InstanceCommand command) => commands[(int)command].Set();
 
     /// <summary>
+    /// Opens the command events of <paramref name="name"/> without joining the instance, so that a command sent while no
+    /// process listens (between the two processes of a silent restart, CLAUDE.md §2.46) is kept until the next primary
+    /// instance listens: a named event exists only while someone holds a handle to it, and its signal with it.
+    /// </summary>
+    /// <param name="name">Instance name (see <see cref="Core.AppPaths.InstanceName"/>).</param>
+    /// <returns>The handles; dispose them once <see cref="Acquire"/> has opened the same events.</returns>
+    /// <exception cref="UnauthorizedAccessException">An event with the same name exists with incompatible security.</exception>
+    public static IDisposable KeepCommandsAlive(string name)
+    {
+        var events = Enum.GetValues<InstanceCommand>()
+            .Select(command => new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\{name}.{command}"))
+            .ToArray();
+        return new HandleSet(events);
+    }
+
+    /// <summary>
+    /// The name of the event a silent restart's new process sets once it holds the shortcuts and shows the tray icon, and
+    /// the old process waits for before it lets go of them (CLAUDE.md §2.46).
+    /// </summary>
+    /// <param name="name">Instance name.</param>
+    /// <returns>The kernel object name.</returns>
+    public static string RestartReadyEventName(string name) => $@"Local\{name}.RestartReady";
+
+    /// <summary>
+    /// The name of the event an old process sets when it calls a silent restart off after the new process started (the
+    /// panel opened in between): the new process then ends quietly instead of taking over.
+    /// </summary>
+    /// <param name="name">Instance name.</param>
+    /// <returns>The kernel object name.</returns>
+    public static string RestartCancelEventName(string name) => $@"Local\{name}.RestartCancel";
+
+    /// <summary>
+    /// Stops listening for commands without letting go of the instance lock: a process that hands over to a silent
+    /// restart's new process leaves the commands sent from now on to it (<see cref="KeepCommandsAlive"/> keeps them).
+    /// </summary>
+    public void StopListening()
+    {
+        stop.Set();
+        listener?.Join(TimeSpan.FromSeconds(1));
+    }
+
+    /// <summary>
     /// Starts a background listener that invokes <paramref name="onCommand"/> (on the listener thread) for
     /// every command other launches send. Primary instance only.
     /// </summary>
@@ -135,5 +177,19 @@ public sealed class SingleInstance : IDisposable
         }
 
         stop.Dispose();
+    }
+
+    /// <summary>Handles that are disposed together (<see cref="KeepCommandsAlive"/>).</summary>
+    /// <param name="handles">The handles.</param>
+    private sealed class HandleSet(IReadOnlyList<WaitHandle> handles) : IDisposable
+    {
+        /// <summary>Closes every handle; the events live on while another process holds them.</summary>
+        public void Dispose()
+        {
+            foreach (var handle in handles)
+            {
+                handle.Dispose();
+            }
+        }
     }
 }

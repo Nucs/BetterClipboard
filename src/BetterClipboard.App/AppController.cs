@@ -263,7 +263,8 @@ public sealed partial class AppController
     {
         paths.EnsureCreated();
         AppLog.Initialize(paths.LogDirectory);
-        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{(options.RestartAfter is null ? string.Empty : ", restarted from Settings")}).");
+        string restarted = options.IsSilentRestart ? ", restarted silently after Settings" : options.RestartAfter is null ? string.Empty : ", restarted from Settings";
+        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{restarted}).");
 
         // Before the store is opened (which creates it): no history yet means the app's very first start in this folder.
         // The language picker asks whenever no language was ever chosen (LanguageChoice.ShouldAsk); this only tells its
@@ -306,7 +307,10 @@ public sealed partial class AppController
 
         monitor = new ClipboardMonitor(CreateCaptureOptions, new SourceAppResolver());
         monitor.Captured += (_, capture) => history.TryEnqueueCapture(capture);
-        monitor.Start();
+
+        // A silent restart hands over the old process's last clipboard state: a copy made while neither listened is read
+        // now (CLAUDE.md §2.46). Any other start leaves what is on the clipboard alone, as always.
+        monitor.Start(options.IsSilentRestart ? options.ClipboardSequence : null);
 
         // Located on a pool thread (registry + a few small files); the tab appears once it is found.
         shareX = new ShareXIntegration(history, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L);
@@ -350,9 +354,16 @@ public sealed partial class AppController
         // High priority: the summon goes ahead of whatever else is queued (a list refresh, thumbnail decodes), since every
         // millisecond until the panel is in front is a millisecond in which typed keys still reach the app underneath.
         hotkeys.Pressed += (_, context) => ui.TryEnqueue(DispatcherQueuePriority.High, () => OnHotkey(context));
-        _ = ApplyHotkeyAsync();
 
-        tray = new TrayIcon(IconPath, TrayTooltip(settings.Current));
+        // After a silent restart the bridge still holds the shortcuts: it lets go once ours are registered, and a press it
+        // caught meanwhile opens the panel then (AppController.SilentRestart.cs).
+        _ = ApplyHotkeysAndTakeOverAsync();
+
+        // A silent restart's icon was added hidden by the bridge, and the old process revealed it as it removed its own, so
+        // the icon never vanished or doubled: keep it, and wire it. Reveal brings it in line with that, and shows it when the
+        // old process could not (then the icon was missing for the moment in between).
+        tray = RestartBridge?.TakeTray() ?? new TrayIcon(IconPath, TrayTooltip(settings.Current));
+        tray.Reveal();
         tray.Invoked += (_, _) => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()));
         tray.MenuProvider = BuildTrayMenu;
 
@@ -360,7 +371,9 @@ public sealed partial class AppController
         // restarted the app is told through its notification. The first automatic check comes a minute later.
         StartUpdates();
 
-        if (settings.Current.ImportWindowsHistoryOnStartup)
+        // Not after a silent restart: the old process was capturing until a moment ago, and the clipboard hand-over above
+        // reads a copy made in between; the import would only repeat the start's work, on CPU the user may notice.
+        if (settings.Current.ImportWindowsHistoryOnStartup && !options.IsSilentRestart)
         {
             _ = ImportWindowsHistoryAsync();
         }
@@ -534,6 +547,9 @@ public sealed partial class AppController
         {
             settingsWindow = new SettingsWindow(this);
             settingsWindow.Closed += OnSettingsWindowClosed;
+
+            // From now on this process carries memory only a restart gives back (AppController.SilentRestart.cs).
+            NoteSettingsOpened();
         }
 
         settingsWindow.Present();
@@ -573,6 +589,9 @@ public sealed partial class AppController
         // Only one Settings window exists at a time (ShowSettings focuses it instead of making another).
         settingsWindow = null;
         RequestMemoryReclaim("Settings closed", SettingsClosedReclaimDelay);
+
+        // What the collector cannot give back, a silent restart does, a few seconds from now (AppController.SilentRestart.cs).
+        ScheduleSilentRestart();
     }
 
     /// <summary>
@@ -1073,6 +1092,13 @@ public sealed partial class AppController
     /// <param name="context">Where the user was when pressing it.</param>
     private void OnHotkey(ForegroundContext context)
     {
+        // An exit (or a silent restart's hand-over) is under way: building the panel now would race its teardown. During a
+        // silent restart the new process holds the shortcuts by then and opens the panel itself (RestartBridge).
+        if (exiting)
+        {
+            return;
+        }
+
         var window = EnsureFlyout();
         if (window.IsOpen)
         {
@@ -1502,9 +1528,12 @@ public sealed partial class AppController
         AppLog.Info($"Interface language: {language.Tag} (WinUI's own text: {string.Join(", ", names)}).");
     }
 
-    /// <summary>Tray hover text reflecting capture state and shortcut.</summary>
+    /// <summary>
+    /// Tray hover text reflecting capture state and shortcut, in the interface language <see cref="UiText.Language"/>
+    /// names. Static: a silent restart's bridge words its tray icon before any controller exists (RestartBridge).
+    /// </summary>
     /// <param name="current">Current settings.</param>
     /// <returns>The tooltip.</returns>
-    private string TrayTooltip(AppSettings current) =>
+    internal static string TrayTooltip(AppSettings current) =>
         current.IsCapturePaused ? UiText.Translate("BetterClipboard — paused") : UiText.Format($"BetterClipboard — {current.OpenHotkey} to open");
 }

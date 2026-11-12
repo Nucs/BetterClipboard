@@ -173,6 +173,52 @@ public sealed class HotkeyService : IDisposable
     public Task DisableAsync() => window.InvokeAsync(ReleaseCurrent);
 
     /// <summary>
+    /// Holds the shortcuts with the keyboard hook alone, never with <c>RegisterHotKey</c>: the silent restart's bridge
+    /// (CLAUDE.md §2.46), which must catch the shortcuts while the old process still has them registered, and must leave
+    /// nothing registered that the new process's own <see cref="ApplyAsync(IReadOnlyList{HotkeyGesture}, bool)"/> would
+    /// then find taken.
+    /// </summary>
+    /// <remarks>
+    /// A low-level hook installed later is called first, so from the moment this returns every press of these shortcuts
+    /// reaches this service (<see cref="Pressed"/>) and no longer the old process. Like any takeover by the hook, the main key
+    /// and its repeats are swallowed and Win or Alt is masked, so Start or a menu bar never opens.
+    /// </remarks>
+    /// <param name="gestures">The shortcuts; repeats are held once.</param>
+    /// <returns>One registration per distinct gesture: <see cref="HotkeyMode.KeyboardHook"/>, or <see cref="HotkeyMode.None"/> for all when the hook could not be installed.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="gestures"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="gestures"/> is empty.</exception>
+    /// <exception cref="ObjectDisposedException">The service was disposed.</exception>
+    public Task<IReadOnlyList<HotkeyRegistration>> HoldWithHookAsync(IReadOnlyList<HotkeyGesture> gestures)
+    {
+        ArgumentNullException.ThrowIfNull(gestures);
+        if (gestures.Count == 0)
+        {
+            throw new ArgumentException("At least one shortcut is needed.", nameof(gestures));
+        }
+
+        var distinct = gestures.Distinct().ToArray();
+        return window.InvokeAsync(() =>
+        {
+            ReleaseCurrent();
+            interceptors = new HotkeyInterceptorSet(distinct);
+            hookProcedure = HookCallback; // field keeps the delegate (and its native thunk) alive
+            hookHandle = SetWindowsHookEx(WH_KEYBOARD_LL, Marshal.GetFunctionPointerForDelegate(hookProcedure), GetModuleHandle(null), 0);
+            if (hookHandle == 0)
+            {
+                // Nothing is held: the caller's presses then reach whoever has the shortcut (the old process).
+                AppLog.Warn($"Holding the shortcuts with a keyboard hook failed (error {Marshal.GetLastPInvokeError()}).");
+                interceptors = null;
+                hookProcedure = null;
+                Registrations = distinct.Select(g => new HotkeyRegistration(g, HotkeyMode.None, 0)).ToArray();
+                return Registrations;
+            }
+
+            Registrations = distinct.Select(g => new HotkeyRegistration(g, HotkeyMode.KeyboardHook, 0)).ToArray();
+            return Registrations;
+        });
+    }
+
+    /// <summary>
     /// Whether someone else has <paramref name="gesture"/> registered right now: a <c>RegisterHotKey</c> probe on the input
     /// window, released at once when it succeeds.
     /// </summary>
