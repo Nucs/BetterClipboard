@@ -327,7 +327,8 @@ public sealed class RunHistoryIntegration : IAsyncDisposable
         }
 
         debounce ??= new Timer(_ => _ = RescanAsync("watch"), null, Timeout.Infinite, Timeout.Infinite);
-        var created = new RunMruWatcher(KeyPath);
+        // From the Store package the change notification never comes, so that edition polls (RunMruWatcher's remarks).
+        var created = new RunMruWatcher(KeyPath, pollOnly: Packaging.PackageIdentity.IsPackaged);
         created.Changed += OnKeyChanged;
         created.Start();
         Volatile.Write(ref watcher, created);

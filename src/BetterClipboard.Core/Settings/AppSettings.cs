@@ -75,6 +75,19 @@ public sealed record AppSettings
     public bool LanguageChosen { get; init; }
 
     /// <summary>
+    /// Whether the user pressed <em>Start</em> in the Microsoft Store edition's welcome window: their yes to keeping
+    /// what they copy, and to the choices in that window (Win+V, Start with Windows). Until then that edition records
+    /// nothing, takes no shortcut and shows the welcome at every start (CLAUDE.md §2.47). Other editions never read it:
+    /// there, running the installer is the yes.
+    /// </summary>
+    /// <remarks>
+    /// The Microsoft Store's policies ask for it (10.2.8: consent before the Windows experience is changed; 10.5.5:
+    /// express consent before sensitive data is stored). Footgun: a version that does not know this member drops it
+    /// when it saves the file; only a Store edition older than the member could, and there is none.
+    /// </remarks>
+    public bool StoreWelcomeAccepted { get; init; }
+
+    /// <summary>
     /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).
     /// The outer window's width, frame included, without the groups column.
     /// </summary>

@@ -6,6 +6,7 @@ using System.Text.Json;
 using BetterClipboard.Core;
 using BetterClipboard.Core.Cli;
 using BetterClipboard.Core.Settings;
+using BetterClipboard.Windows.Packaging;
 
 namespace BetterClipboard.Cli;
 
@@ -85,7 +86,8 @@ internal static class Program
 
         // Fail fast with a clear message when the user has not opted in (the pipe would not exist anyway).
         // An unreadable settings file (app mid-save) is "unknown": fall through and let the pipe decide.
-        var paths = AppPaths.ResolveDefault();
+        // The package family name makes bclip from the Microsoft Store package read that edition's own data folder.
+        var paths = AppPaths.ResolveDefault(PackageIdentity.FamilyName);
         var settings = SettingsStore.TryReadSnapshot(paths.SettingsPath);
         if (settings is { EnableCommandLine: false })
         {
@@ -153,7 +155,7 @@ internal static class Program
         int session = Process.GetCurrentProcess().SessionId;
 
         // Same scoping as the app: with BETTERCLIPBOARD_DATA_DIR set, bclip talks to that isolated instance only.
-        var paths = AppPaths.ResolveDefault();
+        var paths = AppPaths.ResolveDefault(PackageIdentity.FamilyName);
         var pipeName = CliEndpoint.PipeName(sid, session, paths.InstanceScope);
         try
         {

@@ -39,6 +39,13 @@ public sealed class UpdateSource
     public const string ChocolateyCommand = "choco upgrade betterclipboard";
 
     /// <summary>
+    /// The command that removes a copy installed with Chocolatey; it must run in a terminal as administrator. The
+    /// Microsoft Store edition shows it when it finds such a copy (CLAUDE.md §2.47): only Chocolatey removes its own
+    /// packages cleanly, so that edition does not try to.
+    /// </summary>
+    public const string ChocolateyUninstallCommand = "choco uninstall betterclipboard";
+
+    /// <summary>
     /// The command that installs or updates BetterClipboard for every user of the PC: the README's installer with
     /// <c>-AllUsers</c>, in the script-block form that passes arguments (<c>irm … | iex</c> cannot). It must run in
     /// PowerShell as administrator; run there, the installer also finds the existing copy for every user by itself.

@@ -61,6 +61,9 @@ public sealed partial class SettingsWindow : Window
         this.controller = controller;
         ViewModel = new SettingsViewModel(controller);
         InitializeComponent();
+
+        // Before the search indexes the page: each edition keeps only the cards that are true for it.
+        ApplyEdition();
         hwnd = WindowNative.GetWindowHandle(this);
 
         // Windows' own title bar (the content is not extended into it): WinUI's extended title bar leaked about 30 GDI

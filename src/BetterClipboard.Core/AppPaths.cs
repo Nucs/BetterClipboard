@@ -1,13 +1,23 @@
 namespace BetterClipboard.Core;
 
 /// <summary>
-/// Resolves where BetterClipboard keeps its data: <c>%LOCALAPPDATA%\BetterClipboard</c> by default, or the
-/// directory in the <c>BETTERCLIPBOARD_DATA_DIR</c> environment variable (used by tests and dev runs so they
-/// never touch the real history).
+/// Resolves where BetterClipboard keeps its data: <c>%LOCALAPPDATA%\BetterClipboard</c> by default, the Microsoft
+/// Store package's own folder for a copy that runs from that package, or the directory in the
+/// <c>BETTERCLIPBOARD_DATA_DIR</c> environment variable (used by tests and dev runs so they never touch the real
+/// history).
 /// </summary>
 /// <remarks>
+/// <para>
 /// LocalAppData (not Roaming) on purpose: history can be gigabytes and must not be synced by roaming
 /// profiles, and it is per-machine by nature (file paths, local apps).
+/// </para>
+/// <para>
+/// <b>The Microsoft Store edition</b> (CLAUDE.md §2.47) keeps its data in <see cref="PackagedDataDirectory"/>, named by
+/// its real path. Left at <c>%LOCALAPPDATA%\BetterClipboard</c>, Windows would decide where it lands: redirected into
+/// the package's private folder when that folder does not exist yet, but written for real, next to another edition's
+/// data, when it does (measured). A fixed folder of the package's own is the same on every PC, and Windows deletes it
+/// with the app.
+/// </para>
 /// </remarks>
 public sealed class AppPaths
 {
@@ -17,47 +27,105 @@ public sealed class AppPaths
     /// <summary>Instance name of the installed app (default data directory): single-instance lock, commands, bclip pipe.</summary>
     public const string DefaultInstanceName = "BetterClipboard";
 
-    /// <summary>The data directory used when <see cref="DataDirectoryVariable"/> is not set.</summary>
+    /// <summary>
+    /// The data directory of every copy that is not the Microsoft Store edition, when
+    /// <see cref="DataDirectoryVariable"/> is not set: <c>%LOCALAPPDATA%\BetterClipboard</c>. The Store edition reads it
+    /// only to move another edition's history over (<c>Editions.EditionDataMigrator</c>).
+    /// </summary>
     public static string DefaultDataDirectory =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BetterClipboard");
 
     /// <summary>
-    /// Creates paths rooted at <paramref name="dataDirectory"/>.
+    /// Creates paths rooted at <paramref name="dataDirectory"/>, for a copy whose home is
+    /// <see cref="DefaultDataDirectory"/> (every copy but the Microsoft Store edition).
     /// </summary>
     /// <param name="dataDirectory">Root data directory; created lazily by <see cref="EnsureCreated"/>.</param>
     /// <exception cref="ArgumentException"><paramref name="dataDirectory"/> is null or blank.</exception>
     public AppPaths(string dataDirectory)
+        : this(dataDirectory, DefaultDataDirectory)
+    {
+    }
+
+    /// <summary>
+    /// Creates paths rooted at <paramref name="dataDirectory"/> for a copy whose own folder is
+    /// <paramref name="homeDirectory"/>.
+    /// </summary>
+    /// <param name="dataDirectory">Root data directory; created lazily by <see cref="EnsureCreated"/>.</param>
+    /// <param name="homeDirectory">
+    /// The folder this copy uses when nothing overrides it: <see cref="DefaultDataDirectory"/>, or the Store package's
+    /// folder. A data directory equal to it makes this the regular instance (<see cref="InstanceScope"/> is
+    /// <see langword="null"/>); any other one makes it an isolated instance.
+    /// </param>
+    /// <exception cref="ArgumentException">An argument is null or blank.</exception>
+    public AppPaths(string dataDirectory, string homeDirectory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(dataDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(homeDirectory);
         DataDirectory = Path.GetFullPath(dataDirectory);
+        HomeDirectory = Path.GetFullPath(homeDirectory);
     }
 
     /// <summary>
     /// The paths for this process: the environment override when set, otherwise <c>%LOCALAPPDATA%\BetterClipboard</c>.
     /// </summary>
     /// <returns>The resolved paths.</returns>
-    public static AppPaths ResolveDefault()
+    public static AppPaths ResolveDefault() => ResolveDefault(packageFamilyName: null);
+
+    /// <summary>
+    /// The paths for this process: the environment override when set; otherwise the Store package's own folder for a
+    /// process that runs from that package, or <c>%LOCALAPPDATA%\BetterClipboard</c>.
+    /// </summary>
+    /// <param name="packageFamilyName">
+    /// The package family name of the running process (<c>Windows.Packaging.PackageIdentity.FamilyName</c>), or
+    /// <see langword="null"/> or blank for a process without package identity. Core has no way to ask Windows itself,
+    /// so the program's entry point passes it.
+    /// </param>
+    /// <returns>The resolved paths.</returns>
+    public static AppPaths ResolveDefault(string? packageFamilyName)
     {
+        string home = string.IsNullOrWhiteSpace(packageFamilyName) ? DefaultDataDirectory : PackagedDataDirectory(packageFamilyName);
         var overridden = Environment.GetEnvironmentVariable(DataDirectoryVariable);
-        return new AppPaths(!string.IsNullOrWhiteSpace(overridden) ? overridden : DefaultDataDirectory);
+        return new AppPaths(!string.IsNullOrWhiteSpace(overridden) ? overridden : home, home);
+    }
+
+    /// <summary>
+    /// Where the Microsoft Store edition keeps its data: the package's <c>LocalState</c> folder, by its real path
+    /// (<c>%LOCALAPPDATA%\Packages\{family}\LocalState\BetterClipboard</c>). Windows creates <c>LocalState</c> with the
+    /// package and deletes it when the app is uninstalled.
+    /// </summary>
+    /// <param name="packageFamilyName">The package family name, e.g. <c>Publisher.BetterClipboard_1a2b3c4d5e6f7</c>.</param>
+    /// <returns>The folder.</returns>
+    /// <exception cref="ArgumentException"><paramref name="packageFamilyName"/> is null or blank.</exception>
+    public static string PackagedDataDirectory(string packageFamilyName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(packageFamilyName);
+        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", packageFamilyName.Trim(), "LocalState", "BetterClipboard");
     }
 
     /// <summary>Root data directory.</summary>
     public string DataDirectory { get; }
 
     /// <summary>
-    /// <see langword="null"/> for the installed app's own data directory; otherwise a short, stable id of
-    /// the directory (e.g. <c>dir-3fa2c1d09b7e</c>) that separates this instance from the installed one.
+    /// The folder this copy uses when nothing overrides it (see the two-argument constructor).
+    /// </summary>
+    public string HomeDirectory { get; }
+
+    /// <summary>
+    /// <see langword="null"/> for the installed app's own data directory (<see cref="HomeDirectory"/>); otherwise a
+    /// short, stable id of the directory (e.g. <c>dir-3fa2c1d09b7e</c>) that separates this instance from the installed
+    /// one.
     /// </summary>
     /// <remarks>
     /// A dev or test run with <see cref="DataDirectoryVariable"/> set used to share the installed app's
     /// single-instance lock, command events and bclip pipe: it could not start next to it, and its
     /// <c>--exit</c> closed the <i>user's</i> app. Scoping every per-session name by data directory makes an
     /// isolated run truly isolated. The default location keeps the unscoped names, so installed versions
-    /// keep finding each other across updates.
+    /// keep finding each other across updates — and across editions: the Microsoft Store edition in its own folder
+    /// uses the same unscoped names as a copy in <see cref="DefaultDataDirectory"/>, because only one BetterClipboard
+    /// may own the clipboard listener and Win+V in a session, whichever edition it is.
     /// </remarks>
     public string? InstanceScope =>
-        string.Equals(Path.TrimEndingDirectorySeparator(DataDirectory), Path.TrimEndingDirectorySeparator(Path.GetFullPath(DefaultDataDirectory)), StringComparison.OrdinalIgnoreCase)
+        string.Equals(Path.TrimEndingDirectorySeparator(DataDirectory), Path.TrimEndingDirectorySeparator(HomeDirectory), StringComparison.OrdinalIgnoreCase)
             ? null
             : "dir-" + Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(
                 System.Text.Encoding.UTF8.GetBytes(Path.TrimEndingDirectorySeparator(DataDirectory).ToUpperInvariant())).AsSpan(0, 6));

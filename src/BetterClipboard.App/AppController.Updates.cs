@@ -98,6 +98,16 @@ public sealed partial class AppController
     /// </summary>
     private void StartUpdates()
     {
+        // The Microsoft Store updates its edition (CLAUDE.md §2.47): no update service, so no request to GitHub, no update
+        // button in the panel, and a card in Settings that says where updates come from. What this edition does instead
+        // is ask Windows to start it again after the Store closed it for an update.
+        if (IsStoreEdition)
+        {
+            AppLog.Info("Updates: this copy is the Microsoft Store edition; the Store updates it, and BetterClipboard itself asks nobody about updates.");
+            RegisterRestartAfterStoreUpdate();
+            return;
+        }
+
         try
         {
             if (!SemanticVersion.TryParse(Version, out var current))

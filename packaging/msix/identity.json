@@ -1,0 +1,16 @@
+{
+  "notes": [
+    "The identity of BetterClipboard's Microsoft Store package (docs/microsoft-store.md, 'The owner's steps').",
+    "Partner Center assigns these values when the app's name is reserved: Product identity > Package/Identity/Name,",
+    "Package/Identity/Publisher and Package/Properties/PublisherDisplayName. Copy them here exactly and set",
+    "'reserved' to true; tools/release/package-msix.ps1 refuses to build a package for the Store until then.",
+    "'displayName' is the reserved app name (the Store refuses a package whose display name is not reserved).",
+    "The values below are placeholders that only work for test packages (package-msix.ps1 -TestCertificate),",
+    "where the publisher is replaced by the test certificate's subject anyway. Nothing here is a secret."
+  ],
+  "reserved": false,
+  "name": "BetterClipboard.Unreserved",
+  "publisher": "CN=BetterClipboard-Unreserved",
+  "publisherDisplayName": "Eli Belash",
+  "displayName": "BetterClipboard"
+}

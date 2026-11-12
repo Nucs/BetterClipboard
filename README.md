@@ -82,7 +82,8 @@ you send to Claude Code and Codex.
 - **One line to install.** Per user, no admin rights, SHA-256 checked, Windows 10 (2004 or newer) and Windows 11, x64
   and ARM64, nothing else to install; it starts with Windows from then on. As administrator, or from Intune or an RMM
   tool, it installs for every user of a PC instead, and each user can still turn the start at sign-in off for
-  themselves. Uninstalling keeps your history unless you ask ([Install](#install)).
+  themselves. Uninstalling keeps your history unless you ask ([Install](#install)). A Microsoft Store edition is
+  built and waits for its listing ([Microsoft Store edition](#microsoft-store-edition)).
 - **Updates when you approve them.** The update button in the panel's header, left of Pause, is highlighted when a
   newer release is on GitHub, and once a week its tooltip says so by itself for a few seconds. A click shows the
   decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
@@ -182,6 +183,27 @@ The [Chocolatey package](packaging/chocolatey) follows the same rule for "Start 
 signed-in user, the entry is theirs. Installed by SYSTEM or another account, or with `/AllUsersStartup`, it is for
 every user.
 
+### Microsoft Store edition
+
+**Not in the Store yet.** The edition is built and tested ([docs/microsoft-store.md](docs/microsoft-store.md)); its
+listing is being prepared. This is what it is:
+
+- **Installed and updated by the Store.** Microsoft signs the package, so Windows shows no "unknown publisher"
+  warning. The app itself makes no network request at all, because the Store updates it.
+- **It asks first.** The first start asks for your language and then shows a welcome with two switches, *Open with
+  Win+V* and *Start with Windows*. Nothing is recorded and no shortcut is taken until you press *Start*.
+- **Win+V without a system change.** It answers Win+V with the keyboard hook while it runs; quit it and Win+V is
+  Windows' again at once. *Release from Explorer* is not part of this edition.
+- **Your history comes along.** Only one BetterClipboard is meant to be installed. When the Store edition finds a
+  copy you installed with the installer, it says what it will do and checks that it can. On *Move to this edition* it
+  closes that copy, copies your history and settings, checks the copy, uninstalls the other copy (which gives Win+V
+  back to Windows) and removes the old folder. If a step fails, your history stays where it was. A copy for every
+  user, or the Chocolatey copy, is for an administrator to remove: the Store edition says how and waits. The
+  installer, in turn, tells you when the Store edition is installed.
+- **`bclip` runs in every terminal** without a PATH entry, once you turn the command line on.
+- **Removing it** removes its history too: it keeps the history in its own app data, which Windows deletes with the
+  app.
+
 ## Updates
 
 BetterClipboard updates itself from its [GitHub releases](https://github.com/Nucs/BetterClipboard/releases), and only
@@ -225,6 +247,8 @@ when you say so.
 - **A copy installed for every user** neither replaces itself nor checks by itself: only an administrator may change
   its folder. *Check now* still asks, and the dialog copies the command to run in PowerShell as administrator
   ([For every user of a PC](#for-every-user-of-a-pc)).
+- **The Microsoft Store edition** has no update button and asks GitHub nothing: the Store updates it, and
+  *Settings › Updates from the Microsoft Store* opens its Store page.
 
 ## Use
 
@@ -451,9 +475,9 @@ Explorer owns Win+V. BetterClipboard supports two ways to take it:
   to register Win+V (`DisabledHotkeys` = `V`) and BetterClipboard registers it normally, so it also works while an
   elevated (admin) window is focused. Trade-off: while BetterClipboard isn't running, Win+V does nothing.
   Uninstalling gives Win+V back to Windows.
-- **Keyboard hook — no system change** (a copy you run without the installer, or after `-NoTakeOverWinV` if you add
-  Win+V back). While BetterClipboard runs, a low-level keyboard hook intercepts Win+V before Explorer sees it. Exit
-  BetterClipboard and Windows' own panel is back instantly.
+- **Keyboard hook — no system change** (a copy you run without the installer, the Microsoft Store edition, or after
+  `-NoTakeOverWinV` if you add Win+V back). While BetterClipboard runs, a low-level keyboard hook intercepts Win+V
+  before Explorer sees it. Exit BetterClipboard and Windows' own panel is back instantly.
 
 **Rather keep Win+V for Windows?** Install with `-NoTakeOverWinV` and pick your own shortcuts with `-Hotkey`, or add and
 remove them in *Settings › Shortcut*. Any number of shortcuts can open the panel, and each one is taken over the same
@@ -749,7 +773,8 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   order. Logs and `bclip`'s output stay English. See [docs/localization.md](docs/localization.md).
 
 Data lives in `%LOCALAPPDATA%\BetterClipboard` (`stores\<id>\history.db` + `history.key`, `settings.json`,
-`logs\`, `updates\`). Logs never contain clipboard content.
+`logs\`, `updates\`); the Microsoft Store edition keeps the same files in its own app data
+(`%LOCALAPPDATA%\Packages\<its package>\LocalState\BetterClipboard`). Logs never contain clipboard content.
 
 The research behind all this — how Win+V is built (service `cbdhsvc`, the `TextInputHost` panel,
 Explorer's hotkey), why it forgets, its on-disk format for pins, and the measurements quoted above — is
@@ -780,6 +805,13 @@ It uses the network in these cases only:
 Apart from the update check, **this program will not transfer any information to other networked systems unless
 specifically requested by the user or the person installing or operating it.**
 
+**The Microsoft Store edition** makes no request by itself at all: it has no update check, because the Store updates
+it. It records nothing until you press *Start* in its welcome window. It changes no Windows setting: Win+V is answered
+by a keyboard hook while the app runs, and it starts with Windows through the *Startup apps* list, where you can turn
+it off. Its history is in its own app data folder, which Windows removes when you uninstall it. When it replaces a
+copy from the installer, with your go-ahead, it copies that copy's history into its own folder and removes the old
+one; nothing leaves your PC.
+
 What it keeps stays on your PC, in the encrypted history described in [How it works](#how-it-works). Besides the
 clipboard, it reads a few other places on your PC, each behind its own switch in Settings:
 
@@ -804,9 +836,9 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 - **Windows' own features:** an item you paste goes onto the clipboard like any copy, so Windows' clipboard history
   and its sync between devices (*Clipboard history across your devices*) treat it the way you set them up in
   Windows (Microsoft's [privacy statement](https://privacy.microsoft.com/privacystatement) covers those).
-- **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored. *Settings › Clear
-  history*, and *Delete stored…* on each source's card in *Settings › Integrations*, delete parts of it; neither
-  touches the other apps' own files.
+- **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored; uninstalling the
+  Microsoft Store edition always does. *Settings › Clear history*, and *Delete stored…* on each source's card in
+  *Settings › Integrations*, delete parts of it; neither touches the other apps' own files.
 
 ## Uninstall
 
@@ -829,6 +861,9 @@ powershell -ExecutionPolicy Bypass -File "$env:ProgramFiles\BetterClipboard\inst
 
 Each user's history stays in their own profile.
 
+The Microsoft Store edition: *Settings › Apps › Installed apps › BetterClipboard › Uninstall*. Its history is removed
+with it.
+
 ## Build from source
 
 Requires the [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) on Windows.
@@ -838,6 +873,8 @@ dotnet build BetterClipboard.sln
 dotnet test --solution BetterClipboard.sln        # clipboard tests run in a private window station,
                                                   # so they never touch your real clipboard
 pwsh tools/release/package.ps1 -Version 0.1.0     # the exact release zips and .7z archives + SHA256SUMS.txt
+pwsh tools/release/package-msix.ps1 -Version 0.1.0 -Architectures x64 -NewTestCertificate
+                                                  # the Microsoft Store package, signed for a test PC
 ```
 
 Set `BETTERCLIPBOARD_DATA_DIR` to a scratch folder when experimenting so your real history stays clean.

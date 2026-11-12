@@ -76,15 +76,21 @@ public static class Program
             return 0;
         }
 
+        // Where this process keeps its data decides the instance's name: an isolated dev/test run
+        // (BETTERCLIPBOARD_DATA_DIR) and the regular instance never share a lock or command events. Resolved once,
+        // before anything waits on a named object; the Microsoft Store edition's folder comes from its package
+        // (a kernel32 call, so it needs neither COM nor XAML).
+        var paths = ResolvePaths();
+
         // A silent restart (CLAUDE.md §2.46) first takes the shortcuts and the tray icon over from the old process, so nothing
         // goes missing while the two change places, then waits for the old one to end.
         RestartBridge? bridge = null;
         IDisposable? keptCommands = null;
         if (options.IsSilentRestart && options.RestartAfter is { } silentlyReplaced)
         {
-            string name = Core.AppPaths.ResolveDefault().InstanceName;
+            string name = paths.InstanceName;
             keptCommands = SingleInstance.KeepCommandsAlive(name);
-            bridge = RestartBridge.Start(Core.AppPaths.ResolveDefault());
+            bridge = RestartBridge.Start(paths);
             SetNamedEvent(SingleInstance.RestartReadyEventName(name));
             if (!WaitForSilentlyReplacedProcess(silentlyReplaced, SingleInstance.RestartCancelEventName(name)))
             {
@@ -105,9 +111,31 @@ public static class Program
 
         WinRT.ComWrappersSupport.InitializeComWrappers();
 
+        // The Microsoft Store edition (CLAUDE.md §2.47) starts with Windows through its startup task, which runs the
+        // program without arguments: such a start stays in the tray like one with --background.
+        if (!options.Background && options.Command == InstanceCommand.Activate && args.Length == 0
+            && BetterClipboard.Windows.Shell.PackagedStartup.WasStartedByTask())
+        {
+            options = options with { Background = true };
+        }
+
         // Scoped by data directory: an isolated dev/test run (BETTERCLIPBOARD_DATA_DIR) gets its own lock and
-        // command events, so it neither blocks nor receives the installed app's --exit/--show-flyout.
-        using var instance = SingleInstance.Acquire(Core.AppPaths.ResolveDefault().InstanceName);
+        // command events, so it neither blocks nor receives the installed app's --exit/--show-flyout. The Microsoft
+        // Store edition's regular instance shares the lock with every other edition and marks it while it holds it
+        // (CLAUDE.md §2.47).
+        bool storeEdition = BetterClipboard.Windows.Packaging.PackageIdentity.IsPackaged && paths.InstanceScope is null;
+
+        // Before the lock, like the all-users entry above: a Store edition that Windows started while it still has
+        // something to settle with the user must never hold the lock, not even for the moment it takes to find out.
+        // Another installed copy's own sign-in start would find BetterClipboard "already running" and end, and then
+        // none would run.
+        if (storeEdition && options.Background && !options.IsSilentRestart && options.Command == InstanceCommand.Activate
+            && !ContinueStoreEditionInBackground(paths))
+        {
+            return 0;
+        }
+
+        using var instance = SingleInstance.Acquire(paths.InstanceName, storeEdition);
 
         // The lock's own handles to the command events now keep a command sent during the switch.
         keptCommands?.Dispose();
@@ -129,10 +157,24 @@ public static class Program
                 return 0;
             }
 
-            // A second launch (Start menu, double click, script) drives the running app instead of
-            // starting a twin that would fight over the clipboard listener and the Win+V hook.
-            instance.Signal(options.Command);
-            return 0;
+            // The Store edition, started by hand while another edition is the running copy: handing over would open that
+            // copy's Settings, and the user would never see the edition they started. It goes on instead, without the
+            // lock, into its setup, which says what it found and replaces that copy (AppController.Store.cs).
+            bool replacesAnotherEdition = storeEdition && options.Command == InstanceCommand.Activate && !instance.PrimaryIsStoreEdition();
+            if (replacesAnotherEdition && !instance.TryClaimStoreSetup())
+            {
+                // Another process of this edition already has its setup window open (the lock is still the other
+                // copy's, so the usual hand-over cannot reach it): it was asked to show that window.
+                return 0;
+            }
+
+            if (!replacesAnotherEdition)
+            {
+                // A second launch (Start menu, double click, script) drives the running app instead of
+                // starting a twin that would fight over the clipboard listener and the Win+V hook.
+                instance.Signal(options.Command);
+                return 0;
+            }
         }
 
         if (options.Command == InstanceCommand.Exit)
@@ -153,6 +195,16 @@ public static class Program
 
         return 0;
     }
+
+    /// <summary>
+    /// The data locations of this process: the folder in <c>BETTERCLIPBOARD_DATA_DIR</c> when set, the Microsoft Store
+    /// package's own folder when the process runs from that package (CLAUDE.md §2.47), otherwise
+    /// <c>%LOCALAPPDATA%\BetterClipboard</c>. One place, so the app, its setup commands and its sign-in check can never
+    /// disagree about it.
+    /// </summary>
+    /// <returns>The paths.</returns>
+    internal static Core.AppPaths ResolvePaths() =>
+        Core.AppPaths.ResolveDefault(BetterClipboard.Windows.Packaging.PackageIdentity.FamilyName);
 
     /// <summary>
     /// Sets a named event another process created (a silent restart's "ready" signal); nothing happens when it does not
@@ -274,7 +326,7 @@ public static class Program
     {
         try
         {
-            var paths = Core.AppPaths.ResolveDefault();
+            var paths = ResolvePaths();
             var settings = Core.Settings.SettingsStore.TryReadSnapshot(paths.SettingsPath);
             bool skip = settings?.SkipAllUsersStartup ?? false;
             if (Core.Startup.SignInStartup.ShouldContinueFromAllUsersEntry(BetterClipboard.Windows.Shell.StartupRegistration.ReadEntries(), skip))
@@ -303,6 +355,60 @@ public static class Program
     }
 
     /// <summary>
+    /// Whether a Microsoft Store edition that Windows started — at sign-in through its startup task, or again after the
+    /// Store updated it — should become BetterClipboard: not before its welcome was accepted (nothing may be recorded
+    /// without the user's yes, CLAUDE.md §2.47), and not while another copy of BetterClipboard is installed (only one
+    /// edition is meant to be installed; which one stays is settled with the user, in a window, and a start by Windows
+    /// never opens one).
+    /// </summary>
+    /// <param name="paths">This process's data locations (the package's own folder).</param>
+    /// <returns><see langword="true"/> to go on starting; <see langword="false"/> to end the process at once.</returns>
+    /// <remarks>
+    /// <para>
+    /// Runs before the single-instance lock, before COM and before any XAML: a settings snapshot (read without the
+    /// store, never setting an unreadable file aside) and a few registry reads. Settings that cannot be read count as
+    /// "no welcome yet": consent that cannot be shown is asked for again, when the user opens BetterClipboard by hand.
+    /// </para>
+    /// <para>
+    /// The decision is logged, content-free, so "it did not start at sign-in" can be explained afterwards. The other
+    /// copy, when it has its own sign-in entry, is the one that runs; opened by hand, this edition offers to take its
+    /// place (<c>AppController.Store.cs</c>).
+    /// </para>
+    /// </remarks>
+    private static bool ContinueStoreEditionInBackground(Core.AppPaths paths)
+    {
+        bool welcomed = Core.Settings.SettingsStore.TryReadSnapshot(paths.SettingsPath)?.StoreWelcomeAccepted == true;
+        var installed = BetterClipboard.Windows.Store.OtherEditionLocator.Find(
+            Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory), regularInstanceHeldByAnother: false);
+        if (welcomed && installed.Count == 0)
+        {
+            return true;
+        }
+
+        try
+        {
+            paths.EnsureCreated();
+            Core.Diagnostics.AppLog.Initialize(paths.LogDirectory);
+            try
+            {
+                Core.Diagnostics.AppLog.Info(installed.Count > 0
+                    ? $"Microsoft Store edition: not started in the background: another copy of BetterClipboard is installed ({string.Join(", ", installed.Select(e => e.Kind))}). Opened by hand, this edition offers to take its place."
+                    : "Microsoft Store edition: not started in the background: its welcome was not accepted yet, so nothing is recorded. The welcome shows when BetterClipboard is opened by hand.");
+            }
+            finally
+            {
+                Core.Diagnostics.AppLog.Shutdown();
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The log could not be written; the decision stands without its note.
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// Runs <c>--set-hotkeys</c> against this data folder (the same <c>BETTERCLIPBOARD_DATA_DIR</c> resolution as the app)
     /// and writes its answer to the standard output the caller redirected.
     /// </summary>
@@ -315,7 +421,7 @@ public static class Program
     /// </remarks>
     private static int SetHotkeys(string[] args)
     {
-        var paths = Core.AppPaths.ResolveDefault();
+        var paths = ResolvePaths();
         bool validateOnly = BetterClipboard.Windows.Input.HotkeySetupCommand.IsValidateOnly(args);
         if (!validateOnly)
         {
@@ -350,7 +456,7 @@ public static class Program
     /// </remarks>
     private static int SetUpdateCheck(string[] args)
     {
-        var paths = Core.AppPaths.ResolveDefault();
+        var paths = ResolvePaths();
         Core.Diagnostics.AppLog.Initialize(paths.LogDirectory);
         try
         {

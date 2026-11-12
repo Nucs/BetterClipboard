@@ -332,7 +332,13 @@
                     Keywords="{loc:Tr Text='keyboard hook, intercept, Win+V, override'}">
                     <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.UseKeyboardHookFallback, Mode=TwoWay}" />
                 </controls:SettingsCard>
+                <!--
+                  Not in the Microsoft Store edition (SettingsWindow.Store.cs takes the card out of the page): a packaged
+                  app's own registry writes never reach Explorer, and the Store's policies ask for supported ways to
+                  change Windows' settings (CLAUDE.md §2.47).
+                -->
                 <controls:SettingsCard
+                    x:Name="ReleaseFromExplorerCard"
                     Description="{loc:Tr Text='Advanced: tells Explorer not to register your Win+letter shortcuts (Win+V…) at all (DisabledHotkeys), so no hook is needed and they work over admin windows too. Restarts Explorer. While BetterClipboard is not running, those shortcuts then do nothing.'}"
                     Glyph="&#xEC50;"
                     Header="{loc:Tr Text='Release from Explorer'}"
@@ -581,7 +587,22 @@
                     Glyph="&#xE77F;"
                     Header="{loc:Tr Text=&quot;Windows' own clipboard history&quot;}"
                     Keywords="{loc:Tr Text='Win+V, built-in clipboard, Windows history'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.IsWindowsHistoryEnabled, Mode=OneWay}" Toggled="WindowsHistory_Toggled" />
+                    <!--
+                      The Microsoft Store edition cannot flip Windows' switch (its registry writes stay inside the
+                      package), so it shows the state and opens Windows' own page instead (CLAUDE.md §2.47).
+                    -->
+                    <StackPanel Orientation="Horizontal">
+                        <ToggleSwitch
+                            OnContent="{loc:Tr Text='On'}"
+                            OffContent="{loc:Tr Text='Off'}"
+                            IsOn="{x:Bind ViewModel.IsWindowsHistoryEnabled, Mode=OneWay}"
+                            Toggled="WindowsHistory_Toggled"
+                            Visibility="{x:Bind ViewModel.IsNotStoreEdition}" />
+                        <Button
+                            Click="OpenWindowsClipboardSettings_Click"
+                            Content="{loc:Tr Text='Open Windows settings'}"
+                            Visibility="{x:Bind ViewModel.IsStoreEdition}" />
+                    </StackPanel>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text=&quot;Bring in everything Win+V still remembers, including its pinned items (decrypted from Windows' pinned store with your own account).&quot;}"
@@ -900,7 +921,23 @@
                     Glyph="&#xE7E8;"
                     Header="{loc:Tr Text='Start with Windows'}"
                     Keywords="{loc:Tr Text='startup, autostart, boot, sign in'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}" />
+                    <!--
+                      The Microsoft Store edition starts through its startup task (CLAUDE.md §2.47). When the user turned
+                      that off in Windows' own Startup apps list, only that list can turn it on again: the switch is then
+                      disabled and the button opens the list.
+                    -->
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button
+                            VerticalAlignment="Center"
+                            Click="OpenStartupApps_Click"
+                            Content="{loc:Tr Text='Open Startup apps'}"
+                            Visibility="{x:Bind ViewModel.ShowOpenStartupApps, Mode=OneWay}" />
+                        <ToggleSwitch
+                            OnContent="{loc:Tr Text='On'}"
+                            OffContent="{loc:Tr Text='Off'}"
+                            IsEnabled="{x:Bind ViewModel.CanChangeLaunchAtStartup, Mode=OneWay}"
+                            IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}" />
+                    </StackPanel>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Light, dark, or follow Windows.'}"
@@ -927,10 +964,12 @@
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Text="{x:Bind ViewModel.CommandLineStatus, Mode=OneWay}"
                                 TextWrapping="Wrap" />
+                            <!--  Not in the Microsoft Store edition: there every terminal finds bclip through its app execution alias.  -->
                             <Button
                                 Click="AddCommandLineToPath_Click"
                                 Content="{loc:Tr Text='Add bclip to PATH'}"
-                                IsEnabled="{x:Bind ViewModel.CanAddCommandLineToPath, Mode=OneWay}" />
+                                IsEnabled="{x:Bind ViewModel.CanAddCommandLineToPath, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.IsNotStoreEdition}" />
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
@@ -958,6 +997,7 @@
                 -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Updates'}" />
                 <controls:SettingsCard
+                    x:Name="UpdatesCard"
                     Description="{loc:Tr Text=&quot;Once a day, BetterClipboard asks GitHub for the list of its releases and highlights the update button in the panel when a newer version exists. The request names only the app's version: nothing about you, your PC or your clipboard is sent. Nothing is downloaded or installed until you approve it. Off: it asks only when you press Check now.&quot;}"
                     Glyph="&#xE895;"
                     Header="{loc:Tr Text='Check for updates automatically'}"
@@ -984,6 +1024,20 @@
                             </StackPanel>
                         </StackPanel>
                     </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+
+                <!--
+                  The Microsoft Store edition's Updates card (CLAUDE.md §2.47): the Store updates that edition, and the app
+                  itself asks no server. SettingsWindow.Store.cs keeps this card in the Store edition and the card above
+                  in every other one, by taking the other out of the page (the search would otherwise show both).
+                -->
+                <controls:SettingsCard
+                    x:Name="StoreUpdatesCard"
+                    Description="{loc:Tr Text='This copy comes from the Microsoft Store, which updates it by itself. BetterClipboard asks no server about updates, and Windows starts it again after an update.'}"
+                    Glyph="&#xE895;"
+                    Header="{loc:Tr Text='Updates from the Microsoft Store'}"
+                    Keywords="{loc:Tr Text='upgrade, new version, Microsoft Store, release notes'}">
+                    <Button Click="OpenStorePage_Click" Content="{loc:Tr Text='Open in Microsoft Store'}" />
                 </controls:SettingsCard>
 
                 <!--
