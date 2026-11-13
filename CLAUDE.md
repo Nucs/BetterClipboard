@@ -6953,6 +6953,17 @@ kit by a scratch generator, session 66cdd808):
 - **A README change goes into its translations** (`docs/translations/*.md`, §2.37), in the same commit when the
   wording is clear. The translations say at their top that the English README prevails, and they keep the English
   section ids as explicit `<a id=…>` anchors, so `#privacy` and `#code-signing-policy` work in every language.
+  - **A merge brings main's README changes in English only.** The Chinese README was written on a branch; three
+    commits made on `main` meanwhile changed only the English one, and two of them (dev builds `83c0e5a`, the tab
+    menu `3cbefdc` + `7dce6ca`) stayed missing in Chinese from 2026-11-08 until `2d5371b` (2026-11-13). After merging
+    a branch that adds or edits a translation, list the commits that changed `README.md` but not the translation:
+    `git rev-list --no-merges <branch point>..HEAD -- README.md`, then `git show --name-only` for each.
+  - **How to compare a translation with the English README:** section by section (the translation's `<a id>` equals
+    the English heading's anchor), counting list items per depth, table rows, paragraphs, code blocks (commands equal,
+    comments translated), images and link targets; then GitHub's renderer on both whole files (`gh api markdown`,
+    mode `markdown`): the same tables with the same rows, the same number of list items and code blocks, nothing left
+    as raw `**` or `](`. Counts cannot see a sentence missing inside a paragraph: read each commit's English diff too.
+  - Only English and Simplified Chinese have READMEs; the app also speaks Russian, Spanish and Hebrew.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
