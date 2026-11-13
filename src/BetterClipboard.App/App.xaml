@@ -282,6 +282,89 @@
                 only the scrim deepens on hover/press. A custom template (not the stock Button) so the default control
                 background does not fight the scrim.
             -->
+            <!--
+                The eye on a card whose text is cut off (ClipboardFlyout.TextPreview.cs): a small round button that sits on
+                the corner of the card's text. Theme brushes (unlike the image eye's fixed scrim): it lies on the card, not
+                on a picture of any color, and its solid fill keeps it legible over the last line's end.
+            -->
+            <Style x:Key="TextViewButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="24" />
+                <Setter Property="Height" Value="24" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="12" />
+                <Setter Property="BorderThickness" Value="1" />
+                <Setter Property="FontFamily" Value="{ThemeResource SymbolThemeFontFamily}" />
+                <Setter Property="FontSize" Value="12" />
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+                <Setter Property="Background" Value="{ThemeResource SolidBackgroundFillColorSecondaryBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border
+                                x:Name="Chrome"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Chrome.Background" Value="{ThemeResource SolidBackgroundFillColorTertiaryBrush}" />
+                                                <Setter Target="Glyph.Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="Chrome.Background" Value="{ThemeResource SolidBackgroundFillColorQuarternaryBrush}" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled" />
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter
+                                    x:Name="Glyph"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    AutomationProperties.AccessibilityView="Raw"
+                                    Content="{TemplateBinding Content}"
+                                    FontFamily="{TemplateBinding FontFamily}"
+                                    FontSize="{TemplateBinding FontSize}"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!--
+                The image and text overlays' pieces (ClipboardFlyout.ImagePreview.cs, ClipboardFlyout.TextPreview.cs,
+                TextPreviewPresenter.cs), as styles applied from code. A style's theme resources resolve in the theme of the
+                element it is applied to: the panel's, which the overlays copy. A brush looked up in code from the
+                application's resources follows Windows' theme instead: the text peek's frame came out light over a dark
+                panel on a light Windows (2026-11-13), and so did the image peek's.
+            -->
+            <Style x:Key="OverlayFrameStyle" TargetType="Border">
+                <Setter Property="Background" Value="{ThemeResource SolidBackgroundFillColorBaseBrush}" />
+                <Setter Property="BorderBrush" Value="{ThemeResource SurfaceStrokeColorDefaultBrush}" />
+            </Style>
+            <Style x:Key="OverlaySecondaryTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="OverlayTertiaryTextStyle" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextFillColorTertiaryBrush}" />
+            </Style>
+            <Style x:Key="OverlayChipStyle" TargetType="Border">
+                <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeColorDefaultBrush}" />
+                <Setter Property="Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}" />
+            </Style>
+            <Style x:Key="OverlayAccentIconStyle" TargetType="FontIcon">
+                <Setter Property="Foreground" Value="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+            </Style>
+
             <Style x:Key="ImageViewButtonStyle" TargetType="Button">
                 <Setter Property="Width" Value="28" />
                 <Setter Property="Height" Value="28" />

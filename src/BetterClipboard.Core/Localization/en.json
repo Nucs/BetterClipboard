@@ -88,6 +88,7 @@
   "Archived prompts": "Archived prompts", // Delete stored dialog: label of a checkbox row (one part of what is stored), with its count beside it. The prompt archive: every prompt BetterClipboard read from Claude Code's or Codex's history.
   "Arrow keys here": "Arrow keys here", // Clipboard panel, groups column: screen-reader status of the group icon the arrow keys are on (not visible on screen).
   "Art": "Art", // Name of a group icon (a paintbrush) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
+  "As copied": "As copied", // Text viewer: right half of a two-button switch over XML and JSON texts; shows the text exactly as it was copied, its line breaks and spaces kept. The other half is 'Formatted'. Short: it is a toolbar button.
   "At most {0} shortcuts. Remove one first.": "At most {0} shortcuts. Remove one first.", // Settings › Shortcut: red error when the list is full. {0} = the most shortcuts allowed (8).
   "Automatic checks are off: BetterClipboard asks GitHub only when you press Check now.": "Automatic checks are off: BetterClipboard asks GitHub only when you press Check now.", // Update dialog and Settings: status while automatic checks are switched off. "Check now" is the button's name: quote its translation.
   "Back to the release: BetterClipboard {0}": "Back to the release: BetterClipboard {0}", // Tooltip of the panel's update button on a development build: the latest official release (older) is offered as the way back. {0} = its version.
@@ -147,9 +148,10 @@
   "Clear shortcuts used before": "Clear shortcuts used before", // Settings › Shortcut: last item of the drop-down menu; empties the list of shortcuts used before.
   "Clipboard": "Clipboard", // Clipboard panel: the title in the header (followed by " › group name" in a group view). One word, like Windows' own name for the clipboard.
   "Close": "Close", // Update dialog: button that closes it when no update is offered.
-  "Close (Esc)": "Close (Esc)", // Full-screen image viewer: tooltip of its close (X) button. Esc is a key name.
+  "Close (Esc)": "Close (Esc)", // Tooltip of the close (X) button of the full-screen image viewer and of the text viewer. Esc is a key name.
   "Close image viewer": "Close image viewer", // Full-screen image viewer: screen-reader name of its close (X) button.
   "Close it and continue": "Close it and continue", // Microsoft Store edition, setup window: the accent button on the page 'Another BetterClipboard is running'; 'it' is that other running BetterClipboard. A button label.
+  "Close text viewer": "Close text viewer", // Text viewer: screen-reader name of its close (X) button.
   "Close the other copy": "Close the other copy", // Microsoft Store edition, setup window: the first step of the move, a line that gets a spinner and then a check mark. The steps are worded as tasks.
   "Cloud": "Cloud", // Name of a group icon (a cloud) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
   "Cmd tab (Command Prompt history)": "Cmd tab (Command Prompt history)", // Settings › Integrations: card title of the switch that keeps Command Prompt commands in the Cmd tab. Cmd stays as is.
@@ -158,6 +160,7 @@
   "Codex's own files are not touched. While the switch is on, what Codex still has is read again right away: turn the switch off below to keep it out.": "Codex's own files are not touched. While the switch is on, what Codex still has is read again right away: turn the switch off below to keep it out.", // Delete stored dialog: the note under the parts: what is never touched, and what comes back while the card's switch stays on. "Below" = the "Also turn off …" checkbox under this note.
   "Codex's session files. Prompts written by agents and codex exec runs are left out.": "Codex's session files. Prompts written by agents and codex exec runs are left out.", // Codex tab, empty list: SECOND HALF, completing the previous string's sentence, then one more sentence. "codex exec" is a command (keep).
   "Color": "Color", // Card label (kind) of a copied color value (#7C3AED), also used in Settings' forgotten list.
+  "Colored up to the first {0:N0} characters.": "Colored up to the first {0:N0} characters.", // Text viewer: note in its status line when code is so long that only its start is colored (the rest is shown plain). {0} = how many characters are colored (2,000,000).
   "Comes with WinUI 3; BetterClipboard itself shows no web pages.": "Comes with WinUI 3; BetterClipboard itself shows no web pages.", // Settings › Third party › Built with, WebView2 SDK's row: why it is in the download.
   "Command Prompt": "Command Prompt", // Name of the source of commands kept from Command Prompt windows, shown in card captions and messages. Use Windows' name for Command Prompt in your language.
   "Command Prompt command": "Command Prompt command", // Card label (kind of item) of a command typed in a Command Prompt window (Cmd tab). Command Prompt = Windows' cmd.exe.
@@ -186,6 +189,7 @@
   "Copied.": "Copied.", // Microsoft Store edition, setup window: shows under the Chocolatey command after the 'Copy command' button put it on the clipboard.
   "Copied: press Ctrl+V to paste": "Copied: press Ctrl+V to paste", // Windows notification title when the target window runs as administrator, so the item could only be copied. Ctrl+V is a key name.
   "Copies larger than this are not recorded. (Win+V caps at 4 MB.)": "Copies larger than this are not recorded. (Win+V caps at 4 MB.)", // Settings › History › Largest item (MB): card description. MB = megabytes.
+  "Copy": "Copy", // Text peek and text viewer: first item of the right-click menu over the text; copies the selected part of the text to the clipboard. Not the card menu's 'Copy only'.
   "Copy command": "Copy command", // Update dialog (copies installed by Chocolatey or for every user): button that copies the command which updates them.
   "Copy image as a file": "Copy image as a file", // Menu item of a picture card (and of its Save to temp submenu): puts the picture's file on the clipboard as a file, like Copy in File Explorer, so it pastes into a folder, a chat or an e-mail as an attachment.
   "Copy install command": "Copy install command", // Update dialog (a copy that was extracted by hand): button that copies the PowerShell command that installs BetterClipboard properly.
@@ -295,6 +299,7 @@
   "Forget forever…": "Forget forever…", // Card menu item: opens the "Forget this forever?" confirmation (hence the ellipsis). Use the same words as the "Forget forever" button.
   "Forget this forever?": "Forget this forever?", // Title of the confirmation flyout of the card menu's "Forget forever…".
   "Forgotten forever": "Forgotten forever", // Settings › Privacy: card title of the list of contents that were forgotten forever (never recorded again).
+  "Formatted": "Formatted", // Text viewer: left half of a two-button switch over XML and JSON texts; shows the text re-indented, one element or value per line. The other half is 'As copied'. Short: it is a toolbar button.
   "Formatted content": "Formatted content", // Settings › Privacy › Forgotten forever: row title of forgotten formatted content without text.
   "Formatted text": "Formatted text", // Card label (kind) of copied text with formatting (HTML or RTF), also used in Settings' forgotten list.
   "Fun": "Fun", // Name of a group icon (a smiling face) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
@@ -372,6 +377,8 @@
   "Keys": "Keys", // Name of a group icon (a key) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
   "Language": "Language", // Settings › App: title of the interface-language card, and the screen-reader name of its language list.
   "Laptop": "Laptop", // Name of a group icon (a laptop) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
+  "Larger text": "Larger text", // Text viewer: screen-reader name of the 'A+' button that makes the text larger (the size is remembered).
+  "Larger text (Ctrl+Plus)": "Larger text (Ctrl+Plus)", // Text viewer: tooltip of the 'A+' button. Ctrl+Plus is a key name (Ctrl and the plus key): keep it.
   "Largest item (MB)": "Largest item (MB)", // Settings › History: card title of the number box with the largest copy, in megabytes, that is recorded.
   "Later": "Later", // Update dialog: button that closes it and leaves the update for later.
   "Learning": "Learning", // Name of a group icon (a graduation cap) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
@@ -382,6 +389,7 @@
   "Light, dark, or follow Windows.": "Light, dark, or follow Windows.", // Settings › App › Theme: card description.
   "Liked": "Liked", // Name of a group icon (a thumbs-up) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
   "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.": "Line endings and spaces around it don't matter. To allow it again, use Settings › Forgotten forever.", // "Forget this forever?" flyout, for an ordinary item: second part.
+  "Line numbers": "Line numbers", // Text viewer: toolbar toggle button; shows each line's number in a column left of code (not for Markdown, which is drawn as a document).
   "Link": "Link", // Card label (kind) of a copied web link, also used in Settings' forgotten list.
   "Links": "Links", // Clipboard panel: the tab of copied web links.
   "Listening: press the shortcut, or type it. Enter adds it.": "Listening: press the shortcut, or type it. Enter adds it.", // Settings › Shortcut: hint under the shortcut box while it has the keyboard and records keys. Enter is a key name.
@@ -406,6 +414,8 @@
   "Never record copies from these apps (process names, one per line). Comes filled with known password managers and authenticator apps (1Password, Bitwarden, KeePass, KeePassXC, LastPass, Proton Pass, RoboForm and many more); delete any you do want recorded and they stay deleted. Managers that work only inside the browser cannot be told apart from the browser.": "Never record copies from these apps (process names, one per line). Comes filled with known password managers and authenticator apps (1Password, Bitwarden, KeePass, KeePassXC, LastPass, Proton Pass, RoboForm and many more); delete any you do want recorded and they stay deleted. Managers that work only inside the browser cannot be told apart from the browser.", // Settings › Privacy › Ignored apps: card description above a text box of process names (one per line). The product names stay as they are.
   "New group": "New group", // Clipboard panel: name of the "+" button at the bottom of the groups column, and the heading of the icon picker it opens.
   "New group: pick an icon, then drag cards onto it": "New group: pick an icon, then drag cards onto it", // Clipboard panel: tooltip of the "+" button in the groups column. "Cards" are the history items listed in the panel.
+  "Next page": "Next page", // Text viewer: screen-reader name of the right arrow that shows the next page of a long text.
+  "Next page (Ctrl+PageDown)": "Next page (Ctrl+PageDown)", // Text viewer: tooltip of the right arrow that shows the next page of a long text. Ctrl+PageDown is a key name: keep it.
   "Next to the mouse": "Next to the mouse", // Settings › Shortcut › Panel position: list item: the panel opens next to the mouse pointer.
   "Next to the text cursor": "Next to the text cursor", // Settings › Shortcut › Panel position: list item (the default): the panel opens next to the blinking text cursor of the app being typed in.
   "Night": "Night", // Name of a group icon (a moon) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
@@ -492,6 +502,7 @@
   "Open the full history (the clipboard icon above), then drag cards onto their icons.": "Open the full history (the clipboard icon above), then drag cards onto their icons.", // Clipboard panel, empty view of several groups: message. "Their icons" = the groups' icons.
   "Open with Win+V": "Open with Win+V", // Microsoft Store edition, welcome page: the title of the first switch (on: BetterClipboard opens with Win+V instead of Windows' own clipboard panel). Keep 'Win+V'.
   "Owned by Windows or another app: taken over with a keyboard hook while BetterClipboard runs.": "Owned by Windows or another app: taken over with a keyboard hook while BetterClipboard runs.", // Settings › Shortcut: state under a shortcut another program owns, caught by BetterClipboard's keyboard hook.
+  "Page {0:N0} of {1:N0}": "Page {0:N0} of {1:N0}", // Text viewer: label between its two page arrows, for a text too long to show at once (it is shown a page of about 64,000 characters at a time). {0} = the page shown; {1} = how many pages. Short: it sits in the toolbar.
   "Panel position": "Panel position", // Settings › Shortcut: card title; a list chooses where the clipboard panel opens.
   "Paste": "Paste", // Card menu, first item (Enter): pastes the item into the app the panel was opened from. One short verb, like Windows' own Paste.
   "Paste after choosing an item": "Paste after choosing an item", // Settings › Pasting: card title of the switch that pastes the chosen item into the previous app.
@@ -522,6 +533,7 @@
   "Pinned items are listed before everything else. The panel still selects your newest copy, just below them.": "Pinned items are listed before everything else. The panel still selects your newest copy, just below them.", // Settings › Pasting › Show pinned items first: card description. "Selects" = the highlighted row that Enter would paste.
   "Pinned or in a group": "Pinned or in a group", // Delete stored dialog: label of a checkbox row (one part of what is stored), with its count beside it. The pinned items and items in groups among the others. Unticked at first: they stay unless ticked.
   "Places": "Places", // Name of a group icon (a map pin) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
+  "Plain text": "Plain text", // Text peek and text viewer: the language a text is shown as when it is neither Markdown nor code (no colors, no formatting). Shown in the language list of the viewer, on its language button and on the peek's language chip; next to names such as Markdown, XML or C#.
   "PowerShell (PSReadLine) saves every command you type to a history file — none was found yet. ": "PowerShell (PSReadLine) saves every command you type to a history file — none was found yet. ", // Pwsh tab, empty list: first sentence of the message (keeps its trailing space; the next string follows). PSReadLine is PowerShell's line editor (keep).
   "PowerShell ({0})": "PowerShell ({0})", // Name of the source of commands from another PowerShell host's history file. {0} = the host's name.
   "PowerShell command": "PowerShell command", // Card label (kind of item) of a command from PowerShell's history (Pwsh tab).
@@ -532,6 +544,8 @@
   "Preserve app-specific formats": "Preserve app-specific formats", // Settings › History: card title of the switch that keeps every format an app put on the clipboard, not only text and pictures.
   "Press a shortcut, or type one": "Press a shortcut, or type one", // Settings › Shortcut: placeholder (grey hint) inside the empty shortcut box, which shows about 220 pixels of text (some 30 characters): keep it at most as long as the English.
   "Press the keys of the shortcut, or type its name, then press Enter.": "Press the keys of the shortcut, or type its name, then press Enter.", // Settings › Shortcut: screen-reader help text of the box where a new shortcut is recorded (pressing the keys records them; typing a name such as Ctrl+Shift+V works too). Enter is the key name.
+  "Previous page": "Previous page", // Text viewer: screen-reader name of the left arrow that shows the previous page of a long text.
+  "Previous page (Ctrl+PageUp)": "Previous page (Ctrl+PageUp)", // Text viewer: tooltip of the left arrow that shows the previous page of a long text. Ctrl+PageUp is a key name: keep it.
   "Privacy": "Privacy", // Settings section header: pausing, ignored apps, forgotten items, encryption and clearing.
   "Private": "Private", // Name of a group icon (a padlock) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
   "Prompts you kept from the tab": "Prompts you kept from the tab", // Delete stored dialog: label of a checkbox row (one part of what is stored), with its count beside it. Prompts the user pasted, copied or pinned from the Claude or Codex tab (so they became history entries).
@@ -602,6 +616,7 @@
   "Search prompts you sent to {0}…": "Search prompts you sent to {0}…", // Search placeholder in the Claude and Codex tabs. {0} = Claude Code or Codex (never translated). The search box shows about 220 pixels of text at the panel's default width (some 32 characters of Latin text) before the Aa, W and .* toggles cut it off: keep it at most as long as the English. The English is cut off already with Claude Code; a translation may say less ("Search your Claude Code prompts…").
   "Search settings": "Search settings", // Settings window: placeholder of the search box pinned above the page, and its accessible name. Typing filters the page to the settings that match. The box is wide (the page's column).
   "Security": "Security", // Name of a group icon (a shield) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
+  "Select all": "Select all", // Text peek and text viewer: second item of the right-click menu over the text; selects all of the text shown.
   "Serving bclip now.": "Serving bclip now.", // Settings › App › Command line (bclip): status while the app answers bclip commands.
   "Settings": "Settings", // Clipboard panel header: name and tooltip of the gear button that opens the Settings window.
   "Settings…": "Settings…", // Menu of the notification-area icon: opens the Settings window.
@@ -619,11 +634,15 @@
   "Show in Everything": "Show in Everything", // Card menu item: opens the Everything search app on this file (Everything is a product name).
   "Show in Explorer": "Show in Explorer", // Card menu item on copied files and on files opened in Everything: opens File Explorer with the file selected. Use Windows' name for File Explorer.
   "Show pinned items first": "Show pinned items first", // Settings › Pasting: card title of the switch that lists pinned items before the others.
+  "Show the text as Markdown, as code in another language, or as plain text": "Show the text as Markdown, as code in another language, or as plain text", // Text viewer: tooltip of the drop-down button that picks how the text is shown. 'Language' here is a computer language (C#, XML, JSON…), not a human one. Markdown is a product name: keep it.
+  "Showing the first {0:N0} of {1:N0} characters. F3 opens all of it.": "Showing the first {0:N0} of {1:N0} characters. F3 opens all of it.", // Text peek (the text that opens when the mouse rests on a long card): note under a long text that it shows only its start. {0} = how many characters it shows (64,000); {1} = how many the text has (more). F3 is a key name: keep it.
   "Shown": "Shown", // Clipboard panel, groups column: screen-reader status of a group icon whose items are shown in the list right now (not visible on screen).
   "Shown, arrow keys here": "Shown, arrow keys here", // Clipboard panel, groups column: screen-reader status of a shown group icon that the arrow keys are on (both statuses above; keep the first word the same as "Shown").
   "Since start: {0:N0} clipboard changes read the moment Windows announced them#one": "Since start: {0:N0} clipboard change read the moment Windows announced it", // Settings › Privacy › Capture reliability: start of the card description (no final period: " — none overwritten…" or " — {0} replaced…" follows). {0} = clipboard changes read since the app started. This row: the form for a count of 1.
   "Since start: {0:N0} clipboard changes read the moment Windows announced them#other": "Since start: {0:N0} clipboard changes read the moment Windows announced them", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
   "Skip this version": "Skip this version", // Update dialog: link button; the panel stops highlighting the update button for the offered version.
+  "Smaller text": "Smaller text", // Text viewer: screen-reader name of the 'A−' button that makes the text smaller (the size is remembered).
+  "Smaller text (Ctrl+Minus)": "Smaller text (Ctrl+Minus)", // Text viewer: tooltip of the 'A−' button. Ctrl+Minus is a key name (Ctrl and the minus key): keep it.
   "Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up here the moment Windows saves it.": "Snip with Win+Shift+S or PrtScn, or press Win+PrtScn — the screenshot shows up here the moment Windows saves it.", // Snipping tab, empty list: message. Win+Shift+S, PrtScn and Win+PrtScn are key names; "snip" = take a screenshot with Snipping Tool.
   "Snipping": "Snipping", // Clipboard panel: the tab of Windows' own screenshots (Snipping Tool and Win+PrtScn). Short tab label; it may say "screenshots".
   "Snipping Tool": "Snipping Tool", // Name of the source of Windows' screenshots taken with Snipping Tool, shown in card captions (stored in English, shown translated). Use Snipping Tool's name in your Windows.
@@ -655,6 +674,7 @@
   "Take a screenshot with ShareX — it shows up here the moment ShareX saves it.": "Take a screenshot with ShareX — it shows up here the moment ShareX saves it.", // ShareX tab, empty list: message while importing ShareX screenshots is on.
   "Take over shortcuts owned by Windows": "Take over shortcuts owned by Windows", // Settings › Shortcut: card title of the switch that lets the app take shortcuts that Windows (Win+V) or other apps already own.
   "Text": "Text", // Clipboard panel tab of copied text, and the card label of plain copied text.
+  "Text language": "Text language", // Text viewer: screen-reader name of the drop-down button that picks how the text is shown: as Markdown, as code in a programming or markup language (C#, XML, JSON…), or as plain text. A computer language, not a human one: not the interface language.
   "That window runs as administrator, and Windows does not let BetterClipboard type into it. The item is on the clipboard.": "That window runs as administrator, and Windows does not let BetterClipboard type into it. The item is on the clipboard.", // Windows notification text under "Copied: press Ctrl+V to paste".
   "The bclip pipe is already in use by another program ({0}).": "The bclip pipe is already in use by another program ({0}).", // Settings › App › Command line (bclip): error when bclip's named pipe is taken. {0} = Windows' message (may be English). A pipe is the channel bclip talks through.
   "The build could not be copied from the dev-builds folder: {0}": "The build could not be copied from the dev-builds folder: {0}", // Update failure (development builds). {0} = Windows' reason (may be English).
@@ -731,7 +751,9 @@
   "This regular expression is too slow": "This regular expression is too slow", // Clipboard panel, empty list: title when a regular expression took too long on an item.
   "This release has no notes.": "This release has no notes.", // Update dialog, release notes area: when the release has no notes.
   "This takes a moment. Please do not turn the PC off.": "This takes a moment. Please do not turn the PC off.", // Microsoft Store edition, setup window: the paragraph under the heading 'Moving to the Microsoft Store edition'.
+  "This text could not be loaded.": "This text could not be loaded.", // Text peek and text viewer: message in place of the text when it cannot be read (the item was deleted meanwhile, or its data is damaged).
   "Ties the panel and Settings to the data they show.": "Ties the panel and Settings to the data they show.", // Settings › Third party › Built with, CommunityToolkit.Mvvm's row: what it is for.
+  "Too long to draw as Markdown: shown as plain text.": "Too long to draw as Markdown: shown as plain text.", // Text viewer: note in its status line when a text is too long (over 100,000 characters) to be drawn as a Markdown document, so it is shown as plain text. Markdown is a product name: keep it.
   "Tools": "Tools", // Name of a group icon (a wrench) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
   "Total size budget for history outside pins and groups; the least recently used items go first. 0 = unlimited.": "Total size budget for history outside pins and groups; the least recently used items go first. 0 = unlimited.", // Settings › History › History size budget (MB): card description. "Pins and groups" are pinned items and items in groups, which never count.
   "Travel": "Travel", // Name of a group icon (an airplane) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
@@ -772,9 +794,12 @@
   "Version {0}. {1}": "Version {0}. {1}", // Update dialog text when automatic checks are off. {0} = the running version; {1} = why there are no automatic checks (a sentence).
   "Versions of unsaved tabs": "Versions of unsaved tabs", // Delete stored dialog: label of a checkbox row (one part of what is stored), with its count beside it. The recorded versions of Notepad++'s unsaved "new" tabs.
   "Video": "Video", // Name of a group icon (a video camera) in the new-group picker; also the group's name when the user types none. One short word; it must differ from every other icon name (a test checks).
+  "View": "View", // Card menu item (right-click a card, or the Menu key): opens the card's whole text in the text viewer, or a picture in the image viewer. F3 does the same. Keep it one short word.
   "View image full screen (zoom and pan)": "View image full screen (zoom and pan)", // Clipboard panel: screen-reader name of the eye button on an image card that opens the full-screen image viewer.
   "View on GitHub": "View on GitHub", // Update dialog: text of the link that opens the release's page on GitHub.
   "View the release on GitHub": "View the release on GitHub", // Update dialog: screen-reader name of the link that opens the release's page on GitHub.
+  "View the whole text": "View the whole text", // Clipboard panel: screen-reader name of the small eye button at the bottom right of a card whose text is cut off; it opens the text viewer with the whole text.
+  "View the whole text (F3)": "View the whole text (F3)", // Clipboard panel: tooltip of the small eye button at the bottom right of a card whose text is cut off. F3 is a key name: keep it.
   "View — zoom and pan (Esc closes)": "View — zoom and pan (Esc closes)", // Clipboard panel: tooltip of the eye button on an image card. Esc is a key name.
   "Waiting for ShareX to create its screenshots folder ({0}).": "Waiting for ShareX to create its screenshots folder ({0}).", // Settings › Integrations › ShareX screenshots: status while ShareX's screenshot folder does not exist yet. {0} = the folder paths.
   "Waiting for the other copy to be removed…": "Waiting for the other copy to be removed…", // Microsoft Store edition, setup window: the quiet note left of the buttons while the app waits for an administrator to uninstall the other copy (it looks every two seconds).
@@ -813,6 +838,8 @@
   "Windows' own clipboard history": "Windows' own clipboard history", // Settings › Windows clipboard: card title of the switch that turns Windows' own clipboard history (Win+V) on or off.
   "Work": "Work", // Name of a group icon (a briefcase) in the new-group picker; also the group's name when the user types none. Must differ from every other icon name.
   "Works with": "Works with", // Settings › Third party: card title listing other makers' apps BetterClipboard reads from.
+  "Wrap": "Wrap", // Text viewer: toolbar toggle button; on, long lines break at the window's edge; off, they run on and the text scrolls sideways. Short: one word if possible.
+  "Wrap long lines (off: scroll sideways)": "Wrap long lines (off: scroll sideways)", // Text viewer: tooltip of the 'Wrap' toggle button.
   "Yesterday {0}": "Yesterday {0}", // Relative time in card captions and status lines. {0} = the time of day (14:02, in the user's format). May follow words like "forgotten", so lower case is fine where your language prefers it.
   "You can change it later in Settings.": "You can change it later in Settings.", // First-start language picker: hint under the heading, in the selected language. "Settings" is BetterClipboard's Settings window.
   "You have {0}, a development build that is newer than this release. Installing it replaces the development build with the official release from GitHub and restarts BetterClipboard. Your history is kept.": "You have {0}, a development build that is newer than this release. Installing it replaces the development build with the official release from GitHub and restarts BetterClipboard. Your history is kept.", // Update dialog text on a development build that is offered the older official release. {0} = the installed development version.
@@ -927,7 +954,7 @@
   "{0:0.0} of {1:0.0} MB": "{0:0.0} of {1:0.0} MB", // Update dialog: download progress under the bar. {0} = megabytes downloaded; {1} = megabytes in total; MB = megabytes.
   "{0:N0} Command Prompt commands{1}{2}#one": "{0:N0} Command Prompt command{1}{2}", // Cmd tab footer. {0} = commands listed (the form follows it); {1} = the optional open-windows part; {2} = the optional " · N kept" part. This row: the form for a count of 1.
   "{0:N0} Command Prompt commands{1}{2}#other": "{0:N0} Command Prompt commands{1}{2}", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
-  "{0:N0} characters#one": "{0:N0} character", // Settings › Privacy › Forgotten forever: length part of a row title ("Text · 20 characters"). {0} = how many characters. This row: the form for a count of 1.
+  "{0:N0} characters#one": "{0:N0} character", // How many characters a text has: in Settings › Privacy › Forgotten forever, the length part of a row title ('Text · 20 characters'), and in the text viewer's status line ('42 lines · 1,234 characters'). {0} = how many characters. This row: the form for a count of 1.
   "{0:N0} characters#other": "{0:N0} characters", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
   "{0:N0} commands kept#one": "{0:N0} command kept", // Run tab footer. {0} = Win+R commands kept in the history. This row: the form for a count of 1.
   "{0:N0} commands kept#other": "{0:N0} commands kept", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
@@ -952,6 +979,8 @@
   "{0:N0} items · {1} · {2:N0} pinned · {3:N0} in groups#other": "{0:N0} items · {1} · {2:N0} pinned · {3:N0} in groups", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
   "{0:N0} items#one": "{0:N0} item", // Count of items: the panel footer when nothing is pinned, and the second line of a group icon's tooltip. {0} = how many. This row: the form for a count of 1.
   "{0:N0} items#other": "{0:N0} items", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
+  "{0:N0} lines#one": "{0:N0} line", // Text peek and text viewer: how many lines a text has, in the peek's header and in the viewer's status line ('42 lines · 1,234 characters'). {0} = the count. This row: the form for a count of 1.
+  "{0:N0} lines#other": "{0:N0} lines", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
   "{0:N0} matching of {1:N0} prompts{2}#one": "{0:N0} matching of {1:N0} prompt{2}", // Claude and Codex tabs, footer after a search. {0} = prompts that match; {1} = prompts in total (the form follows {1}); {2} = the optional " · N kept" part. This row: the form for a count of 1.
   "{0:N0} matching of {1:N0} prompts{2}#other": "{0:N0} matching of {1:N0} prompts{2}", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
   "{0:N0} of {1:N0}": "{0:N0} of {1:N0}", // Pwsh tab footer: how many of PowerShell's commands are listed, out of how many ("500 of 2,952"). Inserted as {0} into the next footer string.
@@ -975,6 +1004,7 @@
   "{0}\nOff — screenshots are not imported; copies made by ShareX are still recorded and shown in its tab.": "{0}\nOff — screenshots are not imported; copies made by ShareX are still recorded and shown in its tab.", // Settings › Integrations › ShareX screenshots: status while the switch is off. {0} = the line saying where ShareX was found; the second line starts with the switch's "Off" label.
   "{0}\n{1:N0} commands kept (newest {2:N0}).#one": "{0}\n{1:N0} command kept (newest {2:N0}).", // Settings › Integrations › Cmd tab: the whole status. {0} = the first line (above); {1} = commands kept (the form follows it); {2} = the most kept (the newest 1,000). This row: the form for a count of 1.
   "{0}\n{1:N0} commands kept (newest {2:N0}).#other": "{0}\n{1:N0} commands kept (newest {2:N0}).", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
+  "{0} (detected)": "{0} (detected)", // Text viewer: the language list's entry for the language BetterClipboard recognized in the text. {0} = the language's name (XML, C#, Markdown, or 'Plain text' in your language).
   "{0} ({1})": "{0} ({1})", // Joins the search phrase and its qualifiers in brackets. {0} = "contains “foo”"; {1} = the qualifiers ("whole words, match case"). Change only the brackets, if your language uses others.
   "{0} It is a development build from the dev-builds folder on this PC: updating copies it from there, checks it, and restarts BetterClipboard. Your history is kept.": "{0} It is a development build from the dev-builds folder on this PC: updating copies it from there, checks it, and restarts BetterClipboard. Your history is kept.", // Update dialog text when a newer local development build is offered. {0} = the "You have …" sentence; dev-builds is a folder name (keep).
   "{0} It is set up to start for every user of this PC; turning this off changes that only for you.": "{0} It is set up to start for every user of this PC; turning this off changes that only for you.", // Settings › App › Start with Windows: description when it starts for every user of the PC. {0} = the card's first sentence.
@@ -1032,7 +1062,7 @@
   "{0} · separate app": "{0} · separate app", // Settings › Third party › Works with: credit after an app's name. {0} = the maker ("voidtools"); "separate app" = installed on its own, not part of BetterClipboard.
   "{0}. First import: {1:N0} of {2:N0} files read. {3}#one": "{0}. First import: {1:N0} of {2:N0} file read. {3}", // Settings › Integrations (prompts): status during the first import. {0} = "Reads <folder>"; {1} = files read so far; {2} = files in total (the form follows {2}); {3} = the stored-prompts sentence. This row: the form for a count of 1.
   "{0}. First import: {1:N0} of {2:N0} files read. {3}#other": "{0}. First import: {1:N0} of {2:N0} files read. {3}", // The same plural string's form for every other count; its text is the string's key. Each language gives the forms its plural rules name (#one, #few, #many, #other…).
-  "{0}: {1}": "{0}: {1}", // Screen-reader name of a card: its kind and its content. {0} = the kind ("Link"); {1} = the start of the copied text (never translated). Change only the colon if your language uses another.
+  "{0}: {1}": "{0}: {1}", // Screen-reader name of a card: its kind and its content; also of the text peek: the card's kind and the language its text is shown as. {0} = the kind ('Link'); {1} = the start of the copied text (never translated), or the language's name. Change only the colon if your language uses another.
   "{0}{1}. Try again in a moment.": "{0}{1}. Try again in a moment.", // Everything tab, empty list: message under "Everything did not answer". {0}{1} = the reason (translated separately), its first letter upper-cased ({0}) followed by the rest ({1}): keep {0}{1} together.
   "↑ ↓ groups · ↵ or → back to the list": "↑ ↓ groups · ↵ or → back to the list", // Clipboard panel footer: key hints while the arrow keys walk the groups column (about 40 characters fit). ↑ ↓ move between groups; ↵ (Enter) or → (Right) go back to the list.
   "↵ paste · Ctrl+P pin · Del delete": "↵ paste · Ctrl+P pin · Del delete", // Clipboard panel footer: key hints in the Claude and Codex tabs (very short; the line also holds the count). ↵ = Enter; Ctrl+P and Del are key names.

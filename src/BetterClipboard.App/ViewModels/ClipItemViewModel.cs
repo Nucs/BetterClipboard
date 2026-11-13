@@ -58,6 +58,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
         {
             ColorBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(argb.A, argb.R, argb.G, argb.B));
         }
+
+        // A preview that is only the start of its text is cut off before any layout says so (ClipItemViewModel.TextView.cs).
+        RefreshCutOff();
     }
 
     /// <summary>
@@ -221,6 +224,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
         IsPinned = entry.IsPinned;
         Caption = BuildCaption();
         (GroupBadges, GroupBadgesTooltip) = BuildGroupBadges();
+        RefreshCutOff();
     }
 
     /// <summary>Re-formats the relative time in the caption.</summary>

@@ -28,6 +28,10 @@ you send to Claude Code and Codex.
 - **Every kind of copy**, with the source app and time on each card, and tabs that filter by kind and by source. A copy
   you make again moves to the top instead of adding a duplicate ([Tabs](#tabs)):
   - **Text, rich text and HTML, links, and colors** with a swatch.
+  - **Long texts** show their first four lines, and a thin dotted line and an eye say when there is more. Rest the
+    mouse on the text to read all of it, or press `F3` for a viewer that draws Markdown, colors code in 22 languages,
+    re-indents XML and JSON, wraps and numbers lines, and opens megabyte copies a page at a time
+    ([Text previews](#text-previews)).
   - **Files** copied in Explorer, and **paths copied as text** (`C:\…`, `~/.bashrc`, `src/app/main.cs`), which still
     paste as text ([Paths in the Files tab](#paths-in-the-files-tab)).
   - **Images** with thumbnails. Rest the mouse on one to see it full size, or open it in a viewer that zooms and pans
@@ -55,8 +59,8 @@ you send to Claude Code and Codex.
   whole word (`Alt+W`) and regular expression (`Alt+E`) ([Search](#search)). Win+V has no search.
 - **Made for the keyboard.** `Enter` pastes into the app you came from and `Shift+Enter` pastes plain text. `↑` `↓`
   move through the items, `←` `→` through the tabs in a circle, and `↑` from the top item steps into your groups.
-  `Ctrl+1` … `Ctrl+9` paste the n-th item, `Ctrl+P` pins, `Del` deletes, and the Menu key opens an item's menu (copy
-  only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were ([Use](#use)).
+  `Ctrl+1` … `Ctrl+9` paste the n-th item, `Ctrl+P` pins, `Del` deletes, `F3` shows all of an item, and the Menu key
+  opens an item's menu (copy only, open the link, show in Explorer, …). `Esc` gives the focus back to where you were ([Use](#use)).
 - **A panel that fits you.** It opens in the tab you used last, also after a restart. Drag any empty spot to move it,
   and drag an edge to resize it: it opens at that size from then on. Tabs that don't fit scroll sideways with the ‹ ›
   arrows, the mouse wheel or a drag. Right-click a tab to move it left or right, to hide it, or to hide it together
@@ -286,13 +290,15 @@ desktop, the screen with the mouse).
 | `Del` (or `Shift+Del` while searching) | Delete the item. In the Pwsh, Cmd and Everything tabs, hide the command or file until you use it again. In the Claude and Codex tabs, delete the prompt until you send it again. |
 | `Ctrl+F` | Back to the search box |
 | `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
-| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), a picture's file (copy path, copy image as a file, open file, open folder) and *Save to temp and* (see [Pictures and their files](#pictures-and-their-files)), delete, forget forever |
+| `F3` | View the selected item: all of its text in the text viewer, or a picture in the image viewer (see [Text previews](#text-previews)) |
+| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, view (`F3`), pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), a picture's file (copy path, copy image as a file, open file, open folder) and *Save to temp and* (see [Pictures and their files](#pictures-and-their-files)), delete, forget forever |
 | Right-click a tab (or `Menu` on a tab you clicked) | Tab menu: *Move left*, *Move right*, *Hide tab*, *Hide tab & clipboard rows*, *Show all hidden*. A right-click on the tabs' empty space offers *Show all hidden* too (see [Tabs](#tabs)). |
 | `Esc` | Clear the search, then close — focus returns to where you were |
 | Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens where *Panel position* says again next time. |
 | Drag an edge | Resize the panel. It opens at that size from then on. |
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
+| Rest the mouse on a long text | Read all of it, select and copy from it, right-click it for the item's menu; its eye button opens the text viewer (see [Text previews](#text-previews)) |
 | The update button, left of Pause | Open the update dialog: the release notes, and *Update and restart* when a newer version exists (the button is highlighted then; see [Updates](#updates)) |
 
 Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match — the
@@ -399,6 +405,30 @@ and group, except the Everything tab, where Everything itself does the searching
   screen and stays until you close it. Turn the mouse wheel to zoom toward the pointer, drag to pan, and
   double-click to switch between fit and zoomed in. Close it with `Esc`, its X button, or a click outside the
   picture.
+
+### Text previews
+
+A card shows the first four lines of a text. When the text is longer, a thin dotted line under them and a small eye
+at the card's corner say so.
+
+- **Peek:** rest the mouse on the card's text. After a moment the whole text appears in the middle of the panel,
+  colored the way the viewer shows it. Scroll it with the wheel, select with the mouse, `Ctrl+C` copies, and a
+  right-click offers *Copy* and *Select all* above the item's own menu. It stays while the mouse is over it or over
+  the card, and `Esc` closes it. A text over 64,000 characters shows its start, and says so.
+- **Viewer:** click the eye, press `F3`, or choose *View* in the item's menu. The screen dims and the text opens in a
+  large card over it:
+  - **Markdown** is drawn as a document: headings, lists, tables, quotes, links and code blocks, each code block
+    colored in its own language. Markdown is also what a text is shown as when no language is recognized.
+  - **Code** is colored, in C#, Java, Kotlin, JavaScript, TypeScript, Python, Ruby, PHP, Go, Rust, C and C++,
+    PowerShell, shell scripts, batch files, SQL, CSS, HTML, XML, JSON, YAML, INI and TOML, and diffs. The language is
+    recognized by itself; the language button picks another (the recognized one is marked *(detected)*).
+  - **XML and JSON** are re-indented, one element or value per line; *As copied* shows them as they were copied.
+  - **Wrap** breaks long lines at the window's edge (off: they scroll sideways), **Line numbers** numbers the lines
+    of code, and **A−** / **A+** (`Ctrl+Minus`, `Ctrl+Plus`, `Ctrl+0`, or `Ctrl` with the wheel) change the text
+    size. All three are remembered.
+  - **Megabyte copies** open a page of about 64,000 characters at a time, with ‹ › to turn the pages
+    (`Ctrl+PageUp`, `Ctrl+PageDown`); line numbers count on across pages.
+  - Select and copy as anywhere; close it with `Esc`, its X button, or a click outside the text.
 
 ### Pictures and their files
 

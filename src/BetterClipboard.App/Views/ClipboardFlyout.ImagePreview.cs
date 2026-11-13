@@ -168,19 +168,28 @@ public sealed partial class ClipboardFlyout
         _ = ShowViewerAsync(card);
     }
 
-    /// <summary>Closes both overlays (on a new summon, on dismiss, on deactivation, at exit).</summary>
+    /// <summary>
+    /// Closes both overlays (on a new summon, on dismiss, on deactivation, at exit) — and the text overlays with them
+    /// (ClipboardFlyout.TextPreview.cs), which go away at the same moments.
+    /// </summary>
     private void CloseImageOverlays()
     {
         HidePeek();
         CloseViewer();
+        CloseTextOverlays();
     }
 
     /// <summary>
     /// Forgets the full-size picture kept for the peek and the viewer (the panel was put away). It is the largest single
     /// thing the panel holds — a decoded 4K screenshot is 33 MB — and only a peek or viewer of the same card in the same use
-    /// needs it again; the next use decodes it again from the store.
+    /// needs it again; the next use decodes it again from the store. The text viewer's last text (megabytes, for a large copy)
+    /// goes with it (ClipboardFlyout.TextPreview.cs).
     /// </summary>
-    private void ReleaseImageCache() => imageCache = null;
+    private void ReleaseImageCache()
+    {
+        imageCache = null;
+        ReleaseTextCache();
+    }
 
     /// <summary>The card behind an event source, or <see langword="null"/>.</summary>
     /// <param name="sender">An element in a card's template.</param>
@@ -194,7 +203,8 @@ public sealed partial class ClipboardFlyout
     /// either would be noise. <see cref="openPopups"/> being 0 rules out an open context menu or the viewer itself.
     /// </remarks>
     private bool CanShowPeek() =>
-        IsOpen && peekPopup is null && viewerPopup is null && drag is null && draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
+        IsOpen && peekPopup is null && viewerPopup is null && textPeekPopup is null && textViewer is null && drag is null &&
+        draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
 
     /// <summary>(Re)starts the rest timer so the peek opens one <see cref="HoverPeekDelayMs"/> after the mouse last moved.</summary>
     private void RestartHoverTimer()
@@ -285,8 +295,7 @@ public sealed partial class ClipboardFlyout
             Padding = new Thickness(6),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
-            Background = (Brush)Application.Current.Resources["SolidBackgroundFillColorBaseBrush"],
-            BorderBrush = (Brush)Application.Current.Resources["SurfaceStrokeColorDefaultBrush"],
+            Style = OverlayStyle("OverlayFrameStyle"),
             Child = new Image
             {
                 Source = bitmap,
@@ -363,9 +372,13 @@ public sealed partial class ClipboardFlyout
         return ((dx * dx) + (dy * dy)) > (long)PeekMoveThresholdPx * PeekMoveThresholdPx;
     }
 
-    /// <summary>Closes the hover peek, if any (safe to call when none is open).</summary>
+    /// <summary>
+    /// Closes the hover peek, if any (safe to call when none is open) — the text peek too (ClipboardFlyout.TextPreview.cs): a
+    /// key that reaches the panel closes whichever peek shows.
+    /// </summary>
     private void HidePeek()
     {
+        HideTextPeek();
         if (peekPopup is not { } popup)
         {
             return;
@@ -469,7 +482,7 @@ public sealed partial class ClipboardFlyout
         var ring = new ProgressRing { IsActive = true, Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var closeButton = new Button
         {
-            Content = "", // Cancel (an X), Segoe Fluent Icons
+            Content = "\uE711", // Cancel (an X), Segoe Fluent Icons
             FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
             FontSize = 16,
             Width = 40,

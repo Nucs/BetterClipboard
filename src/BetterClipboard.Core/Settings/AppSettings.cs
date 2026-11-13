@@ -388,6 +388,25 @@ public sealed record AppSettings
     /// </summary>
     public bool SearchUseRegex { get; init; }
 
+    /// <summary>
+    /// The text viewer's text size (the eye's viewer and the hover peek of a long text), as a factor of the normal size:
+    /// 1 is 100 %. Changed with Ctrl+wheel, Ctrl+= and Ctrl+- in the viewer and remembered (the owner's choice,
+    /// 2026-11-13); clamped to 0.5–3 by <see cref="Normalize"/>.
+    /// </summary>
+    public double TextViewerTextSize { get; init; } = 1;
+
+    /// <summary>
+    /// The text viewer's Wrap switch: long lines wrap at the window's edge (on, the default) or keep their shape and scroll
+    /// sideways (off). Remembered like <see cref="TextViewerTextSize"/>.
+    /// </summary>
+    public bool TextViewerWrap { get; init; } = true;
+
+    /// <summary>
+    /// Whether the text viewer shows line numbers next to code (never next to Markdown drawn as a document). On by default;
+    /// remembered.
+    /// </summary>
+    public bool TextViewerLineNumbers { get; init; } = true;
+
     /// <summary>Import Windows' current Win+V history (including its pinned items) at every startup.</summary>
     public bool ImportWindowsHistoryOnStartup { get; init; } = true;
 
@@ -889,6 +908,9 @@ public sealed record AppSettings
             // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
             FlyoutWidth = Math.Clamp(FlyoutWidth, MinFlyoutWidth, MaxFlyoutSize),
             FlyoutHeight = Math.Clamp(FlyoutHeight, MinFlyoutHeight, MaxFlyoutSize),
+
+            // The viewer's text size within what its zoom allows; a hand-edited NaN or infinity is 100 %.
+            TextViewerTextSize = double.IsFinite(TextViewerTextSize) ? Math.Clamp(TextViewerTextSize, TextView.TextViewStyle.MinScale, TextView.TextViewStyle.MaxScale) : 1,
             IgnoredApps = withCatalog,
             SeededIgnoredApps = seen,
 
