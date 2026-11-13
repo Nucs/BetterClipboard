@@ -62,6 +62,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           tools/release/test-chocolatey.ps1 -Version 0.0.0-ci -Architectures x64 -PackageDirectory artifacts/ci -AllUsersStartup
 
+      # The Microsoft Store edition's package (tools/release/package-msix.ps1), built with a throw-away test certificate
+      # and checked by the script itself (identity, version, architecture, the app, bclip and install.ps1 inside), so
+      # a change that breaks the package shows before a release. The release builds the same package unsigned.
+      - name: Microsoft Store package smoke test (x64)
+        shell: pwsh
+        run: tools/release/package-msix.ps1 -Version 0.0.0-ci -Architectures x64 -NewTestCertificate -OutputDirectory artifacts/ci-store
+
+      # The release's last step sends the packages to the Microsoft Store (tools/release/submit-store.ps1). The real
+      # service cannot be tried, so the script runs here against a stand-in on this runner that answers like the
+      # documented API and records every request (tools/release/test-submit-store.ps1).
+      - name: Microsoft Store submission script
+        shell: pwsh
+        run: tools/release/test-submit-store.ps1
+
+      # What the Store shows is what Partner Center was given: a file that make-store-listing-csv.py fills from
+      # docs/store-listing.md. The kit must fit the Store's limits in every language, and the generator must still
+      # fill Partner Center's export (tools/release/test-store-listing.py; no network).
+      - name: Microsoft Store listing kit
+        run: python tools/release/test-store-listing.py
+
       # install.ps1's install for every user, for real on this disposable runner: with -AllUsers as the signed-in
       # administrator, and as SYSTEM (a scheduled task), which must pick it by itself (tools/release/test-all-users.ps1).
       - name: Installer for every user (x64)

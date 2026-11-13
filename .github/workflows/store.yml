@@ -1,0 +1,141 @@
+# Run by hand (Actions > Microsoft Store > Run workflow). The release workflow (release.yml) sends every new stable tag
+# to the Microsoft Store by itself; this one is for what that cannot cover:
+#
+#   check   Signs in to the Store's submission API with the repository's PARTNER_CENTER_* secrets and reads the app.
+#           Changes nothing. Run it after the secrets were set or renewed: it proves them before a release needs them.
+#   submit  Builds the Store packages of an already released version from its tag and submits them, with "What's new"
+#           from the tag's notes. For a release whose own Store step was skipped (no secrets yet, or the app's first
+#           submission was not published yet) or failed.
+#   draft   The same up to the upload, without the commit: the submission stays pending in Partner Center, to look at
+#           (not to edit: a submission the API made cannot be committed by the API after an edit there) or to delete.
+#
+# What no mode can do: an app's first submission. Microsoft's API only updates an app that has a published
+# submission; the first one is made in Partner Center (docs/microsoft-store.md).
+name: Microsoft Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: check = prove the secrets, change nothing. submit = build a released version's packages and submit them. draft = the same without the commit
+        required: true
+        type: choice
+        options: [check, submit, draft]
+        default: check
+      version:
+        description: Released version to send, e.g. 0.2.11 (its tag v0.2.11 must exist). Not needed for check
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # One submission at a time: the Store allows a single pending submission per app.
+  group: microsoft-store
+  cancel-in-progress: false
+
+jobs:
+  store:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      # Inputs reach the scripts through environment variables, never pasted into them: a version field must not be
+      # able to inject PowerShell into a job that holds the Store's credentials.
+      - name: What to do
+        id: plan
+        shell: pwsh
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          # [string] first: an empty input can reach the job as an absent variable, which PowerShell reads as $null.
+          $mode = ([string] $env:INPUT_MODE).Trim().ToLowerInvariant()
+          if ($mode -notin @('check', 'submit', 'draft')) { throw "Unknown mode '$mode'." }
+          $version = ([string] $env:INPUT_VERSION).Trim().TrimStart('v', 'V')
+          if ($mode -ne 'check' -and $version -notmatch '^\d+\.\d+\.\d+$') {
+            throw "'$version' is not a stable release version (x.y.z). The Store gets stable versions only."
+          }
+          "mode=$mode" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "ref=$(if ($mode -eq 'check') { '${{ github.sha }}' } else { "refs/tags/v$version" })" >> $env:GITHUB_OUTPUT
+
+      # check runs the branch's script; submit and draft build the released tag itself, scripts included, so the
+      # packages are that release's and nothing newer.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.plan.outputs.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v5
+        if: ${{ steps.plan.outputs.mode != 'check' }}
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check the Store's API
+        if: ${{ steps.plan.outputs.mode == 'check' }}
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          tools/release/submit-store.ps1 -Mode Check
+          if ($LASTEXITCODE -eq 3) { throw 'The PARTNER_CENTER_* secrets are not set in this repository (docs/microsoft-store.md).' }
+          if ($LASTEXITCODE -ne 0) { throw "The check failed (exit code $LASTEXITCODE); the lines above say why." }
+          'The Store''s submission API answered with the repository''s secrets. Nothing was changed.' >> $env:GITHUB_STEP_SUMMARY
+
+      # The tag's message is the release's notes (git tag -a). checkout leaves a pushed tag lightweight, so the tag
+      # object is fetched again (release.yml, "Release notes from the tag", has the story).
+      - name: Release notes from the tag
+        id: notes
+        if: ${{ steps.plan.outputs.mode != 'check' }}
+        shell: pwsh
+        run: |
+          $tag = 'v${{ steps.plan.outputs.version }}'
+          git fetch --force --quiet origin "+refs/tags/${tag}:refs/tags/${tag}"
+          if ($LASTEXITCODE -ne 0) { throw "Fetching the tag object of '$tag' failed ($LASTEXITCODE)." }
+          [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
+          $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          if ((git cat-file -t "refs/tags/$tag") -eq 'tag') {
+            $message = ((git tag --list $tag '--format=%(contents)') -join "`n").Trim()
+            [IO.File]::WriteAllText($notesFile, "$message`n", [Text.UTF8Encoding]::new($false))
+          }
+          else {
+            Write-Host "::warning title=Microsoft Store::Tag $tag is not annotated, so ""What's new"" stays empty."
+            [IO.File]::WriteAllText($notesFile, '', [Text.UTF8Encoding]::new($false))
+          }
+          "file=$notesFile" >> $env:GITHUB_OUTPUT
+
+      - name: Microsoft Store packages
+        if: ${{ steps.plan.outputs.mode != 'check' }}
+        shell: pwsh
+        run: tools/release/package-msix.ps1 -Version ${{ steps.plan.outputs.version }} -ForStore -OutputDirectory artifacts/store
+
+      - name: Keep the Microsoft Store packages
+        if: ${{ steps.plan.outputs.mode != 'check' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-packages
+          path: artifacts/store/*.msix
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Submit to the Microsoft Store
+        if: ${{ steps.plan.outputs.mode != 'check' }}
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          $version = '${{ steps.plan.outputs.version }}'
+          $mode = if ('${{ steps.plan.outputs.mode }}' -eq 'draft') { 'Draft' } else { 'Submit' }
+          tools/release/submit-store.ps1 -Mode $mode -Version $version -PackageDirectory artifacts/store -ReleaseNotesFile '${{ steps.notes.outputs.file }}'
+          switch ($LASTEXITCODE) {
+            0 { "BetterClipboard ${version}: $(if ($mode -eq 'Draft') { 'a draft submission is in Partner Center; it was not committed' } else { 'submitted to the Microsoft Store; certification follows' })." >> $env:GITHUB_STEP_SUMMARY }
+            3 { throw 'The PARTNER_CENTER_* secrets are not set in this repository (docs/microsoft-store.md).' }
+            4 { throw 'The app has no published submission yet. The first submission is made in Partner Center, with the packages of this run''s artifact "store-packages" (docs/microsoft-store.md).' }
+            default { throw "The Microsoft Store submission failed (exit code $LASTEXITCODE); the lines above say why." }
+          }

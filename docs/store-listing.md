@@ -1,13 +1,19 @@
 # Microsoft Store listing kit
 
-What goes into Partner Center for BetterClipboard, ready to paste: the answers of every submission page, and the
+What is in Partner Center for BetterClipboard, and where each answer comes from: every submission page, and the
 listing texts in the five languages the package declares (Store policy 10.7 asks for a description in each).
 [`microsoft-store.md`](microsoft-store.md) has the reasons and the steps around it.
 
-Limits come from Microsoft's documentation, read on 2026-11-12 (sources at the end of `microsoft-store.md`):
-description up to 10,000 characters of plain text, without URLs or HTML; short description best under 270 characters;
-up to 20 product features of at most 200 characters each; "What's new" up to 1,500 characters and left empty for a
-first submission; at least one screenshot.
+**State (2026-11-13):** the name is reserved (Store ID `9PHL574X9BF9`, publisher "Nucs"), and the product's first
+submission is a draft that holds everything below. This file is the source: change a text here, check it, and
+import it (§4).
+
+Limits are Microsoft's, from its documentation (read 2026-11-12; sources at the end of `microsoft-store.md`) and
+from Partner Center's own pages (2026-11-13): description up to 10,000 characters of plain text, without web
+addresses; short description best under 270 characters; up to 20 product features of at most 200 characters each;
+up to 7 search terms of at most 40 characters and 21 words in all; captions up to 200 characters; "What's new" up
+to 1,500 characters and left empty for a first submission; the `runFullTrust` justification up to 500 characters;
+at least one screenshot per language.
 
 The Russian, Spanish, Hebrew and Chinese texts were written by Claude with the words the app itself uses
 (`src/BetterClipboard.Core/Localization`). A native speaker has not reviewed them.
@@ -18,107 +24,112 @@ The Russian, Spanish, Hebrew and Chinese texts were written by Claude with the w
 
 | Field | Answer |
 |---|---|
-| Markets | All markets |
-| Visibility | Public audience |
-| Schedule | As soon as it passes certification |
-| Base price | Free |
-| Free trial | None |
+| Markets | All worldwide markets, and any future market |
+| Visibility | Public audience; available and discoverable in the Store |
+| Schedule | Release as soon as possible; never stop acquisition |
+| Base price | Currency *USD - United States*, retail price *0* (the free tier) |
+| Free trial, sale pricing | None |
 
 ### Properties
 
 | Field | Answer |
 |---|---|
-| Category | Utilities & tools |
+| Category | Utilities + tools, without a subcategory (its two, *Backup + manage* and *File managers*, do not fit) |
 | Secondary category | Productivity |
-| Does this product access, collect, or transmit personal information? | Yes. It stores what the user copies, on the user's PC only, and transmits nothing. Answering yes makes the privacy policy mandatory, which Store policy 10.5.1 asks of a desktop app anyway |
+| Does this product access, collect, or transmit personal information? | *Yes, my product uses personal information*. It stores what the user copies, on the user's PC only, and transmits nothing. Answering yes makes the privacy policy mandatory, which Store policy 10.5.1 asks of a desktop app anyway |
 | Privacy policy URL | `https://github.com/Nucs/BetterClipboard#privacy` |
 | Website | `https://github.com/Nucs/BetterClipboard` |
 | Support contact info | `https://github.com/Nucs/BetterClipboard/issues` |
+| Phone number, address | Empty |
 | Display mode | Nothing checked |
-| Product declarations | Leave the defaults, except: uncheck *Windows can include this app's data in automatic backups to OneDrive*. The history is encrypted with a key bound to the PC and the Windows account, so a backup restored on another PC could not be opened |
+| Product declarations | The defaults, except: uncheck *Windows can include this product's data in automatic backups to OneDrive*. The history is encrypted with a key bound to the PC and the Windows account, so a backup restored on another PC could not be opened. *This product incorporates generative AI features* stays unchecked: tick it in the submission that first ships such a feature |
 | System requirements | Nothing checked (keyboard and mouse are assumed) |
 
 ### Age ratings
 
-The IARC questionnaire, once. Category: the one for utility and productivity apps. Every content question: No
-(no violence, fear, sexuality, gambling, language, substances). The app does not let users talk to each other or
-share content with other users, does not share the user's location, sells nothing, and has no web browser. IARC is
-sent the publisher display name and the account's email address.
+The IARC questionnaire, once per product. *App type*: **All Other App Types**. Then every question: **No**.
+
+| Question | Answer |
+|---|---|
+| Ratings-relevant content (sex, violence, language) in the app package? | No |
+| Do users interact or exchange content with other users? | No |
+| Does the app feature or promote content that is not part of the download but can be accessed from it (streams, shops, generated AI content)? | No |
+| Does it promote or sell age-restricted products or activities? | No |
+| Does it share the user's precise location with other users? | No |
+| Can users purchase digital goods? | No |
+| Cash rewards, gift cards, play-to-earn, cryptocurrency rewards, NFTs? | No |
+| Is it a web browser or search engine? | No |
+| Is it primarily a news or educational product? | No |
+| Ratings from a ratings board, or distribution on physical media? | No |
+
+The ratings these answers give (the preview of 2026-11-13): ESRB Everyone, PEGI 3, USK Everyone, IARC 3+, Microsoft
+Store 3+, all ages in Brazil, Russia and Chile. Saving them takes one tick that only the account's owner can give:
+"I agree to the IARC Terms of Use and I am the age of majority in my jurisdiction". IARC is sent the publisher
+display name and the account's email address.
+
+A feature that changes an answer (content from the internet inside the app, text written by an AI model, anything
+users share with each other) means the questionnaire is answered again in the submission that ships it.
 
 ### Packages
 
-Upload `BetterClipboard-<version>-store-x64.msix` and `BetterClipboard-<version>-store-arm64.msix`, built with
-`tools/release/package-msix.ps1 -Version <version> -ForStore`. Device family: Windows 10/11 Desktop only.
+`BetterClipboard-<version>-store-x64.msix` and `BetterClipboard-<version>-store-arm64.msix`, as the release
+pipeline builds them (the `store-packages` artifact of the *Release* run; by hand:
+`tools/release/package-msix.ps1 -Version <version> -ForStore`). Device family: Windows 10/11 Desktop, which Partner
+Center ticks by itself. From the second submission on the release pipeline uploads them (`microsoft-store.md` §7).
 
 ### Submission options
 
 Publishing hold: publish as soon as it passes certification.
 
-**Restricted capabilities — runFullTrust.** Paste:
+**Restricted capabilities: why runFullTrust** (at most 500 characters)
 
-> BetterClipboard is a clipboard history manager: a classic desktop application (WinUI 3, Windows App SDK). It needs
-> runFullTrust because its core functions use Win32 APIs that an AppContainer app cannot use:
-> (1) it listens for clipboard changes made by any app (AddClipboardFormatListener on a message-only window) and
-> reads the clipboard while it runs in the background;
-> (2) it answers a global keyboard shortcut (RegisterHotKey; for Win+V a low-level keyboard hook, only with the
-> user's consent and only while the app runs);
-> (3) it pastes the item the user picked into the window the user was working in (SetForegroundWindow, SendInput);
-> (4) it shows a notification-area icon (Shell_NotifyIcon);
-> (5) with switches the user controls, it reads local histories of other desktop tools, such as the Run dialog's
-> list in the registry and PowerShell's history file.
-> Everything it keeps stays on the device, encrypted with a key bound to the user's Windows account. The app makes
-> no network requests.
+```text
+BetterClipboard is a clipboard history manager, a classic desktop app (WinUI 3). It needs runFullTrust for Win32 APIs an AppContainer app cannot use: it listens for clipboard changes of every app (AddClipboardFormatListener), answers a global shortcut (RegisterHotKey; for Win+V a keyboard hook, only with the user's consent, only while it runs), pastes into the window the user came from (SendInput) and shows a tray icon. Its data stays on the device, encrypted. The app makes no network requests.
+```
 
-**Notes for certification.** Paste, with the date:
+### Additional testing information
 
-> BetterClipboard is a clipboard history manager, a full-trust desktop app. No account, no sign-in and no network
-> connection are needed; the app makes no network requests.
->
-> How to test:
-> 1. Start the app. It asks for the interface language, then shows a welcome window. Nothing is recorded and no
->    keyboard shortcut is taken until "Start" is pressed there.
-> 2. Copy some text in any app (for example Notepad), a few times.
-> 3. Press Win+V. BetterClipboard's panel opens instead of Windows' own clipboard history. Type to search, use the
->    arrow keys, press Enter to paste the selected item into the app you came from, Esc to close the panel.
-> 4. The app's icon in the notification area opens Settings and exits the app. After "Exit", Win+V opens Windows'
->    own clipboard history again.
->
-> Consent and Windows settings (policy 10.2.8, 10.5.5): Win+V is answered only after the user left "Open with Win+V"
-> switched on in the welcome window, only through a low-level keyboard hook, and only while the app runs. No
-> Windows setting is changed. "Start with Windows" uses the package's startup task and is enabled only from the
-> welcome window or the app's Settings; the user can overrule it in Windows' Startup apps list.
->
-> Other copies of the same product: BetterClipboard is also distributed outside the Store (GitHub). If such a copy
-> is installed for the same user, the Store edition says so at its first start and offers to take its place. Only
-> after the user presses "Move to this edition" does it copy that copy's history into its own folder, check it, and
-> run that copy's uninstaller (the PowerShell script that product ships; a copy of it is inside this package).
-> Nothing is downloaded.
->
-> Uninstall: the history is in the package's own data folder, which Windows removes with the app.
+*Supplemental info › Additional Testing Information*; the submission options page links to it. No credentials.
+
+**Notes for certification**
+
+```text
+BetterClipboard is a clipboard history manager, a full-trust desktop app. No account, no sign-in and no network connection are needed; the app makes no network requests.
+
+How to test:
+1. Start the app. It asks for the interface language, then shows a welcome window. Nothing is recorded and no keyboard shortcut is taken until "Start" is pressed there.
+2. Copy some text in any app (for example Notepad), a few times.
+3. Press Win+V. BetterClipboard's panel opens instead of Windows' own clipboard history. Type to search, use the arrow keys, press Enter to paste the selected item into the app you came from, Esc to close the panel.
+4. The app's icon in the notification area opens Settings and exits the app. After "Exit", Win+V opens Windows' own clipboard history again.
+
+Consent and Windows settings (policy 10.2.8, 10.5.5): Win+V is answered only after the user left "Open with Win+V" switched on in the welcome window, only through a low-level keyboard hook, and only while the app runs. No Windows setting is changed. "Start with Windows" uses the package's startup task and is enabled only from the welcome window or the app's Settings; the user can overrule it in Windows' Startup apps list.
+
+Other copies of the same product: BetterClipboard is also distributed outside the Store (GitHub). If such a copy is installed for the same user, the Store edition says so at its first start and offers to take its place. Only after the user presses "Move to this edition" does it copy that copy's history into its own folder, check it, and run that copy's uninstaller (the PowerShell script that product ships; a copy of it is inside this package). Nothing is downloaded.
+
+Uninstall: the history is in the package's own data folder, which Windows removes with the app.
+```
 
 ## 2. Screenshots and logos
 
-- **Screenshots**: PNG, 1366 × 768 or larger, at most 50 MB each, up to 10; at least one, four or more recommended.
-  Each language's listing gets its own uploads (the same pictures may be used again). Captions up to 200 characters.
-  The README's photos are too small (`docs/images/panel.png` is 692 pixels wide): take whole-screen pictures with
-  the panel open over an everyday window, as §3.4 of CLAUDE.md does for the README (a claude-desktops Windows
-  desktop, invented demo data from `tools/readme/demo-data.ps1`, never the owner's screen).
-  Suggested set: the panel over a document with a few kinds of copies; a search with its toggles; the groups column;
-  an image preview; Settings; the welcome window.
-- **1:1 app tile icon, 300 × 300** (strongly recommended):
+- **Screenshots**: the six pictures in [`packaging/msix/Listing/Screenshots`](../packaging/msix/Listing/Screenshots)
+  (PNG, 2560 × 1440), in the order of their file names: the panel over a document, a search with a toggle on, the
+  groups column, the image preview, Settings › Privacy, the welcome window. The Store takes PNG of 1366 × 768 or
+  larger, at most 50 MB each; at least one per language, four or more recommended. All five listings show the same
+  six uploads.
+- **How they were made** (repeat it when the panel, Settings or the welcome change visibly): whole-screen pictures
+  of a test-signed twin of the Store package in a claude-desktops Windows desktop at 2560 × 1440 and 150 %, dark
+  theme, with invented demo data, never the owner's screen. CLAUDE.md §3.5 has the steps;
+  `tools/readme/capture-screen.ps1` takes the pictures and `tools/readme/screen-shot.py` rounds the window corners
+  that a desktop without a GPU draws square.
+- **1:1 app tile icon, 300 × 300**:
   [`packaging/msix/Listing/AppTileIcon.300x300.png`](../packaging/msix/Listing/AppTileIcon.300x300.png), drawn by
-  `tools/make_store_assets.py` from the app icon's own drawing, like the package's logos. Upload it in every language's
+  `tools/make_store_assets.py` from the app icon's own drawing, like the package's logos. In every language's
   listing.
-- Poster art, box art, hero art and trailers are for games and promotions: leave empty.
+- Poster art, box art, hero art and trailers are for games and promotions: empty. *Developed by*, *Short title*,
+  *Voice title* and *Additional license terms*: empty.
 
-Suggested captions (English; translate with the listing):
-
-1. Win+V opens your whole clipboard history, right where you type.
-2. Search as you type: match case, whole words, regular expressions.
-3. Pin what you need again and sort it into groups.
-4. Preview images at full size before you paste.
-5. You decide what is kept: ignored apps, limits, Forget forever.
-6. Nothing is recorded until you say Start.
+Captions: every language's section in §3 has a **Screenshot captions** block, one line per screenshot, in the order
+of the pictures above (the first line belongs to the first screenshot).
 
 ## 3. Listing texts
 
@@ -171,6 +182,17 @@ bclip, a command line for scripts and AI assistants (off by default)
 
 **Search terms:** clipboard, clipboard manager, clipboard history, copy paste, paste, Win+V, snippets
 
+**Screenshot captions**
+
+```text
+Win+V opens your whole clipboard history, right where you type.
+Search as you type: match case, whole words, regular expressions.
+Pin what you need again and sort it into groups.
+Preview images at full size before you paste.
+You decide what is kept: ignored apps, limits, Forget forever.
+Nothing is recorded until you say Start.
+```
+
 **Copyright and trademark info:** `Copyright (c) Eli Belash. MIT license.`
 
 ### Simplified Chinese (zh-Hans)
@@ -220,6 +242,17 @@ bclip：面向脚本和 AI 助手的命令行（默认关闭）
 
 **Search terms:** 剪贴板, 剪贴板管理器, 剪贴板历史, 复制粘贴, 粘贴, Win+V, 剪贴板工具
 
+**Screenshot captions**
+
+```text
+按 Win+V，就在你输入的位置打开完整的剪贴板历史。
+边输入边搜索：区分大小写、全字匹配、正则表达式。
+固定常用内容，并整理到分组中。
+粘贴前先以完整尺寸预览图片。
+保留什么由你决定：忽略的应用、数量限制、永久忘记。
+在你按下“开始”之前，不会记录任何内容。
+```
+
 ### Russian (ru)
 
 **Short description**
@@ -266,6 +299,17 @@ bclip — командная строка для скриптов и ИИ-пом
 ```
 
 **Search terms:** буфер обмена, менеджер буфера обмена, журнал буфера обмена, копировать вставить, вставка, Win+V, история буфера
+
+**Screenshot captions**
+
+```text
+Win+V открывает весь журнал буфера обмена прямо там, где вы печатаете.
+Поиск по мере ввода: с учётом регистра, слово целиком, регулярные выражения.
+Закрепляйте нужное и раскладывайте по группам.
+Просматривайте изображения в полном размере перед вставкой.
+Вы решаете, что хранить: игнорируемые приложения, ограничения, «Забыть навсегда».
+Ничего не записывается, пока вы не нажмёте «Начать».
+```
 
 ### Spanish (es)
 
@@ -314,6 +358,17 @@ bclip, una línea de comandos para scripts y asistentes de IA (desactivada de fo
 
 **Search terms:** portapapeles, gestor de portapapeles, historial del portapapeles, copiar y pegar, pegar, Win+V, administrador de portapapeles
 
+**Screenshot captions**
+
+```text
+Win+V abre todo tu historial del portapapeles, justo donde escribes.
+Búsqueda mientras escribes: mayúsculas y minúsculas, palabras completas, expresiones regulares.
+Ancla lo que vuelves a necesitar y ordénalo en grupos.
+Mira las imágenes a tamaño completo antes de pegarlas.
+Tú decides qué se guarda: aplicaciones ignoradas, límites, Olvidar para siempre.
+No se registra nada hasta que pulses Empezar.
+```
+
 ### Hebrew (he)
 
 **Short description**
@@ -361,6 +416,17 @@ bclip: שורת פקודה לסקריפטים ולעוזרי בינה מלאכו
 
 **Search terms:** לוח, מנהל לוח, היסטוריית לוח, העתק הדבק, הדבקה, Win+V, ניהול לוח
 
+**Screenshot captions**
+
+```text
+Win+V פותח את כל היסטוריית הלוח, בדיוק במקום שבו מקלידים.
+חיפוש תוך כדי הקלדה: התאמת רישיות, מילה שלמה, ביטויים רגולריים.
+מצמידים את מה שצריך שוב וממיינים לקבוצות.
+תצוגה מקדימה של תמונות בגודל מלא לפני ההדבקה.
+אתם מחליטים מה נשמר: אפליקציות מוחרגות, מגבלות, ״שכח לצמיתות״.
+שום דבר לא נרשם עד שלוחצים על ״התחל״.
+```
+
 ## 4. Keeping it true
 
 A listing is a promise. When a release changes what the app does, change the listing in the same submission:
@@ -369,5 +435,20 @@ a new tab or kind of item goes into the description and the features; a new data
 if that ever changes, the description's "Nothing is sent anywhere" and the certification notes must change first.
 
 After any edit of the texts, run `python tools/release/check-store-listing.py`: it checks every language's short
-description, description, features and the captions against the Store's limits (§3's fenced blocks are what it reads,
-so keep their layout).
+description, description, features, search terms and captions against the Store's limits (§3's fenced blocks and
+**Search terms** lines are what it reads, so keep their layout).
+
+**Getting the texts into Partner Center** takes one import instead of pasting some forty fields per language:
+
+1. On the app's overview page in Partner Center, *Export listings* saves a `.csv` with one column per listing
+   language and one row per field. That file is the template: its first three columns must stay as they are.
+2. `python tools/release/make-store-listing-csv.py --template <exported.csv> --output <import.csv>` fills it from
+   this kit: descriptions, short descriptions, features, search terms, the copyright line, and with
+   `--screenshots <n>` the captions of the first *n* screenshots. Everything else in the file stays as exported
+   (pictures that are already uploaded appear there as web addresses and are kept).
+3. *Import listings* › *Import .csv* takes the result. Partner Center saves nothing unless the whole file is valid,
+   and shows what is not.
+
+Pictures: upload the screenshots and the tile icon once, in the English listing. The next export names them by web
+address; `--copy-pictures-from en-us` puts those addresses into every other language's column, so all five listings
+show the same pictures without five uploads.

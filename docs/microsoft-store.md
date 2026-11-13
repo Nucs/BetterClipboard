@@ -9,8 +9,14 @@ Legend: **[docs]** = Microsoft documentation read on 2026-11-12 · **[measured]*
 Windows 11 25H2 desktop (26200, Tiny11) with [`tools/probes/msix_lab`](../tools/probes/msix_lab) · **[policy]** =
 Microsoft Store Policies 7.20 (published 2026-09-15, effective 2026-10-22).
 
-**State (2026-11-13):** the Store edition and its package build are in the repository and were run end to end in a
-test desktop. Nothing was submitted: an account, a reserved name and the listing are the owner's (§7).
+**State (2026-11-13):** the Store edition and its package build are in the repository and were run end to end in
+test desktops. The owner registered as a developer. The name **BetterClipboard** is reserved (Store ID
+`9PHL574X9BF9`, publisher "Nucs"), and the product's first submission is a **draft** in Partner Center with every
+page filled: pricing, properties, both packages (accepted by the Store's upload check), five listings with six
+screenshots each, the submission options and the notes for certification. Not done, and the owner's: one tick
+under the age ratings (IARC's terms), the choice of the version rule, and *Submit for certification* (§8). The
+release pipeline builds the Store packages and, once the first submission is published and three secrets are set,
+submits every release by itself (§7).
 
 ## 1. Where: the Microsoft Store, as an MSIX package
 
@@ -58,9 +64,19 @@ AppContainer. Windows still redirects some of what it writes. Every row is **[me
 | `ApplicationLanguages.Languages` | The user's languages that the manifest declares |
 | Uninstalling the package | Removes the package's data folder (redirected files, `LocalState`, its private hive); real folders and values stay |
 
-Manifest rules learned the hard way **[measured]**: a console alias is `uap5:AppExecutionAlias` with
-`desktop4:Subsystem="console"` (the `uap3` element refuses that attribute), and its `Application` must say
-`desktop4:SupportsMultipleInstances="true"`.
+Manifest rules learned the hard way:
+
+- A console alias is `uap5:AppExecutionAlias` with `desktop4:Subsystem="console"` (the `uap3` element refuses that
+  attribute), and its `Application` must say `desktop4:SupportsMultipleInstances="true"` **[measured]**.
+- **The Store refuses a package with an application hidden from Start** (`AppListEntry="none"`). Partner Center's
+  upload check on 2026-11-13, for the first packages, whose `bclip` was a second, hidden application: "The package
+  file … specifies a headless app. You don't have permission to create a headless app. Please update
+  AppListEntry="none" in the AppxManifest file", and a waiver that Microsoft grants on request. MakeAppx packs such
+  a manifest and Windows installs it; only the Store objects **[measured]**.
+- **An application may declare one `windows.appExecutionAlias` extension.** MakeAppx: "The Extension element with
+  Category attribute value "windows.appExecutionAlias" must only be declared once", also for one `uap3` and one
+  `uap5` extension. All aliases of an extension start that extension's one `Executable`, which may differ from the
+  application's **[measured]**. So one application can offer a console tool by name, or itself, not both.
 
 ## 3. Policies that shape the edition
 
@@ -91,7 +107,7 @@ The same app, built as a package. A process knows it is the Store edition by its
 | Win+V | Released from Explorer by the installer (`DisabledHotkeys`), or the keyboard hook | Only the keyboard hook, only after the welcome's switch, only while the app runs. *Release from Explorer* is not in Settings |
 | Start with Windows | A Run value in the registry | The package's startup task (`BetterClipboardStartup`), switched on by the welcome or Settings; Windows lists it under Settings › Apps › Startup, where the user can overrule it |
 | Updates | The app asks GitHub once a day and installs with the user's approval | The Store. The app makes **no network request at all**; it asks Windows to start it again after an update (`RegisterApplicationRestart`) |
-| `bclip` | A folder on the PATH (optional) | An app execution alias; every new terminal runs it by name |
+| `bclip` | A folder on the PATH (optional) | The package's one app execution alias; every new terminal runs it by name. The app itself has no alias (§2): Start, its tile and the startup task start it |
 | Win+R history watch | A registry change notification | Polling the key's last-write time (notifications do not arrive in a package) |
 | Windows' own clipboard history switch | A switch in Settings | A button that opens Windows' own Settings page (the app's registry write would land in its private hive) |
 | Version shown by Windows | The release's (0.2.11) | The package's, (X+1).Y.Z.0 (1.2.11.0, §5.3); the app's own *About* shows the release's |
@@ -187,19 +203,34 @@ the account.
 [`packaging/msix/Package.appxmanifest`](../packaging/msix/Package.appxmanifest) is a template; the build fills in
 the identity, the version and the architecture. Its comment explains every part. In short:
 
-- **App**: `BetterClipboard.exe`, full trust, `SupportsMultipleInstances` (every launch is a new process that finds
-  the first through the instance lock, as in the other editions), the startup task (off until the user says so),
-  and the alias `BetterClipboard.exe`.
-- **Bclip**: `bclip.exe`, hidden from Start, with the console alias `bclip.exe`.
+- **One application**, `BetterClipboard.exe`, full trust, `SupportsMultipleInstances` (every launch is a new
+  process that finds the first through the instance lock, as in the other editions), with the startup task (off
+  until the user says so).
+- **`bclip`** is that application's execution alias: the console alias `bclip.exe`, whose extension names its own
+  executable, `bclip.exe`. Until 2026-11-13 it was a second application hidden from Start, and the app had an
+  alias `BetterClipboard.exe` of its own. The Store refused the first, and Windows allows one alias extension per
+  application (§2), so the one alias went to the command line, which scripts need. Nothing in the app used its own.
 - **Languages**: en-US, zh-Hans, ru, es, he.
 - **Capability**: `runFullTrust` only.
 - **Minimum Windows**: 10.0.19041 (Windows 10 2004), the app's own.
 
 ### 5.2 Identity
 
-[`packaging/msix/identity.json`](../packaging/msix/identity.json) holds the four values Partner Center assigns when
-the name is reserved. Until then it holds placeholders with `"reserved": false`, and the build refuses to make a
-package for the Store.
+[`packaging/msix/identity.json`](../packaging/msix/identity.json) holds what Partner Center assigned when the name
+was reserved (2026-11-13). None of it is a secret:
+
+| | |
+|---|---|
+| Package/Identity/Name | `Nucs.BetterClipboard` |
+| Package/Identity/Publisher | `CN=B31AB4B1-B96C-4DB9-83AE-B799D5192208` |
+| Package/Properties/PublisherDisplayName | `Nucs` |
+| Package family name | `Nucs.BetterClipboard_mgez7y7xa0my4` |
+| Store ID | `9PHL574X9BF9` (`https://apps.microsoft.com/detail/9PHL574X9BF9` once it is published) |
+
+The build computes the family name from the name and the publisher (the publisher's SHA-256, its first eight bytes
+in Windows' base 32) and refuses to make a Store package when it differs from the file's `packageFamilyName`: a
+mistyped publisher would otherwise show only as a refused upload. The family name is also where the edition keeps
+its data (`%LOCALAPPDATA%\Packages\<family name>`).
 
 ### 5.3 Version
 
@@ -224,9 +255,10 @@ pwsh tools/release/package-msix.ps1 -Version 0.2.11 -Architectures x64 -NewTestC
 
 For each architecture [`package-msix.ps1`](../tools/release/package-msix.ps1) publishes `bclip`, fills in the
 manifest, publishes the app with `WindowsPackageType=MSIX` (which makes the package: the app, `bclip`, the logos,
-`install.ps1`), and then checks the package: identity, version and architecture as asked; the app, `bclip`, the
-installer script and the resource index inside; everything `bclip` needs inside; under 250 MB (the Store's limit
-is 25 GB; a package that size means something else got in). Output:
+`install.ps1`), and then checks the package: identity, version and architecture as asked; nothing in the manifest
+that the Store refuses at upload (one application, none hidden from Start, `bclip` as its console alias; §2); the
+app, `bclip`, the installer script and the resource index inside; everything `bclip` needs inside; under 250 MB
+(the Store's limit is 25 GB; a package that size means something else got in). Output:
 `artifacts/store/BetterClipboard-<version>-store-<arch>.msix` (70.6 MB for x64).
 
 - **For the Store** the package is unsigned: the Store signs what it publishes. `-ForStore` refuses a placeholder
@@ -257,7 +289,7 @@ Everything below ran on 2026-11-12 and 2026-11-13 in one disposable Windows 11 2
 |---|---|
 | A fresh install: language picker (five languages), then the welcome | Before *Start* the data folder held a log and the settings file with the welcome not accepted, and no store. After *Start*: the encrypted store, "Win+V is owned by another component; intercepting it with a keyboard hook", the startup task `Enabled`, 0 warnings |
 | Registry after that | The real Run key empty, `DisabledHotkeys` absent: nothing written outside the package |
-| Use | A copy captured, Win+V opened the panel next to Notepad's caret, Enter pasted the second-newest item into Notepad; `bclip status` and `list` through the alias; `BetterClipboard.exe --show-flyout` and `--exit` through the alias; a Win+R run recorded by the poll |
+| Use | A copy captured, Win+V opened the panel next to Notepad's caret, Enter pasted the second-newest item into Notepad; `bclip status` and `list` through the alias; `BetterClipboard.exe --show-flyout` and `--exit` through the app's own alias, which the manifest had until 2026-11-13; a Win+R run recorded by the poll |
 | Settings | No *Release from Explorer*; *Version … · Microsoft Store edition*; *Updates from the Microsoft Store* with *Open in Microsoft Store*; Windows' clipboard history as a button; the alias sentence instead of the PATH button; the startup switch turned the task off and on |
 | Silent restart after Settings closed | The new process was the Store edition with the same data folder; shortcuts held; 0 warnings |
 | Sign-in (a guest reboot) | The startup task started the app 37 s after boot, without arguments, into the tray, no window |
@@ -276,6 +308,9 @@ Everything below ran on 2026-11-12 and 2026-11-13 in one disposable Windows 11 2
 | **The signed package, installed** (`Add-AppxPackage` of the `.msix`; it runs from `C:\Program Files\WindowsApps\…_1.2.11.0_x64__…`), with the released 0.2.10 installed again in Hebrew and running | Setup and welcome in Hebrew. The move: 3 files and 160,216 bytes copied and checked ("5 items"), uninstalled, old folder removed, the real registry clean. After *Start*: the panel in Hebrew with the 5 items, Settings in Hebrew, Win+V through the hook |
 | Silent restart of the installed package | The new process ran from the `WindowsApps` folder (`--background --restart-after …`) with the same data folder: "the shortcuts were held during the switch", the hook installed again, 0 warnings |
 | Removing the package (the loose registration several times, and the installed package) | No package, no data folder, no aliases, no process, the `WindowsApps` folder gone; the real Run key empty and `DisabledHotkeys` absent. Win+V opened Windows' own clipboard panel right afterwards |
+| **The Store's upload check** (Partner Center, the first submission's draft, 2026-11-13) | The first packages (`bclip` as a hidden second application) were refused: "specifies a headless app" (§2). The rebuilt ones (one application, `bclip` as its alias; `1.2.11.0`, x64 70.6 MB and ARM64 68.5 MB) were accepted: *Validated*, with only the expected note that `runFullTrust` needs approval |
+| **The one-application package, installed** (its test-signed twin, in two more disposable desktops, 2026-11-13) | Installed. Start lists one entry, "BetterClipboard". `where bclip` finds the alias; `bclip --version` prints to the calling console and returns 0; `bclip status` with the command line off returns 3 with its message. With the app stopped and the command line on, `bclip status` started the app by itself from the `WindowsApps` folder and answered from the Store edition's data. No `BetterClipboard.exe` alias exists |
+| First start, use and silent restart in that package (the session the listing's screenshots come from) | Language picker, welcome, *Start*; Win+V through the hook; copies from Notepad, Explorer, Edge and Snipping Tool; a pin; three groups by drag and drop; a search with a toggle; the image preview; Settings. Two silent restarts ("the shortcuts were held during the switch"). The log: 109 lines, 0 warnings |
 
 The other editions share the changed start-up code, so the unpackaged build was run once more after the change, as
 an isolated instance on the owner's PC while nobody used it: it started in the tray and ended on `--exit` with 0
@@ -296,39 +331,97 @@ parameter sets are read with `Get-Command`, which runs nothing). The whole suite
 pages were not seen); the Windows App Certification Kit; ARM64 on a device (the package builds); a standard user
 account and UAC on; a real GPU; a
 package served by the Store (signing, updates, the restart after an update); Spanish and Chinese setup pages on
-screen (English, Russian and Hebrew were).
+screen (English, Russian and Hebrew were); the release pipeline's Store step against the real service (§7).
 
-## 7. The owner's steps
+## 7. The release pipeline
 
-1. **Account.** `https://storedeveloper.microsoft.com`, individual, free. Use the Microsoft account that should own
-   the app for good. Verify the email address in Partner Center's Action Center, or certification mail is lost.
-2. **Reserve the name.** Partner Center › Apps and games › *New product* › *MSIX or PWA app* › *Check
-   availability* › *Reserve product name*. A reservation that is not used within three months is removed.
-   - **Name risk:** "Better Clipboard" exists in the Store already (PAST-E Clipboard, `9NR75C5JPVVX`, whose title
-     reads "Better Clipboard"). If "BetterClipboard" is refused or looks too close, reserve **"Nucs
-     BetterClipboard"**, the name chosen for code signing (CLAUDE.md §3.3). Several names can be reserved.
-3. **Copy the identity.** Product management › *Product identity*: `Package/Identity/Name`,
-   `Package/Identity/Publisher`, `Package/Properties/PublisherDisplayName`. Put them, with the reserved name as
-   `displayName`, into `packaging/msix/identity.json` and set `"reserved": true`. They are not secrets. Values are
-   case-sensitive.
-4. **Decide the version rule** before the first submission, because it cannot be taken back: (X+1).Y.Z.0 as built
+A release tag (`v*`, stable versions only) builds the Store packages and sends them to the Store after the GitHub
+release is published ([`release.yml`](../.github/workflows/release.yml)):
+
+1. **Packages**: `package-msix.ps1 -ForStore`, before anything is published; a release whose Store package cannot
+   be built does not go out half. They are kept as the run's artifact `store-packages` for 90 days. An unsigned
+   package installs nowhere, so it is not attached to the release page.
+2. **Submission**: [`submit-store.ps1`](../tools/release/submit-store.ps1), the release's last step, with
+   Microsoft's Store submission API **[docs]**. A new submission is made as a copy of the published one; its
+   packages are replaced by the two new ones; "What's new" in the English listing gets the tag's notes, cut to the
+   Store's 1,500 characters (each lead-in with its first sentence, the fixes as a count), and is emptied in the
+   other languages; the packages go up in one archive; the submission is committed, and its status is followed
+   until the Store has taken it into certification. Listing texts, pictures, price and age rating are carried
+   over untouched from the published submission.
+3. **What the step refuses**, before it changes anything: packages whose identity is not the reserved one, signed
+   or missing packages, a pre-release version, a version that is not higher than the published one. A pending
+   submission in Partner Center is deleted first (the Store allows one), unless `-KeepPending` is given.
+
+**What it needs, and what happens without it.** Three repository secrets, `PARTNER_CENTER_TENANT_ID`,
+`PARTNER_CENTER_CLIENT_ID` and `PARTNER_CENTER_CLIENT_SECRET`: a Microsoft Entra application that the developer
+account trusts (below). Without them the step warns, and the release is complete without the Store (exit code 3).
+The same holds while the product has no *published* submission (exit code 4): Microsoft's API only updates an app
+that was published once, so the first submission is made in Partner Center (§8). Any other failure makes the run
+red; the GitHub release is published by then.
+
+**By hand**: *Actions › Microsoft Store › Run workflow* ([`store.yml`](../.github/workflows/store.yml)). `check`
+signs in with the secrets and reads the app, changing nothing: run it after setting or renewing the secrets.
+`submit` builds a released version's packages from its tag and submits them, for a release whose own step was
+skipped or failed. `draft` does the same without the commit.
+
+**One rule to remember:** a submission the API made must not be edited in Partner Center before it is committed;
+the API can then no longer commit it **[docs]**. Change the listing between releases through the kit and an
+import (`store-listing.md` §4), or in Partner Center on a submission started there.
+
+**Setting it up** (once; the first two steps need the owner):
+
+1. *Partner Center › Account settings › Tenants*: associate a Microsoft Entra tenant with the developer account.
+   It asks a Global administrator of that tenant to sign in with a work account. A personal Microsoft account is
+   not taken, also when it administers the tenant **[measured, 2026-11-13]**.
+2. *Account settings › User management › Microsoft Entra applications*: add an application with the **Manager**
+   role. Partner Center can create it there; it shows the tenant ID and the client ID, and makes a key once.
+3. Put the three values into the repository's secrets (`gh secret set NAME --repo Nucs/BetterClipboard`, the value
+   on standard input, so it never appears on a screen or in a log), then run *Microsoft Store › check*.
+
+The script was never run against the real service: a first submission must be published first. It is tested
+against a stand-in that answers like the documented API and records every request
+([`test-submit-store.ps1`](../tools/release/test-submit-store.ps1), 39 checks, run by CI): the order of the calls,
+what is sent, the upload in blocks, every refusal, the retry of a failed block, and that neither the secret, the
+token nor the upload address is ever printed.
+
+## 8. Where the submission stands, and the owner's steps
+
+Done on 2026-11-13, in the owner's Partner Center account:
+
+| Page | State | What is there |
+|---|---|---|
+| Product | Reserved | **BetterClipboard**, an MSIX app; Store ID `9PHL574X9BF9` |
+| Pricing and availability | Complete | Free, all markets, public, as soon as it is certified |
+| Properties | Complete | Utilities + tools, Productivity; the privacy policy, website and support links |
+| Age ratings | Answered, **not saved** | Every answer "No": ESRB Everyone, PEGI 3, IARC 3+ |
+| Packages | Complete | `1.2.11.0` for x64 and ARM64, built on the owner's PC before the change was committed: to be replaced by a release's own |
+| Store listings | Complete | Five languages: texts, search terms, six screenshots with captions, the tile icon |
+| Submission options | Complete | Publish when certified; the `runFullTrust` justification |
+| Additional testing information | Saved | The notes for certification |
+
+[`store-listing.md`](store-listing.md) is what was entered, word for word.
+
+Left, and the owner's:
+
+1. **Read the listing** (the kit, or the draft itself) and say what to change.
+2. **Age ratings**: tick "I agree to the IARC Terms of Use and I am the age of majority in my jurisdiction" and
+   save. It is an agreement in the owner's name.
+3. **Decide the version rule** before the first submission, because it cannot be taken back: (X+1).Y.Z.0 as built
    (§5.3), or release 1.0.0 first.
-5. **Build**: `pwsh tools/release/package-msix.ps1 -Version <release> -ForStore`.
-6. **Try the exact packages** in a test desktop (§5.6 needs a test-signed twin: build once more with
-   `-NewTestCertificate` and the same identity). Optionally run the Windows App Certification Kit on it.
-7. **Screenshots**: at least one PNG of 1366 × 768 or larger per language; `store-listing.md` §2 has the set.
-   Take them from the test-signed twin of step 6, so that Settings shows the release's version, in a test desktop
-   with invented demo data (the way the README's photos are made, CLAUDE.md §3.4), never from a real history.
-8. **Submission.** Start a submission and fill its pages from [`store-listing.md`](store-listing.md): pricing
-   (free, all markets), properties (category, privacy policy URL), age ratings (the IARC questionnaire), packages
-   (both `.msix` files), the five listings, and the submission options (the `runFullTrust` text and the notes for
-   certification).
-9. **Certification** takes up to a few business days; a first submission with a restricted capability may take
-   longer. A failure comes with a report; fix and resubmit.
-10. **Afterwards**: add the Store link to the README, and for every release build and submit the packages next to
-    the GitHub release (the Store listing's "What's new" takes the release notes, up to 1,500 characters).
+4. **Release** the version to submit (a tag; CLAUDE.md §3.1). Its *Release* run builds the packages. Replace the
+   draft's two packages with the run's `store-packages` artifact, so that what the Store ships is what the tag
+   built.
+5. **Submit for certification.** It takes up to a few business days; a first submission with a restricted
+   capability may take longer. A failure comes with a report; fix and resubmit.
+6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning; then the tenant,
+   the application and the three secrets (§7), so that the next release submits itself.
 
-## 8. Limits and next steps
+**The name.** "Better Clipboard", in two words, is the title of other products: a Store app (PAST-E Clipboard,
+`9NR75C5JPVVX`) and a Mac app (betterclipboard.com). Partner Center reserved "BetterClipboard" without objection;
+certification may still ask about it (policy 10.1.1). The fallback is a second reserved name, "Nucs
+BetterClipboard", the name chosen for code signing (CLAUDE.md §3.3).
+
+## 9. Limits and next steps
 
 - **A copy for every user and a Chocolatey copy are not removed by the Store edition**; it waits for an
   administrator. Its two pages were not seen on screen.
@@ -336,14 +429,18 @@ screen (English, Russian and Hebrew were).
 - **The move needs Windows PowerShell and script files that run.** On a PC whose policy blocks scripts, the check
   says so, and the other copy has to be uninstalled in Windows' Installed apps.
 - **The package version differs from the release version** by one in its first number (§5.3).
-- **Release wiring**: `package-msix.ps1` is not called by CI or the release workflow yet, and a Store submission is
-  made by hand. Partner Center has a submission API; using it needs the owner's account.
-- **Screenshots for the listing** are not made yet. They come last, from the package that is submitted: Settings
-  shows the version, and the name is settled only once it is reserved (§7).
+- **The release's Store step was never run against the real service** (§7): that needs a published first
+  submission and the three secrets. Until then it warns and the release goes out without the Store.
+- **The pipeline updates packages and "What's new", nothing else.** Listing texts and pictures change by hand: the
+  kit, then an import (`store-listing.md` §4).
+- **The screenshots are English in all five listings**: the app in English, with invented data. Localized pictures
+  would be the same six scenes once per language.
+- **The listing's translations** (Chinese, Russian, Spanish, Hebrew) were written by Claude; no native speaker has
+  read them.
 - **ARM64**: the package builds and passes the script's checks (68.5 MB, version 1.2.11.0); it was never run on a
   device.
 
-## 9. Sources
+## 10. Sources
 
 - Microsoft Store Policies 7.20: `https://learn.microsoft.com/en-us/windows/apps/publish/store-policies`
 - Free registration: `https://blogs.windows.com/windowsdeveloper/2025/09/10/free-developer-registration-for-individual-developers-on-microsoft-store/`
@@ -363,3 +460,11 @@ screen (English, Russian and Hebrew were).
 - Desktop extensions (startup task, aliases): `https://learn.microsoft.com/en-us/windows/apps/desktop/modernize/desktop-to-uwp-extensions`
 - Capabilities: `https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/app-capability-declarations`
 - The existing listing with a similar name: `https://apps.microsoft.com/detail/9NR75C5JPVVX`
+- The Store submission API: `https://learn.microsoft.com/en-us/windows/uwp/monetize/create-and-manage-submissions-using-windows-store-services`
+  and `https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions`
+- Importing and exporting listings: `https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/import-and-export-store-listings`
+- The Microsoft Store Developer CLI, considered for the pipeline (its `publish` takes one package file, and this
+  edition ships one per architecture): `https://learn.microsoft.com/en-us/windows/apps/publish/msstore-dev-cli/commands`
+- The "headless app" refusal as other projects met and solved it (2026-10 and 2026-11; third parties, no Microsoft
+  page describes the rule): `https://github.com/opengeos/RustGIS/pull/374`, `https://github.com/dafer238/dfstudio/pull/28`,
+  and for the waiver `https://mouri.moe/en/2021/12/27/The-way-to-submit-a-headless-app-to-the-Microsoft-Store/`

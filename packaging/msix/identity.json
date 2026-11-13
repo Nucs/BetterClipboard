@@ -1,16 +1,23 @@
 {
   "notes": [
-    "The identity of BetterClipboard's Microsoft Store package (docs/microsoft-store.md, 'The owner's steps').",
-    "Partner Center assigns these values when the app's name is reserved: Product identity > Package/Identity/Name,",
-    "Package/Identity/Publisher and Package/Properties/PublisherDisplayName. Copy them here exactly and set",
-    "'reserved' to true; tools/release/package-msix.ps1 refuses to build a package for the Store until then.",
+    "The identity of BetterClipboard's Microsoft Store package (docs/microsoft-store.md).",
+    "Partner Center assigned these values when the name 'BetterClipboard' was reserved on 2026-11-13:",
+    "Product management > Product identity > Package/Identity/Name, Package/Identity/Publisher and",
+    "Package/Properties/PublisherDisplayName. They must stay exactly as they are (case included): the Store refuses",
+    "a package whose identity differs, and a package with another identity is another app to Windows.",
     "'displayName' is the reserved app name (the Store refuses a package whose display name is not reserved).",
-    "The values below are placeholders that only work for test packages (package-msix.ps1 -TestCertificate),",
-    "where the publisher is replaced by the test certificate's subject anyway. Nothing here is a secret."
+    "'storeId' is the product's Store ID: tools/release/submit-store.ps1 sends updates to it, and",
+    "https://apps.microsoft.com/detail/<storeId> is the listing. 'packageFamilyName' is what Windows calls the",
+    "installed package (its data folder is %LOCALAPPDATA%\\Packages\\<packageFamilyName>); it follows from the",
+    "name and the publisher and is here for reference only.",
+    "A test package (package-msix.ps1 -NewTestCertificate) keeps the name and takes its publisher from the test",
+    "certificate, so it is a different package family and installs next to the Store's. Nothing here is a secret."
   ],
-  "reserved": false,
-  "name": "BetterClipboard.Unreserved",
-  "publisher": "CN=BetterClipboard-Unreserved",
-  "publisherDisplayName": "Eli Belash",
-  "displayName": "BetterClipboard"
+  "reserved": true,
+  "name": "Nucs.BetterClipboard",
+  "publisher": "CN=B31AB4B1-B96C-4DB9-83AE-B799D5192208",
+  "publisherDisplayName": "Nucs",
+  "displayName": "BetterClipboard",
+  "storeId": "9PHL574X9BF9",
+  "packageFamilyName": "Nucs.BetterClipboard_mgez7y7xa0my4"
 }

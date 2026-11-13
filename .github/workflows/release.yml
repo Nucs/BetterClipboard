@@ -13,6 +13,15 @@
 # points moderators at that release's assets. The push needs the CHOCOLATEY_API_KEY secret (the API key of the
 # community.chocolatey.org account); without it the package is only attached to the release. A package-only fix for an
 # already released version is chocolatey.yml's job (run by hand). See docs/chocolatey.md.
+#
+# Microsoft Store (stable versions only: the Store's customers get every published version): the two unsigned MSIX
+# packages of the Store edition are built before anything is published, kept as this run's artifact "store-packages",
+# and sent to the Store after the GitHub release exists (tools/release/submit-store.ps1: a new submission made from the
+# published one, with these packages and "What's new" from the tag's notes, committed for certification). That step
+# needs the PARTNER_CENTER_TENANT_ID, PARTNER_CENTER_CLIENT_ID and PARTNER_CENTER_CLIENT_SECRET secrets (the Microsoft
+# Entra application that the developer account trusts). Without them, or while the app's first submission (which only
+# Partner Center can make) is not published yet, the step warns and the release is still complete. A release whose
+# submission was skipped or failed is sent again by store.yml (run by hand). See docs/microsoft-store.md.
 name: Release
 
 on:
@@ -25,7 +34,8 @@ permissions:
 jobs:
   release:
     runs-on: windows-latest
-    timeout-minutes: 45
+    # The Store step may wait up to 15 minutes for the Store's answer to the commit.
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
         with:
@@ -103,6 +113,26 @@ jobs:
           # The link the first review's verifier exemption request needs (docs/chocolatey.md section 5).
           "betterclipboard ${{ steps.version.outputs.version }} was installed, upgraded with the app running and uninstalled on windows-latest in this run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $env:GITHUB_STEP_SUMMARY
 
+      # The Microsoft Store edition's packages, unsigned (the Store signs what it publishes), with the identity Partner
+      # Center assigned (packaging/msix/identity.json). Built before anything is published: a release whose Store
+      # package cannot be built must not go out half. package-msix.ps1 checks each package after the build.
+      - name: Microsoft Store packages
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
+        shell: pwsh
+        run: tools/release/package-msix.ps1 -Version ${{ steps.version.outputs.version }} -ForStore -OutputDirectory artifacts/store
+
+      # Kept with the run, not attached to the release: an unsigned package installs nowhere, so it is of no use to a
+      # visitor of the release page. The app's first submission uploads these files by hand in Partner Center.
+      - name: Keep the Microsoft Store packages
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: store-packages
+          path: artifacts/store/*.msix
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
       - name: Publish release
         shell: pwsh
         env:
@@ -128,3 +158,32 @@ jobs:
           }
           choco push $package --source https://push.chocolatey.org/ --api-key $env:CHOCOLATEY_API_KEY
           if ($LASTEXITCODE -ne 0) { throw "choco push failed ($LASTEXITCODE)." }
+
+      # Last, because it cannot be taken back: a committed submission goes to certification and then to every customer.
+      # The script's exit code says what happened: 0 submitted; 3 the secrets are not set; 4 the app has no published
+      # submission yet (Microsoft's API cannot make the first one); anything else is a failure worth a red run.
+      - name: Submit to the Microsoft Store
+        if: ${{ !contains(steps.version.outputs.version, '-') }}
+        shell: pwsh
+        env:
+          PARTNER_CENTER_TENANT_ID: ${{ secrets.PARTNER_CENTER_TENANT_ID }}
+          PARTNER_CENTER_CLIENT_ID: ${{ secrets.PARTNER_CENTER_CLIENT_ID }}
+          PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
+        run: |
+          $version = '${{ steps.version.outputs.version }}'
+          tools/release/submit-store.ps1 -Version $version -PackageDirectory artifacts/store -ReleaseNotesFile '${{ steps.notes.outputs.file }}'
+          $code = $LASTEXITCODE
+          $again = 'Send it later with Actions > Microsoft Store > Run workflow (mode "submit", this version), or upload the packages of this run''s artifact "store-packages" in Partner Center.'
+          switch ($code) {
+            0 { "BetterClipboard $version was submitted to the Microsoft Store; certification follows, and Partner Center mails the result." >> $env:GITHUB_STEP_SUMMARY }
+            3 {
+              Write-Host "::warning title=Microsoft Store::Not submitted: the PARTNER_CENTER_* secrets are not set (docs/microsoft-store.md). $again"
+              "BetterClipboard $version was **not** submitted to the Microsoft Store: the PARTNER_CENTER_* secrets are not set. $again" >> $env:GITHUB_STEP_SUMMARY
+            }
+            4 {
+              Write-Host "::warning title=Microsoft Store::Not submitted: the app has no published submission yet, and the first one is made in Partner Center. $again"
+              "BetterClipboard $version was **not** submitted to the Microsoft Store: the app's first submission is made in Partner Center. $again" >> $env:GITHUB_STEP_SUMMARY
+            }
+            default { throw "The Microsoft Store submission failed (exit code $code); the lines above say why. The GitHub release is published. $again" }
+          }
+          exit 0

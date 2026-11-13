@@ -8,14 +8,16 @@
     package. For every architecture this script:
 
       1. publishes bclip (the command line) self-contained and takes its own four files: the package declares bclip as
-         a second application with a console alias, and its runtime files are the app's own;
+         the app's console alias (an app execution alias with an executable of its own), and its runtime files are
+         the app's own;
       2. fills in the manifest (packaging/msix/Package.appxmanifest) with the identity, the version and the
          architecture;
       3. publishes the app with WindowsPackageType=MSIX, which makes the package: the app, bclip, the logos
          (packaging/msix/Assets) and install.ps1, which that edition runs in its uninstall mode to remove a copy of
          BetterClipboard it replaces;
-      4. checks the package (its manifest says what was asked; the app, bclip, the installer script and the resource
-         index are in it; everything bclip needs is in it; it is under the Store's size limit);
+      4. checks the package (its manifest says what was asked, and declares nothing the Store refuses at upload: one
+         application, none hidden from Start, bclip as its console alias; the app, bclip, the installer script and
+         the resource index are in it; everything bclip needs is in it; it is under the Store's size limit);
       5. with a test certificate, signs it.
 
     Output: BetterClipboard-<version>-store-<arch>.msix in -OutputDirectory, and with a new test certificate its
@@ -268,6 +270,37 @@ function Get-CertificateSubject {
     }
 }
 
+function Get-PackageFamilyName {
+    <#
+    .SYNOPSIS
+        The package family name Windows gives a package with this name and publisher: <name>_<publisher id>.
+    .DESCRIPTION
+        The publisher id is the first 8 bytes of the SHA-256 of the publisher string (UTF-16LE), written in base 32
+        with Windows' own alphabet (13 characters). It is how Windows, the Store and the app's data folder
+        (%LOCALAPPDATA%\Packages\<family name>) name the package, so it proves a copied identity.
+    .PARAMETER Name
+        Package/Identity/Name.
+    .PARAMETER Publisher
+        Package/Identity/Publisher, exactly as in the manifest (case and spacing count).
+    .OUTPUTS
+        System.String.
+    #>
+    param(
+        [Parameter(Mandatory = $true)] [string] $Name,
+        [Parameter(Mandatory = $true)] [string] $Publisher
+    )
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $hash = $sha.ComputeHash([System.Text.Encoding]::Unicode.GetBytes($Publisher)) }
+    finally { $sha.Dispose() }
+
+    # 64 bits, padded with one zero bit to 65: thirteen groups of five.
+    $bits = (-join ($hash[0..7] | ForEach-Object { [Convert]::ToString($_, 2).PadLeft(8, '0') })) + '0'
+    $alphabet = '0123456789abcdefghjkmnpqrstvwxyz'
+    $id = -join (0..12 | ForEach-Object { $alphabet[[Convert]::ToInt32($bits.Substring($_ * 5, 5), 2)] })
+    return "${Name}_$id"
+}
+
 function ConvertTo-XmlText {
     <#
     .SYNOPSIS
@@ -336,6 +369,64 @@ function Read-PackageManifest {
     }
 }
 
+function Get-ManifestStoreProblems {
+    <#
+    .SYNOPSIS
+        What in a package's manifest the Microsoft Store refuses at upload, or what would leave bclip unreachable.
+    .DESCRIPTION
+        Partner Center refused the first packages of this edition the moment they were uploaded ("specifies a
+        headless app"): bclip was a second application hidden from Start (AppListEntry="none"), which the Store
+        allows only with a waiver. MakeAppx had packed that manifest without a word, so the build checks the rule
+        itself, where a mistake costs seconds instead of an upload:
+
+          - exactly one application, and no application hidden from Start;
+          - that application's one execution alias is the console alias bclip.exe, started from bclip.exe (Windows
+            allows one windows.appExecutionAlias extension per application, which MakeAppx does enforce; this check
+            is about the one that is there being the command line's).
+    .PARAMETER Manifest
+        The parsed AppxManifest.xml of a built package (Read-PackageManifest).
+    .OUTPUTS
+        System.String[]. One sentence fragment per problem; empty when the manifest is fine.
+    #>
+    param([Parameter(Mandatory = $true)] [System.Xml.XmlDocument] $Manifest)
+
+    $namespaces = New-Object System.Xml.XmlNamespaceManager($Manifest.NameTable)
+    $namespaces.AddNamespace('m', 'http://schemas.microsoft.com/appx/manifest/foundation/windows10')
+    $namespaces.AddNamespace('uap', 'http://schemas.microsoft.com/appx/manifest/uap/windows10')
+    $namespaces.AddNamespace('uap5', 'http://schemas.microsoft.com/appx/manifest/uap/windows10/5')
+    $namespaces.AddNamespace('desktop4', 'http://schemas.microsoft.com/appx/manifest/desktop/windows10/4')
+
+    $found = @()
+    $applications = @($Manifest.SelectNodes('/m:Package/m:Applications/m:Application', $namespaces))
+    if ($applications.Count -ne 1) {
+        $found += "the manifest declares $($applications.Count) applications; the Store edition is one application (a second, hidden one is what the Store refuses as a headless app)"
+    }
+
+    # Case-insensitive on purpose: the schema accepts "none" only, but a refusal at upload is the wrong place to learn
+    # that a differently written value slipped through.
+    $hidden = @($Manifest.SelectNodes('//uap:VisualElements[@AppListEntry]', $namespaces) |
+        Where-Object { $_.GetAttribute('AppListEntry') -ieq 'none' })
+    if ($hidden.Count -gt 0) {
+        $found += 'an application is hidden from Start (AppListEntry="none"), which the Store refuses as a headless app'
+    }
+
+    $aliases = @($Manifest.SelectNodes('/m:Package/m:Applications/m:Application/m:Extensions/uap5:Extension[@Category="windows.appExecutionAlias"]', $namespaces))
+    if ($aliases.Count -ne 1) {
+        $found += "the manifest declares $($aliases.Count) execution alias extensions; bclip's console alias must be the one"
+    }
+    else {
+        $alias = $aliases[0]
+        $names = @($alias.SelectNodes('uap5:AppExecutionAlias/uap5:ExecutionAlias', $namespaces) | ForEach-Object { $_.GetAttribute('Alias') })
+        $holder = $alias.SelectSingleNode('uap5:AppExecutionAlias', $namespaces)
+        $subsystem = if ($holder) { $holder.GetAttribute('Subsystem', 'http://schemas.microsoft.com/appx/manifest/desktop/windows10/4') } else { '' }
+        if ($alias.GetAttribute('Executable') -ine 'bclip.exe') { $found += "the execution alias starts '$($alias.GetAttribute('Executable'))', not bclip.exe" }
+        if ($names.Count -ne 1 -or $names[0] -ine 'bclip.exe') { $found += "the execution alias is '$($names -join ', ')', not bclip.exe alone" }
+        if ($subsystem -ine 'console') { $found += 'the execution alias is not a console alias (desktop4:Subsystem="console"), so a terminal would not wait for bclip or get its output' }
+    }
+
+    return $found
+}
+
 # --- The identity ----------------------------------------------------------------------------------------------------
 $identityPath = if ([IO.Path]::IsPathRooted($IdentityFile)) { $IdentityFile } else { Join-Path $root $IdentityFile }
 $identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
@@ -348,6 +439,17 @@ $reserved = [bool] $identity.reserved -or ($IdentityName -and $Publisher -and $P
 if ($ForStore) {
     if ($TestCertificate -or $NewTestCertificate) {
         throw 'A package for the Store is not signed with a test certificate: the Store signs it. Leave out -ForStore for a test package.'
+    }
+
+    # The identity file also states the package family name Partner Center shows. It follows from the name and the
+    # publisher, so a name or publisher that was mistyped or edited later is caught here, not by the Store after the
+    # upload (it refuses a package whose identity is not the reserved one).
+    $statedFamily = $identity.PSObject.Properties['packageFamilyName']
+    if ($statedFamily -and $statedFamily.Value -and -not ($IdentityName -or $Publisher)) {
+        $computedFamily = Get-PackageFamilyName -Name $name -Publisher $publisherSubject
+        if ($computedFamily -cne [string] $statedFamily.Value) {
+            throw "The identity in $identityPath does not fit its own ""packageFamilyName"": name and publisher give $computedFamily, the file says $($statedFamily.Value). Copy Package/Identity/Name and Package/Identity/Publisher again from Partner Center > Product identity."
+        }
     }
 
     if (-not $reserved) {
@@ -448,6 +550,9 @@ foreach ($arch in $Architectures) {
     if ($made.Publisher -ne $publisherSubject) { $problems += "publisher is '$($made.Publisher)', not '$publisherSubject'" }
     if ($made.Version -ne $packageVersion) { $problems += "version is '$($made.Version)', not '$packageVersion'" }
     if ($made.ProcessorArchitecture -ne $arch) { $problems += "architecture is '$($made.ProcessorArchitecture)', not '$arch'" }
+
+    # What the Store refuses at upload although MakeAppx packs it. @(): an empty result comes back as nothing.
+    $problems += @(Get-ManifestStoreProblems -Manifest $document)
 
     $entries = Get-PackageEntries -PackagePath $package
     $have = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
