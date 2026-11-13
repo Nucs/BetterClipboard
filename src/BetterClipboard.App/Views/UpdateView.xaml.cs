@@ -208,7 +208,10 @@ public sealed partial class UpdateView : UserControl
             switch (snapshot.InstallKind)
             {
                 case UpdateInstallKind.Installer:
-                    // "Install and restart" for the way back from a development build to an older release.
+                case UpdateInstallKind.Portable when snapshot.CanInstall:
+                    // A copy that installs updates itself: the installer's, or one extracted by hand that can write its
+                    // folder (the new version replaces its files there). "Install and restart" for the way back from a
+                    // development build to an older release.
                     primary = UpdateText.ApproveButton(snapshot);
                     primaryAction = () => InstallRequested?.Invoke(this, EventArgs.Empty);
                     secondary = UiText.Translate("Later");

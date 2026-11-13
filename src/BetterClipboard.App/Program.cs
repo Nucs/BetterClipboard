@@ -1,3 +1,4 @@
+using System.Reflection;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
@@ -21,13 +22,15 @@ public static class Program
     /// <c>--background</c> (and <c>--clipboard-sequence N</c>) is the silent restart after Settings, which first takes the
     /// shortcuts and the tray icon over (<see cref="RestartBridge"/>, CLAUDE.md §2.46);
     /// <c>--read-console-history &lt;pid&gt;</c> is the Cmd tab's helper, <c>--set-hotkeys [--validate] SHORTCUT...</c>
-    /// the installer's way to pick the shortcuts, and <c>--set-update-check on|off</c> its way to install with the
-    /// automatic update check off (see remarks).
+    /// the installer's way to pick the shortcuts, <c>--set-update-check on|off</c> its way to install with the
+    /// automatic update check off, and <c>--apply-portable-update …</c> (<see cref="Core.Updates.PortableUpdate"/>) makes
+    /// this program the helper that puts a new version into a portable copy's folder (see remarks).
     /// </param>
     /// <returns>
     /// Process exit code (0; the helper's own codes for <c>--read-console-history</c>,
-    /// <see cref="BetterClipboard.Windows.Input.HotkeySetupCommand"/>'s for <c>--set-hotkeys</c>, and
-    /// <see cref="Core.Updates.UpdateSetupCommand"/>'s for <c>--set-update-check</c>).
+    /// <see cref="BetterClipboard.Windows.Input.HotkeySetupCommand"/>'s for <c>--set-hotkeys</c>,
+    /// <see cref="Core.Updates.UpdateSetupCommand"/>'s for <c>--set-update-check</c>, and
+    /// <see cref="BetterClipboard.Windows.Updates.PortableUpdateCommand"/>'s for <c>--apply-portable-update</c>).
     /// </returns>
     /// <remarks>
     /// <para>
@@ -45,10 +48,25 @@ public static class Program
     /// <c>--set-update-check</c> runs before the lock for the same reasons (<see cref="Core.Updates.UpdateSetupCommand"/>):
     /// the installer switches the check off while the app is closed, so that not even a first request is made.
     /// </para>
+    /// <para>
+    /// <c>--apply-portable-update</c> runs first of all, before the lock: it is the <b>new</b> version, started from its
+    /// staging folder by the copy it replaces, which still holds the lock until this helper asks it to exit
+    /// (<see cref="ApplyPortableUpdate"/>).
+    /// </para>
+    /// <para>
+    /// <b>A newer copy takes over.</b> A plain launch that finds an older BetterClipboard running asks it to exit and becomes
+    /// BetterClipboard itself, instead of opening the older copy's Settings (<see cref="TakeOverFromOlderCopy"/>,
+    /// CLAUDE.md §2.29).
+    /// </para>
     /// </remarks>
     [STAThread]
     public static int Main(string[] args)
     {
+        if (BetterClipboard.Windows.Updates.PortableUpdateCommand.Matches(args))
+        {
+            return ApplyPortableUpdate(args);
+        }
+
         if (args.Length > 0 && args[0] == BetterClipboard.Windows.Shell.ConsoleCommandHistory.HelperSwitch)
         {
             // Open standard output before attaching: attaching to a console may swap the process's console handles,
@@ -170,10 +188,20 @@ public static class Program
 
             if (!replacesAnotherEdition)
             {
-                // A second launch (Start menu, double click, script) drives the running app instead of
-                // starting a twin that would fight over the clipboard listener and the Win+V hook.
-                instance.Signal(options.Command);
-                return 0;
+                // A newer copy started by hand while an older one runs (a release extracted into a new folder and opened
+                // from there): it takes the older one's place, or the user would get the old version's Settings and keep
+                // running it (seen in the portable-update test, CLAUDE.md §2.29).
+                if (!storeEdition && options.Command == InstanceCommand.Activate && TakeOverFromOlderCopy(instance, out var olderCopies))
+                {
+                    options = options with { TookOverFrom = olderCopies };
+                }
+                else
+                {
+                    // A second launch (Start menu, double click, script) drives the running app instead of
+                    // starting a twin that would fight over the clipboard listener and the Win+V hook.
+                    instance.Signal(options.Command);
+                    return 0;
+                }
             }
         }
 
@@ -205,6 +233,110 @@ public static class Program
     /// <returns>The paths.</returns>
     internal static Core.AppPaths ResolvePaths() =>
         Core.AppPaths.ResolveDefault(BetterClipboard.Windows.Packaging.PackageIdentity.FamilyName);
+
+    /// <summary>How long a newer copy waits for the older one it asked to exit (which saves its queued copies first).</summary>
+    private static readonly TimeSpan TakeOverWait = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// This program's version, as its build stamped it, without the build metadata (<c>0.2.11</c> from <c>0.2.11+abc…</c>).
+    /// Read here rather than from <see cref="AppController.Version"/>: before XAML starts, no class of the UI is touched.
+    /// </summary>
+    /// <returns>The version text.</returns>
+    private static string OwnVersionText() =>
+        typeof(Program).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
+
+    /// <summary>
+    /// Runs this program as a portable copy's update helper (<c>--apply-portable-update</c>, CLAUDE.md §2.29): this process
+    /// is the new version, started from its staging folder by the copy it replaces.
+    /// </summary>
+    /// <param name="args">The process's arguments, starting with <see cref="Core.Updates.PortableUpdate.ApplySwitch"/>.</param>
+    /// <returns>One of <see cref="BetterClipboard.Windows.Updates.PortableUpdateCommand"/>'s exit codes.</returns>
+    /// <remarks>
+    /// The data folder is resolved as the app resolves it (the helper inherits the old copy's environment, an isolated
+    /// instance's <c>BETTERCLIPBOARD_DATA_DIR</c> included), so the exit request reaches exactly the instance that asked for
+    /// the update. Nothing here takes the lock: the old copy holds it until it exits, and the new version started afterwards
+    /// takes it as any start does.
+    /// </remarks>
+    private static int ApplyPortableUpdate(string[] args)
+    {
+        if (!BetterClipboard.Windows.Updates.PortableUpdateCommand.TryParse(args, out var request))
+        {
+            return BetterClipboard.Windows.Updates.PortableUpdateCommand.BadArguments;
+        }
+
+        var paths = ResolvePaths();
+        var helper = new BetterClipboard.Windows.Updates.PortableUpdateHelper
+        {
+            SourceDirectory = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory),
+            Version = OwnVersionText(),
+            RequestExit = () => SingleInstance.TrySignal(paths.InstanceName, InstanceCommand.Exit),
+        };
+        return helper.Run(request);
+    }
+
+    /// <summary>
+    /// When a plain launch finds BetterClipboard running and every other copy in the session is an older version
+    /// (<see cref="Core.Startup.InstanceTakeover"/>): asks the running copy to exit and takes the single-instance lock,
+    /// so this newer copy becomes BetterClipboard.
+    /// </summary>
+    /// <param name="instance">This process's guard, not the primary one yet.</param>
+    /// <param name="olderCopies">For the log: the copies that were replaced, e.g. <c>0.2.10 (process 4312)</c>.</param>
+    /// <returns>
+    /// <see langword="true"/> once this process holds the lock; <see langword="false"/> to hand the launch over as before
+    /// (no newer version, something unclear, or the running copy did not exit within <see cref="TakeOverWait"/>).
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// Runs on the thread that acquired the lock (a mutex belongs to a thread). The exit request goes through the instance's
+    /// own event, so only the copy that holds this instance's lock receives it; every version understands it. Runs before
+    /// the log is opened (the running copy writes to the same file), so the controller logs it, from
+    /// <see cref="StartupOptions.TookOverFrom"/>.
+    /// </para>
+    /// <para>
+    /// A running copy that does not exit in time is left as it is: a request it never read is withdrawn (the commands are
+    /// reset), and the launch is handed over as a plain one, which opens its Settings.
+    /// </para>
+    /// </remarks>
+    private static bool TakeOverFromOlderCopy(SingleInstance instance, [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out string? olderCopies)
+    {
+        olderCopies = null;
+        try
+        {
+            if (!Core.Updates.SemanticVersion.TryParse(OwnVersionText(), out var own) || Environment.ProcessPath is not { } ownPath)
+            {
+                return false;
+            }
+
+            var others = BetterClipboard.Windows.Shell.RunningCopies.ListOthers();
+            if (!Core.Startup.InstanceTakeover.ShouldTakeOver(own, ownPath, others))
+            {
+                return false;
+            }
+
+            instance.Signal(InstanceCommand.Exit);
+            var waited = System.Diagnostics.Stopwatch.StartNew();
+            while (waited.Elapsed < TakeOverWait)
+            {
+                if (instance.TryBecomePrimary())
+                {
+                    // Commands sent to the copy that is gone (a launch in the moment between) are not for this one.
+                    instance.DiscardPendingCommands();
+                    olderCopies = string.Join(", ", others.Select(copy => $"{copy.Version} (process {copy.ProcessId})"));
+                    return true;
+                }
+
+                Thread.Sleep(100);
+            }
+
+            instance.DiscardPendingCommands();
+            return false;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException or IOException)
+        {
+            // The process list or the lock could not be read: hand over as always.
+            return false;
+        }
+    }
 
     /// <summary>
     /// Sets a named event another process created (a silent restart's "ready" signal); nothing happens when it does not

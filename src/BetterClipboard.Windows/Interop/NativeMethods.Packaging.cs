@@ -23,4 +23,18 @@ internal static partial class NativeMethods
     /// <returns>An HRESULT; 0 on success.</returns>
     [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16)]
     internal static partial int RegisterApplicationRestart(string? pwzCommandline, uint dwFlags);
+
+    /// <summary>
+    /// Another process's package full name: tells whether it runs from an app package (a starting copy asks it of the
+    /// BetterClipboard processes it finds, <see cref="Shell.RunningCopies"/>).
+    /// </summary>
+    /// <param name="hProcess">A handle with <see cref="PROCESS_QUERY_LIMITED_INFORMATION"/>.</param>
+    /// <param name="packageFullNameLength">In: the buffer's size in characters (0 to ask); out: the size needed, terminator included.</param>
+    /// <param name="packageFullName">The buffer, or <see langword="null"/> to ask for the size.</param>
+    /// <returns>
+    /// 0 on success; <c>ERROR_INSUFFICIENT_BUFFER</c> (122) for the sizing call of a packaged process;
+    /// <c>APPMODEL_ERROR_NO_PACKAGE</c> (15700) for a process without a package.
+    /// </returns>
+    [LibraryImport("kernel32.dll")]
+    internal static unsafe partial int GetPackageFullName(nint hProcess, ref uint packageFullNameLength, char* packageFullName);
 }

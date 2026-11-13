@@ -272,6 +272,42 @@ public sealed class SignInStartupTests
         Assert.False(new SettingsStore(path).Load().SkipAllUsersStartup);
     }
 
+    /// <summary>
+    /// The user's own entry follows the copy that runs (CLAUDE.md §2.29): it is rewritten for this copy when it starts a
+    /// BetterClipboard that is gone or older, keeping Windows' "off" mark and this user's choice about the all-users entry;
+    /// it is left alone when it starts this copy, the same or a newer version, a version that cannot be read, or another
+    /// program, and the all-users entry is never written.
+    /// </summary>
+    [Fact]
+    public void FollowThisCopy_RewritesOnlyAnEntryForAGoneOrOlderCopy()
+    {
+        var own = UpdateTestData.Version("0.2.11");
+
+        // Gone: a portable folder that was moved, or an old release folder deleted after a new one was extracted.
+        var gone = SignInStartup.FollowThisCopy(Entries(User.Stale, false, Machine.None, false), Exe, own, null, skipAllUsers: true);
+        Assert.Equal(new SignInChange(UserEntryChange.Write, ClearUserDisabled: false, SkipAllUsers: true), gone);
+
+        // Older, at another path: rewritten for this copy. Windows' "off" mark stays, so an entry the user turned off stays off.
+        var before = Entries(User.Other, userOff: true, Machine.None, false);
+        var older = SignInStartup.FollowThisCopy(before, Exe, own, UpdateTestData.Version("0.2.10"), skipAllUsers: false);
+        Assert.Equal(new SignInChange(UserEntryChange.Write, ClearUserDisabled: false, SkipAllUsers: false), older);
+        var after = Simulate(before, older!);
+        Assert.Equal(SignInStartup.UserCommandFor(Exe), after.UserCommand);
+        Assert.True(after.UserDisabledInWindows);
+
+        // A development build of the next version counts as newer than the release before it.
+        Assert.NotNull(SignInStartup.FollowThisCopy(before, Exe, UpdateTestData.Version("0.2.11-dev.4.gabc1234"), UpdateTestData.Version("0.2.10"), false));
+
+        // Left alone.
+        Assert.Null(SignInStartup.FollowThisCopy(Entries(User.This, false, Machine.None, false), Exe, own, own, false));
+        Assert.Null(SignInStartup.FollowThisCopy(Entries(User.Other, false, Machine.None, false), Exe, own, own, false));
+        Assert.Null(SignInStartup.FollowThisCopy(Entries(User.Other, false, Machine.None, false), Exe, own, UpdateTestData.Version("0.2.12"), false));
+        Assert.Null(SignInStartup.FollowThisCopy(Entries(User.Other, false, Machine.None, false), Exe, own, null, false));
+        Assert.Null(SignInStartup.FollowThisCopy(Entries(User.None, false, Machine.Other, false), Exe, own, null, false));
+        var notOurs = new SignInEntries("\"C:\\Tools\\Other.exe\" --background", UserTargetExists: false, false, null, false);
+        Assert.Null(SignInStartup.FollowThisCopy(notOurs, Exe, own, null, false));
+    }
+
     /// <summary>Builds the facts of a case.</summary>
     /// <param name="user">The user's entry.</param>
     /// <param name="userOff">Windows' "off" mark for it.</param>

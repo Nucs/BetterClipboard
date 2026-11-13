@@ -275,6 +275,37 @@ public sealed class SingleInstance : IDisposable
     public void Signal(InstanceCommand command) => commands[(int)command].Set();
 
     /// <summary>
+    /// Sends a command to the instance named <paramref name="name"/> without joining it (no handles to its lock or its
+    /// other events stay open): for a process that takes no part in the single-instance lock, such as a portable update's
+    /// helper, which asks the copy it replaces to exit (CLAUDE.md §2.29).
+    /// </summary>
+    /// <param name="name">Instance name (see <see cref="Core.AppPaths.InstanceName"/>).</param>
+    /// <param name="command">The command.</param>
+    /// <returns>
+    /// <see langword="true"/> when the instance's event exists and was set; <see langword="false"/> when no instance of that
+    /// name holds it (nobody listens), or it may not be opened (an instance running as another user).
+    /// </returns>
+    public static bool TrySignal(string name, InstanceCommand command)
+    {
+        try
+        {
+            if (!EventWaitHandle.TryOpenExisting($@"Local\{name}.{command}", out var signal))
+            {
+                return false;
+            }
+
+            using (signal)
+            {
+                return signal.Set();
+            }
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or WaitHandleCannotBeOpenedException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Opens the command events of <paramref name="name"/> without joining the instance, so that a command sent while no
     /// process listens (between the two processes of a silent restart, CLAUDE.md §2.46) is kept until the next primary
     /// instance listens: a named event exists only while someone holds a handle to it, and its signal with it.

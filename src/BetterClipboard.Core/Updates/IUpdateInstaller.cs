@@ -53,8 +53,8 @@ public interface IUpdateInstaller
 }
 
 /// <summary>
-/// The outcome <c>install.ps1 -Update</c> leaves behind for the app (its <c>-ResultPath</c>): whether the new version is
-/// in place, and why not when it is not.
+/// The outcome <c>install.ps1 -Update</c> leaves behind for the app (its <c>-ResultPath</c>), or a portable copy's update
+/// helper (<see cref="PortableUpdate"/>, its <c>--result</c>): whether the new version is in place, and why not when it is not.
 /// </summary>
 /// <remarks>
 /// The installer runs after the app has closed, so this file is the only way its outcome reaches the user: the next
@@ -111,6 +111,42 @@ public sealed record UpdateResult(string Version, bool Succeeded, string Error, 
         {
             return null;
         }
+    }
+
+    /// <summary>
+    /// Writes this outcome as a result file in the shape <c>install.ps1</c> writes to its <c>-ResultPath</c>
+    /// (<c>version</c>, <c>ok</c>, <c>error</c>, <c>finishedUtc</c>), so <see cref="TryRead"/> reads it back: a portable
+    /// copy's update helper (<see cref="PortableUpdate"/>) reports through the same file.
+    /// </summary>
+    /// <param name="path">Where to write; its folder must exist.</param>
+    /// <remarks>
+    /// Written next to its place and moved there in one step: the app reads the file at its start, which may come right
+    /// after the helper wrote it, and must never see half a report.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="path"/> is null or blank.</exception>
+    /// <exception cref="IOException">The file could not be written.</exception>
+    /// <exception cref="UnauthorizedAccessException">The folder may not be written.</exception>
+    public void Write(string path)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+        using var buffer = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(buffer, new JsonWriterOptions { Indented = true }))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("version", Version);
+            writer.WriteBoolean("ok", Succeeded);
+            writer.WriteString("error", Error);
+            if (FinishedAt is { } finished)
+            {
+                writer.WriteString("finishedUtc", finished.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture));
+            }
+
+            writer.WriteEndObject();
+        }
+
+        var temp = path + ".tmp";
+        File.WriteAllBytes(temp, buffer.ToArray());
+        File.Move(temp, path, overwrite: true);
     }
 
     /// <summary>Reads a string member; anything else is empty.</summary>

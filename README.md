@@ -87,8 +87,8 @@ you send to Claude Code and Codex.
 - **Updates when you approve them.** The update button in the panel's header, left of Pause, is highlighted when a
   newer release is on GitHub, and once a week its tooltip says so by itself for a few seconds. A click shows the
   decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
-  checked against the release's SHA-256 and installed in place: BetterClipboard restarts by itself, and your history
-  is kept ([Updates](#updates)).
+  checked against the release's SHA-256 and installed in place, also in a folder you extracted from the release zip:
+  BetterClipboard restarts by itself, and your history is kept ([Updates](#updates)).
 - **In your language.** English, Simplified Chinese (简体中文), Russian (Русский), Spanish (Español) and Hebrew (עברית),
   all in every download. The first start shows the languages with their flags, with Windows' language already
   selected: one click on the green check and the whole app speaks it. An update from a version that did not ask yet
@@ -242,8 +242,16 @@ when you say so.
   restart* copies the build from that folder instead of downloading it. Otherwise it is always offered GitHub's latest
   release, also an older one, as the way back to the official version (*Install and restart*). It gets no weekly
   reminder.
-- **A copy you extracted by hand** does not replace itself: an update replaces the whole folder, and that is only
-  safe for a folder the installer made. Its dialog has the download page and the install command instead.
+- **A copy you extracted from the release zip** updates itself in its own folder, from 0.2.11 on. *Update and restart*
+  downloads and checks the release as above; then the new version closes BetterClipboard, replaces the release's
+  files one by one and starts again. Files that are not part of the release (your own, if the folder holds any) stay
+  as they are, and if one of its files cannot be replaced (another program holds it open), every file goes back as it
+  was. A copy in a folder you may not change, such as Program Files without administrator rights, gets the download
+  page and the install command instead.
+- **A newer copy takes over.** Start a newer BetterClipboard while an older one runs (a new release extracted into a
+  new folder, say), and the older one closes and the newer one carries on, instead of the older one's Settings coming
+  up. If *Start with Windows* starts an older copy, or one that is no longer there, it moves to the copy you run; an
+  entry you turned off in Windows' startup apps stays off.
 - **A copy installed for every user** neither replaces itself nor checks by itself: only an administrator may change
   its folder. *Check now* still asks, and the dialog copies the command to run in PowerShell as administrator
   ([For every user of a PC](#for-every-user-of-a-pc)).
@@ -764,7 +772,10 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   with Windows PowerShell, without a window: it checks the package once more, asks BetterClipboard to close
   (queued copies are saved first), swaps the folder by renames — a failed swap puts the old folder back — and starts
   the app again. It writes its outcome to a file, which the app reads at its next start to tell you how it went.
-  Only the install folder is touched.
+  Only the install folder is touched. A copy extracted from the zip is updated by the new version's own program
+  instead, started from the unpacked package: it asks BetterClipboard to close, renames each of the release's files
+  aside and copies the new one in its place (a file that cannot be replaced puts every file back), writes the same
+  outcome file and starts the app again from the same folder.
 - **Languages.** Each interface language is one catalog embedded in the program, with its flag, so one build holds
   every language and no copy can miss a language file. Strings are found by their English text, counts take the form
   each language needs (CLDR's plural rules), and a string a translation lacks shows in English; a language is offered

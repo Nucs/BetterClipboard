@@ -66,12 +66,30 @@ public sealed class TrayIcon : IDisposable
     private const uint IMAGE_ICON = 1, LR_LOADFROMFILE = 0x10;
     private const int SM_CXSMICON = 49, SM_CYSMICON = 50;
 
+    /// <summary>The timer that tries a refused add again (<see cref="ScheduleAddRetry"/>), on the tray window.</summary>
+    private const nuint RetryAddTimerId = 0xB0C1;
+
+    /// <summary>How many tries come at the short interval before the timer slows down (Explorer may be gone for a while).</summary>
+    private const int FastAddRetries = 30;
+
     private readonly MessageWindowThread window;
     private readonly uint taskbarCreatedMessage;
     private readonly string iconPath;
+
+    /// <summary>
+    /// <c>Shell_NotifyIcon</c>, or a stand-in in tests: every call to Explorer goes through it, so a test can play an Explorer
+    /// that answers late or not at all.
+    /// </summary>
+    private readonly Func<uint, NOTIFYICONDATAW, bool> notify;
+
+    /// <summary>The short interval between tries of a refused add; the long one is fifteen times it.</summary>
+    private readonly TimeSpan retryAddInterval;
     private nint icon;
     private string tooltip;
     private bool added;
+
+    /// <summary>How many times in a row Explorer refused the icon; 0 while it is in place. Tray thread only.</summary>
+    private int addRetries;
 
     /// <summary>The icon is registered but not shown (<c>NIS_HIDDEN</c>) until <see cref="Reveal"/>. Tray thread only.</summary>
     private bool hidden;
@@ -88,9 +106,26 @@ public sealed class TrayIcon : IDisposable
     /// </param>
     /// <exception cref="System.ComponentModel.Win32Exception">The host window could not be created.</exception>
     public TrayIcon(string iconPath, string tooltip, bool startHidden = false)
+        : this(iconPath, tooltip, startHidden, notify: null, retryAddInterval: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates the tray icon with a stand-in for Explorer's <c>Shell_NotifyIcon</c>; tests play a busy or missing Explorer
+    /// with it, without an icon ever reaching the real notification area.
+    /// </summary>
+    /// <param name="iconPath">Path of a multi-size <c>.ico</c> file (a missing one gives an icon without a picture).</param>
+    /// <param name="tooltip">Hover text (max 127 chars).</param>
+    /// <param name="startHidden">Register the icon hidden (see the public constructor).</param>
+    /// <param name="notify">Replaces <c>Shell_NotifyIcon</c>; <see langword="null"/> for the real one. Called on the tray thread.</param>
+    /// <param name="retryAddInterval">The short interval between tries of a refused add; <see langword="null"/> for 2 seconds.</param>
+    /// <exception cref="System.ComponentModel.Win32Exception">The host window could not be created.</exception>
+    internal TrayIcon(string iconPath, string tooltip, bool startHidden, Func<uint, NOTIFYICONDATAW, bool>? notify, TimeSpan? retryAddInterval)
     {
         this.iconPath = iconPath;
         this.tooltip = tooltip;
+        this.notify = notify ?? ((message, data) => Shell_NotifyIcon(message, data));
+        this.retryAddInterval = retryAddInterval ?? TimeSpan.FromSeconds(2);
         hidden = startHidden;
         taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
         window = new MessageWindowThread("Tray", messageOnly: false);
@@ -120,7 +155,7 @@ public sealed class TrayIcon : IDisposable
         if (added)
         {
             var data = CreateData(NIF_TIP | NIF_SHOWTIP);
-            Shell_NotifyIcon(NIM_MODIFY, data);
+            notify(NIM_MODIFY, data);
         }
     });
 
@@ -144,7 +179,7 @@ public sealed class TrayIcon : IDisposable
         var data = CreateData(NIF_INFO);
         data.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
         SetInfoTexts(ref data, title, text);
-        Shell_NotifyIcon(NIM_MODIFY, data);
+        notify(NIM_MODIFY, data);
     });
 
     /// <summary>
@@ -165,7 +200,7 @@ public sealed class TrayIcon : IDisposable
             var data = CreateData(NIF_STATE);
             data.dwState = 0;
             data.dwStateMask = NIS_HIDDEN;
-            Shell_NotifyIcon(NIM_MODIFY, data);
+            notify(NIM_MODIFY, data);
         }
     });
 
@@ -198,14 +233,14 @@ public sealed class TrayIcon : IDisposable
             reveal.hWnd = other;
             reveal.dwState = 0;
             reveal.dwStateMask = NIS_HIDDEN;
-            if (!Shell_NotifyIcon(NIM_MODIFY, reveal))
+            if (!notify(NIM_MODIFY, reveal))
             {
                 return false;
             }
 
             if (added)
             {
-                Shell_NotifyIcon(NIM_DELETE, CreateData(0));
+                notify(NIM_DELETE, CreateData(0));
                 added = false;
             }
 
@@ -220,9 +255,10 @@ public sealed class TrayIcon : IDisposable
         {
             window.InvokeAsync(() =>
             {
+                KillTimer(window.Handle, RetryAddTimerId);
                 if (added)
                 {
-                    Shell_NotifyIcon(NIM_DELETE, CreateData(0));
+                    notify(NIM_DELETE, CreateData(0));
                     added = false;
                 }
 
@@ -253,6 +289,21 @@ public sealed class TrayIcon : IDisposable
             // Explorer restarted: the old icon is gone, add it again.
             added = false;
             Add();
+            return 0;
+        }
+
+        if (msg == WM_TIMER && (nuint)wParam == RetryAddTimerId)
+        {
+            // A refused add, tried again (ScheduleAddRetry); Add stops the timer once the icon is in place.
+            if (added)
+            {
+                StopAddRetry();
+            }
+            else
+            {
+                Add();
+            }
+
             return 0;
         }
 
@@ -349,7 +400,26 @@ public sealed class TrayIcon : IDisposable
         return 0;
     }
 
-    /// <summary>Adds the icon (hidden while <see cref="hidden"/>) and opts into version-4 callbacks.</summary>
+    /// <summary>
+    /// Adds the icon (hidden while <see cref="hidden"/>) and opts into version-4 callbacks; when Explorer refuses, finds out
+    /// whether the icon is there anyway, and otherwise tries again on a timer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A refusal is not always one.</b> <c>Shell_NotifyIcon</c> waits only so long for Explorer, and a busy Explorer
+    /// (a slow sign-in, a starved PC) may add the icon after the call already answered FALSE. Seen 2026-11-13 in a test
+    /// desktop: such an icon showed, but without <c>NIM_SETVERSION</c> Explorer sent it the old callbacks
+    /// (<c>WM_LBUTTONUP</c>, <c>WM_RBUTTONUP</c>), which this class does not handle, so clicks did nothing and the menu never
+    /// opened; and every later call that checks <see cref="added"/> (tooltip, notifications, removal) was skipped. So a
+    /// refused add asks with a harmless <c>NIM_MODIFY</c> (the tooltip again) whether the icon exists, and sets it up
+    /// when it does.
+    /// </para>
+    /// <para>
+    /// <b>A real refusal</b> (Explorer not running yet, early at sign-in, or hung) is tried again every
+    /// <see cref="retryAddInterval"/> for <see cref="FastAddRetries"/> tries, then fifteen times less often, until it works
+    /// or Explorer announces itself (<c>TaskbarCreated</c>, which also adds it).
+    /// </para>
+    /// </remarks>
     private void Add()
     {
         var data = CreateData(NIF_MESSAGE | NIF_ICON | NIF_TIP | NIF_SHOWTIP | (hidden ? NIF_STATE : 0));
@@ -359,16 +429,50 @@ public sealed class TrayIcon : IDisposable
             data.dwStateMask = NIS_HIDDEN;
         }
 
-        added = Shell_NotifyIcon(NIM_ADD, data);
+        added = notify(NIM_ADD, data);
+        if (!added && notify(NIM_MODIFY, CreateData(NIF_TIP | NIF_SHOWTIP)))
+        {
+            added = true;
+            AppLog.Info("Shell_NotifyIcon(NIM_ADD) reported a failure, but the icon is there (Explorer answered late); it is set up now.");
+        }
+
         if (!added)
         {
-            // Happens when Explorer is not running yet (early logon); TaskbarCreated will retry.
-            AppLog.Warn("Shell_NotifyIcon(NIM_ADD) failed; waiting for TaskbarCreated.");
+            ScheduleAddRetry();
             return;
         }
 
+        StopAddRetry();
         data.uTimeoutOrVersion = NOTIFYICON_VERSION_4;
-        Shell_NotifyIcon(NIM_SETVERSION, data);
+        notify(NIM_SETVERSION, data);
+    }
+
+    /// <summary>Starts or slows the timer that tries a refused add again; logs the first refusal of an outage only.</summary>
+    private void ScheduleAddRetry()
+    {
+        if (addRetries == 0)
+        {
+            AppLog.Warn("Shell_NotifyIcon(NIM_ADD) failed (Explorer not running or not answering); trying again every few seconds, and when Explorer restarts.");
+        }
+
+        addRetries++;
+        var interval = addRetries <= FastAddRetries ? retryAddInterval : retryAddInterval * 15;
+
+        // The same id replaces the running timer: one timer at a time, whatever called Add.
+        SetTimer(window.Handle, RetryAddTimerId, (uint)Math.Clamp(interval.TotalMilliseconds, 10, int.MaxValue), 0);
+    }
+
+    /// <summary>Stops the retry timer once the icon is in place, and says how long it took.</summary>
+    private void StopAddRetry()
+    {
+        if (addRetries == 0)
+        {
+            return;
+        }
+
+        KillTimer(window.Handle, RetryAddTimerId);
+        AppLog.Info($"The tray icon is in the notification area now, after {addRetries} more tr{(addRetries == 1 ? "y" : "ies")}.");
+        addRetries = 0;
     }
 
     /// <summary>Builds the notify-icon structure.</summary>

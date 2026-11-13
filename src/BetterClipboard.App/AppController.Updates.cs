@@ -120,6 +120,14 @@ public sealed partial class AppController
             var appDirectory = Path.TrimEndingDirectorySeparator(AppContext.BaseDirectory);
             var kind = InstalledCopyLocator.Detect(appDirectory, paths.InstallerStatePath, isolatedInstance: paths.InstanceScope is not null);
 
+            // A copy extracted by hand updates itself in its own folder when this user may write there (CLAUDE.md §2.29);
+            // one in Program Files without administrator rights, or on read-only media, keeps the download page.
+            bool portableInPlace = kind == UpdateInstallKind.Portable && PortableUpdateInstaller.CanUpdateFolder(appDirectory);
+            if (portableInPlace && PortableUpdateCommand.CleanLeftovers(appDirectory) is > 0 and var removed)
+            {
+                AppLog.Info($"Updates: removed {removed} backup folder(s) an earlier update left in this copy's folder.");
+            }
+
             // Only a copy that can install a build by itself reads the dev-builds folder: the others could only point at
             // a download page, and a local build has none.
             var localBuilds = kind == UpdateInstallKind.Installer ? paths.DevBuildsDirectory : null;
@@ -138,7 +146,13 @@ public sealed partial class AppController
                     // Chocolatey updates its own copy, and an administrator the copy installed for every user (whose users
                     // may not be able to install anything). An isolated instance stays silent unless a test gave it a feed.
                     AllowAutomaticChecks = kind is not (UpdateInstallKind.Chocolatey or UpdateInstallKind.AllUsers) && (paths.InstanceScope is null || updateSource.IsOverride),
-                    Installer = kind == UpdateInstallKind.Installer ? new ScriptUpdateInstaller() : null,
+                    Installer = kind switch
+                    {
+                        UpdateInstallKind.Installer => new ScriptUpdateInstaller(),
+                        UpdateInstallKind.Portable when portableInPlace => new PortableUpdateInstaller(),
+                        _ => null,
+                    },
+                    PortableInPlace = portableInPlace,
                     LocalBuildsDirectory = localBuilds,
                 });
             service.Changed += (_, _) => ui.TryEnqueue(() => UpdateStatusChanged?.Invoke(this, EventArgs.Empty));
@@ -155,7 +169,7 @@ public sealed partial class AppController
             var offered = snapshot.Offer is { } offer
                 ? $"; offered from what is known: BetterClipboard {offer.Release.Version} ({(snapshot.IsLocalOffer ? "a local build" : snapshot.OffersOlderVersion ? "the way back to the latest release" : "an update")})"
                 : string.Empty;
-            AppLog.Info($"Updates: this copy is {DescribeInstallKind(kind)}; automatic check {(snapshot.AutomaticChecks ? "on" : "off")}{(snapshot.IsDevBuild ? "; a development build (GitHub's latest release is always offered as the way back)" : string.Empty)}{offered}.");
+            AppLog.Info($"Updates: this copy is {DescribeInstallKind(kind, portableInPlace)}; automatic check {(snapshot.AutomaticChecks ? "on" : "off")}{(snapshot.IsDevBuild ? "; a development build (GitHub's latest release is always offered as the way back)" : string.Empty)}{offered}.");
             if (last is not null)
             {
                 ReportLastUpdate(last);
@@ -227,13 +241,15 @@ public sealed partial class AppController
 
     /// <summary>Words an install kind for the log, in English whatever the interface language: the log is the developer's.</summary>
     /// <param name="kind">The kind.</param>
+    /// <param name="portableInPlace">For a portable copy: whether it can write its folder, and so update itself there.</param>
     /// <returns>A short description.</returns>
-    private static string DescribeInstallKind(UpdateInstallKind kind) => kind switch
+    private static string DescribeInstallKind(UpdateInstallKind kind, bool portableInPlace) => kind switch
     {
         UpdateInstallKind.Installer => "installed by the installer (it can update itself)",
         UpdateInstallKind.Chocolatey => "a Chocolatey install (Chocolatey updates it)",
         UpdateInstallKind.AllUsers => "installed for every user of this PC (an administrator updates it)",
-        _ => "not installed by the installer (updates come from the download page)",
+        _ when portableInPlace => "not installed by the installer (it updates itself in its own folder)",
+        _ => "not installed by the installer, in a folder it may not change (updates come from the download page)",
     };
 
     /// <summary>
@@ -253,7 +269,11 @@ public sealed partial class AppController
         // The log keeps English; the notification below follows the interface language.
         AppLog.Warn($"The update{(result.Version.Length > 0 ? $" to {result.Version}" : string.Empty)} was not installed: {result.Error}");
         var version = result.Version.Length > 0 ? UiText.Format($" to {result.Version}") : string.Empty;
-        var reason = result.Error.Length > MaxNotificationText ? result.Error[..MaxNotificationText] + "…" : result.Error;
+
+        // A portable copy's helper words its reasons with the update system's templates, which translate; an installer's
+        // own report (install.ps1, English only) matches none and stays as it came.
+        var error = UiText.TranslateFormatted(result.Error, UpdateMessages.Templates);
+        var reason = error.Length > MaxNotificationText ? error[..MaxNotificationText] + "…" : error;
         tray?.ShowNotification(
             UiText.Format($"The update{version} was not installed"),
             reason.Length > 0 ? reason : UiText.Format($"The installed version is unchanged. Details: {UpdateLogPath}"));

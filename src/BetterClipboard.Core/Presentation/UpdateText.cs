@@ -211,8 +211,8 @@ public static class UpdateText
                 return UiText.Translate("BetterClipboard closes and starts again by itself in a moment. Your history is kept.");
         }
 
-        // Only a copy the installer installed is ever offered these two (the others neither read the dev-builds folder nor
-        // install anything): the words say what its "Update" or "Install" button does.
+        // Only a copy the installer installed is offered a local build (no other copy reads the dev-builds folder), and only a
+        // copy that installs by itself gets the way-back words below: they say what its "Update" or "Install" button does.
         if (snapshot.Offer is { } localOffer && snapshot.IsLocalOffer && snapshot.InstallKind == UpdateInstallKind.Installer)
         {
             var published = localOffer.Release.PublishedAt is { } when ? UiText.Format($" Published {RelativeTimeFormatter.Format(when, now, zone, culture)}.") : string.Empty;
@@ -220,7 +220,8 @@ public static class UpdateText
             return UiText.Format($"{haveBuild} It is a development build from the dev-builds folder on this PC: updating copies it from there, checks it, and restarts BetterClipboard. Your history is kept.");
         }
 
-        if (snapshot.Offer is not null && snapshot.OffersOlderVersion && snapshot.InstallKind == UpdateInstallKind.Installer)
+        // Any copy that installs by itself: one the installer installed, or a portable one that updates in its own folder.
+        if (snapshot.Offer is not null && snapshot.OffersOlderVersion && snapshot.CanInstall)
         {
             return UiText.Format($"You have {snapshot.CurrentVersion}, a development build that is newer than this release. Installing it replaces the development build with the official release from GitHub and restarts BetterClipboard. Your history is kept.");
         }
@@ -234,6 +235,9 @@ public static class UpdateText
                 UpdateInstallKind.Installer => UiText.Format($"{have} Updating downloads it from GitHub, checks it, and restarts BetterClipboard. Your history is kept."),
                 UpdateInstallKind.Chocolatey => UiText.Format($"{have} This copy was installed with Chocolatey, which updates it: {UpdateSource.ChocolateyCommand}"),
                 UpdateInstallKind.AllUsers => UiText.Format($"{have} This copy is installed for every user of this PC, so an administrator updates it: copy the command and run it in PowerShell as administrator."),
+
+                // A copy extracted by hand that can write its folder, offered a release that applies itself there.
+                UpdateInstallKind.Portable when snapshot.CanInstall => UiText.Format($"{have} Updating downloads it from GitHub, checks it, puts it into this copy's folder and restarts BetterClipboard. Your history is kept."),
                 _ => UiText.Format($"{have} This copy was not installed with the installer, so it does not replace itself. Get the new version from the download page, or install it with the command."),
             };
         }

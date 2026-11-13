@@ -287,7 +287,10 @@ public sealed partial class AppController
         AppLog.Initialize(paths.LogDirectory);
         string restarted = options.IsSilentRestart ? ", restarted silently after Settings" : options.RestartAfter is null ? string.Empty : ", restarted from Settings";
         string edition = IsStoreEdition ? $", Microsoft Store edition {PackageIdentity.FullName}" : string.Empty;
-        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{restarted}{edition}).");
+
+        // Program.Main took the lock over from an older copy before the log existed (it writes to the same file): said here.
+        string tookOver = options.TookOverFrom is { } older ? $", took over from BetterClipboard {older}, which was asked to exit" : string.Empty;
+        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{restarted}{edition}{tookOver}).");
 
         // First, because it may undo a move that was left unfinished, which changes whether a history exists.
         bool setupDue = NeedsStoreSetup(out bool welcomed);
@@ -471,6 +474,13 @@ public sealed partial class AppController
         // Updates from GitHub's releases (AppController.Updates.cs). After the tray icon: the outcome of an update that
         // restarted the app is told through its notification. The first automatic check comes a minute later.
         StartUpdates();
+
+        // Before any window: Settings then shows the "Start with Windows" entry as it now is (AppController.SignIn.cs). A
+        // silent restart is the same program, which the entry names already.
+        if (!options.IsSilentRestart)
+        {
+            FollowSignInEntry();
+        }
 
         // Not after a silent restart: the old process was capturing until a moment ago, and the clipboard hand-over above
         // reads a copy made in between; the import would only repeat the start's work, on CPU the user may notice.

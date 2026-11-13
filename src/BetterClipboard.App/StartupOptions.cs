@@ -35,6 +35,13 @@ public sealed record StartupOptions(bool Background, InstanceCommand Command, bo
     /// </summary>
     public bool IsSilentRestart => Background && RestartAfter is not null;
 
+    /// <summary>
+    /// The older copies this start replaced, for the log (e.g. <c>0.2.10 (process 4312)</c>), or <see langword="null"/>.
+    /// Set by <c>Program.Main</c>, not from the command line: a newer copy started by hand while an older one ran asked it
+    /// to exit and took its place (<see cref="Core.Startup.InstanceTakeover"/>, CLAUDE.md §2.29).
+    /// </summary>
+    public string? TookOverFrom { get; init; }
+
     /// <summary>Switch that opens the flyout in the running instance.</summary>
     public const string ShowFlyoutSwitch = "--show-flyout";
 
