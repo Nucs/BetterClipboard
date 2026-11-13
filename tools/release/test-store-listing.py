@@ -248,13 +248,22 @@ def main():
             """The order of 2026-11-13: English rearranged, every other language in the kit's order."""
             return [5, 2, 6, 3, 4, 1] if language == "en-us" else [1, 2, 3, 4, 5, 6]
 
+        def first_six(language):
+            """The kit's first six captions of one language.
+
+            These cases build listings files with six pictures and run the generator with --screenshots 6, which
+            writes six captions and empties the caption rows after them. The kit itself may hold more (eight since
+            the retake of 2026-11-13); only the first six take part here.
+            """
+            return by_code[language].captions[:6]
+
         rearranged = listing_file("rearranged.csv", english_first_wrong)
         code, output = run(GENERATOR, "--template", rearranged, "--output", folder / "r1.csv", "--screenshots", 6)
         rows = read_rows(folder / "r1.csv") if (folder / "r1.csv").exists() else [[]]
         check("a language whose pictures are out of the kit's order gets each caption under its own picture",
               code == 0 and screenshots_of(rows, "en-us") == [f"en-us/{n}" for n in (5, 2, 6, 3, 4, 1)]
               and captions_of(rows, "en-us") == [by_code["en-us"].captions[n - 1] for n in (5, 2, 6, 3, 4, 1)]
-              and captions_of(rows, "he") == by_code["he"].captions, output[-300:])
+              and captions_of(rows, "he") == first_six("he"), output[-300:])
         check("and the script says which language to put in order", "NOTE en-us" in output and "NOTE ru" not in output,
               output[-500:])
         code, output = run(GENERATOR, "--check", "--template", folder / "r1.csv", "--screenshots", 6)
@@ -267,7 +276,7 @@ def main():
         rows = read_rows(folder / "r2.csv") if (folder / "r2.csv").exists() else [[]]
         check("the same pictures in the kit's order everywhere are filled without a note, each language's own addresses kept",
               code == 0 and "NOTE" not in output and screenshots_of(rows, "he") == [f"he/{n}" for n in range(1, 7)]
-              and captions_of(rows, "en-us") == by_code["en-us"].captions, output[-300:])
+              and captions_of(rows, "en-us") == first_six("en-us"), output[-300:])
         code, output = run(GENERATOR, "--check", "--template", folder / "r2.csv", "--screenshots", 6)
         check("--check accepts a file that is what the kit says (exit 0)", code == 0, output[-300:])
 
@@ -336,7 +345,7 @@ def main():
         rows = read_rows(folder / "r7.csv") if (folder / "r7.csv").exists() else [[]]
         check("--screenshots-in-order names a language in the kit's order, and every picture gets its caption",
               code == 0 and captions_of(rows, "en-us") == [by_code["en-us"].captions[n - 1] for n in (5, 2, 6, 3, 4, 1)]
-              and captions_of(rows, "ru") == by_code["ru"].captions and "NOTE en-us" in output, output[-300:])
+              and captions_of(rows, "ru") == first_six("ru") and "NOTE en-us" in output, output[-300:])
         code, output = run(GENERATOR, "--template", same, "--output", folder / "r8.csv", "--screenshots-in-order", "he")
         check("--screenshots-in-order without --screenshots is refused (exit 2)", code == 2 and not (folder / "r8.csv").exists(),
               output[-300:])

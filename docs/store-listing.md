@@ -111,14 +111,19 @@ Uninstall: the history is in the package's own data folder, which Windows remove
 
 ## 2. Screenshots and logos
 
-- **Screenshots**: the six pictures in [`packaging/msix/Listing/Screenshots`](../packaging/msix/Listing/Screenshots)
-  (PNG, 2560 × 1440), in the order of their file names: the panel over a document, a search with a toggle on, the
-  groups column, the image preview, Settings › Privacy, the welcome window. The Store takes PNG of 1366 × 768 or
-  larger, at most 50 MB each; at least one per language, four or more recommended. All five listings show the same
-  six uploads.
-- **How they were made** (repeat it when the panel, Settings or the welcome change visibly): whole-screen pictures
-  of a test-signed twin of the Store package in a claude-desktops Windows desktop at 2560 × 1440 and 150 %, dark
-  theme, with invented demo data, never the owner's screen. CLAUDE.md §3.5 has the steps;
+- **Screenshots**: the eight pictures in [`packaging/msix/Listing/Screenshots`](../packaging/msix/Listing/Screenshots)
+  (PNG, 2560 × 1440), in the order of their file names: the panel over a document, a search with the regular
+  expression toggle on, a long Markdown copy in the text viewer, a screenshot in the image viewer with its file,
+  a group shown in the groups column, the Claude tab, Settings › Privacy, the welcome window. The Store takes PNG of
+  1366 × 768 or larger, at most 50 MB each, up to ten; at least one per language, four or more recommended. All five
+  listings show the same eight uploads.
+- **How they were made** (repeat it when the panel, Settings or the welcome change visibly; retaken on 0.2.11 on
+  2026-11-13): whole-screen pictures of the released Store package, test-signed with a certificate made for the
+  Store's own publisher (so it installs with the Store's identity), in a claude-desktops Windows desktop at
+  2560 × 1440 and 150 %, dark theme, never the owner's screen. What they show is the demo data in
+  [`tools/readme/demo-data.zip`](../tools/readme/demo-data.zip) (the owner's own history, screened by hand, and
+  pictures of the owner's public repositories; its `ABOUT.md` names every source), loaded with
+  [`tools/readme/seed-demo.cs`](../tools/readme/seed-demo.cs). CLAUDE.md §3.5 has the steps;
   `tools/readme/capture-screen.ps1` takes the pictures and `tools/readme/screen-shot.py` rounds the window corners
   that a desktop without a GPU draws square.
 - **1:1 app tile icon, 300 × 300**:
@@ -187,8 +192,10 @@ bclip, a command line for scripts and AI assistants (off by default)
 ```text
 Win+V opens your whole clipboard history, right where you type.
 Search as you type: match case, whole words, regular expressions.
+Long copies open in full: Markdown drawn, code colored, XML and JSON formatted.
+Screenshots keep their file: copy its path, open it, or view it at full size.
 Pin what you need again and sort it into groups.
-Preview images at full size before you paste.
+Tabs for what you did in other apps: Claude Code and Codex prompts, Win+R and PowerShell commands, screenshots.
 You decide what is kept: ignored apps, limits, Forget forever.
 Nothing is recorded until you say Start.
 ```
@@ -247,8 +254,10 @@ bclip：面向脚本和 AI 助手的命令行（默认关闭）
 ```text
 按 Win+V，就在你输入的位置打开完整的剪贴板历史。
 边输入边搜索：区分大小写、全字匹配、正则表达式。
+长内容可完整打开：Markdown 排版显示，代码着色，XML 和 JSON 自动格式化。
+截图保留原文件：复制路径、打开文件，或以完整尺寸查看。
 固定常用内容，并整理到分组中。
-粘贴前先以完整尺寸预览图片。
+其他应用中的操作也有标签页：Claude Code 和 Codex 提示词、Win+R 和 PowerShell 命令、截图。
 保留什么由你决定：忽略的应用、数量限制、永久忘记。
 在你按下“开始”之前，不会记录任何内容。
 ```
@@ -305,8 +314,10 @@ bclip — командная строка для скриптов и ИИ-пом
 ```text
 Win+V открывает весь журнал буфера обмена прямо там, где вы печатаете.
 Поиск по мере ввода: с учётом регистра, слово целиком, регулярные выражения.
+Длинные копии открываются целиком: Markdown с оформлением, код с подсветкой, XML и JSON отформатированы.
+Снимки экрана помнят свой файл: скопируйте путь, откройте его или посмотрите в полном размере.
 Закрепляйте нужное и раскладывайте по группам.
-Просматривайте изображения в полном размере перед вставкой.
+Вкладки для того, что вы делали в других приложениях: запросы Claude Code и Codex, команды Win+R и PowerShell, снимки экрана.
 Вы решаете, что хранить: игнорируемые приложения, ограничения, «Забыть навсегда».
 Ничего не записывается, пока вы не нажмёте «Начать».
 ```
@@ -363,8 +374,10 @@ bclip, una línea de comandos para scripts y asistentes de IA (desactivada de fo
 ```text
 Win+V abre todo tu historial del portapapeles, justo donde escribes.
 Búsqueda mientras escribes: mayúsculas y minúsculas, palabras completas, expresiones regulares.
+Las copias largas se abren completas: Markdown con formato, código en colores, XML y JSON ordenados.
+Las capturas conservan su archivo: copia su ruta, ábrelo o míralo a tamaño completo.
 Ancla lo que vuelves a necesitar y ordénalo en grupos.
-Mira las imágenes a tamaño completo antes de pegarlas.
+Pestañas para lo que haces en otras apps: prompts de Claude Code y Codex, comandos de Win+R y PowerShell, capturas.
 Tú decides qué se guarda: aplicaciones ignoradas, límites, Olvidar para siempre.
 No se registra nada hasta que pulses Empezar.
 ```
@@ -421,8 +434,10 @@ bclip: שורת פקודה לסקריפטים ולעוזרי בינה מלאכו
 ```text
 Win+V פותח את כל היסטוריית הלוח, בדיוק במקום שבו מקלידים.
 חיפוש תוך כדי הקלדה: התאמת רישיות, מילה שלמה, ביטויים רגולריים.
+העתקות ארוכות נפתחות במלואן: Markdown מעוצב, קוד צבעוני, XML ו-JSON מסודרים.
+צילומי מסך זוכרים את הקובץ שלהם: מעתיקים את הנתיב, פותחים אותו או צופים בו בגודל מלא.
 מצמידים את מה שצריך שוב וממיינים לקבוצות.
-תצוגה מקדימה של תמונות בגודל מלא לפני ההדבקה.
+כרטיסיות למה שעשיתם באפליקציות אחרות: הנחיות ל-Claude Code ול-Codex, פקודות Win+R ו-PowerShell, צילומי מסך.
 אתם מחליטים מה נשמר: אפליקציות מוחרגות, מגבלות, ״שכח לצמיתות״.
 שום דבר לא נרשם עד שלוחצים על ״התחל״.
 ```
@@ -442,13 +457,13 @@ description, description, features, search terms and captions against the Store'
 
 1. On the app's overview page in Partner Center, *Export listings* saves a `.csv` with one column per listing
    language and one row per field. That file is the template: its first three columns must stay as they are.
-2. `python tools/release/make-store-listing-csv.py --template <exported.csv> --output <import.csv> --screenshots 6`
+2. `python tools/release/make-store-listing-csv.py --template <exported.csv> --output <import.csv> --screenshots 8`
    fills it from this kit: descriptions, short descriptions, features, search terms, the copyright line, and each
    screenshot's caption. Everything else in the file stays as exported (pictures that are already uploaded appear
    there as web addresses and are kept).
 3. *Import listings* › *Upload .csv* takes the result. Partner Center saves nothing unless the whole file is valid.
 4. **Export again and check:** `python tools/release/make-store-listing-csv.py --check --template <new export.csv>
-   --screenshots 6` compares what Partner Center now holds with this kit: every text, every caption under its
+   --screenshots 8` compares what Partner Center now holds with this kit: every text, every caption under its
    picture, and every language's screenshots in the order of §2. It names what differs.
 5. **Put the screenshots in order** in the languages the check names (below), then repeat step 4 until it says
    that the export is what the kit says.
@@ -471,6 +486,14 @@ one was still wrong although the file asked for the right order. A caption alway
 Pictures: upload the screenshots and the tile icon once, in the English listing, in the order of §2. The next export
 names them by web address; `--copy-pictures-from en-us` puts those addresses into every other language's column, so
 all five listings show the same pictures without five uploads.
+
+**Replacing the pictures** (done 2026-11-13, the six first screenshots for the eight of §2): delete the old
+screenshots on the English listing page (each card's delete icon), upload the new ones there in order, and *Save*.
+The other languages keep their old pictures until an import changes them, and `--copy-pictures-from` fills only
+languages that have none: so export, empty every `DesktopScreenshot` and `DesktopScreenshotCaption` cell of the
+other languages in that export, and run step 2 with `--copy-pictures-from en-us --screenshots-in-order en-us`. One
+import then gives every language the new pictures with their captions; then steps 4 and 5 as usual (that import
+shuffled the English order once more).
 
 **Right-to-left listings** (Hebrew): the scripts add a left-to-right mark (U+200E) after the signs that end a Latin
 word, as the app does for its own Hebrew texts. Without it a right-to-left Store page shows "Notepad++" as

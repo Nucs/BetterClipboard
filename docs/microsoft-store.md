@@ -425,16 +425,17 @@ token nor the upload address is ever printed.
 
 ## 8. Where the submission stands, and the owner's steps
 
-Done on 2026-11-13, in the owner's Partner Center account:
+**Submitted for certification on 2026-11-13, about 22:53 local** ("Product submission: In certification"; every
+page read-only until certification ends). What was submitted:
 
 | Page | State | What is there |
 |---|---|---|
 | Product | Reserved | **BetterClipboard**, an MSIX app; Store ID `9PHL574X9BF9` |
 | Pricing and availability | Complete | Free, all markets, public, as soon as it is certified |
 | Properties | Complete | Utilities + tools, Productivity; the privacy policy, website and support links |
-| Age ratings | Answered, **not saved** | Every answer "No": ESRB Everyone, PEGI 3, IARC 3+ |
-| Packages | Complete | `1.2.11.0` for x64 and ARM64, built on the owner's PC before the change was committed: to be replaced by a release's own |
-| Store listings | Complete | Five languages: texts, search terms, six screenshots with captions, the tile icon. Checked against the kit after the last import (`make-store-listing-csv.py --check`): every text, every caption under its picture, every language in the kit's order |
+| Age ratings | Complete | Every answer "No": ESRB Everyone, PEGI 3, IARC 3+; the IARC agreement ticked on the owner's word |
+| Packages | Complete | `1.2.11.0` for x64 and ARM64: the v0.2.11 release's own (run 43478898156's artifact), validated |
+| Store listings | Complete | Five languages: texts, search terms, eight screenshots with captions, the tile icon. Checked against the kit after the last import (`make-store-listing-csv.py --check --screenshots 8`): every text, every caption under its picture, every language in the kit's order |
 | Submission options | Complete | Publish when certified; the `runFullTrust` justification |
 | Additional testing information | Saved | The notes for certification |
 
@@ -449,21 +450,20 @@ Done on 2026-11-13, in the owner's Partner Center account:
 - The version rule of §5.3 stands: the releases stay 0.2.x, and the Store package is (X+1).Y.Z.0. The Store
   cannot take 0.2.11.0: "The other sections must be set to an integer between 0 and 65535 (except for the first
   section, which cannot be 0)."
-- **Nothing is released or submitted until the owner says so in words**: first "release", then "publish". The
-  owner ticks the IARC agreement and presses *Submit for certification* themselves.
+- **Nothing is released or submitted until the owner says so in words**: first "release", then "publish".
+- **Then, after the release** (2026-11-13): the screenshots retaken on 0.2.11 in English, with data from the
+  owner's own history screened by hand ([`tools/readme/demo-data.zip`](../tools/readme/demo-data.zip)); and "You
+  tick and submit", with "to clarify: you the asisstant do it all for me through browser".
 
 Left:
 
-1. **The screenshots**: ask the owner what replaces them; retake, upload, put in order, check
-   (`store-listing.md` §4).
-2. **Age ratings**: tick "I agree to the IARC Terms of Use and I am the age of majority in my jurisdiction" and
-   save. It is an agreement in the owner's name.
+1. ~~The screenshots~~: done (eight scenes; `store-listing.md` §2 and §4).
+2. ~~Age ratings~~: ticked and saved, on the owner's word.
 3. ~~Decide the version rule~~: decided, (X+1).Y.Z.0 (above).
-4. **Release** the version to submit, on the owner's word (a tag; CLAUDE.md §3.1). Its *Release* run builds the
-   packages. Replace the draft's two packages with the run's `store-packages` artifact, so that what the Store
-   ships is what the tag built.
-5. **Submit for certification.** It takes up to a few business days; a first submission with a restricted
-   capability may take longer. A failure comes with a report; fix and resubmit.
+4. ~~Release~~: v0.2.11; its two packages replaced the draft's.
+5. ~~Submit for certification~~: submitted. It takes up to a few business days; a first submission with a
+   restricted capability may take longer. A failure comes with a report; fix and resubmit (a new submission made
+   from this one).
 6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning.
 7. **The pipeline's connection** (§7, "Setting it up"), on the owner's word: it needs one sign-in by the owner,
    and can be made at any time. From the first published submission on, each release then submits itself.
@@ -488,8 +488,9 @@ BetterClipboard", the name chosen for code signing (CLAUDE.md §3.3).
   tried before the connection exists.
 - **The pipeline updates packages and "What's new", nothing else.** Listing texts and pictures change by hand: the
   kit, then an import (`store-listing.md` §4).
-- **The screenshots are English in all five listings**: the app in English, with invented data. Localized pictures
-  would be the same six scenes once per language.
+- **The screenshots are English in all five listings**: the app in English, with demo data from the owner's own
+  history (screened by hand; `tools/readme/demo-data.zip`). Localized pictures would be the same eight scenes once
+  per language.
 - **The listing's translations** (Chinese, Russian, Spanish, Hebrew) were written by Claude; no native speaker has
   read them.
 - **ARM64**: the package builds and passes the script's checks (68.5 MB, version 1.2.11.0); it was never run on a
