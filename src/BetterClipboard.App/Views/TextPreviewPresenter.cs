@@ -44,6 +44,12 @@ internal sealed class TextPreviewPresenter
     /// <summary>The gap between the gutter's numbers and the text, in DIPs.</summary>
     private const double GutterGapDip = 12;
 
+    /// <summary>The lines a wheel notch turned outside the text scrolls (<see cref="ScrollByWheel"/>): Windows' default, three.</summary>
+    private const int WheelLines = 3;
+
+    /// <summary>A line's height as a multiple of its font size: about the height RichEdit lays a line out at.</summary>
+    private const double LineHeightFactor = 1.35;
+
     /// <summary>The RichEditBox's padding around its text, in DIPs; the gutter adds the top to RichEdit's line positions.</summary>
     private static readonly Thickness EditorPadding = new(6, 4, 6, 4);
 
@@ -77,6 +83,15 @@ internal sealed class TextPreviewPresenter
 
     /// <summary>The RichEditBox's own scroller (its template's "ContentElement"), once it is loaded.</summary>
     private ScrollViewer? scroller;
+
+    /// <summary>
+    /// Where the wheel scrolls sent from outside the text are going (<see cref="ScrollByWheel"/>), while their animation
+    /// runs: quick notches add up from there, not from where the animation is. <see langword="null"/> when none runs.
+    /// </summary>
+    private double? wheelTargetX;
+
+    /// <summary>The vertical counterpart of <see cref="wheelTargetX"/>.</summary>
+    private double? wheelTargetY;
 
     /// <summary>What is shown, or <see langword="null"/> before the first <see cref="Show"/>.</summary>
     private TextViewRendering? rendering;
@@ -230,6 +245,8 @@ internal sealed class TextPreviewPresenter
         editor.IsReadOnly = true;
         editor.TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
         editor.Document.Selection.SetRange(0, 0);
+        wheelTargetX = null;
+        wheelTargetY = null;
         scroller?.ChangeView(0, 0, null, disableAnimation: true);
         QueueGutterUpdate();
         TimeFirstLayout(page.Length, rtf is not null, setMs, clock);
@@ -264,6 +281,52 @@ internal sealed class TextPreviewPresenter
             }
         };
         editor.LayoutUpdated += handler;
+    }
+
+    /// <summary>
+    /// Scrolls the text as a wheel turned over it would, for a wheel turned elsewhere: the text peek takes the wheel from
+    /// anywhere on its surface. Three lines a notch (Windows' default) at the text's size; notches that come quickly add up.
+    /// </summary>
+    /// <param name="delta">The wheel's delta: 120 a notch, positive away from the user (up), or to the right for a tilt.</param>
+    /// <param name="horizontal">A sideways tilt: scrolls sideways (only lines that do not wrap reach past the edge).</param>
+    public void ScrollByWheel(int delta, bool horizontal)
+    {
+        if (scroller is null || delta == 0)
+        {
+            return;
+        }
+
+        double step = delta / 120.0 * WheelLines * numberSize * LineHeightFactor;
+        if (horizontal)
+        {
+            double target = Math.Clamp((wheelTargetX ?? scroller.HorizontalOffset) + step, 0, scroller.ScrollableWidth);
+            wheelTargetX = target;
+            scroller.ChangeView(target, null, null);
+        }
+        else
+        {
+            // Away from the user is up: toward the start of the text.
+            double target = Math.Clamp((wheelTargetY ?? scroller.VerticalOffset) - step, 0, scroller.ScrollableHeight);
+            wheelTargetY = target;
+            scroller.ChangeView(null, target, null);
+        }
+    }
+
+    /// <summary>
+    /// The text scrolled: the gutter follows; once a scroll has come to rest, the next wheel notch starts from where the
+    /// text is (<see cref="ScrollByWheel"/>).
+    /// </summary>
+    /// <param name="sender">The scroller.</param>
+    /// <param name="e">Whether the scroll is still moving.</param>
+    private void Scroller_ViewChanged(object? sender, ScrollViewerViewChangedEventArgs e)
+    {
+        if (!e.IsIntermediate)
+        {
+            wheelTargetX = null;
+            wheelTargetY = null;
+        }
+
+        QueueGutterUpdate();
     }
 
     /// <summary>Switches wrapping without reloading the text.</summary>
@@ -344,7 +407,7 @@ internal sealed class TextPreviewPresenter
             // Once: the box is loaded again each time it moves to another overlay, and its scroller stays the same.
             scroller = found;
             scroller.ViewChanging += (_, _) => QueueGutterUpdate();
-            scroller.ViewChanged += (_, _) => QueueGutterUpdate();
+            scroller.ViewChanged += Scroller_ViewChanged;
         }
 
         // A view given before the box was loaded (see Show's remarks).

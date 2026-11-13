@@ -5451,9 +5451,10 @@ HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
   as before.
 - **The peek:** the mouse resting 450 ms on a cut-off card's text opens the whole text centered on the panel, at most
   900 DIPs wide and 80 % of the work area, drawn like the viewer.
-  - It stays while the mouse is on it or on its card. The wheel scrolls it, the mouse selects, Ctrl+C copies, and a
-    right-click shows *Copy* and *Select all* above the card's own menu (whose *View* opens the viewer).
-  - Esc, a click elsewhere, or the mouse leaving both close it.
+  - The mouse's first real move closes it, wherever the mouse goes, and the wheel scrolls it from anywhere without
+    closing it (the owner's follow-up, below). A right-click with the mouse still shows *Copy* and *Select all* above
+    the card's own menu (whose *View* opens the viewer), and the peek stays while that menu shows.
+  - Esc and a click outside the frame close it too.
   - It shows at most one page, 64,000 characters, with "Showing the first N of M characters. F3 opens all of it."
 - **The viewer** (the eye, F3, or *View* in a text card's menu): the screen dims, and the text opens in a card of 90 %
   of the work area (at most 1,400 DIPs wide) centered on the panel.
@@ -5513,11 +5514,34 @@ HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
 **Found by the live QA, fixed** (§4 has each lesson):
 - the overlays took their colors from Windows' app theme instead of the panel's: light over a dark panel, the prose
   unreadable. The image peek's frame had the same fault since §2.24;
-- the peek closed at the first move of the mouse over its text;
+- the peek closed at the first move of the mouse over its text, where the first version meant to keep it open (the
+  rule changed the same day, below);
 - the viewer's first text came out in the interface font, without colors;
 - the language menu did not open;
 - Esc did nothing in a viewer opened from a menu's *View*, the image viewer's too;
 - megabyte texts froze the panel for 15 to 30 s (pages, above).
+
+**The owner's follow-up the same day** (after trying `0.2.11-dev.17.g2fe6f72` on their PC): "When the text viewer
+appears because i paused my mouse (hover) above the text - it close immediately if i move the mouse BUT it should react
+to middlemouse scrolling just fine. Only keep open ignoring mouse movement when clicking the eye at the corner." and "I
+dont think Markdown renders at this with a scrollbar for some reason (on the local install)", about a 3,600-character
+note of theirs (32 lines).
+- **Any real move closes the peek.** The first version kept it while the mouse moved over it or its card, so that its
+  text could be selected. Now a move past 3 pixels from where it opened closes it, wherever the mouse goes
+  (`TextPeek_PointerMoved`), as the image peek does. Only its own right-click menu keeps it while the mouse goes to the
+  menu; once that menu closes, the next move counts from where the mouse is. Selecting with the mouse is the viewer's.
+- **The wheel scrolls it from anywhere** on its surface, which covers the panel's monitor, and no longer closes it. Over
+  the text box RichEdit scrolls by itself (91 pixels a notch for that note in the QA desktop); anywhere else
+  `TextPreviewPresenter.ScrollByWheel` scrolls it (three lines a notch at the text's size, 53 pixels there; quick
+  notches add up). Told apart by where the mouse is: RichEdit leaves the event unhandled, and the fix's first build,
+  which went by the handled flag, scrolled the text twice per notch over the text.
+- **A text of up to 20,000 characters taller than the frame was cut off, without a scrollbar.** Its row was an Auto row,
+  which measures the text box with unlimited height: the box grew to its whole text, the frame cut it at its
+  `MaxHeight`, and RichEdit's scroller had nothing to scroll. The owner's note was such a text: recognized as Markdown
+  and drawn as a document (checked locally on the note itself), with its end out of reach. The row is a star row now,
+  and a short text's frame still fits its text (§4).
+- Verified live with an invented look-alike of the note (§5). The note itself stayed on this PC: only the verdict was
+  read from it, in the scratchpad.
 
 **Pieces.**
 - Core: `TextView/` (`TextLanguage` and `TextLanguages`, `TextLanguageDetector`, `SyntaxToken`, `SyntaxHighlighter`
@@ -5538,7 +5562,9 @@ HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
 - The peek recognizes the language from the start it shows: a megabyte log can read "Markdown" in the peek, while the
   viewer says "Too long to draw as Markdown: shown as plain text."
 - The status line counts the copied text's lines: a flat XML copy reads "1 line" while the formatted view shows twenty.
-- A copy from the peek or the viewer becomes a new history entry (CRLF line breaks, source BetterClipboard).
+- A copy from the peek or the viewer becomes a new history entry (CRLF line breaks, source BetterClipboard). From a
+  Markdown document it is the drawn text (list numbers and bullets with a tab, no blank lines between paragraphs), not
+  the Markdown source; the card's *Copy only* copies the source.
 - Ctrl+wheel steps once per wheel event, so a high-resolution wheel changes the size quickly.
 - Not run: a real GPU, Narrator, touch and pen, the toolbar in a right-to-left language, a monitor with another scale
   than the panel's.
@@ -6757,6 +6783,14 @@ kit by a scratch generator, session 66cdd808):
   (§2.50).
 - **A `MenuFlyout` without items does not open:** build its items up front and only change them in `Opening` (the text
   viewer's language menu, §2.50).
+- **A Grid's Auto row lets a scrolling control grow to its whole content.** An Auto row measures its child with
+  unlimited height, so a `RichEditBox` (or a `ScrollViewer`) in it reports its full text height, the container's
+  `MaxHeight` cuts it off, and its own scroller has nothing to scroll: no scrollbar, and the wheel does nothing (the
+  text peek, §2.50).
+  Give the scrolling child a star row inside a top-aligned container with a `MaxHeight`: the container then fits a short
+  content and caps a long one, which scrolls.
+- **RichEdit scrolls on the wheel without marking the event handled.** A handler that scrolls the "unhandled" wheel
+  events itself scrolls a `RichEditBox`'s text twice per notch; tell the cases apart by where the pointer is (§2.50).
 - **A menu that closes over an overlay hands the keyboard back to the overlay.** `Popup_Closed` used to give it to the
   search box, where the panel's key model ignores keys while one of its popups is open (the overlay itself), so Esc did
   nothing in a viewer opened from a menu's *View*. `FocusOpenViewer` gives it to the text or image viewer when one is
@@ -7377,6 +7411,7 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **The text peek's follow-up, live** (2026-11-13, §2.50; the owner: "it close immediately if i move the mouse BUT it should react to middlemouse scrolling just fine. Only keep open ignoring mouse movement when clicking the eye at the corner" and "I dont think Markdown renders at this with a scrollbar"). The owner's 3,596-character note, read on this PC in the scratchpad only (`repro/detect.cs`): Markdown, drawn as a document of one page. A disposable claude-desktops Windows 11 desktop on this PC (`bc-peek-pc`, 1600×900, no GPU; deleted afterwards with its persist folder), builds `0.2.11-dev.peek1` and `peek2` from a private worktree, the panel 800 DIPs tall, the morning's BC-TEST texts plus an invented look-alike of the note (3,735 characters, 32 lines, also Markdown). **Markdown and the scrollbar:** the peek drew the look-alike as a document capped at the frame's height, with a scrollbar, and three notches over the text scrolled it to its end. **The wheel:** over the text one notch moved it about 107 px in `peek1` (RichEdit's step and the redirect's together) and 91 px in `peek2` (RichEdit's alone); with the peek opened from the card's last visible line, below the frame, one notch moved it 53 px (the redirect's three lines); the peek stayed open every time. **Moves:** 10 px over the card closed it, and 7 px after its menu. **The menu:** a right-click with the mouse still opened it (*Copy* disabled, *Select all*, the card's items); moving onto *Select all* and clicking kept the peek, which then held the whole selection; a second right-click's *Copy* recorded the drawn text (all of it; list numbers with a tab, no blank lines). **Esc** closed the peek and left the panel. **The eye:** the viewer stayed open through two moves across the screen. **A short text** (`summarize.py`, 24 lines): the frame fits its text. The app's log over both builds: 87 lines, 0 WRN/ERR | claude-desktops MCP tools (`move_mouse`, `scroll` at the resting spot, `click` with the right button, region screenshots measured in pixels, `run_command`); `repro/detect.cs`, `repro/deferred-lookalike.md` and the guest's `C:\qa\compare.ps1` (session c073d86d's scratchpad) | ✅ after the one fault it found (`peek1` scrolled the text twice per notch). Not run: a real GPU, a high-resolution wheel, touch |
 | **Long texts: the peek and the text viewer, live** (2026-11-13, §2.50; the owner: "we can see the entire content if mouse pauses hover and we click the eye"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-textview-pc`, Tiny11 25H2, 1600×900, no GPU; the worker's drive 2 was starved; deleted afterwards with its persist folder), self-contained builds `0.2.11-dev.text1` to `text5` of a private worktree run as isolated instances, BC-TEST data only (session c073d86d's scratchpad, `qa/make_qa_data.py`: a heartbeat-shaped XML prompt, JSON, C#, Python, Markdown, YAML, SQL, a diff, a short text, a 6 MB log, 2.3 MB of C#, and Claude Code and Codex histories). **Cards:** the "⋯" line and the eye only on cut-off cards. **Peek:** centered on the panel in the dark and the light theme; moves inside it keep it open; the wheel scrolls it; its menu has *Copy* (disabled until a selection) and *Select all* above the card's own items; *Select all* + *Copy* put the text on the clipboard (equal to the file, with CRLF line breaks); Esc closes it; the 6 MB log shows one page with "Showing the first 63,944 of 6,000,031 characters. F3 opens all of it.". **Viewer:** *Formatted* / *As copied*, *Wrap*, *Line numbers*, the language menu with "(detected)", Markdown drawn as a document; the size by A±, Ctrl+Minus and Ctrl+wheel; `TextViewerTextSize` 1.1 and `TextViewerWrap` and `TextViewerLineNumbers` false were saved, then turned back on; opened by F3, by the card menu's *View* and by the peek menu's; closed by Esc and the X; the gutter in line with the text at 100 % and 150 %; a dragged selection copied exactly. **Codex tab:** the prompt card with its peek, menu and viewer. **Pages:** the 6 MB log in 2–3 s as page 1 of 94, page 2 starting at line 863; the C# as page 1 of 36 with "66,273 lines · 2,300,172 characters · Colored up to the first 2,000,000 characters."; turning a page under 0.5 s. **Pictures:** *View* on a picture opens the image viewer, and Esc closes it. The app's log over every build: 0 WRN/ERR | claude-desktops MCP tools (`move_mouse`, `scroll`, `press_keys`, `click`, `find_elements`, screenshots, `run_command`); the app's log and `settings.json` | ✅ after the six faults it found (§2.50). Not run: a real GPU, Narrator, touch and pen |
 | Long texts, the suite (2026-11-13, §2.50): Core 107 new — `TextLanguageDetectorTests` 62 (code in every language recognized, prose and Markdown left as Markdown, null and huge texts, a huge JSON judged by its head, the prose weight, the JSON reader), `SyntaxHighlighterTests` 19 (each language's forms, the limits, random input keeping its tokens ordered and inside the text), `StructuredTextFormatterTests` 9 (JSON and XML re-indented with every token kept, text left as copied, input declined, an external entity never resolved, cancellation), `TextViewRenderingTests` 17 (every character through RTF, control characters, token colors, Markdown's blocks, the views and the switch, the Markdown limit, sources, line starts, pages, the style). Mutations: pages cut at the limit instead of at line breaks (it survived until the tests' line breaks moved off the limit's multiples; then 2 tests failed); page tokens not moved to the page's positions (1 failed). The whole suite in a private worktree of `6c6ef8e` plus the change: Core 1,893 passed; Windows 445 (2 opt-in skipped, 1 explicit not run); a `--no-incremental` build with only the old CS0108; the documentation hook's checker 0 gaps; `catalog.py check` 0 missing in every language | the test executables, `dotnet build --no-incremental`, session c073d86d's scratchpad (`doc_gaps.py`, `escape_sweep.py`) | ✅ |
 | **Pictures keep their files, live** (2026-11-13, §2.49; the owner: "any images we detect and has a path - we should keep the path persisted with the image"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-imgfiles-pc`, Tiny11 25H2, 1600×900; the worker's drive was busy; deleted afterwards with its persist folder), BC-TEST pictures only: a fake ShareX folder through `BETTERCLIPBOARD_SHAREX_DIR`, PNGs written with chosen write times, Win+PrtScn, a Paint copy. **The update and the search:** the released 0.2.10 installed with the README's installer kept two ShareX screenshots and a Win+PrtScn one; then a package of this change (`0.2.11-dev.imgfiles`) installed over it with `install.ps1 -Package`: "Earlier ShareX screenshots: found the files of 2 of 2 in 124 ms" and "Earlier Snipping Tool and Win+PrtScn screenshots: found the files of 1 of 1 in 119 ms"; `bclip list --json` gave each its path, PNG, size and both times; a new ShareX screenshot kept its file as it was saved. **The menu** (a ShareX card): the dimmed "explorer_Live01Shot.png / PNG · 5.1 KB · modified 22 min ago" and the four items; *Copy path* put the path on the clipboard as text, *Copy image as a file* a file list with the drop effect "copy" (pasted in File Explorer, it copied the file), *Open file* opened it in Photos, *Open folder* File Explorer with the file selected (the first time after the installer's Explorer restart without the selection). *Save to temp and*: a byte-identical PNG under `%TEMP%\BetterClipboard\Images\<hash>\` with the original name; the Paint copy (no file) got only *Save to temp and*, and its PNG was named "Image 2026-11-13 115426.png". **The viewer:** the band's two rows above the picture, the name opening Photos and the folder File Explorer with the file selected. **A file deleted** after it was found: the menu's "chrome_Xk29Qa81Lm.png / moved or deleted" with only *Save to temp and*; the viewer's name and folder as plain text, the first row ending "moved or deleted". **Settings:** the search "temp" found the one card; 0 days saved `TempImageDays` 0; the silent restart after Settings closed kept the two temporary pictures; a real restart deleted them ("Deleted 2 temporary pictures …"; the wording for 0 days changed afterwards) and their empty folders. **Hebrew:** the menu's label and its five items read right, the facts line keeping "PNG · 5.1 KB" together. **A crash found:** the viewer's file-name link ended the app 2 of 2 times (§2.49: a WER dump read with `dotnet-dump` on this PC showed the UI thread in `ShellExecuteExW` under the link's Click); with the fix (`0.2.11-dev.imgfiles2`, installed over it) 0 crashes in three link clicks, one with Photos started cold, and the menu's *Open file*. The app's log over the day: 143 lines, 0 WRN/ERR (a fail-fast writes none) | claude-desktops MCP tools (`press_keys`, `click`, `find_elements`, `list_windows`, `window`, `run_command`, region screenshots); guest scripts `png.ps1`, `items.ps1` (bclip, content-free), `clip.ps1`, `setup.ps1` (session 2fc2c47a's scratchpad, `qa/`); `dotnet-dump analyze -c "clrstack -all"` | ✅ after the crash fix. Not run: the Microsoft Store edition, a file on a network share, a standard user account |
@@ -7575,7 +7610,8 @@ kit by a scratch generator, session 66cdd808):
 
 - **Long texts** (2026-11-13, §2.50), next steps:
   - Find (Ctrl+F) in the text viewer, across its pages (not chosen this time);
-  - a selection and *Select all* across pages (copy from the source text, not from RichEdit);
+  - a selection and *Select all* across pages (copy from the source text, not from RichEdit), and a *Copy* that gives a
+    Markdown document's source rather than its drawn text;
   - the peek's language from the viewer's own detection, so a megabyte log no longer reads "Markdown" in the peek;
   - measure RichEdit on a real GPU (the page size was set on a test desktop without one), and listen to Narrator in both
     overlays;

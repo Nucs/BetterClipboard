@@ -27,10 +27,14 @@ namespace BetterClipboard.App.Views;
 /// eye, a thin "⋯" line under its text and the hover peek; any card with text can be opened from its menu's View (F3).
 /// </para>
 /// <para>
-/// <b>The peek is a hover card, not a tooltip.</b> It opens centered on the panel after the mouse rests on a cut-off card,
-/// and stays while the mouse is on it or on the card it came from: the text can be scrolled with the wheel, selected and
-/// copied, and right-clicked for the card's own menu. Leaving both, clicking outside it, or Esc closes it. (The image peek,
-/// ClipboardFlyout.ImagePreview.cs, closes on any move; the owner asked for selection and a menu in this one.)
+/// <b>The peek is a quick look.</b> It opens centered on the panel after the mouse rests on a cut-off card, and closes at
+/// the mouse's first real move, wherever the mouse goes, like the image peek (ClipboardFlyout.ImagePreview.cs). The wheel
+/// scrolls its text from anywhere on the panel's monitor and never closes it. That is the owner's rule (2026-11-13), which
+/// replaced the first version's peek that stayed while the mouse moved over it or its card: "it close immediately if i
+/// move the mouse BUT it should react to middlemouse scrolling just fine. Only keep open ignoring mouse movement when
+/// clicking the eye at the corner". A right-click with the mouse still opens the card's own menu with Copy and Select all,
+/// and the peek stays while that menu shows; Esc and a click outside the frame close it too. Selecting with the mouse,
+/// and everything else that needs the mouse to move, is the viewer's.
 /// </para>
 /// <para>
 /// <b>The viewer</b> dims the screen and shows the whole text in a large card centered on the panel, with a Formatted / As
@@ -89,9 +93,6 @@ public sealed partial class ClipboardFlyout
     /// <summary>The card whose text the mouse rests on (drives the peek), or <see langword="null"/>.</summary>
     private ClipItemViewModel? textHoverCard;
 
-    /// <summary>The hovered card's text area: with the peek, it bounds where the mouse may go without closing the peek.</summary>
-    private FrameworkElement? textHoverElement;
-
     /// <summary>Rest timer for the text peek (created on first use, reused).</summary>
     private DispatcherTimer? textHoverTimer;
 
@@ -108,12 +109,9 @@ public sealed partial class ClipboardFlyout
     private Panel? textPeekLayout;
 
     /// <summary>
-    /// Where the mouse may go without closing the peek, in the peek surface's coordinates: the frame and the card it came
-    /// from, and the space between them.
+    /// The cursor's screen position when the peek opened, or when its menu closed: a move is only real once the cursor
+    /// leaves it.
     /// </summary>
-    private Rect textPeekKeepArea;
-
-    /// <summary>The cursor's screen position when the peek opened: a move is only real once the cursor leaves it.</summary>
     private ScreenPoint? textPeekAnchor;
 
     /// <summary>Whether a context menu opened from the peek is showing (the pointer is on the menu, not lost).</summary>
@@ -262,7 +260,6 @@ public sealed partial class ClipboardFlyout
         }
 
         textHoverCard = card;
-        textHoverElement = sender as FrameworkElement;
         _ = PreloadCardTextAsync(card);
         RestartTextHoverTimer();
     }
@@ -306,7 +303,6 @@ public sealed partial class ClipboardFlyout
         {
             textHoverTimer?.Stop();
             textHoverCard = null;
-            textHoverElement = null;
         }
     }
 
@@ -766,7 +762,13 @@ public sealed partial class ClipboardFlyout
         bool shortText = prepared.Source.Text.Length <= ShortPeekChars;
         var layout = new Grid();
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        layout.RowDefinitions.Add(new RowDefinition { Height = shortText ? GridLength.Auto : new GridLength(1, GridUnitType.Star) });
+
+        // The text's row is a star row for every text, so the text box gets at most the height the frame has left, and its
+        // own scroller scrolls the rest. An Auto row measures its child with unlimited height: the box grew to its whole
+        // text, the frame cut it off at its MaxHeight, and there was nothing left to scroll (no scrollbar, and the wheel did
+        // nothing: the owner's report, 2026-11-13). A frame without a fixed height still fits a short text: it is aligned
+        // to the top, so it takes the grid's desired height, and a star row's desired height is its child's.
+        layout.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         layout.Children.Add(BuildTextHeader(card, prepared.View.Language, prepared.Source.OriginalLineCount, trailing: null));
         Grid.SetRow(presenter.View, 1);
@@ -823,7 +825,6 @@ public sealed partial class ClipboardFlyout
         surface.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler(TextPeek_KeyDown), handledEventsToo: true);
 
         // Centered on the panel (the owner's choice), kept inside the work area; again once the frame knows its height.
-        var cardArea = AreaInSurface(textHoverElement, geometry);
         void Place()
         {
             double width = frame.ActualWidth > 0 ? frame.ActualWidth : frame.Width;
@@ -831,9 +832,6 @@ public sealed partial class ClipboardFlyout
             double left = Math.Clamp((Root.ActualWidth / 2) - geometry.OffsetX - (width / 2), 8, Math.Max(8, geometry.Width - width - 8));
             double top = Math.Clamp((Root.ActualHeight / 2) - geometry.OffsetY - (height / 2), 8, Math.Max(8, geometry.Height - height - 8));
             frame.Margin = new Thickness(left, top, 0, 0);
-            var frameArea = new Rect(left, top, width, height);
-            frameArea.Union(cardArea);
-            textPeekKeepArea = frameArea;
         }
 
         Place();
@@ -862,49 +860,26 @@ public sealed partial class ClipboardFlyout
         presenter.Show(prepared.View, prepared.Page, prepared.Rtf, style, palette, wrap, lineNumbers);
     }
 
-    /// <summary>An element's bounds in the overlay surface's coordinates (the surface covers the panel monitor's work area).</summary>
-    /// <param name="element">The element, or <see langword="null"/>.</param>
-    /// <param name="geometry">The overlay's placement.</param>
-    /// <returns>The bounds; an empty rectangle for no element.</returns>
-    private Rect AreaInSurface(FrameworkElement? element, (double OffsetX, double OffsetY, double Width, double Height, double Scale) geometry)
-    {
-        if (element is null || !element.IsLoaded)
-        {
-            return Rect.Empty;
-        }
-
-        try
-        {
-            var bounds = element.TransformToVisual(Root).TransformBounds(new Rect(0, 0, element.ActualWidth, element.ActualHeight));
-            return new Rect(bounds.X - geometry.OffsetX, bounds.Y - geometry.OffsetY, bounds.Width, bounds.Height);
-        }
-        catch (ArgumentException)
-        {
-            return Rect.Empty; // not in this tree any more (the list reloaded)
-        }
-    }
-
     /// <summary>
-    /// The mouse moved over the peek's surface: it closes the peek once it is outside the frame and the card, really moved
-    /// (not the synthetic move as the surface appears), and no button is held (a selection being dragged).
+    /// The mouse moved over the peek's surface (it covers the panel's monitor): a real move closes the peek, wherever the
+    /// mouse goes, over the text and over the card included (the owner's rule, 2026-11-13). Only the peek's own menu keeps
+    /// it while the mouse moves to that menu.
     /// </summary>
     /// <param name="sender">The surface.</param>
     /// <param name="e">Pointer data.</param>
+    /// <remarks>
+    /// A move is real once the cursor has left the spot where the peek opened (<see cref="TextPeekCursorMoved"/>): WinUI
+    /// also raises moves at a still mouse, when the surface appears under it and when the wheel scrolls the text under it.
+    /// </remarks>
     private void TextPeek_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (textPeekPopup is null || textPeekMenuOpen || sender is not UIElement surface)
+        if (textPeekPopup is null || textPeekMenuOpen)
         {
             return;
         }
 
-        var point = e.GetCurrentPoint(surface);
-        if (point.Properties.IsLeftButtonPressed || point.Properties.IsRightButtonPressed || point.Properties.IsMiddleButtonPressed)
-        {
-            return;
-        }
-
-        bool moved = e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse || TextPeekCursorMoved();
-        if (moved && !textPeekKeepArea.Contains(point.Position))
+        // A touch or pen move is always real: it has no cursor to compare, and no synthetic moves.
+        if (e.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Mouse || TextPeekCursorMoved())
         {
             HideTextPeek();
         }
@@ -922,16 +897,29 @@ public sealed partial class ClipboardFlyout
         }
     }
 
-    /// <summary>The wheel outside the frame closes the peek; inside, the text scrolls (RichEdit's own scroller).</summary>
+    /// <summary>
+    /// The wheel scrolls the peek's text wherever the mouse is, and never closes the peek (the owner's rule, 2026-11-13).
+    /// Over the text box, RichEdit scrolls it by itself; anywhere else on the surface (the card the mouse rested on, the
+    /// peek's header, the line numbers, the space around the frame) it is scrolled here.
+    /// </summary>
     /// <param name="sender">The surface.</param>
     /// <param name="e">Pointer data.</param>
+    /// <remarks>
+    /// Told apart by where the mouse is, not by the event's <see cref="PointerRoutedEventArgs.Handled"/> flag: RichEdit
+    /// scrolls without marking the event handled. Measured in the QA (2026-11-13): with the flag as the test, a notch over the text moved it
+    /// about 107 pixels, RichEdit's three lines and this method's three lines together.
+    /// </remarks>
     private void TextPeek_PointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
-        if (textPeekFrame is not null && sender is UIElement surface && !FrameContains(surface, e))
+        if (textPeekPopup is null || e.Handled || textPeekPresenter is not { } presenter || sender is not UIElement surface ||
+            IsInside(presenter.Editor, e))
         {
-            HideTextPeek();
-            e.Handled = true;
+            return;
         }
+
+        var properties = e.GetCurrentPoint(surface).Properties;
+        presenter.ScrollByWheel(properties.MouseWheelDelta, properties.IsHorizontalMouseWheel);
+        e.Handled = true;
     }
 
     /// <summary>Whether a pointer event lies on the peek's frame.</summary>
@@ -1021,6 +1009,12 @@ public sealed partial class ClipboardFlyout
                 return;
             }
 
+            // The mouse went to the menu and came back: the peek now closes at the next real move from where it is.
+            if (textPeekPopup is not null)
+            {
+                textPeekAnchor = ScreenPointer.Cursor();
+            }
+
             // The menu's closing gave the keyboard to the panel's search box (Popup_Closed): the peek's text takes it back,
             // queued after that, so Esc and Ctrl+C keep working on the peek.
             DispatcherQueue.TryEnqueue(() =>
@@ -1072,7 +1066,6 @@ public sealed partial class ClipboardFlyout
         textPeekAnchor = null;
         textPeekMenuOpen = false;
         textHoverCard = null;
-        textHoverElement = null;
         popup.IsOpen = false;
     }
 

@@ -298,7 +298,7 @@ desktop, the screen with the mouse).
 | Drag an edge | Resize the panel. It opens at that size from then on. |
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
-| Rest the mouse on a long text | Read all of it, select and copy from it, right-click it for the item's menu; its eye button opens the text viewer (see [Text previews](#text-previews)) |
+| Rest the mouse on a long text | Read all of it and scroll it with the wheel (moving the mouse closes it); right-click it to copy it or for the item's menu; its eye button opens the text viewer, which stays (see [Text previews](#text-previews)) |
 | The update button, left of Pause | Open the update dialog: the release notes, and *Update and restart* when a newer version exists (the button is highlighted then; see [Updates](#updates)) |
 
 Type and press `Enter` as fast as you like: `Enter` waits for the search to finish and pastes its best match — the
@@ -412,9 +412,9 @@ A card shows the first four lines of a text. When the text is longer, a thin dot
 at the card's corner say so.
 
 - **Peek:** rest the mouse on the card's text. After a moment the whole text appears in the middle of the panel,
-  colored the way the viewer shows it. Scroll it with the wheel, select with the mouse, `Ctrl+C` copies, and a
-  right-click offers *Copy* and *Select all* above the item's own menu. It stays while the mouse is over it or over
-  the card, and `Esc` closes it. A text over 64,000 characters shows its start, and says so.
+  colored the way the viewer shows it, and the wheel scrolls it. Moving the mouse closes it, and so does `Esc`. A
+  right-click with the mouse still offers *Copy* and *Select all* above the item's own menu. A text over 64,000
+  characters shows its start, and says so.
 - **Viewer:** click the eye, press `F3`, or choose *View* in the item's menu. The screen dims and the text opens in a
   large card over it:
   - **Markdown** is drawn as a document: headings, lists, tables, quotes, links and code blocks, each code block
@@ -428,7 +428,8 @@ at the card's corner say so.
     size. All three are remembered.
   - **Megabyte copies** open a page of about 64,000 characters at a time, with ‹ › to turn the pages
     (`Ctrl+PageUp`, `Ctrl+PageDown`); line numbers count on across pages.
-  - Select and copy as anywhere; close it with `Esc`, its X button, or a click outside the text.
+  - Select and copy as anywhere. Moving the mouse does not close it: `Esc`, its X button, or a click outside the
+    text does.
 
 ### Pictures and their files
 
