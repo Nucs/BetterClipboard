@@ -1,15 +1,23 @@
+<div align="center">
+
 # <img src="../../src/BetterClipboard.App/Assets/AppIcon.png" width="40" height="40" align="top" alt="BetterClipboard 图标"> BetterClipboard
-
-[ENG](../../README.md) / **简体中文**
-
-> 本文译自英文版 [README](../../README.md)。英文版可能先于译文更新；两者不一致时，以英文版为准。
-
-**Windows 本该自带的 Win+V 剪贴板历史。** 同样的快捷键，同样在光标旁弹出的面板——但它记住一切、重启后依然保留、搜索即时出结果，并且全部加密保存在你的电脑上。
-它还会保留其他工具遗忘的内容：你的截图、Win+R 命令、Shell 历史，以及你发送给 Claude Code 和 Codex 的提示词。
 
 [![CI](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Nucs/BetterClipboard?sort=semver)](https://github.com/Nucs/BetterClipboard/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
+
+[ENG](../../README.md) / **简体中文**
+
+</div>
+
+> 本文译自英文版 [README](../../README.md)。英文版可能先于译文更新；两者不一致时，以英文版为准。
+
+<div align="center">
+
+**Windows 本该自带的 Win+V 剪贴板历史。** 同样的快捷键，同样在光标旁弹出的面板——但它记住一切、重启后依然保留、搜索即时出结果，并且全部加密保存在你的电脑上。
+它还会保留其他工具遗忘的内容：你的截图、Win+R 命令、Shell 历史，以及你发送给 Claude Code 和 Codex 的提示词。
+
+</div>
 
 <p align="center">
   <img src="../images/panel.png" width="461" alt="用 Win+V 打开的 BetterClipboard 面板。左侧是带三个分组图标的分组栏。顶部是标题栏按钮（更新、暂停、分组、清空、设置）、带 Aa、W 和 .* 开关的搜索框，以及“全部、已固定、文本、图片、链接、文件、截图”标签页，旁边的箭头可滚动到更多标签页。卡片依次为：来自记事本的已固定回复、带眼睛按钮的截图工具截图、来自 Microsoft Edge 的 GitHub 链接、带色块的颜色 #7C3AED，以及来自 Windows 资源管理器的两个文件。">

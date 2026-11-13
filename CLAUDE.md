@@ -6894,6 +6894,17 @@ kit by a scratch generator, session 66cdd808):
   Chocolatey `iconUrl` loads the same file, so keep it there). At 40 px with `align="top"` it sits within 2 px of the
   centre of the title's capitals (GitHub's styles, Segoe UI, measured 2026-11-08). `align="middle"` or `"center"` hangs
   it 11 px low, and no `align` raises it 5 px. GitHub links every image to its own file, so the `alt` names that link.
+  The top is centered (the owner, 2026-11-13: "center the title with icon", the tagline, and the CI, Release and
+  License badges above the language line). One `<div align="center">` holds, in this order, the title with its icon,
+  the badges, the language line and the tagline; the panel photo follows in its own `<p align="center">`.
+  - **Keep the blank lines inside the `<div>`:** GitHub reads Markdown inside an HTML block only after a blank line.
+    Without them the heading, the badges and the bold text show as raw `#`, `[![…](…)]` and `**`.
+  - The title stays a Markdown heading, so GitHub still gives it an anchor (`#-betterclipboard`, unchanged).
+  - A new badge goes into the badges' paragraph, one per line.
+  - The translations mirror the block. The Chinese README keeps its translation note left-aligned, as a quote between
+    the language line and the tagline, so it needs two centered `<div>`s around it.
+  - Checked with GitHub's own renderer (`gh api markdown`, mode `markdown`, the way README files render: the `align`
+    survived and the Markdown inside was read), then drawn with github-markdown-css in a headless Chrome.
 - **Every new piece of UI text goes through `UiText`, keyed by its English text, with an entry in `en.json`** (§2.37).
   XAML: `{loc:Tr Text='…'}` (`Text=&quot;…&quot;` when the text has an apostrophe: WinUI's XAML compiler takes no
   backslash escapes); C#: `UiText.Translate("…")`, `UiText.Format($"…")`, and for a count

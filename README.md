@@ -1,4 +1,10 @@
+<div align="center">
+
 # <img src="src/BetterClipboard.App/Assets/AppIcon.png" width="40" height="40" align="top" alt="BetterClipboard icon"> BetterClipboard
+
+[![CI](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Nucs/BetterClipboard?sort=semver)](https://github.com/Nucs/BetterClipboard/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **ENG** / [简体中文](docs/translations/README.zh-CN.md)
 
@@ -7,9 +13,7 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 It also keeps what other tools forget: your screenshots, your Win+R commands, your shell history and the prompts
 you send to Claude Code and Codex.
 
-[![CI](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Nucs/BetterClipboard?sort=semver)](https://github.com/Nucs/BetterClipboard/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+</div>
 
 <p align="center">
   <img src="docs/images/panel.png" width="461" alt="The BetterClipboard panel, opened with Win+V. Left: the groups column with three group icons. Top: the header's buttons (update, pause, groups, clear, settings), the search box with its Aa, W and .* toggles, and the tabs All, Pinned, Text, Images, Links, Files and Snipping, with an arrow that scrolls to more. Cards: a pinned reply from Notepad, a Snipping Tool screenshot with its eye button, a GitHub link from Microsoft Edge, the color #7C3AED with its swatch, and two files from Windows Explorer.">
