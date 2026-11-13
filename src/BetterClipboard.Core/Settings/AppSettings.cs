@@ -221,6 +221,17 @@ public sealed record AppSettings
     /// <summary>Record image-only copies (screenshots etc.).</summary>
     public bool CaptureImages { get; init; } = true;
 
+    /// <summary>
+    /// How many days a picture the card menu's <em>Save to temp and</em> wrote is kept: the start deletes the ones whose last
+    /// use is older (<see cref="Content.TempImageFiles"/>); 0 = every one at every start. A month by default.
+    /// </summary>
+    /// <remarks>
+    /// Checked only when BetterClipboard starts (after Windows starts, as a rule), never while it runs: a picture just pasted
+    /// as a file into a chat that uploads it later must still be there. Footgun: a version from before this member drops it
+    /// when it saves the file; the next newer version then keeps a month again.
+    /// </remarks>
+    public int TempImageDays { get; init; } = Content.TempImageFiles.DefaultKeepDays;
+
     /// <summary>Record file lists copied in Explorer (paths only, not file contents).</summary>
     public bool CaptureFiles { get; init; } = true;
 
@@ -873,6 +884,7 @@ public sealed record AppSettings
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
             MaxTotalSizeMB = Math.Clamp(MaxTotalSizeMB, 0, 1_048_576),
+            TempImageDays = Math.Clamp(TempImageDays, 0, Content.TempImageFiles.MaxKeepDays),
 
             // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
             FlyoutWidth = Math.Clamp(FlyoutWidth, MinFlyoutWidth, MaxFlyoutSize),

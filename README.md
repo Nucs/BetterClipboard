@@ -31,7 +31,9 @@ you send to Claude Code and Codex.
   - **Files** copied in Explorer, and **paths copied as text** (`C:\…`, `~/.bashrc`, `src/app/main.cs`), which still
     paste as text ([Paths in the Files tab](#paths-in-the-files-tab)).
   - **Images** with thumbnails. Rest the mouse on one to see it full size, or open it in a viewer that zooms and pans
-    ([Image previews](#image-previews)). The same picture as PNG or bitmap is one item.
+    ([Image previews](#image-previews)). The same picture as PNG or bitmap is one item. A screenshot keeps the file it
+    was saved to: right-click it to copy its path, copy it as a file, open it or open its folder, and *Save to temp
+    and* does the same for any picture ([Pictures and their files](#pictures-and-their-files)).
   - **Windows' own history:** what Win+V still remembers, its pins included, is imported at each start. What you delete
     in BetterClipboard is not imported again.
   - **ShareX:** every screenshot that [ShareX](https://getsharex.com) saves, the moment it is saved.
@@ -147,7 +149,7 @@ Options (pass them through a script block):
 | `-AllUsers` | Install for every user of this PC (in PowerShell as administrator); see [For every user of a PC](#for-every-user-of-a-pc). |
 | `-InstallDir <path>` | Install somewhere else. |
 | `-NoStartup` / `-NoShortcut` / `-NoLaunch` | Skip starting with Windows / the Start menu shortcut / launching after install. |
-| `-Uninstall [-RemoveData]` | Remove the app (history is kept unless `-RemoveData`). |
+| `-Uninstall [-RemoveData]` | Remove the app (history is kept unless `-RemoveData`, which also deletes the temporary pictures). |
 
 Prefer doing it by hand? Download the zip for your architecture and `SHA256SUMS.txt` from the release,
 check the hash (`Get-FileHash .\BetterClipboard-*.zip`), extract anywhere and run `BetterClipboard.exe`.
@@ -284,7 +286,7 @@ desktop, the screen with the mouse).
 | `Del` (or `Shift+Del` while searching) | Delete the item. In the Pwsh, Cmd and Everything tabs, hide the command or file until you use it again. In the Claude and Codex tabs, delete the prompt until you send it again. |
 | `Ctrl+F` | Back to the search box |
 | `Ctrl+G` | Show / hide the groups column (same as the bookmark button) |
-| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), delete, forget forever |
+| `Menu` / `Shift+F10` / right-click | Item menu: paste, paste as plain text, copy only, pin, groups (add / remove), open link / show in Explorer / show in Everything, run (Win+R commands), a picture's file (copy path, copy image as a file, open file, open folder) and *Save to temp and* (see [Pictures and their files](#pictures-and-their-files)), delete, forget forever |
 | Right-click a tab (or `Menu` on a tab you clicked) | Tab menu: *Move left*, *Move right*, *Hide tab*, *Hide tab & clipboard rows*, *Show all hidden*. A right-click on the tabs' empty space offers *Show all hidden* too (see [Tabs](#tabs)). |
 | `Esc` | Clear the search, then close — focus returns to where you were |
 | Drag any empty spot | Move the panel, like dragging a title bar (`Esc` while dragging puts it back). It opens where *Panel position* says again next time. |
@@ -308,7 +310,8 @@ type, typos included; `Esc` clears it. Its sections:
   its menu of suggestions and shortcuts used before), where the panel opens (next to the text cursor, next to the mouse,
   in the middle of the main screen, or in the middle of the screen you are typing on), and releasing Win+letter
   shortcuts from Explorer ([Choosing shortcuts](#choosing-shortcuts)).
-- **History:** how many items, for how many days, how large, and what to record.
+- **History:** how many items, for how many days, how large, what to record, and how long *Save to temp and*'s
+  pictures are kept.
 - **Pasting:** paste after choosing, move pasted items to the top, pinned items first.
 - **Privacy:** pause, ignored apps, *Forgotten forever*, capture reliability, clear history.
 - **Windows clipboard:** Windows' own history, and **Import from Windows**, which pulls in everything Win+V still
@@ -396,6 +399,29 @@ and group, except the Everything tab, where Everything itself does the searching
   screen and stays until you close it. Turn the mouse wheel to zoom toward the pointer, drag to pan, and
   double-click to switch between fit and zoomed in. Close it with `Esc`, its X button, or a click outside the
   picture.
+
+### Pictures and their files
+
+A screenshot that ShareX, Snipping Tool or `Win+PrtScn` saved keeps the file it was saved to: its name, folder, format,
+size and dates are kept with the picture in your history.
+
+- **Right-click the picture.** The menu names the file, with its format, size and when it last changed. While the file
+  is on disk, four items follow: *Copy path*; *Copy image as a file*, to paste it into a folder, a mail or a chat as a
+  file, like a file copied in File Explorer; *Open file*; and *Open folder*, File Explorer with the file selected. A
+  file that was moved or deleted is named as such, and these four are left out.
+- **Any picture, also one you copied from an app:** *Save to temp and ›* has the same four items. BetterClipboard first
+  writes the picture as a PNG into a folder of its own in your temporary files (`%TEMP%\BetterClipboard\Images`),
+  named after its file when it has one. Saving the same picture again finds that file; a copy you edited since is
+  never overwritten.
+- **Temporary pictures are deleted when BetterClipboard starts,** once they were not used for 30 days. *Settings ›
+  History › Keep temporary pictures for (days)* changes that, and 0 deletes them at every start. They are never deleted
+  while BetterClipboard runs, so a picture you just pasted as a file stays there for the app that reads it.
+- **In the viewer,** the picture's file is shown above it: its name, format, size and pixel size on one row, its folder
+  and dates on the next. Click the name to open the file, or the folder to open it in File Explorer.
+- **Screenshots already in your history** find their files once, at the first start of a version that keeps them: each
+  gets the file in ShareX's folders or the Screenshots folder that was saved within two minutes of it and holds the
+  same pixels.
+- **Files on a network drive** are never checked (a share that is gone would make the menu wait), so their items stay.
 
 ### Paths in the Files tab
 
@@ -701,7 +727,8 @@ the network cannot connect, and each command is logged by name only, never with 
 With the `pwsh`, `cmd`, `claude`, `codex` and `everything` filters, `bclip list` shows what you pasted, copied or
 kept from those tabs. The prompts themselves are in `bclip prompts`.
 
-Add `--json` to any command for structured output (ids, kinds, times, source app, formats, grep matches).
+Add `--json` to any command for structured output (ids, kinds, times, source app, formats, grep matches, and a
+picture's file: path, name, format, size and dates).
 Exit codes: `0` ok · `1` nothing found or timed out · `2` bad usage · `3` BetterClipboard unreachable or the
 command line is off · `4` other error. `bclip help <command>` shows every option. `bclip` always answers in English,
 whatever the app's or Windows' language: scripts and agents rely on its output.
@@ -842,14 +869,19 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 
 - **Nothing private in the logs:** they record what happened (counts, versions, errors), never what you copied,
   ran, typed or sent. They are always in English.
+- **Temporary pictures are plain files:** *Save to temp and* writes a picture as an ordinary PNG into
+  `%TEMP%\BetterClipboard\Images`, outside the encrypted history, so that other apps can open it. BetterClipboard
+  deletes such pictures when it starts, once they were not used for 30 days (*Settings › History*).
 - **The command line is off by default.** While *Command line (bclip)* is on, any program running as you can read
   the history through it (see [Command line](#command-line-for-scripts-and-ai-agents)).
 - **Windows' own features:** an item you paste goes onto the clipboard like any copy, so Windows' clipboard history
   and its sync between devices (*Clipboard history across your devices*) treat it the way you set them up in
   Windows (Microsoft's [privacy statement](https://privacy.microsoft.com/privacystatement) covers those).
-- **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored; uninstalling the
-  Microsoft Store edition always does. *Settings › Clear history*, and *Delete stored…* on each source's card in
-  *Settings › Integrations*, delete parts of it; neither touches the other apps' own files.
+- **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored, the temporary pictures
+  included; uninstalling the Microsoft Store edition always deletes the history, while its temporary pictures stay in
+  `%TEMP%\BetterClipboard` until you or Windows' clean-up of temporary files delete them. *Settings › Clear history*,
+  and *Delete stored…* on each source's card in *Settings › Integrations*, delete parts of it; neither touches the
+  other apps' own files.
 
 ## Uninstall
 
@@ -859,7 +891,8 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\BetterClipboard\install.ps1" -Uninstall
 ```
 
-Your history stays in `%LOCALAPPDATA%\BetterClipboard` unless you add `-RemoveData`. Win+V, and every other
+Your history stays in `%LOCALAPPDATA%\BetterClipboard` unless you add `-RemoveData`, which also deletes the pictures
+*Save to temp and* left in `%TEMP%\BetterClipboard`. Win+V, and every other
 Win+ shortcut that BetterClipboard released from Explorer, goes back to Windows (add `-KeepWinVReleased` to keep them
 released).
 

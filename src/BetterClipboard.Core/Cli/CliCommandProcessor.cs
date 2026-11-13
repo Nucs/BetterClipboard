@@ -185,6 +185,18 @@ public sealed class CliCommandProcessor
             LastRun = entry.LastRunUtc,
             SourceTitle = entry.SourceTitle,
             Edited = entry.EditedUtc,
+            File = entry.File is { } file
+                ? new CliFile
+                {
+                    Path = file.Path,
+                    Name = file.Name,
+                    Extension = file.Extension.Length > 0 ? file.Extension : null,
+                    Format = file.Format,
+                    SizeBytes = file.SizeBytes,
+                    Created = file.CreatedUtc,
+                    Modified = file.ModifiedUtc,
+                }
+                : null,
         };
     }
 

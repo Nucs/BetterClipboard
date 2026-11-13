@@ -417,6 +417,19 @@
                     Keywords="{loc:Tr Text='pictures, screenshots, bitmaps, photos'}">
                     <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.CaptureImages, Mode=TwoWay}" />
                 </controls:SettingsCard>
+                <!--  How long the pictures a card menu's "Save to temp and" writes are kept (CLAUDE.md §2.49): deleted at a start only.  -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Pictures saved with Save to temp (in a picture card menu) are deleted when BetterClipboard starts, once not used for this many days. 0 = delete them at every start.'}"
+                    Glyph="&#xE78C;"
+                    Header="{loc:Tr Text='Keep temporary pictures for (days)'}"
+                    Keywords="{loc:Tr Text='temp, temporary files, save to temp, clean up, pictures, images'}">
+                    <NumberBox
+                        MinWidth="140"
+                        Maximum="3650"
+                        Minimum="0"
+                        SpinButtonPlacementMode="Compact"
+                        Value="{x:Bind ViewModel.TempImageDays, Mode=TwoWay}" />
+                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Files copied in Explorer (their paths — not the file contents).'}"
                     Glyph="&#xE8E5;"

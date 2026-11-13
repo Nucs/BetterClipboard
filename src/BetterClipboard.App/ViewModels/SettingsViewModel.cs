@@ -189,6 +189,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial double MaxTotalSizeMB { get; set; }
 
+    /// <summary>See <see cref="AppSettings.TempImageDays"/>: how many days a picture "Save to temp and" wrote is kept.</summary>
+    [ObservableProperty]
+    public partial double TempImageDays { get; set; }
+
     /// <summary>See <see cref="AppSettings.CaptureImages"/>.</summary>
     [ObservableProperty]
     public partial bool CaptureImages { get; set; }
@@ -415,6 +419,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RetentionDays = settings.RetentionDays;
             MaxItemSizeMB = settings.MaxItemSizeMB;
             MaxTotalSizeMB = settings.MaxTotalSizeMB;
+            TempImageDays = settings.TempImageDays;
             CaptureImages = settings.CaptureImages;
             CaptureFiles = settings.CaptureFiles;
             PreserveAllFormats = settings.PreserveAllFormats;
@@ -1100,16 +1105,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         RefreshHotkeyStatus();
     }
 
-    /// <summary>Formats a byte count (KB/MB/GB); shared with the Delete stored dialog, which shows the same sizes.</summary>
+    /// <summary>
+    /// Formats a byte count (KB/MB/GB); shared with the Delete stored dialog, which shows the same sizes, and with a picture's
+    /// file details in the panel — all through <see cref="ByteSizeText"/>, so one rule formats every size the app shows.
+    /// </summary>
     /// <param name="bytes">Byte count.</param>
     /// <returns>The formatted size.</returns>
-    internal static string FormatBytes(long bytes) => bytes switch
-    {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
-        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.#} MB",
-        _ => $"{bytes / (1024.0 * 1024 * 1024):0.##} GB",
-    };
+    internal static string FormatBytes(long bytes) => ByteSizeText.Format(bytes);
 
     /// <summary>Persists a settings change unless loading.</summary>
     /// <param name="mutate">The change.</param>
@@ -1151,6 +1153,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (!double.IsNaN(value))
         {
             Update(s => s with { RetentionDays = (int)value });
+        }
+    }
+
+    /// <summary>Persists the change (a NumberBox cleared by hand reports NaN, which keeps the saved value).</summary>
+    /// <param name="value">New value.</param>
+    partial void OnTempImageDaysChanged(double value)
+    {
+        if (!double.IsNaN(value))
+        {
+            Update(s => s with { TempImageDays = (int)value });
         }
     }
 

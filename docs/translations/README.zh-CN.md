@@ -23,7 +23,7 @@
 - **各种复制内容**，每张卡片都标明来源应用和时间，并可按类型和来源分标签页筛选。再次复制同一内容时，它会移到最上方，而不是多出一个重复项（[标签页](#tabs)）：
   - **文本、富文本和 HTML、链接，以及带色块的颜色。**
   - 在资源管理器中复制的**文件**，以及**以文本形式复制的路径**（`C:\…`、`~/.bashrc`、`src/app/main.cs`），它们粘贴时仍是文本（[“文件”标签页中的路径](#paths-in-the-files-tab)）。
-  - 带缩略图的**图片**。鼠标停在图片上即可查看原尺寸，也可以在可缩放、可平移的查看器中打开（[图片预览](#image-previews)）。同一张图片无论是 PNG 还是位图，都只算一个项目。
+  - 带缩略图的**图片**。鼠标停在图片上即可查看原尺寸，也可以在可缩放、可平移的查看器中打开（[图片预览](#image-previews)）。同一张图片无论是 PNG 还是位图，都只算一个项目。截图会记住它被保存成的文件：右键单击它即可复制路径、将图片复制为文件、打开文件或打开文件夹；*保存到临时文件夹后* 对任何图片都能这样做（[图片及其文件](#pictures-and-their-files)）。
   - **Windows 自己的历史：** 每次启动时导入 Win+V 仍记得的内容，包括它的固定项目。你在 BetterClipboard 中删除的内容不会被再次导入。
   - **ShareX：** [ShareX](https://getsharex.com) 保存的每张截图，在保存的那一刻就进入历史。
   - **截图：** 截图工具的自动保存以及 `Win+PrtScn` 保存的每张截图。
@@ -84,7 +84,7 @@ irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | ie
 | `-AllUsers` | 为这台电脑的每位用户安装（在以管理员身份运行的 PowerShell 中）；参见[为电脑的每位用户安装](#for-every-user-of-a-pc)。 |
 | `-InstallDir <path>` | 安装到其他位置。 |
 | `-NoStartup` / `-NoShortcut` / `-NoLaunch` | 不随 Windows 启动 / 不创建“开始”菜单快捷方式 / 安装后不启动。 |
-| `-Uninstall [-RemoveData]` | 卸载应用（除非指定 `-RemoveData`，否则保留历史）。 |
+| `-Uninstall [-RemoveData]` | 卸载应用（除非指定 `-RemoveData`，否则保留历史；`-RemoveData` 也会删除临时图片）。 |
 
 更喜欢手动安装？从发布页面下载适合你架构的 zip 和 `SHA256SUMS.txt`，校验哈希值（`Get-FileHash .\BetterClipboard-*.zip`），解压到任意位置，然后运行 `BetterClipboard.exe`。发布版本还没有代码签名，因此对以这种方式下载的副本，Windows 可能会显示 *Windows 已保护你的电脑*：请先校验哈希值，然后选择 *更多信息 › 仍要运行*。参见[代码签名政策](#code-signing-policy)。
 
@@ -161,7 +161,7 @@ BetterClipboard 从它的 [GitHub 发布版本](https://github.com/Nucs/BetterCl
 | `Del`（搜索时为 `Shift+Del`） | 删除项目。在 Pwsh、Cmd 和 Everything 标签页中，隐藏该命令或文件，直到你再次使用它。在 Claude 和 Codex 标签页中，删除该提示词，直到你再次发送它。 |
 | `Ctrl+F` | 回到搜索框 |
 | `Ctrl+G` | 显示 / 隐藏分组栏（与书签按钮相同） |
-| `Menu` / `Shift+F10` / 右键单击 | 项目菜单：粘贴、粘贴为纯文本、仅复制、固定、分组（添加 / 移除）、打开链接 / 在资源管理器中显示 / 在 Everything 中显示、运行（Win+R 命令）、删除、永久忘记 |
+| `Menu` / `Shift+F10` / 右键单击 | 项目菜单：粘贴、粘贴为纯文本、仅复制、固定、分组（添加 / 移除）、打开链接 / 在资源管理器中显示 / 在 Everything 中显示、运行（Win+R 命令）、图片的文件（复制路径、将图片复制为文件、打开文件、打开文件夹）和 *保存到临时文件夹后*（参见[图片及其文件](#pictures-and-their-files)）、删除、永久忘记 |
 | `Esc` | 先清空搜索，再关闭——焦点回到你原来的位置 |
 | 拖动任意空白处 | 移动面板，就像拖动标题栏（拖动时按 `Esc` 可放回原处）。下次仍会按 *面板位置* 的设置打开。 |
 | 拖动边缘 | 调整面板大小。以后都按这个大小打开。 |
@@ -176,7 +176,7 @@ BetterClipboard 从它的 [GitHub 发布版本](https://github.com/Nucs/BetterCl
 托盘图标可以打开面板和设置。设置顶部的搜索框（`Ctrl+F`）会随着输入筛选页面，拼写错误也能找到；`Esc` 清除搜索。设置的各个部分：
 
 - **快捷键：** 打开面板的按键（想加多少都可以：单击输入框并按下快捷键，或从它的建议和用过的快捷键菜单中选择），面板的打开位置（文本光标旁、鼠标旁、主屏幕中央，或你正在输入的屏幕中央），以及让资源管理器释放 Win+字母 快捷键（[选择快捷键](#choosing-shortcuts)）。
-- **历史：** 保留多少项目、保留多少天、最大多大，以及记录哪些内容。
+- **历史：** 保留多少项目、保留多少天、最大多大、记录哪些内容，以及 *保存到临时文件夹后* 的图片保留多久。
 - **粘贴：** 选择后自动粘贴、把粘贴过的项目移到最上方、固定项目置顶。
 - **隐私：** 暂停、忽略的应用、*永久忘记的项目*、采集可靠性、清空历史。
 - **Windows 剪贴板：** Windows 自己的历史，以及 **从 Windows 导入**，它会导入 Win+V 仍记得的一切——包括它的固定项目。
@@ -232,6 +232,18 @@ BetterClipboard 从它的 [GitHub 发布版本](https://github.com/Nucs/BetterCl
 
 - **速览：** 把鼠标停在图片卡片上。片刻之后，图片会以原尺寸出现在屏幕中央（最多占屏幕的 80%）。移动鼠标，它就会消失。
 - **查看器：** 单击图片卡片右下角的眼睛按钮。图片会铺满整个屏幕打开，直到你关闭它。转动鼠标滚轮可朝指针所在位置缩放，拖动可平移，双击可在适应窗口和放大之间切换。按 `Esc`、单击它的 X 按钮或单击图片外部即可关闭。
+
+<a id="pictures-and-their-files"></a>
+### 图片及其文件
+
+ShareX、截图工具或 `Win+PrtScn` 保存的截图会记住它被保存成的文件：文件的名称、文件夹、格式、大小和日期会和图片一起保存在你的历史中。
+
+- **右键单击图片。** 菜单会写出文件名，以及它的格式、大小和上次更改时间。只要文件还在磁盘上，后面就有四项：*复制路径*；*将图片复制为文件*，可以像在文件资源管理器中复制的文件一样，把它粘贴到文件夹、邮件或聊天中；*打开文件*；以及 *打开文件夹*，即打开文件资源管理器并选中该文件。文件已被移动或删除时，菜单会如此说明，并省略这四项。
+- **任何图片，包括你从应用中复制的图片：** *保存到临时文件夹后 ›* 提供同样的四项。BetterClipboard 会先把图片作为 PNG 写入你的临时文件中它自己的文件夹（`%TEMP%\BetterClipboard\Images`），有原文件时沿用原文件的名称。再次保存同一张图片会找到这个文件；你之后编辑过的副本绝不会被覆盖。
+- **临时图片会在 BetterClipboard 启动时删除**，前提是它们已经 30 天没有使用。*设置 › 历史 › 临时图片保留天数* 可以修改这个天数，0 表示每次启动时都删除。BetterClipboard 运行期间从不删除它们，因此你刚以文件形式粘贴的图片会一直留给读取它的应用。
+- **在查看器中，** 图片的文件显示在图片上方：一行是名称、格式、大小和像素尺寸，下一行是文件夹和日期。单击名称可打开文件，单击文件夹可在文件资源管理器中打开它。
+- **历史中已有的截图** 会在能保留文件的版本第一次启动时查找一次它们的文件：每张截图会得到 ShareX 文件夹或“屏幕截图”文件夹中、与它相差两分钟以内保存且像素相同的那个文件。
+- **网络驱动器上的文件** 从不检查（已经断开的共享会让菜单卡住），因此它们的菜单项会保留。
 
 <a id="paths-in-the-files-tab"></a>
 ### “文件”标签页中的路径
@@ -428,7 +440,7 @@ Windows 只记得你最近 26 条 Win+R 命令。BetterClipboard 会把你用 `W
 
 使用 `pwsh`、`cmd`、`claude`、`codex` 和 `everything` 筛选器时，`bclip list` 显示你从这些标签页粘贴、复制或保留的内容。提示词本身在 `bclip prompts` 中。
 
-任何命令加上 `--json` 都会输出结构化结果（编号、类型、时间、来源应用、格式、grep 匹配）。退出代码：`0` 成功 · `1` 没有找到或超时 · `2` 用法错误 · `3` 无法连接 BetterClipboard 或命令行已关闭 · `4` 其他错误。`bclip help <command>` 会显示所有选项。`bclip` 的输出始终是英文，无论应用或 Windows 使用什么语言：脚本和代理依赖它。
+任何命令加上 `--json` 都会输出结构化结果（编号、类型、时间、来源应用、格式、grep 匹配，以及图片的文件：路径、名称、格式、大小和日期）。退出代码：`0` 成功 · `1` 没有找到或超时 · `2` 用法错误 · `3` 无法连接 BetterClipboard 或命令行已关闭 · `4` 其他错误。`bclip help <command>` 会显示所有选项。`bclip` 的输出始终是英文，无论应用或 Windows 使用什么语言：脚本和代理依赖它。
 
 ```powershell
 bclip get                                 # 我刚刚复制了什么？
@@ -500,9 +512,10 @@ bclip prompts migration -a claude         # 我问过 Claude Code 哪些关于�
 | Claude Code 和 Codex | 保留你发送给它们的提示词，从它们自己的历史文件中读取 | 开启 | *Claude Code 提示词*、*Codex 提示词* |
 
 - **日志中没有隐私内容：** 日志记录发生了什么（数量、版本、错误），从不记录你复制、运行、输入或发送的内容。日志始终是英文。
+- **临时图片是普通文件：** *保存到临时文件夹后* 会把图片作为普通 PNG 写入 `%TEMP%\BetterClipboard\Images`，它不在加密的历史中，因此其他应用可以打开它。BetterClipboard 会在启动时删除 30 天未使用的此类图片（*设置 › 历史*）。
 - **命令行默认关闭。** *命令行（bclip）* 开启期间，任何以你的身份运行的程序都可以通过它读取历史（参见[命令行](#command-line-for-scripts-and-ai-agents)）。
 - **Windows 自己的功能：** 你粘贴的项目会像任何复制一样进入剪贴板，因此 Windows 的剪贴板历史及其跨设备同步（*跨设备的剪贴板历史记录*）会按你在 Windows 中的设置来处理它（相关内容见 Microsoft 的[隐私声明](https://privacy.microsoft.com/privacystatement)）。
-- **删除：** 使用 `-RemoveData` 卸载会删除 BetterClipboard 保存的所有内容；卸载 Microsoft Store 版则总是如此。*设置 › 清空历史*，以及 *设置 › 集成* 中每个来源卡片上的 *删除已存储的内容…*，会删除其中一部分；两者都不会改动其他应用自己的文件。
+- **删除：** 使用 `-RemoveData` 卸载会删除 BetterClipboard 保存的所有内容，包括临时图片；卸载 Microsoft Store 版总是会删除历史，而它的临时图片会留在 `%TEMP%\BetterClipboard` 中，直到你或 Windows 的临时文件清理删除它们。*设置 › 清空历史*，以及 *设置 › 集成* 中每个来源卡片上的 *删除已存储的内容…*，会删除其中一部分；两者都不会改动其他应用自己的文件。
 
 <a id="uninstall"></a>
 ## 卸载
@@ -513,7 +526,7 @@ bclip prompts migration -a claude         # 我问过 Claude Code 哪些关于�
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\BetterClipboard\install.ps1" -Uninstall
 ```
 
-除非你加上 `-RemoveData`，否则你的历史会保留在 `%LOCALAPPDATA%\BetterClipboard` 中。Win+V 以及 BetterClipboard 从资源管理器释放的其他每个 Win+ 快捷键都会还给 Windows（加上 `-KeepWinVReleased` 可保持它们的释放状态）。
+除非你加上 `-RemoveData`，否则你的历史会保留在 `%LOCALAPPDATA%\BetterClipboard` 中；`-RemoveData` 也会删除 *保存到临时文件夹后* 留在 `%TEMP%\BetterClipboard` 中的图片。Win+V 以及 BetterClipboard 从资源管理器释放的其他每个 Win+ 快捷键都会还给 Windows（加上 `-KeepWinVReleased` 可保持它们的释放状态）。
 
 为每位用户安装的副本：在 *已安装的应用* 中使用同一个条目（它会请求管理员权限），或者在以管理员身份运行的 PowerShell 中：
 

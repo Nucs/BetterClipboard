@@ -251,8 +251,42 @@ public sealed record CliItem
     /// </summary>
     public DateTimeOffset? Edited { get; init; }
 
+    /// <summary>
+    /// The file a picture was read from (a screenshot ShareX, Snipping Tool or Win+PrtScn saved) with its details as they were
+    /// when read; omitted when no file is known. The file may have been moved or deleted since.
+    /// </summary>
+    public CliFile? File { get; init; }
+
     /// <summary><c>grep</c>: the matching lines.</summary>
     public IReadOnlyList<CliMatch>? Matches { get; init; }
+}
+
+/// <summary>
+/// The file a picture came from, as <c>bclip</c> lists it (<see cref="CliItem.File"/>): what the file looked like when
+/// BetterClipboard read it, which is still what these say after the file is gone.
+/// </summary>
+public sealed record CliFile
+{
+    /// <summary>The full path the file had when it was read.</summary>
+    public string Path { get; init; } = string.Empty;
+
+    /// <summary>Its name with the extension.</summary>
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>The extension with its dot (<c>.png</c>); omitted when the name has none.</summary>
+    public string? Extension { get; init; }
+
+    /// <summary>The image format its bytes are in (<c>PNG</c>, <c>JPEG</c>, …), which may disagree with the extension; omitted when not recognized.</summary>
+    public string? Format { get; init; }
+
+    /// <summary>Its size in bytes when read; omitted when unknown.</summary>
+    public long? SizeBytes { get; init; }
+
+    /// <summary>When the file was created, as the file system reported it; omitted when unknown.</summary>
+    public DateTimeOffset? Created { get; init; }
+
+    /// <summary>When the file was last written; omitted when unknown.</summary>
+    public DateTimeOffset? Modified { get; init; }
 }
 
 /// <summary>

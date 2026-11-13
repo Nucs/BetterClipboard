@@ -133,7 +133,8 @@
     asks for administrator rights when it does not have them.
 
 .PARAMETER RemoveData
-    With -Uninstall: also delete the history, settings and logs folder. Irreversible.
+    With -Uninstall: also delete the history, settings and logs folder, and the temporary pictures in
+    %TEMP%\BetterClipboard. Irreversible.
 
 .PARAMETER KeepWinVReleased
     With -Uninstall: leave Explorer's DisabledHotkeys as it is.
@@ -731,6 +732,26 @@ function Remove-StaleLeftovers {
     if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return }
     foreach ($stale in @(Get-ChildItem -LiteralPath $parent -Directory -Filter "$leaf.*-stale-*" -ErrorAction SilentlyContinue)) {
         Remove-Item -LiteralPath $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Remove-TemporaryPictures {
+    <#
+    .SYNOPSIS
+        With -RemoveData: deletes the pictures the app's "Save to temp and" wrote, %TEMP%\BetterClipboard (CLAUDE.md
+        2.49), which are plain PNG files outside the history and which the app deletes only when it starts again.
+    .DESCRIPTION
+        Best effort: a file another program still holds open (a picture pasted into it as a file) stays, and the note
+        says where; Windows' own clean-up of temporary files removes it later. This account's temporary folder only:
+        other accounts' pictures are in their own profiles. The folder holds nothing but those pictures (an isolated
+        instance's are in a subfolder of it); the installer's own staging folders have other names.
+    #>
+    $folder = Join-Path ([IO.Path]::GetTempPath()) $AppName
+    if (-not (Test-Path -LiteralPath $folder)) { return }
+    Write-Step "Deleting the temporary pictures in $folder"
+    Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $folder) {
+        Write-Note "Some temporary pictures are still open in another program and stay in $folder until Windows cleans up its temporary files."
     }
 }
 
@@ -2527,6 +2548,7 @@ function Uninstall-BetterClipboard {
     if ($RemoveData) {
         Write-Step "Deleting history, settings and logs in $DataDir"
         if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
+        Remove-TemporaryPictures
     }
     else {
         Write-Note "Your history was kept in $DataDir (use -RemoveData to delete it)."
@@ -2676,7 +2698,8 @@ function Uninstall-BetterClipboardForAllUsers {
     if ($RemoveData) {
         Write-Step "Deleting history, settings and logs in $DataDir"
         if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
-        Write-Note "Other users' histories stay in their own %LOCALAPPDATA%\$AppName."
+        Remove-TemporaryPictures
+        Write-Note "Other users' histories stay in their own %LOCALAPPDATA%\$AppName, and their temporary pictures in their own %TEMP%\$AppName."
     }
     else {
         Write-Note "Each user's history was kept in their own %LOCALAPPDATA%\$AppName."

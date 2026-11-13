@@ -36,6 +36,14 @@ public sealed class ClipCapture
     public string? SourceTitle { get; init; }
 
     /// <summary>
+    /// The file the content was read from, when an integration read it from disk (a screenshot ShareX, Snipping Tool or
+    /// Win+PrtScn saved); stored as <see cref="ClipEntry.File"/>. A bump replaces an earlier file with this one (the newest
+    /// save is the likeliest to still exist) and keeps it when this is <see langword="null"/>, so a clipboard copy of the
+    /// same picture that comes after the file never drops its path.
+    /// </summary>
+    public SourceFile? File { get; init; }
+
+    /// <summary>
     /// Request to pin the stored entry (used when importing items the user pinned in Win+V). Pinning is
     /// only ever added by a capture, never removed — an import cannot unpin something the user pinned here.
     /// </summary>

@@ -79,6 +79,13 @@ public sealed class WindowsScreenshotWatcherTests : IDisposable
         Assert.Equal("Win+PrtScn", captures[1].Source!.DisplayName);
         Assert.Equal("Screenshots folder", captures[2].Source!.DisplayName);
         Assert.Equal(3, handled.Count);
+
+        // Each keeps its file and its details as read (CLAUDE.md §2.49).
+        Assert.Equal(Path.Combine(folder, "BC-TEST Screenshot 2026-10-01 093015.png"), captures[0].File!.Path);
+        Assert.Equal(snip.Length, captures[0].File!.SizeBytes);
+        Assert.Equal("PNG", captures[0].File!.Format);
+        Assert.Equal(captures[0].CapturedAtUtc, captures[0].File!.ModifiedUtc);
+        Assert.Equal(Path.Combine(folder, "BC-TEST Screenshot (5).png"), captures[1].File!.Path);
     }
 
     /// <summary>

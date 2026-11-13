@@ -1278,6 +1278,9 @@ public sealed partial class ClipboardFlyout : Window
             }
         }
 
+        // A picture: its file's line and actions while the file is on disk, and "Save to temp and" (ClipboardFlyout.ImageFiles.cs).
+        AddImageFileItems(menu, item);
+
         // Only commands run with Win+R before: running arbitrary copied text is one mistaken click from harm.
         if (item.Pick is null && item.Entry.HasRunHistory)
         {

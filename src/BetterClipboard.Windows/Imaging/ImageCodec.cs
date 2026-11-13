@@ -72,6 +72,42 @@ public static class ImageCodec
     }
 
     /// <summary>
+    /// Computes the content hash a picture file's entry would have: the pixel hash <see cref="AnalyzeAsync"/> gives (straight
+    /// alpha, sRGB), or — for a picture too large to hash by pixels — the hash of the file's bytes, which is what a PNG file
+    /// stored byte for byte hashes to. Nothing else is decoded (no thumbnail).
+    /// </summary>
+    /// <remarks>
+    /// For the one-time search for the files of screenshots stored before BetterClipboard kept files: a candidate file is the
+    /// entry's file exactly when this equals the entry's content hash. A picture over <see cref="MaxPixelsForPixelHash"/>
+    /// that was not a PNG cannot be matched this way (its stored PNG is a re-encode), which only costs that file's path.
+    /// </remarks>
+    /// <param name="encoded">A complete image file.</param>
+    /// <param name="cancellationToken">Cancels between WinRT steps.</param>
+    /// <returns>64-character lowercase hex SHA-256.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="encoded"/> is <see langword="null"/>.</exception>
+    /// <exception cref="Exception">WIC rejects the data (COMException with WINCODEC_ERR_* HRESULTs).</exception>
+    /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
+    public static async Task<string> ContentHashAsync(byte[] encoded, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(encoded);
+        using var input = await ToStreamAsync(encoded).ConfigureAwait(false);
+        var decoder = await BitmapDecoder.CreateAsync(input).AsTask(cancellationToken).ConfigureAwait(false);
+        uint width = decoder.PixelWidth;
+        uint height = decoder.PixelHeight;
+        if ((long)width * height > MaxPixelsForPixelHash)
+        {
+            return ContentHasher.ForImage(encoded);
+        }
+
+        // The same decode as AnalyzeAsync's pixel hash, or the two would never agree.
+        var full = await decoder.GetPixelDataAsync(
+                BitmapPixelFormat.Bgra8, BitmapAlphaMode.Straight, new BitmapTransform(),
+                ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.ColorManageToSRgb)
+            .AsTask(cancellationToken).ConfigureAwait(false);
+        return ContentHasher.ForImagePixels((int)width, (int)height, full.DetachPixelData());
+    }
+
+    /// <summary>
     /// Converts any encoded image (e.g. the bitmap stream of a Windows history item) into the clipboard
     /// formats BetterClipboard stores for images: <c>PNG</c> (lossless, alpha) followed by <c>CF_DIBV5</c>
     /// (what classic Win32 apps paste).

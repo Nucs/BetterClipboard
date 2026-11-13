@@ -516,6 +516,21 @@ public sealed partial class ClipboardFlyout
             IsTabStop = true,
         };
         dim.Children.Add(ring);
+
+        // A picture with a known file shows its details above it, in a band the picture never covers: the band's height is
+        // kept free above the scroll host (BuildViewerContent), so the picture fits below it and zooms below it.
+        viewerTopReserve = 0;
+        if (card.Entry.File is { } file)
+        {
+            double bandWidth = Math.Max(200, geometry.Width - (2 * ViewerBandSideMargin));
+            var band = BuildFileDetailsBand(card, file, bandWidth);
+            band.Measure(new global::Windows.Foundation.Size(geometry.Width, double.PositiveInfinity));
+
+            // DesiredSize includes the band's top margin; the same margin again keeps a gap between it and the picture.
+            viewerTopReserve = band.DesiredSize.Height + ViewerBandMargin;
+            dim.Children.Add(band);
+        }
+
         dim.Children.Add(zoomChip);
         dim.Children.Add(closeButton);
         dim.Tapped += (_, _) => CloseViewer();
@@ -586,9 +601,10 @@ public sealed partial class ClipboardFlyout
         double naturalWidth = pixelWidth / geometry.Scale;
         double naturalHeight = pixelHeight / geometry.Scale;
 
-        // The viewport leaves a margin so the dim backdrop frames the image (and clicking that margin closes the viewer).
+        // The viewport leaves a margin so the dim backdrop frames the image (and clicking that margin closes the viewer). With
+        // a file details band (ClipboardFlyout.ImageFiles.cs) it starts below the band, so no zoom ever puts the picture on it.
         double viewportWidth = geometry.Width * 0.94;
-        double viewportHeight = geometry.Height * 0.9;
+        double viewportHeight = (geometry.Height - viewerTopReserve) * 0.9;
 
         // Fit the whole image in at the start (never upscaled past 100%); allow zooming well below and far above it.
         viewerFitZoom = Math.Min(ImagePreviewLayout.FitZoom(naturalWidth, naturalHeight, viewportWidth, viewportHeight), 1.0);
@@ -622,6 +638,7 @@ public sealed partial class ClipboardFlyout
             Height = viewportHeight,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, viewerTopReserve, 0, 0), // centered in what the details band leaves (0 without one)
             Background = new SolidColorBrush(Colors.Transparent), // a click on the letterbox bubbles to the dim → close
             ZoomMode = ZoomMode.Enabled,
             MinZoomFactor = (float)viewerMinZoom,

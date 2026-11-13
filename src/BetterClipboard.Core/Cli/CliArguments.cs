@@ -178,6 +178,8 @@ public static class CliArguments
               run = commands run with Win+R, kept beyond Windows' 26 (JSON: "lastRun").
               snipping = screenshots Snipping Tool or Win+PrtScn saved (origin "screenshot"), and everything
               Snipping Tool copied.
+              A picture whose file is known (a screenshot ShareX, Snipping Tool or Win+PrtScn saved) has JSON
+              "file": its path, name, extension, format, sizeBytes, created and modified, as they were when read.
               notepad++ (also npp) = the text of Notepad++'s unsaved tabs (origin "notepad++-tab", JSON
               "sourceTitle": the tab), files opened in Notepad++ (origin "notepad++-file"), and copies made in it.
               everything = what was copied from voidtools Everything, or pasted/kept from the panel's

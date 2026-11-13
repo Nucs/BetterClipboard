@@ -489,6 +489,13 @@ public sealed partial class AppController
             _ = ImportWindowsHistoryAsync();
         }
 
+        // Pictures "Save to temp and" wrote that the setting no longer keeps (AppController.ImageFiles.cs). Not after a silent
+        // restart: that is no start the user made, and with the setting at 0 it would delete a file pasted a moment ago.
+        if (!options.IsSilentRestart)
+        {
+            CleanTemporaryPictures();
+        }
+
         // The start's imports, catch-ups and the panel's warm-up leave garbage behind, much of it native memory that only
         // a collection gives back (AppController.Memory.cs).
         RequestMemoryReclaim("the start", StartupReclaimDelay);
