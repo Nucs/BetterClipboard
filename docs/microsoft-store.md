@@ -401,16 +401,28 @@ Done on 2026-11-13, in the owner's Partner Center account:
 
 [`store-listing.md`](store-listing.md) is what was entered, word for word.
 
-Left, and the owner's:
+**Decided by the owner on 2026-11-13** (review pages made from the kit; CLAUDE.md §3.5 has their words):
 
-1. **Read the listing** (the kit, or the draft itself) and say what to change.
+- The listing's name, publisher, texts, category, links and price stand. **The six screenshots are to be
+  replaced**, as the last step, after asking the owner again what they want instead.
+- All five languages go out. Native speakers are asked to review the Russian and the Spanish translation
+  (GitHub issues #4 and #5).
+- The version rule of §5.3 stands: the releases stay 0.2.x, and the Store package is (X+1).Y.Z.0. The Store
+  cannot take 0.2.11.0: "The other sections must be set to an integer between 0 and 65535 (except for the first
+  section, which cannot be 0)."
+- **Nothing is released or submitted until the owner says so in words**: first "release", then "publish". The
+  owner ticks the IARC agreement and presses *Submit for certification* themselves.
+
+Left:
+
+1. **The screenshots**: ask the owner what replaces them; retake, upload, put in order, check
+   (`store-listing.md` §4).
 2. **Age ratings**: tick "I agree to the IARC Terms of Use and I am the age of majority in my jurisdiction" and
    save. It is an agreement in the owner's name.
-3. **Decide the version rule** before the first submission, because it cannot be taken back: (X+1).Y.Z.0 as built
-   (§5.3), or release 1.0.0 first.
-4. **Release** the version to submit (a tag; CLAUDE.md §3.1). Its *Release* run builds the packages. Replace the
-   draft's two packages with the run's `store-packages` artifact, so that what the Store ships is what the tag
-   built.
+3. ~~Decide the version rule~~: decided, (X+1).Y.Z.0 (above).
+4. **Release** the version to submit, on the owner's word (a tag; CLAUDE.md §3.1). Its *Release* run builds the
+   packages. Replace the draft's two packages with the run's `store-packages` artifact, so that what the Store
+   ships is what the tag built.
 5. **Submit for certification.** It takes up to a few business days; a first submission with a restricted
    capability may take longer. A failure comes with a report; fix and resubmit.
 6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning; then the tenant,
