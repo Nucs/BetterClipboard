@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/github/v/release/Nucs/BetterClipboard?sort=semver)](https://github.com/Nucs/BetterClipboard/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
 
-[ENG](../../README.md) / **简体中文**
+[ENG](../../README.md) / **简体中文** / [Русский](README.ru.md) / [Español](README.es.md) / [עברית](README.he.md)
 
 </div>
 

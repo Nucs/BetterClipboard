@@ -6,7 +6,7 @@
 [![Release](https://img.shields.io/github/v/release/Nucs/BetterClipboard?sort=semver)](https://github.com/Nucs/BetterClipboard/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**ENG** / [简体中文](docs/translations/README.zh-CN.md)
+**ENG** / [简体中文](docs/translations/README.zh-CN.md) / [Русский](docs/translations/README.ru.md) / [Español](docs/translations/README.es.md) / [עברית](docs/translations/README.he.md)
 
 **The Win+V clipboard history Windows should have shipped.** Same shortcut, same panel by your cursor —
 but it remembers everything, survives restarts, searches instantly, and keeps it all encrypted on your PC.
