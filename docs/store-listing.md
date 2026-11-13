@@ -442,13 +442,37 @@ description, description, features, search terms and captions against the Store'
 
 1. On the app's overview page in Partner Center, *Export listings* saves a `.csv` with one column per listing
    language and one row per field. That file is the template: its first three columns must stay as they are.
-2. `python tools/release/make-store-listing-csv.py --template <exported.csv> --output <import.csv>` fills it from
-   this kit: descriptions, short descriptions, features, search terms, the copyright line, and with
-   `--screenshots <n>` the captions of the first *n* screenshots. Everything else in the file stays as exported
-   (pictures that are already uploaded appear there as web addresses and are kept).
-3. *Import listings* › *Import .csv* takes the result. Partner Center saves nothing unless the whole file is valid,
-   and shows what is not.
+2. `python tools/release/make-store-listing-csv.py --template <exported.csv> --output <import.csv> --screenshots 6`
+   fills it from this kit: descriptions, short descriptions, features, search terms, the copyright line, and each
+   screenshot's caption. Everything else in the file stays as exported (pictures that are already uploaded appear
+   there as web addresses and are kept).
+3. *Import listings* › *Upload .csv* takes the result. Partner Center saves nothing unless the whole file is valid.
+4. **Export again and check:** `python tools/release/make-store-listing-csv.py --check --template <new export.csv>
+   --screenshots 6` compares what Partner Center now holds with this kit: every text, every caption under its
+   picture, and every language's screenshots in the order of §2. It names what differs.
+5. **Put the screenshots in order** in the languages the check names (below), then repeat step 4 until it says
+   that the export is what the kit says.
 
-Pictures: upload the screenshots and the tile icon once, in the English listing. The next export names them by web
-address; `--copy-pictures-from en-us` puts those addresses into every other language's column, so all five listings
-show the same pictures without five uploads.
+**An import does not keep the order of the screenshots** (measured 2026-11-13, three imports). After the import
+that added the captions, the English listing showed Settings first and the main panel last. After the next one, the
+Spanish and the Hebrew listing had changed their order too, although the file had not changed them, and the English
+one was still wrong although the file asked for the right order. A caption always stayed with its picture. So:
+
+- The script writes **each caption under its own picture**, wherever that picture is. It tells the pictures apart
+  by the captions they already have; for pictures that have none yet it takes the order the languages agree on, or
+  the language named by `--screenshots-in-order <language>`. It stops when it cannot tell, and when the languages
+  do not show the same pictures.
+- The order is put right **on the listing page of each language**: a screenshot dragged onto another one changes
+  places with it, and the page saves that at once (no *Save*). Until the page is loaded again it shows *Add image
+  caption* on the cards it moved; the captions are still there. Through the browser tools,
+  [`tools/release/order-store-screenshots.js`](../tools/release/order-store-screenshots.js) does the dragging: run
+  it on a freshly loaded listing page with that language's captions in the order of §3.
+
+Pictures: upload the screenshots and the tile icon once, in the English listing, in the order of §2. The next export
+names them by web address; `--copy-pictures-from en-us` puts those addresses into every other language's column, so
+all five listings show the same pictures without five uploads.
+
+**Right-to-left listings** (Hebrew): the scripts add a left-to-right mark (U+200E) after the signs that end a Latin
+word, as the app does for its own Hebrew texts. Without it a right-to-left Store page shows "Notepad++" as
+"++Notepad". Write the texts in §3 plainly; the kit itself must stay free of invisible characters, and the check in
+step 4 fails when Partner Center's Hebrew texts lack their marks.

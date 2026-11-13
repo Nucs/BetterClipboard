@@ -395,7 +395,7 @@ Done on 2026-11-13, in the owner's Partner Center account:
 | Properties | Complete | Utilities + tools, Productivity; the privacy policy, website and support links |
 | Age ratings | Answered, **not saved** | Every answer "No": ESRB Everyone, PEGI 3, IARC 3+ |
 | Packages | Complete | `1.2.11.0` for x64 and ARM64, built on the owner's PC before the change was committed: to be replaced by a release's own |
-| Store listings | Complete | Five languages: texts, search terms, six screenshots with captions, the tile icon |
+| Store listings | Complete | Five languages: texts, search terms, six screenshots with captions, the tile icon. Checked against the kit after the last import (`make-store-listing-csv.py --check`): every text, every caption under its picture, every language in the kit's order |
 | Submission options | Complete | Publish when certified; the `runFullTrust` justification |
 | Additional testing information | Saved | The notes for certification |
 

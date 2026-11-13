@@ -20,11 +20,16 @@ The layout this module relies on (docs/store-listing.md):
                                                   screenshots' order
     **Copyright and trademark info:** `text`      English section only; it serves every language
 
+A right-to-left listing (Hebrew) is finished as it is read: its shown texts get a left-to-right mark after the signs
+that end a Latin word ("Notepad++"), so that the Store does not show "++Notepad" (keep_trailing_signs has the story).
+The kit itself stays free of invisible characters.
+
 Nothing here prints or exits: a kit that cannot be read raises KitError, and the caller decides what that means.
 """
 
 import io
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,9 +53,65 @@ COPYRIGHT_AT_MOST = 200
 # one was saved (2026-11-13). The page saves nothing and says so only in red under the box.
 JUSTIFICATION_AT_MOST = 500
 
+# U+200E LEFT-TO-RIGHT MARK, built from its number on purpose: written as a character or as an escape it has ended up
+# in files as the raw, invisible character before, where no diff shows it.
+LEFT_TO_RIGHT_MARK = chr(0x200E)
+
 
 class KitError(Exception):
     """The kit is missing, or is not laid out the way this module reads it (the message says what was looked for)."""
+
+
+def holds_right_to_left(text):
+    """Whether a text holds a letter of a right-to-left script (Hebrew, Arabic and the others Unicode marks so).
+
+    Args:
+        text: The text.
+
+    Returns:
+        True when at least one character's bidirectional class is R or AL; False for an empty text.
+    """
+    return any(unicodedata.bidirectional(character) in ("R", "AL") for character in text)
+
+
+def keep_trailing_signs(text):
+    """Puts a left-to-right mark after the signs that end a Latin word ("Notepad++", "C#").
+
+    For text that is shown right to left. Under the Unicode bidirectional algorithm a run of neutral signs between
+    a left-to-right word and right-to-left text (or the end of the line) takes the line's direction, so a Hebrew
+    Store page would show "Notepad++" as "++Notepad". The mark is an invisible strong left-to-right character: the
+    signs then sit between two left-to-right characters and stay with their word. It is the rule the app applies
+    to its own Hebrew texts (UiText.KeepTrailingSignsWithTheirWord), kept the same here so that the listing and
+    the app agree.
+
+    Only "+" and "#" right after an ASCII letter are touched. Signs followed by a letter or a digit ("Win+V",
+    "C++17") are inside their word already, and signs after a digit ("60+") are left to the algorithm, as a
+    right-to-left reader expects. A mark that is already there is not doubled, so finishing a text twice changes
+    nothing.
+
+    Args:
+        text: The text.
+
+    Returns:
+        The text with a mark after each such run of signs; the same text when there is none.
+    """
+    pieces = []
+    copied = 0
+    index = 1
+    while index < len(text):
+        if text[index] not in "+#" or not (text[index - 1].isascii() and text[index - 1].isalpha()):
+            index += 1
+            continue
+        end = index
+        while end < len(text) and text[end] in "+#":
+            end += 1
+        # Followed by a letter, a digit or a mark: the signs belong to a longer word, or are kept already.
+        following = text[end] if end < len(text) else ""
+        if not ((following.isascii() and following.isalnum()) or following == LEFT_TO_RIGHT_MARK):
+            pieces.append(text[copied:end] + LEFT_TO_RIGHT_MARK)
+            copied = end
+        index = end
+    return text if not pieces else "".join(pieces) + text[copied:]
 
 
 @dataclass
@@ -65,6 +126,9 @@ class Listing:
         features: The product features, in the kit's order.
         search_terms: The search terms, in the kit's order.
         captions: The screenshot captions, in the screenshots' order.
+        right_to_left: Whether the listing is shown right to left (its shown texts hold such letters). Its short
+            description, description, features and captions then carry left-to-right marks after signs that end a
+            Latin word (keep_trailing_signs); the search terms, which nobody is shown, never do.
     """
 
     language: str
@@ -74,6 +138,7 @@ class Listing:
     features: list = field(default_factory=list)
     search_terms: list = field(default_factory=list)
     captions: list = field(default_factory=list)
+    right_to_left: bool = False
 
     def problems(self):
         """What in this listing does not fit the Store's limits.
@@ -180,8 +245,34 @@ def _lines(block):
     return [line.strip() for line in block.split("\n") if line.strip()]
 
 
+def _finish(listing):
+    """Finishes a listing's shown texts for the direction it is shown in.
+
+    A listing whose shown texts hold right-to-left letters is marked so, and those texts get keep_trailing_signs.
+    Deciding per listing and not per text matters: on a right-to-left Store page a feature that is Latin letters
+    only ("Notepad++") would lose its signs to the other side as well.
+
+    Args:
+        listing: The listing as the kit states it; changed in place.
+
+    Returns:
+        The same listing.
+    """
+    shown = [listing.short_description, listing.description, *listing.features, *listing.captions]
+    if any(holds_right_to_left(text) for text in shown):
+        listing.right_to_left = True
+        listing.short_description = keep_trailing_signs(listing.short_description)
+        listing.description = keep_trailing_signs(listing.description)
+        listing.features = [keep_trailing_signs(feature) for feature in listing.features]
+        listing.captions = [keep_trailing_signs(caption) for caption in listing.captions]
+    return listing
+
+
 def read_kit(path=None):
     """Reads the kit.
+
+    The listings come back as the Store gets them: a right-to-left listing's shown texts carry their left-to-right
+    marks (_finish), so every caller checks and sends the same text.
 
     Args:
         path: The kit's file; the repository's docs/store-listing.md when omitted.
@@ -214,14 +305,14 @@ def read_kit(path=None):
             r"\*\*(Short description|Description|Product features|Screenshot captions)\*\*\s*```text\n(.*?)\n```",
             section, flags=re.S))
         terms = re.search(r"^\*\*Search terms:\*\*[ \t]*(.+)$", section, flags=re.M)
-        listings.append(Listing(
+        listings.append(_finish(Listing(
             language=match.group(1),
             code=match.group(2).lower(),
             short_description=blocks.get("Short description", "").strip(),
             description=blocks.get("Description", "").strip(),
             features=_lines(blocks.get("Product features", "")),
             search_terms=[term.strip() for term in terms.group(1).split(",") if term.strip()] if terms else [],
-            captions=_lines(blocks.get("Screenshot captions", ""))))
+            captions=_lines(blocks.get("Screenshot captions", "")))))
         stated = re.search(r"^\*\*Copyright and trademark info:\*\*[ \t]*`(.+?)`[ \t]*$", section, flags=re.M)
         if stated and not copyright_line:
             copyright_line = stated.group(1).strip()
