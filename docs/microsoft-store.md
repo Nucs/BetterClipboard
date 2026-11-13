@@ -368,15 +368,54 @@ skipped or failed. `draft` does the same without the commit.
 the API can then no longer commit it **[docs]**. Change the listing between releases through the kit and an
 import (`store-listing.md` §4), or in Partner Center on a submission started there.
 
-**Setting it up** (once; the first two steps need the owner):
+**Setting it up** (once; it waits for the owner's word, and the owner has to sign in once). What Microsoft's
+pages ask, read on 2026-11-13 **[docs]**:
 
-1. *Partner Center › Account settings › Tenants*: associate a Microsoft Entra tenant with the developer account.
-   It asks a Global administrator of that tenant to sign in with a work account. A personal Microsoft account is
-   not taken, also when it administers the tenant **[measured, 2026-11-13]**.
-2. *Account settings › User management › Microsoft Entra applications*: add an application with the **Manager**
-   role. Partner Center can create it there; it shows the tenant ID and the client ID, and makes a key once.
-3. Put the three values into the repository's secrets (`gh secret set NAME --repo Nucs/BetterClipboard`, the value
-   on standard input, so it never appears on a screen or in a log), then run *Microsoft Store › check*.
+- **To associate a tenant** with the developer account: "On the Microsoft Partner Center sign in page, enter the
+  Microsoft Entra ID credentials for the tenant that you want to associate." A Global administrator is not needed
+  for that ("you don't need global administrator permission in order to associate the tenant"). A personal
+  Microsoft account is not taken there, also when it administers the tenant **[measured, 2026-11-13]**: it must
+  be a work account of the tenant.
+- **To add the application**: "You must be signed in with a Manager account that also has global administrator
+  permissions for the Microsoft Entra ID tenant you're working in."
+- **Such an account needs a second factor.** Security defaults, which a directory made since October 2019 may
+  have switched on, make every user register multi-factor authentication at the first sign-in (the 14 days of
+  grace ended on 2024-07-29) and ask administrators for it at every sign-in. The second factor is the Microsoft
+  Authenticator app, or "any non-Microsoft application using OATH TOTP".
+
+The developer account is the owner's personal Microsoft account, so neither step can be done with it alone. The
+tenant to use is the owner's own Azure directory: the Azure CLI on the owner's PC is signed in as its
+administrator, so the application and its key can be made there without the key ever being shown. That directory
+holds one user, the owner's personal account **[measured]**, so a work account has to be made first. The plan:
+
+1. **Claude, with `az`**, on the owner's word: a work account in the directory for this one purpose, with the
+   Global Administrator role. Its first password goes into a file for the owner, never onto a screen or into a
+   log. And the application with its service principal (`az ad app create`, `az ad sp create`), without a key.
+2. **The owner, once**: *Partner Center › Account settings › Tenants › Associate Microsoft Entra ID*. Sign in with
+   the work account, set up its second factor when asked, and confirm the tenant.
+3. **The owner, or Claude in a browser of its own**, with Partner Center signed in *as the work account*:
+   *Account settings › User management › Microsoft Entra applications › Add Microsoft Entra application*, the
+   application of step 1, role **Manager**.
+4. **Claude**: the three secrets, the key by pipe, so that it never appears on a screen or in a log; the tenant
+   ID and the client ID with `gh secret set` too. Then *Microsoft Store › check*.
+
+   ```bash
+   az ad app credential reset --id <client id> --query password -o tsv \
+     | gh secret set PARTNER_CENTER_CLIENT_SECRET --repo Nucs/BetterClipboard
+   ```
+
+Not known until it is done:
+
+- whether the association makes the work account a Manager of the developer account by itself (Microsoft's pages
+  do not say, and step 3 needs it);
+- whether security defaults are on in the owner's directory: the Azure CLI's sign-in may not read the
+  directory's sign-in policies ("required scopes are missing in the token" **[measured]**), so step 2 shows it;
+- what *check* answers while the product has no published submission;
+- whether the work account can lose its administrator role once the application is added.
+
+**The key runs out.** A key made by `az ad app credential reset` lasts one year unless `--years` or `--end-date`
+says otherwise. After that the Store step fails, and the run is red. Renew it with the pipe of step 4, then run
+*check*.
 
 The script was never run against the real service: a first submission must be published first. It is tested
 against a stand-in that answers like the documented API and records every request
@@ -425,8 +464,9 @@ Left:
    ships is what the tag built.
 5. **Submit for certification.** It takes up to a few business days; a first submission with a restricted
    capability may take longer. A failure comes with a report; fix and resubmit.
-6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning; then the tenant,
-   the application and the three secrets (§7), so that the next release submits itself.
+6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning.
+7. **The pipeline's connection** (§7, "Setting it up"), on the owner's word: it needs one sign-in by the owner,
+   and can be made at any time. From the first published submission on, each release then submits itself.
 
 **The name.** "Better Clipboard", in two words, is the title of other products: a Store app (PAST-E Clipboard,
 `9NR75C5JPVVX`) and a Mac app (betterclipboard.com). Partner Center reserved "BetterClipboard" without objection;
@@ -443,6 +483,9 @@ BetterClipboard", the name chosen for code signing (CLAUDE.md §3.3).
 - **The package version differs from the release version** by one in its first number (§5.3).
 - **The release's Store step was never run against the real service** (§7): that needs a published first
   submission and the three secrets. Until then it warns and the release goes out without the Store.
+- **The pipeline signs in with a stored key**, which runs out (§7). A sign-in without one, with GitHub's OpenID
+  Connect token and a federated credential on the application, would spare the renewal. Not built: it cannot be
+  tried before the connection exists.
 - **The pipeline updates packages and "What's new", nothing else.** Listing texts and pictures change by hand: the
   kit, then an import (`store-listing.md` §4).
 - **The screenshots are English in all five listings**: the app in English, with invented data. Localized pictures
@@ -475,6 +518,15 @@ BetterClipboard", the name chosen for code signing (CLAUDE.md §3.3).
 - The Store submission API: `https://learn.microsoft.com/en-us/windows/uwp/monetize/create-and-manage-submissions-using-windows-store-services`
   and `https://learn.microsoft.com/en-us/windows/uwp/monetize/manage-app-submissions`
 - Importing and exporting listings: `https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/import-and-export-store-listings`
+- Associating a Microsoft Entra tenant with the developer account:
+  `https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/associate-existing-azure-ad-tenant-with-partner-center-account`;
+  a new tenant made by Partner Center:
+  `https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/create-new-azure-ad-tenant`
+- Microsoft Entra applications in a developer account (who may add one, roles, keys):
+  `https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/manage-azure-ad-applications-in-partner-center`;
+  users of the account: `https://learn.microsoft.com/en-us/windows/apps/publish/partner-center/overview-users-groups-azure-ad-applications`
+- Security defaults (multi-factor authentication for every user, at every sign-in for administrators):
+  `https://learn.microsoft.com/en-us/entra/fundamentals/security-defaults`
 - The Microsoft Store Developer CLI, considered for the pipeline (its `publish` takes one package file, and this
   edition ships one per architecture): `https://learn.microsoft.com/en-us/windows/apps/publish/msstore-dev-cli/commands`
 - The "headless app" refusal as other projects met and solved it (2026-10 and 2026-11; third parties, no Microsoft
