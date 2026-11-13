@@ -323,6 +323,10 @@ public sealed partial class StoredThumbnailViewModel(long entryId) : ObservableO
     /// Reads and decodes the thumbnail (the same 720×400 PNG the panel's card shows). Fire-and-forget from the UI thread: a
     /// failure leaves the frame empty and is logged by id only.
     /// </summary>
+    /// <remarks>
+    /// Shown before its bytes are set, so WinUI decodes it at the small frame's size rather than at 720 × 400 pixels (see
+    /// <c>ClipItemViewModel.EnsureThumbnail</c>).
+    /// </remarks>
     /// <param name="loader">Reads a thumbnail's bytes by entry id (the history service's).</param>
     /// <returns>A task completing when shown.</returns>
     public async Task LoadAsync(Func<long, Task<byte[]?>> loader)
@@ -339,12 +343,14 @@ public sealed partial class StoredThumbnailViewModel(long entryId) : ObservableO
             await stream.WriteAsync(bytes.AsBuffer());
             stream.Seek(0);
             var bitmap = new BitmapImage();
-            await bitmap.SetSourceAsync(stream);
             Image = bitmap;
+            await bitmap.SetSourceAsync(stream);
         }
         catch (Exception ex)
         {
             // async Task started without await: an escaping exception would go unobserved; a missing example is harmless.
+            // A bitmap that never got its picture is taken off the frame.
+            Image = null;
             AppLog.Warn($"Thumbnail of entry {entryId} for Delete stored failed: {ex.Message}");
         }
     }

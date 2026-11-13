@@ -92,12 +92,18 @@ public sealed partial class ClipboardFlyout
     /// <param name="item">The card (its <see cref="ClipItemViewModel.Command"/> is set; the actions reach it through the card).</param>
     /// <param name="target">Placement target.</param>
     /// <param name="position">Position relative to <paramref name="target"/>.</param>
+    /// <param name="leading">
+    /// Items shown above the card's own, or <see langword="null"/>: the text peek and the text viewer put Copy and Select
+    /// all for their selection there (ClipboardFlyout.TextPreview.cs).
+    /// </param>
     /// <returns>The menu, already opening.</returns>
-    private MenuFlyout ShowCommandMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position)
+    private MenuFlyout ShowCommandMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position, IReadOnlyList<MenuFlyoutItemBase>? leading = null)
     {
         var menu = new MenuFlyout();
+        AddLeadingItems(menu, leading);
         menu.Items.Add(MenuItem(UiText.Translate("Paste"), "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
         menu.Items.Add(MenuItem(UiText.Translate("Copy only"), "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
+        AddViewItem(menu, item);
         menu.Items.Add(MenuItem(UiText.Translate("Pin (keep in history)"), "\uE718", "Ctrl+P", () => _ = TogglePinAsync(item)));
         menu.Items.Add(new MenuFlyoutSeparator());
         menu.Items.Add(BuildGroupsSubMenu(item));

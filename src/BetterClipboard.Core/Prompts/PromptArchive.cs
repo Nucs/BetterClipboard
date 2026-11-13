@@ -108,8 +108,9 @@ public sealed record PromptQuery
     public DateTimeOffset? SentSince { get; init; }
 
     /// <summary>
-    /// Text hashes to leave out — the prompts the tab already shows as kept history entries, so one text is one card.
-    /// At most 500 are used.
+    /// Text hashes to leave out (at most 500 are used). The panel's prompt tabs used it for the prompts they show as kept
+    /// history entries until 2026-11-11; they now read every text, because a kept text's row is where they learn that it
+    /// was sent again (<see cref="Presentation.MergedTabOrder{TItem}"/>), and show it once either way.
     /// </summary>
     public IReadOnlyCollection<string>? ExcludeTextHashes { get; init; }
 }

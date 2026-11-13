@@ -1,4 +1,5 @@
 using BetterClipboard.Core.Localization;
+using BetterClipboard.Core.Updates;
 
 namespace BetterClipboard.Core.Startup;
 
@@ -272,6 +273,59 @@ public static class SignInStartup
 
         // No usable all-users entry, or the user's entry starts another copy, which would win: this copy's own entry.
         return new SignInChange(UserEntryChange.Write, ClearUserDisabled: entries.UserDisabledInWindows, SkipAllUsers: false);
+    }
+
+    /// <summary>The file name every BetterClipboard program has; an entry naming another program is not BetterClipboard's to move.</summary>
+    private const string ProgramFileName = "BetterClipboard.exe";
+
+    /// <summary>
+    /// Whether the user's own sign-in entry should now start this copy, because it starts a BetterClipboard that no longer
+    /// exists or is older than this one (CLAUDE.md §2.29, "The sign-in entry follows the copy that runs").
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why.</b> Seen in the portable-update test of 2026-11-13: a user who extracts a new release into a new folder and
+    /// runs it keeps the old folder's entry, so the next sign-in started the old version again, and the new copy's switch
+    /// read "off". The same happens when a portable folder is moved or renamed (the entry then names a program that is gone).
+    /// </para>
+    /// <para>
+    /// <b>What is never done.</b> An entry for the same or a newer version elsewhere is left alone (someone runs two copies
+    /// on purpose, or went back to an older one); an entry that names another program is not ours; the all-users entry is
+    /// never written (only installers write it); and Windows' "off" mark for the user's entry is kept, because a value
+    /// written again keeps the mark Windows holds under its name, so an entry the user turned off stays off.
+    /// </para>
+    /// </remarks>
+    /// <param name="entries">The entries Windows holds.</param>
+    /// <param name="executablePath">Full path of the running <c>BetterClipboard.exe</c>.</param>
+    /// <param name="thisVersion">The running copy's version.</param>
+    /// <param name="namedVersion">
+    /// The version of the program the user's entry names, read by the caller, or <see langword="null"/> when it could not be
+    /// read (or the program is gone: see <see cref="SignInEntries.UserTargetExists"/>).
+    /// </param>
+    /// <param name="skipAllUsers">This user's <c>AppSettings.SkipAllUsersStartup</c>, returned unchanged in the change.</param>
+    /// <returns>
+    /// A change that writes the user's entry for this copy, or <see langword="null"/> when the entry should stay as it is.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="entries"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="executablePath"/> is null or blank.</exception>
+    public static SignInChange? FollowThisCopy(SignInEntries entries, string executablePath, SemanticVersion thisVersion, SemanticVersion? namedVersion, bool skipAllUsers)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentException.ThrowIfNullOrWhiteSpace(executablePath);
+        if (entries.UserCommand is null || Names(entries.UserCommand, executablePath))
+        {
+            return null;
+        }
+
+        // Only an entry that starts some BetterClipboard: a value of our name that starts another program was made by hand.
+        var target = TargetOf(entries.UserCommand);
+        if (target is null || !string.Equals(Path.GetFileName(target.Trim()), ProgramFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        bool stale = !entries.UserTargetExists || (namedVersion is { } named && named < thisVersion);
+        return stale ? new SignInChange(UserEntryChange.Write, ClearUserDisabled: false, SkipAllUsers: skipAllUsers) : null;
     }
 
     /// <summary>

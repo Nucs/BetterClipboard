@@ -32,6 +32,12 @@ public sealed partial class ClipItemViewModel : ObservableObject
     private bool thumbnailRequested;
 
     /// <summary>
+    /// A newer time than the entry's last use that the card's tab knows its content by (<see cref="ShowNewerTime"/>), or
+    /// <see langword="null"/>. Kept across <see cref="Update"/>: the caption shows whichever of the two is newer.
+    /// </summary>
+    private DateTimeOffset? newerTime;
+
+    /// <summary>
     /// Creates the card model.
     /// </summary>
     /// <param name="entry">The history entry.</param>
@@ -52,6 +58,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
         {
             ColorBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(argb.A, argb.R, argb.G, argb.B));
         }
+
+        // A preview that is only the start of its text is cut off before any layout says so (ClipItemViewModel.TextView.cs).
+        RefreshCutOff();
     }
 
     /// <summary>
@@ -215,10 +224,27 @@ public sealed partial class ClipItemViewModel : ObservableObject
         IsPinned = entry.IsPinned;
         Caption = BuildCaption();
         (GroupBadges, GroupBadgesTooltip) = BuildGroupBadges();
+        RefreshCutOff();
     }
 
     /// <summary>Re-formats the relative time in the caption.</summary>
     public void RefreshCaption() => Caption = BuildCaption();
+
+    /// <summary>
+    /// Shows a newer time than the entry's last use in the caption: the time a merged tab (Claude, Codex, Pwsh, Cmd,
+    /// Everything) placed the card by, when its content happened again in the other app since it was last used here — a kept
+    /// prompt sent again, a kept command typed again, a kept file opened again (<see cref="Core.Presentation.MergedTabOrder{TItem}"/>).
+    /// Without it, such a card would read "3 days ago" among rows of minutes ago, and look misplaced.
+    /// </summary>
+    /// <param name="time">The row's time; <see langword="null"/> or a time not newer than the last use changes nothing.</param>
+    public void ShowNewerTime(DateTimeOffset? time)
+    {
+        if (time is { } newer && newer > Entry.LastUsedUtc && newer != newerTime)
+        {
+            newerTime = newer;
+            Caption = BuildCaption();
+        }
+    }
 
     /// <summary>
     /// Re-renders the group badges after groups changed (renamed, new icon, deleted) — the entry snapshot
@@ -251,6 +277,12 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// Starts loading the thumbnail if this is an image entry and it has not been requested yet.
     /// Safe to call repeatedly (container recycling calls it on every realization).
     /// </summary>
+    /// <remarks>
+    /// The image is handed to the card (<see cref="Thumbnail"/>) before its bytes are set: a bitmap that is already shown
+    /// when its source arrives is decoded at the size it is drawn (WinUI's decode to render size), about 230 × 128 DIPs in
+    /// a card, instead of the thumbnail's full 720 × 400 pixels — a quarter or less of the memory per card, for every image
+    /// card realized in the list. A bitmap given its source first is decoded at its natural size, as before 2026-11-12.
+    /// </remarks>
     public async void EnsureThumbnail()
     {
         if (thumbnailRequested || !Entry.HasThumbnail)
@@ -271,12 +303,14 @@ public sealed partial class ClipItemViewModel : ObservableObject
             await stream.WriteAsync(bytes.AsBuffer());
             stream.Seek(0);
             var bitmap = new BitmapImage();
-            await bitmap.SetSourceAsync(stream);
             Thumbnail = bitmap;
+            await bitmap.SetSourceAsync(stream);
         }
         catch (Exception ex)
         {
-            // async void: an escaping exception would crash the app; a missing thumbnail is harmless.
+            // async void: an escaping exception would crash the app; a missing thumbnail is harmless. A bitmap that never got
+            // its picture must not stand in for one (the image peek falls back to the thumbnail).
+            Thumbnail = null;
             AppLog.Warn($"Thumbnail for entry {Id} failed: {ex.Message}");
         }
     }
@@ -325,8 +359,10 @@ public sealed partial class ClipItemViewModel : ObservableObject
         }
 
         // Imported items (Windows never records their producer) show no source at all rather than a
-        // placeholder label repeated on every card.
-        parts.Add(RelativeTimeFormatter.Format(Entry.LastUsedUtc, DateTimeOffset.UtcNow));
+        // placeholder label repeated on every card. In a merged tab the time is the newer of the last use and the time the
+        // content happened again in the other app (ShowNewerTime): the time the card's place in the list follows.
+        var time = newerTime is { } newer && newer > Entry.LastUsedUtc ? newer : Entry.LastUsedUtc;
+        parts.Add(RelativeTimeFormatter.Format(time, DateTimeOffset.UtcNow));
 
         // A text replaced in place keeps the card's place (its time above); the edit is a time of its own. Shown only while it
         // is the newer of the two: a later copy of the same text moves the card, and then says it all.

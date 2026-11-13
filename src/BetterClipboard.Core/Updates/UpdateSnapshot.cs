@@ -50,6 +50,13 @@ public sealed record UpdateSnapshot
     /// <summary>How this copy was installed, which decides what the dialog can offer.</summary>
     public UpdateInstallKind InstallKind { get; init; }
 
+    /// <summary>
+    /// Whether this copy, extracted by hand (<see cref="UpdateInstallKind.Portable"/>), may replace the files of its own
+    /// folder: the folder can be written by this user. Always <see langword="false"/> for the other kinds. Whether a given
+    /// offer can be installed that way is <see cref="CanInstall"/> (<see cref="PortableUpdate.Accepts"/>).
+    /// </summary>
+    public bool PortableInPlace { get; init; }
+
     /// <summary>What the updater is doing.</summary>
     public UpdatePhase Phase { get; init; }
 
@@ -123,10 +130,16 @@ public sealed record UpdateSnapshot
     public bool WantsAttention => IsInstalling || (IsUpdateAvailable && !IsSkipped);
 
     /// <summary>
-    /// Whether this copy can install <see cref="Offer"/> by itself: it was installed by the installer. Other copies get
-    /// a command or a link instead.
+    /// Whether this copy can install <see cref="Offer"/> by itself: it was installed by the installer, or it is a portable
+    /// copy whose folder it can write and the offer is new enough to apply itself there (<see cref="PortableUpdate.Accepts"/>).
+    /// Other copies get a command or a link instead.
     /// </summary>
-    public bool CanInstall => IsUpdateAvailable && InstallKind == UpdateInstallKind.Installer;
+    public bool CanInstall => Offer is { } offer && InstallKind switch
+    {
+        UpdateInstallKind.Installer => true,
+        UpdateInstallKind.Portable => PortableUpdate.Accepts(offer.Release.Version, PortableInPlace),
+        _ => false,
+    };
 
     /// <summary>The download's progress from 0 to 1, or 0 when the size is unknown.</summary>
     public double DownloadFraction => TotalBytes > 0 ? Math.Clamp((double)DownloadedBytes / TotalBytes, 0, 1) : 0;

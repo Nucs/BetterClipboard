@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    msix_lab: a console probe that is registered as a full-trust MSIX package and reports how Windows treats such a
+    process (registry and AppData redirection, child processes, DPAPI, named objects, languages, the startup task, the
+    WinRT clipboard history). It registers a package, so it runs only inside a claude-desktops Windows desktop: see
+    README.md next to this file. CLAUDE.md §2.47 records what it measured.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <RootNamespace>MsixLab</RootNamespace>
+    <AssemblyName>msixlab</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- DPAPI, as BetterClipboard seals its history key (version from Directory.Packages.props). -->
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+  </ItemGroup>
+</Project>
+

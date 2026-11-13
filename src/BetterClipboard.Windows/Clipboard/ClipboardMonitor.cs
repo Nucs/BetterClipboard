@@ -9,7 +9,7 @@ using static BetterClipboard.Windows.Interop.NativeMethods;
 namespace BetterClipboard.Windows.Clipboard;
 
 /// <summary>
-/// Capture accounting since <see cref="ClipboardMonitor.Start"/> — the evidence behind "did we miss a copy?".
+/// Capture accounting since <see cref="ClipboardMonitor.Start()"/> — the evidence behind "did we miss a copy?".
 /// </summary>
 /// <remarks>
 /// Once no notification is pending, every notification is accounted exactly once:
@@ -116,7 +116,7 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
     private SourceAppInfo? pendingSource;
 
     /// <summary>
-    /// Creates a monitor. Nothing happens until <see cref="Start"/>.
+    /// Creates a monitor. Nothing happens until <see cref="Start()"/>.
     /// </summary>
     /// <param name="optionsProvider">Returns the current capture options; called on the monitor thread per capture.</param>
     /// <param name="resolver">Resolves the producing application.</param>
@@ -153,12 +153,33 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
     internal uint WatchdogMilliseconds { get; init; } = DefaultWatchdogMilliseconds;
 
     /// <summary>
+    /// The clipboard sequence number of the last state this monitor handled (read, skipped, or its own write): what a
+    /// silent restart hands to the next process (CLAUDE.md §2.46), so it can tell whether the clipboard changed in between.
+    /// </summary>
+    /// <remarks>Written on the monitor thread, read from any thread; a 32-bit read never tears.</remarks>
+    public uint LastHandledSequence => Volatile.Read(ref lastHandledSequence);
+
+    /// <summary>
     /// Creates the listener window and subscribes to clipboard updates. The content present at start is
     /// <b>not</b> captured (it was copied before we were watching; the Windows-history import covers it).
     /// </summary>
     /// <exception cref="Win32Exception">The listener window or subscription could not be created.</exception>
     /// <exception cref="InvalidOperationException">Already started.</exception>
-    public void Start()
+    public void Start() => Start(previousSequence: null);
+
+    /// <summary>
+    /// Creates the listener window and subscribes to clipboard updates, taking over from a process that was watching until
+    /// a moment ago (the silent restart, CLAUDE.md §2.46): when the clipboard changed since <paramref name="previousSequence"/>,
+    /// that newest state is read at once, as if a notification had come. A copy made while neither process listened is
+    /// then still recorded; the states before it are gone, as they are for every reader of a fast series of copies (§1.9).
+    /// </summary>
+    /// <param name="previousSequence">
+    /// The old process's <see cref="LastHandledSequence"/>, or <see langword="null"/> for a plain start (the content present
+    /// at start is then not captured, as <see cref="Start()"/> says).
+    /// </param>
+    /// <exception cref="Win32Exception">The listener window or subscription could not be created.</exception>
+    /// <exception cref="InvalidOperationException">Already started.</exception>
+    public void Start(uint? previousSequence)
     {
         if (window is not null)
         {
@@ -177,8 +198,17 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
                 throw new Win32Exception(Marshal.GetLastPInvokeError(), "AddClipboardFormatListener failed.");
             }
 
-            lastHandledSequence = GetClipboardSequenceNumber();
+            uint current = GetClipboardSequenceNumber();
+            lastHandledSequence = current;
             SetTimer(host.Handle, WatchdogTimerId, WatchdogMilliseconds, 0);
+
+            // Taking over from a process that stopped listening a moment ago: a change in between gets the same path as a
+            // live notification (posted, so it is read once this call has returned and the thread pumps again).
+            if (previousSequence is { } previous && previous != current)
+            {
+                lastHandledSequence = previous;
+                PostMessage(host.Handle, WM_CLIPBOARDUPDATE, 0, 0);
+            }
         }).GetAwaiter().GetResult();
     }
 

@@ -241,7 +241,14 @@ with another scale; a cloaked tool window, never seen, so it runs on a PC in use
 scales, §2.38),
 [`dpi_move_lab`](tools/probes/dpi_move_lab) (a WinUI 3 app: whether a window set up like the panel keeps the bounds
 `AppWindow.MoveAndResize` gave it on such a monitor, and with `--fix` whether asking again holds; cloaked and never
-activated, so it runs on a PC in use, §2.38).
+activated, so it runs on a PC in use, §2.38),
+[`probe_memmap.cs`](tools/probes/probe_memmap.cs) (what a running BetterClipboard's memory is: committed, charged and resident per
+kind — native heap, .NET heap, each DLL, GPU memory, stacks; read-only, with no window, no injected thread and no dump,
+so it can map the owner's own app, §2.45),
+[`msix_lab`](tools/probes/msix_lab) (what Windows changes for a program that runs from an MSIX package: registry and
+file redirection, change notifications, child processes, DPAPI, named objects, the startup task, WinRT clipboard
+history, languages, and what uninstalling removes; it registers a package, so it runs only inside a claude-desktops
+Windows desktop, never on the owner's PC, §2.47).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -295,18 +302,20 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`; what each integration stored, its parts counted and deleted: `Storage/StoredData`, `ClipStore.Stored.cs`, `Services/ClipHistoryService.Stored.cs`, §2.43), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`; whether the Run and Snipping tabs have anything to show, `ClipHistoryService.TabContent.cs`, §2.36), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging, presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/SettingsSearch`, Settings' fuzzy search, and `Presentation/StoredText`, the *Delete stored…* dialog's words, §2.43, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/TabArrangement`, the tabs' order and hiding from their right-click menu, §2.40, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28 and §2.31, and for the update dialog `Presentation/Markdown`, the release-notes parser, `Presentation/UpdateText` and `Presentation/UpdateDialogLayout`, §2.29), the sign-in rules (`Startup/SignInStartup`: the user's own and the all-users "Start with Windows" entry, when a start from the latter steps aside, what the switch shows and changes — §2.34), and the update system (`Updates/`: GitHub's release list, SemVer precedence, which release is offered and which notes are shown, `SHA256SUMS.txt`, the release feed and its download-trust rule, the HTTP client, the update service with its schedule and cache, how a copy was installed, the installer contract, the `--set-update-check` command — §2.29; `Updates/UpdateReminder`, when the panel reminds of a waiting update — §2.30; `Updates/LocalBuildFeed`, the dev-builds folder's development builds read as releases and copied with a checksum check, and the dev rule in `UpdateCatalog` — §2.39), and the interface languages (`Localization/`: one catalog per language and its flag, embedded in the DLL, keyed by the English text; `UiText` finds them, looks strings up, words plurals and decides which languages are translated enough to offer, `UiLanguage`, `PluralRules` (CLDR's rules from each catalog's header), `LanguageChoice` for the language picker, asked until a language is chosen — §2.37), tracked documents (`Documents/`, `Content/TextLoss`, `Storage/ClipStore.Documents.cs`: an editor's unsaved buffer kept as one entry, updated in place or split into a new copy by the text it lost) and Notepad++'s files (`NotepadPlusPlus/`: session, backups, config, command line, the opened-files tracker — §2.41). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21; Notepad++: the plugin-message client with its owner check (Authenticode, NOTEPAD++ signer), the locator, the unsaved-tabs watcher, the opened-files watcher, life cycle — §2.41), `Updates/` (the Installed-apps record of the running copy, the OS architecture, and `ScriptUpdateInstaller`, which takes `install.ps1` out of a verified package and runs it in update mode — §2.29; `LocalBuildsWatcher`, which tells the update service when the dev-builds folder changed — §2.39). **CS1591 = error.** |
-| [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`. **CS1591 = error.** |
-| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root. Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29), `LanguageWindow` (the language picker, shown until a language is chosen, §2.37; `Localization/TrExtension` and `FlagImages` serve XAML's labels and the flags). The panel's weekly update reminder and its keyboard guard for clicked tooltips are §2.30. |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,645 tests, one class at a time — §4: Settings' search and *Delete stored…* (§2.43, 57 cases: `SettingsSearchTests` 40 — the query, every kind of match and what it refuses, letters in order never across a space, fuzzy matches only as the fallback, weights, highlights through embeddings and combining marks, the typo measure; `StoredDataTests` 17 — every source's parts, one-pass counting, the newest examples, deletion keeping pins, groups and other tabs and tombstoning, the service's preview, counts and deletion of archives and lists, shortcuts kept on one line); hiding a tab with its clipboard rows (§2.42, 6 cases: the setting's defaults, normalization and round trip; the rows left out of All, the kind tabs, Pinned and searches while grouped entries stay; two tabs at once; entries a filter cannot decide staying listed; the footer's count); the right-to-left languages and the descriptions for translators (§2.37, `RightToLeftTextTests` 44: Hebrew alone right to left, every Hebrew string embedded once or one of the few without Hebrew, values inside the embedding, English fallbacks untouched, `JoinLine`, the header's direction, `AsSentence` (with the ideographic full stop after a Han or kana title), a Latin word's trailing `+` and `#` kept with it (Notepad++ in Hebrew, and no shipped Hebrew string without its mark); every `en.json` row described, and the check itself on small catalogs; group names stored without direction controls); the tabs' arrangement (§2.40, 25 cases: the stored order completed and "All" kept first, moves past tabs that do not show and never past "All", what is stored, the settings' names, the XAML declaring one tab per filter); local dev builds (§2.39, 44 cases: the folder's reader — complete builds only, staging folders, names, checksum lists, architectures, bounds — the verified copy and its refusals, the owner's table of what is offered, release builds and release candidates, the notes of local builds, the words of a local build and of the way back, Chinese, no reminder for a development build, and the service: offered at start without a request, the folder followed, a changed package refused, the way back offered); the translation guards (§2.37, `TranslationCoverageTests` 14: every text and constant the code hands to UiText has a catalog entry and every entry is still used, both read from `src` by `CSharpSourceScanner` (next to `LocalizationTests.CodeAndCatalogsAgree`, below); Core's template lists in the catalogs; group icon names unique in every language; date patterns valid; `TranslateFormatted`, `DateCulture`, dates, the forgotten list, source names, update failures and the sign-in description in Chinese); the panel position (§2.38, 8 cases: `PanelPositionSettingsTests`); the interface languages (§2.37, 111 cases: the shipped languages and their headers, flags Direct2D can draw, English-text keys and hash keys, catalogs well formed with valid placeholders and what each lacks reported, the code and the catalogs agreeing (a lexer over every XAML and C# file), plurals in each language with English fallback, CLDR plural rules in five languages with their samples and broken rules refused, which languages are offered, Windows' language to a catalog with Traditional Chinese kept English, explicit choices, a text in a given language, when a start asks (until a language is chosen, also after an update from a version that never asked), `HasHistory`, relative times and bclip's tables English on request, and no log line built from translated text); the Run and Snipping tabs showing only with something in them (§2.36, 8 cases: the store's lookup of a tab's newest entry and of one entry, the history service through a first and a last run, a first import, Snipping Tool's pictures and text, a picture copied again from Paint, a clear, a start over a store that has both, a prune and Forget forever); Start with Windows for every user (§2.34, 31 cases: the entry formats, which program an entry names, what the switch shows for every mix of the user's entry, the entry for every user and Windows' marks, when a start from the entry for every user steps aside, each flip's change and all 192 flips reaching the asked state, the card's words, the setting, a copy for every user recognized before the per-user records, its update words and command); the weekly update reminder (§2.30, 26 cases: once a week to the second, a clock that was wrong, who is never reminded, the room over the window, the setting); the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: the row every load selects — the newest copy below the pins, only while they lead the list, also on the store's own pages — and Up from it reaching the lowest pin; tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it (§2.31: onto the first group shown or the clipboard icon, as a walk that shows its groups or one that only picks, when Space and Enter pick or go back with the group, when Down leaves from the lowest group, and held keys acting once), one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), the sign-in entries on scratch keys (§2.34: both entries and both marks read, odd values tolerated, writes that touch only BetterClipboard's values, plan and registry together, the PC's Installed-apps entry), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller), and the dev-builds folder's watcher (§2.39: the folder appearing, a build renamed into it, the folder deleted and created again) (380 tests, all in English whatever Windows' language: `TestLanguage`, §2.37; `TranslationTemplateTests` 6 check the Windows template lists in the catalogs and produce every shortcut problem, registration state and run result; `PanelPlacementTests` 27, §2.38). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/publish-dev.ps1`](tools/release/publish-dev.ps1) (builds a commit in a temporary worktree and publishes it to this PC's dev-builds folder, where the installed app's update button offers it; `-Install` bootstraps — §2.39, skill `local-dev`), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`release/test-iex.ps1`](tools/release/test-iex.ps1) (checks that `install.ps1`'s param block survives the README's `irm \| iex` in 5.1 and 7 — CI runs it, §3.1), [`release/test-all-users.ps1`](tools/release/test-all-users.ps1) (installs and uninstalls for every user for real, as administrator and as SYSTEM — CI or a disposable VM only, §2.34), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`make_flags.py`](tools/make_flags.py) (the language flags, §2.37), [`localization/`](tools/localization) (`catalog.py`: add (one, or a file of many), add-plural, rename, remove, review and check UI strings, list a language's missing ones, convert hash keys; `smoke-windows.ps1`: the PR's UI smoke test in every language the catalogs hold, CI or a disposable VM only — §2.37), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4). |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`; what each integration stored, its parts counted and deleted: `Storage/StoredData`, `ClipStore.Stored.cs`, `Services/ClipHistoryService.Stored.cs`, §2.43), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`; whether the Run and Snipping tabs have anything to show, `ClipHistoryService.TabContent.cs`, §2.36), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging and the memory planner (`Diagnostics/MemoryReclaim`: when to give memory back, §2.45) and the silent restart's rules (`Diagnostics/SilentRestart`: when the app replaces itself after Settings closed, §2.46), presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/SettingsSearch`, Settings' fuzzy search, and `Presentation/StoredText`, the *Delete stored…* dialog's words, §2.43, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/TabArrangement`, the tabs' order and hiding from their right-click menu, §2.40, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, `Presentation/MergedTabOrder`, the time order of the tabs that list kept entries next to another app's items, §2.44, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28 and §2.31, and for the update dialog `Presentation/Markdown`, the release-notes parser, `Presentation/UpdateText` and `Presentation/UpdateDialogLayout`, §2.29), the rule by which a newer copy takes over from an older one (`Startup/InstanceTakeover`, §2.48), the sign-in rules (`Startup/SignInStartup`: the user's own and the all-users "Start with Windows" entry, when a start from the latter steps aside, what the switch shows and changes — §2.34), and the update system (`Updates/`: GitHub's release list, SemVer precedence, which release is offered and which notes are shown, `SHA256SUMS.txt`, the release feed and its download-trust rule, the HTTP client, the update service with its schedule and cache, how a copy was installed, the installer contract, the `--set-update-check` command — §2.29; `Updates/UpdateReminder`, when the panel reminds of a waiting update — §2.30; `Updates/PortableUpdate`, which offers a portable copy installs in its own folder and its helper's command line — §2.48; `Updates/LocalBuildFeed`, the dev-builds folder's development builds read as releases and copied with a checksum check, and the dev rule in `UpdateCatalog` — §2.39), and the interface languages (`Localization/`: one catalog per language and its flag, embedded in the DLL, keyed by the English text; `UiText` finds them, looks strings up, words plurals and decides which languages are translated enough to offer, `UiLanguage`, `PluralRules` (CLDR's rules from each catalog's header), `LanguageChoice` for the language picker, asked until a language is chosen — §2.37), tracked documents (`Documents/`, `Content/TextLoss`, `Storage/ClipStore.Documents.cs`: an editor's unsaved buffer kept as one entry, updated in place or split into a new copy by the text it lost) and Notepad++'s files (`NotepadPlusPlus/`: session, backups, config, command line, the opened-files tracker — §2.41), and the rules for other copies of BetterClipboard on the PC (`Editions/`: `OtherEdition`, `EditionSetupPlan`, which picks the Microsoft Store edition's next setup step, and `EditionDataMigrator`, which copies another edition's history with checksums, proves the copy, and commits or rolls the move back; `AppPaths.ResolveDefault(packageFamilyName)` and `PackagedDataDirectory`, that edition's own data folder — §2.47), and a picture's file (`Model/SourceFile`, `Content/ImageFileFormat`, `Content/TempImageFiles`, `Storage/ClipStore.SourceFiles.cs`, `Services/ClipHistoryService.SourceFiles.cs`, `Presentation/SourceFileText`, `Presentation/ByteSizeText` — §2.49), and long texts (`TextView/`: the language detector, the syntax highlighter, the XML and JSON formatter, the RTF writer and its palettes, and the text viewer's sources, views and pages; `Presentation/Markdown`'s parse options — §2.50). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Diagnostics/ProcessMemory` (the process's memory counters, the reclaim and the working-set trim, §2.45), the silent restart's Windows side (§2.46: `Shell/QuietProcess`, a start without the busy pointer; `Input/UserActivity`, idle time and held keys; the shortcut hold `HotkeyService.HoldWithHookAsync`; the clipboard hand-over `ClipboardMonitor.Start(uint?)`; the tray icon's hidden start and `HandOverTo`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection, placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R, the other BetterClipboard processes and a program's version — `RunningCopies`, `ProgramVersion`, §2.48), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21; Notepad++: the plugin-message client with its owner check (Authenticode, NOTEPAD++ signer), the locator, the unsaved-tabs watcher, the opened-files watcher, life cycle — §2.41), `Updates/` (the Installed-apps record of the running copy, the OS architecture, and `ScriptUpdateInstaller`, which takes `install.ps1` out of a verified package and runs it in update mode — §2.29; `PortableUpdateInstaller` and `PortableUpdateCommand`, which unpack the package and let the new version replace a portable folder's files, all or nothing — §2.48; `LocalBuildsWatcher`, which tells the update service when the dev-builds folder changed — §2.39), and the Microsoft Store edition's Windows side (§2.47: `Packaging/PackageIdentity`, whether the process runs from the Store package, one kernel32 call, also linked into `bclip`; `Packaging/PackagedRestart`, which asks Windows to start the app again after a Store update; `Shell/PackagedStartup`, the package's startup task; `Store/OtherEditionLocator`, the other copies on the PC; `Store/EditionUninstaller`, the checks before and the run of the package's own `install.ps1 -Uninstall` on a copy from the installer; `RunMruWatcher`'s polling mode), and a picture's file (§2.49: `Shell/FileOnDisk`, whether a file is still there without touching a network path; `Integrations/ScreenshotFileFinder`, the one-time search for earlier screenshots' files; `ImageCodec.ContentHashAsync`). **CS1591 = error.** |
+| [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`; in the Microsoft Store package it is the app's console alias `bclip.exe` (an execution alias with an executable of its own) and reads that edition's data folder (§2.47). **CS1591 = error.** |
+| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root (`AppController.Memory.cs` gives memory back after each use, §2.45; `AppController.SilentRestart.cs` and `RestartBridge` replace the process, unseen, a few seconds after Settings closed, §2.46). Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica, under Windows' own title bar since 2026-11-12, §2.45), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29), `LanguageWindow` (the language picker, shown until a language is chosen, §2.37; `Localization/TrExtension` and `FlagImages` serve XAML's labels and the flags). The panel's weekly update reminder and its keyboard guard for clicked tooltips are §2.30. The Microsoft Store edition (§2.47): `AppController.Store.cs` (its setup: other copies, the move, the welcome), `StoreSetupWindow` with `StoreSetupView` and `StoreSetupViewModel` (the setup's one window and its pages), `SettingsWindow.Store.cs` and `SettingsViewModel.Store.cs` (the cards that edition keeps), `Program.ContinueStoreEditionInBackground`, and `SingleInstance`'s Store marker and setup claim. A picture's file (§2.49): `AppController.ImageFiles.cs` (copy the path or the file, open it or its folder off the UI thread, *Save to temp and*, the start's clean-up) and `Views/ClipboardFlyout.ImageFiles.cs` (the card menu's items and the image viewer's band). Long texts (§2.50): `Views/ClipboardFlyout.TextPreview.cs` (the hover peek and the text viewer), `Views/TextPreviewPresenter.cs` (their RichEdit surface with its line-number gutter), `AppController.TextView.cs` (a card's whole text) and `ViewModels/ClipItemViewModel.TextView.cs` (when a card is cut off). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,893 tests, one class at a time — §4: long texts (§2.50, 107 cases: `TextLanguageDetectorTests` 62, `SyntaxHighlighterTests` 19, `StructuredTextFormatterTests` 9, `TextViewRenderingTests` 17 — code recognized without taking prose for it, each language's colors, XML and JSON re-indented with every token kept and no external entity ever resolved, every character through RTF, Markdown drawn, the views, pages); a picture's file (§2.49, 41 cases: `SourceFileTests` — the file kept on insert, replaced whole or kept on a bump, added by a bump after the copy, filled only when missing by an import; the columns added to an older store; the search's candidates and `SetSourceFile` filling only what is missing; the service's events; `bclip`'s `file`; the setting's default, clamp and round trip; the format from the first bytes (17 cases); a file described as read; temporary pictures' folders, names, reuse that never overwrites, expiry by last use and the clean-up; the menu's label and the viewer's facts and dates; sizes like Explorer (6 cases)); the Microsoft Store edition's rules (§2.47, 36 cases: `EditionTests` — the package's data folder and instance scope; the setup plan for every mix of copies, other data and own history; what a move lists, reads and needs; a whole move that brings a history over, proves it and removes the old folder last; a rollback that leaves the original; copies that are no history, or another machine's, refused; the welcome off until given); the silent restart's rules (§2.46, 14 cases: `SilentRestartTests` — restart at once when quiet; not wanted without Settings, while exiting, or when a language would be asked; each blocker named in the log's words; the pauses inclusive to the millisecond; the most lasting reason named first; what calls a started restart off, and that input does not); giving memory back (§2.45, 11 cases: `MemoryReclaimTests` — when a reclaim falls due, one reason's burst postponing it within two minutes while other reasons keep their own time, nothing while a window shows, the log's wording, and the one image format a picture's reader asks for, from a real store); the merged tabs' time order (§2.44, 24 cases: `MergedTabOrderTests` 19 — an old kept entry no longer leading, a recent one leading, a twin shown once at the newer time, pins only when asked, ties, pages that place each entry where its time falls and a twin pulling its entry to a later page, items without times, repeats, a deleted entry left out, arguments, and random lists keeping every rule in one page or many; 4 in `ShellTabTests` — the Cmd and Pwsh merges and the live cap; a kept prompt on real archive data in `PromptStoreTests`); Settings' search and *Delete stored…* (§2.43, 57 cases: `SettingsSearchTests` 40 — the query, every kind of match and what it refuses, letters in order never across a space, fuzzy matches only as the fallback, weights, highlights through embeddings and combining marks, the typo measure; `StoredDataTests` 17 — every source's parts, one-pass counting, the newest examples, deletion keeping pins, groups and other tabs and tombstoning, the service's preview, counts and deletion of archives and lists, shortcuts kept on one line); hiding a tab with its clipboard rows (§2.42, 6 cases: the setting's defaults, normalization and round trip; the rows left out of All, the kind tabs, Pinned and searches while grouped entries stay; two tabs at once; entries a filter cannot decide staying listed; the footer's count); the right-to-left languages and the descriptions for translators (§2.37, `RightToLeftTextTests` 44: Hebrew alone right to left, every Hebrew string embedded once or one of the few without Hebrew, values inside the embedding, English fallbacks untouched, `JoinLine`, the header's direction, `AsSentence` (with the ideographic full stop after a Han or kana title), a Latin word's trailing `+` and `#` kept with it (Notepad++ in Hebrew, and no shipped Hebrew string without its mark); every `en.json` row described, and the check itself on small catalogs; group names stored without direction controls); the tabs' arrangement (§2.40, 25 cases: the stored order completed and "All" kept first, moves past tabs that do not show and never past "All", what is stored, the settings' names, the XAML declaring one tab per filter); local dev builds (§2.39, 44 cases: the folder's reader — complete builds only, staging folders, names, checksum lists, architectures, bounds — the verified copy and its refusals, the owner's table of what is offered, release builds and release candidates, the notes of local builds, the words of a local build and of the way back, Chinese, no reminder for a development build, and the service: offered at start without a request, the folder followed, a changed package refused, the way back offered); the translation guards (§2.37, `TranslationCoverageTests` 14: every text and constant the code hands to UiText has a catalog entry and every entry is still used, both read from `src` by `CSharpSourceScanner` (next to `LocalizationTests.CodeAndCatalogsAgree`, below); Core's template lists in the catalogs; group icon names unique in every language; date patterns valid; `TranslateFormatted`, `DateCulture`, dates, the forgotten list, source names, update failures and the sign-in description in Chinese); the panel position (§2.38, 8 cases: `PanelPositionSettingsTests`); the interface languages (§2.37, 111 cases: the shipped languages and their headers, flags Direct2D can draw, English-text keys and hash keys, catalogs well formed with valid placeholders and what each lacks reported, the code and the catalogs agreeing (a lexer over every XAML and C# file), plurals in each language with English fallback, CLDR plural rules in five languages with their samples and broken rules refused, which languages are offered, Windows' language to a catalog with Traditional Chinese kept English, explicit choices, a text in a given language, when a start asks (until a language is chosen, also after an update from a version that never asked), `HasHistory`, relative times and bclip's tables English on request, and no log line built from translated text); the Run and Snipping tabs showing only with something in them (§2.36, 8 cases: the store's lookup of a tab's newest entry and of one entry, the history service through a first and a last run, a first import, Snipping Tool's pictures and text, a picture copied again from Paint, a clear, a start over a store that has both, a prune and Forget forever); Start with Windows for every user (§2.34, 31 cases: the entry formats, which program an entry names, what the switch shows for every mix of the user's entry, the entry for every user and Windows' marks, when a start from the entry for every user steps aside, each flip's change and all 192 flips reaching the asked state, the card's words, the setting, a copy for every user recognized before the per-user records, its update words and command); the weekly update reminder (§2.30, 26 cases: once a week to the second, a clock that was wrong, who is never reminded, the room over the window, the setting); the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: the row every load selects — the newest copy below the pins, only while they lead the list, also on the store's own pages — and Up from it reaching the lowest pin; tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it (§2.31: onto the first group shown or the clipboard icon, as a walk that shows its groups or one that only picks, when Space and Enter pick or go back with the group, when Down leaves from the lowest group, and held keys acting once), one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, and when its newest command was typed, §2.44; the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), the sign-in entries on scratch keys (§2.34: both entries and both marks read, odd values tolerated, writes that touch only BetterClipboard's values, plan and registry together, the PC's Installed-apps entry), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller), and the dev-builds folder's watcher (§2.39: the folder appearing, a build renamed into it, the folder deleted and created again) (445 tests, all in English whatever Windows' language; a picture's file, §2.49: `ImageFileTests` 4 — `FileOnDisk` on this PC's drives, the content hash equal to the analyzer's, the search matching by time then pixels, a file gone meanwhile — and `ShareXIntegrationTests.EarlierScreenshot_GetsItsFileOnce`, with the watchers' captures carrying their files: `TestLanguage`, §2.37; `TranslationTemplateTests` 6 check the Windows template lists in the catalogs and produce every shortcut problem, registration state and run result; `PanelPlacementTests` 27, §2.38; `ProcessMemoryTests` 2, §2.45: the memory counters, and a reclaim that collects a dropped array and trims, in a collection of its own that runs alone; the silent restart, §2.46: `SilentRestartTests` 4 — a quiet start of a console program and its end, refusals, the idle-time read, the shortcut hold refusing nothing to hold — and two take-over cases in `ClipboardCaptureTests`: a copy made while nobody listened is read at once, an unchanged clipboard is not; the Microsoft Store edition's uninstaller, §2.47: `EditionUninstallerTests` 13 — the check and the uninstall through the real Windows PowerShell against a stand-in `install.ps1` in a folder named with a space, a quote, an ampersand, percent signs and a non-ASCII letter; success proven by the program being gone; failures in their words; a folder this account may not change named; and the real `install.ps1`'s uninstall parameter set). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/publish-dev.ps1`](tools/release/publish-dev.ps1) (builds a commit in a temporary worktree and publishes it to this PC's dev-builds folder, where the installed app's update button offers it; `-Install` bootstraps — §2.39, skill `local-dev`), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`release/test-iex.ps1`](tools/release/test-iex.ps1) (checks that `install.ps1`'s param block survives the README's `irm \| iex` in 5.1 and 7 — CI runs it, §3.1), [`release/test-all-users.ps1`](tools/release/test-all-users.ps1) (installs and uninstalls for every user for real, as administrator and as SYSTEM — CI or a disposable VM only, §2.34), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`make_flags.py`](tools/make_flags.py) (the language flags, §2.37), [`localization/`](tools/localization) (`catalog.py`: add (one, or a file of many), add-plural, rename, remove, review and check UI strings, list a language's missing ones, convert hash keys; `smoke-windows.ps1`: the PR's UI smoke test in every language the catalogs hold, CI or a disposable VM only — §2.37), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4), [`release/package-msix.ps1`](tools/release/package-msix.ps1) (the Microsoft Store package per architecture, checked after the build; unsigned for the Store, or signed with a test certificate for a test desktop — §3.5), [`release/submit-store.ps1`](tools/release/submit-store.ps1) (sends a release's Store packages to the Microsoft Store with Microsoft's submission API: the release run's last step, §3.5) and [`release/test-submit-store.ps1`](tools/release/test-submit-store.ps1) (that script against a stand-in service on this PC, 39 checks, in CI), [`release/check-store-listing.py`](tools/release/check-store-listing.py) (the listing kit's texts against the Store's limits), [`release/make-store-listing-csv.py`](tools/release/make-store-listing-csv.py) (fills Partner Center's exported listings file from the kit, each caption under its own picture: one import instead of some forty pasted fields per language; with `--check` it says whether an export is what the kit says), [`release/order-store-screenshots.js`](tools/release/order-store-screenshots.js) (puts a listing page's screenshots in order with the page's own drag-and-drop, for the browser tools: an import does not keep their order), [`release/store_listing.py`](tools/release/store_listing.py) (their shared reader of the kit, which also finishes a right-to-left listing's texts) and [`release/test-store-listing.py`](tools/release/test-store-listing.py) (52 checks, in CI), [`readme/screen-shot.py`](tools/readme/screen-shot.py) (rounds a window's corners in a whole-screen capture: the Store listing's pictures, §3.5), [`make_store_assets.py`](tools/make_store_assets.py) (the package's 35 logos and the listing's tile icon, from the app icon's own drawing). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
-| [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test) · release on `v*` tags (+ Chocolatey push) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2). |
+| [`packaging/msix`](packaging/msix) | manifest / JSON / PNG | The Microsoft Store package's template: `Package.appxmanifest` (filled in by the build), `identity.json` (the values Partner Center assigned when the name was reserved, 2026-11-13), `Assets/` (the package's logos), `Listing/` (the listing's tile icon, its six screenshots, and a pristine listings export that the listing tools are tested with) (§3.5, [`docs/microsoft-store.md`](docs/microsoft-store.md), [`docs/store-listing.md`](docs/store-listing.md)). |
+| [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test, a test-signed Store package, the Store scripts' tests) · release on `v*` tags (+ Chocolatey push, + the Microsoft Store submission, §3.5) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2) · *Microsoft Store*, run by hand: check the Store's secrets, or submit a released version again (§3.5). |
 
 Shared build config: [`Directory.Build.props`](Directory.Build.props) (docs on,
-nullable, version), [`Directory.Packages.props`](Directory.Packages.props)
+nullable, version; obj and bin folders of their own, under `artifacts/store-build`, for the Microsoft Store
+package build of the app, §3.5), [`Directory.Packages.props`](Directory.Packages.props)
 (central package versions), [`global.json`](global.json) (SDK 10.0.1xx +
 `"test": {"runner": "Microsoft.Testing.Platform"}` — required: xunit.v3 4.x no longer supports VSTest on .NET 10).
 
@@ -643,14 +652,16 @@ updater's cached release list and, during an update, its download — §2.29); o
 experimenting** so the real history stays clean). An override also **scopes the instance** (§2.9): its own
 single-instance lock, `--exit`/`--show-flyout` events and pipe, so an isolated run coexists with the
 user's installed app instead of signalling it. Everything is encrypted at rest (§2.6.1); Windows itself
-encrypts only pins. Logs never contain clipboard content, keys, the binding or the identifiers.
+encrypts only pins. Logs never contain clipboard content, keys, the binding or the identifiers. The Microsoft Store
+edition keeps the same files in its package's own folder,
+`%LOCALAPPDATA%\Packages\<family>\LocalState\BetterClipboard`, which Windows removes with the app (§2.47).
 
 **The network** (since 2026-10-09, §2.29). The update check is the only request the app makes by itself: once a
 day, GitHub's public release list, with nothing but the app's version in the request. `AppSettings.CheckForUpdates`
 (on by default) and `install.ps1 -NoUpdateCheck` switch it off; Chocolatey copies and isolated instances never check
 by themselves. Everything else that uses the network is asked for by the user: *Check now*, *Update and restart*,
 and links that open in the browser. The README's *Privacy* section is the privacy policy and must name every such
-use (§4).
+use (§4). The Microsoft Store edition makes no request by itself at all: it has no update service (§2.47).
 
 **Password managers are ignored by default** (`Core/Settings/KnownPasswordManagers`, added 2026-09-25 on
 request: "Add to Ignored apps all known password managers you can find").
@@ -1203,6 +1214,9 @@ fixes. The research it stands on follows below ("Research").
   (`ContentHasher.ForFiles`, case-insensitive) equals a stored entry's shows once, as the entry (pins, groups).
   Forgotten picks never show (`ClipHistoryService.FindForgottenAsync`), hidden ones neither. Newest first by last
   used / last opened, pinned on top when that setting asks. Pick cards carry synthetic negative ids.
+  - Since 2026-11-11 (§2.44) a stored file sorts by the newer of its last use and its pick's last opening, and its card
+    shows that time. Until then only the last use counted: a file kept last month and opened again today sorted as
+    last month's.
 - **Hide, not delete.** Nothing in Everything is ever changed. Delete on a pick hides it until a later opening:
   state `everything.hidden` in the encrypted store (UTC ticks + path, newest 500; exact ticks — a rounded time
   would compare earlier than the opening it recorded and un-hide the pick at once). Delete on a stored file card
@@ -1829,10 +1843,15 @@ BetterClipboard). Settings › Integrations › *Pwsh tab* / *Cmd tab* (`AppSett
   when BetterClipboard saw a command, not when it was typed. Clink's own history file is not read (not installed here).
 
 **The tabs** (`ShellTab.Merge`, `FlyoutViewModel.Shells.cs`).
-- Rows: the stored half first (pinned on top when that setting asks, then most recently used), then the live commands
-  in the shell's order, at most 500 (no paging). A live command that is also stored shows once, as the entry; forgotten
-  ones never show (fingerprints via `FindForgottenAsync`); the search box narrows both halves with the same toggles
-  (`SearchMatcher`, on the pool).
+- Rows: newest first by each row's newest activity, pinned entries on top when that setting asks, the live commands at
+  most 500 (no paging; every stored entry stays). A live command that is also stored shows once, as the entry, at the
+  newer of the two times; forgotten ones never show (fingerprints via `FindForgottenAsync`); the search box narrows both
+  halves with the same toggles (`SearchMatcher`, on the pool).
+  - Since 2026-11-11 (§2.44). Until then the stored half came first, whatever its age: a command pasted from the tab once
+    stayed its first row for good.
+  - Cmd: a live command's time is when BetterClipboard saw it. Pwsh: its commands carry no times and keep the file's
+    order; a kept command shows where PowerShell's history has it, above them all only when it was used after the newest
+    command was typed (the history file's last write, `PowerShellHistorySource.LastNewestCommandUtc`).
 - **Delete hides** a live command until it is typed again: state `pwsh.hidden` / `cmd.hidden` = count + content hash
   (never the text), newest 1,000; a higher count shows it again. Delete on a stored command in its tab hides its live
   twin too, or it would take the card's place at the next load.
@@ -1941,6 +1960,10 @@ for interoperability only: Claude Code 2.1.282 (the JavaScript in its binary) an
   `claude` / `codex` — a new event like a shell keep: pause, ignored apps, size, Forget forever) and takes its card's
   place. *Delete until sent again* (Del) deletes every send of the text from the archive; *Forget forever…* forgets it
   everywhere (history, both archives, and every later read).
+  - **Where a kept prompt shows** (since 2026-11-11, §2.44): once, at the newer of its last use and its last send, among
+    the archived prompts by time; pinned ones on top while "Show pinned items first" is on. Until then every kept prompt
+    was listed above the whole archive, so the first prompt ever pasted from the tab stayed its first row for good
+    (reported: "The first row in Claude tab is always old one").
 - **Footer** "14,156 prompts (17,169 sent) · 3 kept"; a search shows "60+ matching of …"; the first import shows its
   progress; key hint "↵ paste · Ctrl+P pin · Del delete". Entering a tab catches the archive up first (≤ 600 ms wait).
 - **Settings › Integrations** › *Claude Code prompts* / *Codex prompts* (`AppSettings.KeepClaudeCodePrompts` /
@@ -2037,7 +2060,9 @@ for interoperability only: Claude Code 2.1.282 (the JavaScript in its binary) an
 - **Rules at ingest:** forgotten fingerprints never stored; a deleted text (tombstone: agent + text hash + time) stays out
   for sends up to the deletion; the item size limit; ignored apps (`claude`, `codex`); **pause** skips prompts read
   live (the checkpoint moves: never recorded, the Win+R rule) but not the agent's first import.
-- **Listing:** grouped by text (newest send's row via `ix_prompts_text`), paged by text, kept prompts' hashes excluded.
+- **Listing:** grouped by text (newest send's row via `ix_prompts_text`), paged by text. Until 2026-11-11 the panel left
+  the kept prompts' hashes out of its pages; it now reads every text, and its merge (§2.44) shows a kept text once, where
+  its archive row says it was last sent when that is newer than its last use.
 - A first import is stored in slices of 1,000 through the history worker (copies queued meanwhile are not held up);
   only the last slice moves the checkpoint.
 - Forgetting anything (a card, a text, a stored entry) deletes archived prompts with that fingerprint too.
@@ -2883,13 +2908,23 @@ displayed below the buttons of decision."
 | Copy | How it is recognized | Checks by itself | Installs by itself |
 |---|---|---|---|
 | Installed by `install.ps1` | The Installed-apps entry's `InstallLocation`, or `installer.json`'s `installDir`, names the exe's folder | Yes | Yes |
-| Extracted by hand | Neither record names its folder | Yes | No: *Download page*, *Copy install command*, *Later* |
+| Extracted by hand | Neither record names its folder | Yes | Since 0.2.11: in its own folder, file by file, when this user may write the folder and the offer is 0.2.11 or later (§2.48). Otherwise *Download page*, *Copy install command*, *Later* |
 | Chocolatey | Its folder ends `\lib\betterclipboard\tools\app` (checked first) | No | No: *Copy command* (`choco upgrade betterclipboard`), *Later* |
 | For every user (`install.ps1 -AllUsers`, since 2026-10-18, §2.34) | The PC's Installed-apps entry (HKLM) names the exe's folder (checked before the per-user records) | No | No: *Copy command* (the install command with `-AllUsers`, for PowerShell as administrator), *Later* |
 
-- **Why a copy extracted by hand never replaces itself:** an update renames the whole folder aside and deletes it. That
-  is safe only for a folder the installer made. The zip ships `install.ps1` next to the exe, so that file proves nothing;
-  the installer's own records do.
+- **Why a copy extracted by hand is never swapped as a whole:** an installer's update renames the whole folder aside and
+  deletes it. That is safe only for a folder the installer made. The zip ships `install.ps1` next to the exe, so that file
+  proves nothing; the installer's own records do. Since 0.2.11 such a copy updates itself file by file instead, touching
+  only the release's own files (§2.48).
+- **What its two ways out did before 0.2.11** (run 2026-11-13 from the released 0.2.9 zip to 0.2.10, §5; both traps are
+  fixed for copies of 0.2.11 and later, §2.48):
+  - *Copy install command* is clean. The pasted `irm … | iex` closes the copy, installs into `%LOCALAPPDATA%\Programs`
+    and takes the history, pins, settings and *Start with Windows* with it; that copy then updates itself.
+  - *Download page* is clean only when the user closes BetterClipboard and extracts the new zip over the same folder. Two
+    traps otherwise (§6). The new exe started while the old copy runs hands over to it and exits: nothing changes.
+    Extracted into a new folder (Explorer's *Extract All* default), the old copy's *Start with Windows* entry keeps
+    starting the old exe at every sign-in, and the new copy's switch reads Off.
+  - Each new exe from a browser download meets SmartScreen's "Windows protected your PC" until releases are signed (§3.3).
 - **An isolated instance** (`BETTERCLIPBOARD_DATA_DIR`) never checks by itself, so tests and dev runs do not use up the
   user's 60 requests an hour at GitHub. It is judged by its own `installer.json` alone, never by the Installed-apps
   entry: started from the installed folder, it would otherwise replace that folder under the regular instance, which
@@ -4668,13 +4703,879 @@ each with its description.
 - Line breaks inside "Win+PrtScn" elsewhere in the app (a card's description in Russian showed "…от Win" / "+PrtScn") are
   older than this change and not fixed: §6.
 
+### 2.44 The merged tabs in time order: a kept item no longer leads the Claude, Codex, Pwsh and Cmd tabs (fixed 2026-11-11)
+
+User report (2026-11-11): "The first row in Claude tab is always old one for some reason, identify why and if its in other
+tabs too and fix".
+
+**Why** **[verified]**.
+- **Pasting from a prompt tab keeps the prompt.** `AppController.PastePromptAsync` (Enter, *Copy only*) stores the text as a
+  history entry (origin `ClaudeCode` / `Codex`), as do Ctrl+P and a group (§2.21).
+- **And every kept entry led the tab.** `FlyoutViewModel.ReloadPromptsAsync` listed the tab's stored entries (up to 200)
+  above the whole archive, whatever their age, and left their texts out of the archive's pages. So the first prompt ever
+  pasted from the tab stayed its first row for good, above every prompt sent since. It was also selected (§2.28): Win+V,
+  Enter pasted that old prompt.
+- **The same in other tabs:**
+  - Codex shares the loader.
+  - Pwsh and Cmd: `ShellTab.Merge` put the stored half first (§2.19's documented order).
+  - Everything sorted by time already (§2.14), but a file both kept and picked sorted by its last use only: a file kept
+    last month and opened again today sorted as last month's.
+  - The tabs of stored history (All, Text, Run, ShareX, Snipping, Notepad++, …) list one source, by recency: not
+    affected.
+- **Reproduced** on the released 0.2.10 in a test desktop (§5): two prompts kept from the Claude tab sat above two
+  prompts sent after them, and a command kept from the Pwsh tab above two commands typed after it.
+
+**The rule now** (`Core/Presentation/MergedTabOrder<TItem>`, pure; its remarks are the full spec): newest first by each
+row's newest activity, one row per content.
+- **Times:** a stored entry's is its last use; an item's is its own — a prompt's last send, a Cmd command's last time seen,
+  a pick's last opening.
+- **One row per content:** an item with a stored entry's content hash (its "twin": the same prompt, command or file) shows
+  once, as the entry (pins, groups), at the newer of the two times.
+  - An entry used after its twin's time is placed by its own time; the twin is dropped.
+  - One used before is placed where its twin is, and its card shows the twin's time
+    (`ClipItemViewModel.ShowNewerTime`). Without that, a kept "continue" sent again a minute ago read "3 days ago" among
+    rows of minutes ago.
+- **Pins:** with "Show pinned items first" on, pinned entries lead (most recently used first), as everywhere in the panel.
+  Their twins are dropped, and ArmCard still selects the newest unpinned row (§2.28).
+- **Ties:** the stored entry first.
+- **Items without times** (PowerShell's file keeps none) keep their order. A kept command shows at its command's place in
+  the file. It leads only when it was used after the newest command was typed: the history file's last write
+  (`PowerShellHistorySource.LastNewestCommandUtc`, via `AppController.PowerShellNewestCommandUtc`). One with no twin in the
+  700 commands read and used before that goes after the live commands; `ShellTab.CapCommands` keeps every stored row past
+  the 500-command cap.
+- **Paging** (the prompt tabs, 60 texts a page): the order is one object per load (`FlyoutViewModel.promptOrder`).
+  - An entry older than every prompt of the loaded pages waits for its page; the last page (fewer than 60 rows) places
+    what is left.
+  - The archive is no longer told to leave the kept texts out (`PromptQuery.ExcludeTextHashes` stays, unused by the
+    panel): a kept text's archive row is where the order learns that it was sent again.
+  - A waiting entry deleted meanwhile is forgotten (`TryApplyInPlace` → `Forget`), so it never comes back with its page.
+  - The footer's "· N kept" counts the waiting ones too (`WaitingCount`).
+
+**Pieces.**
+- Core: `Presentation/MergedTabOrder.cs` (new), `Shells/ShellTab.Merge` (+ `newestTypedUtc`, `CapCommands`,
+  `ShellTabRow.Time`), `Everything/EverythingTab.Merge` (`EverythingTabRow.Time` is now the merge's time).
+- Windows: `PowerShellHistorySource.LastNewestCommandUtc`.
+- App: `FlyoutViewModel.Prompts.cs` (the order, `PromptCards`), `FlyoutViewModel.Shells.cs`, `FlyoutViewModel.cs`
+  (Everything's cards, `CreateItem(entry, rowTime)`, `Forget` on a removal), `ClipItemViewModel.ShowNewerTime`,
+  `AppController.PowerShellNewestCommandUtc`.
+
+**Verified** (rows in §5): 24 Core tests and 1 Windows test; two mutations — every stored entry first again, and no twin
+handling — failed 22 and 17 tests; the whole suite; and the fault reproduced on the released 0.2.10 and gone with the fix,
+in a Windows 11 test desktop.
+
+**Limits / not built:**
+- A pinned entry's place among the pins follows its last use only (its twin's time may lie on a page not loaded yet).
+- Pwsh: a kept command used before the newest command was typed and no longer among the 700 commands read lands after
+  the live commands, also when it was used a minute before that command.
+- Cmd's times are when BetterClipboard saw a command (§2.19), so a kept command typed again is placed by that sighting.
+
+### 2.45 Memory: Settings no longer stays in memory, and memory is given back after every use (built 2026-11-12)
+
+User report (2026-11-12): "We have memory usage problem / 1. In general the memory we use is too large, 400mb / 2. Also in
+general the memory when opening settings and closing it rises and doesnt go back down. / Optimize memory end to end". Two
+HTML questions (pages in session f1d22507's scratchpad, `q/`); the owner chose:
+- **Settings' title bar: "Standard Windows title bar"**, over keeping the custom one with its handle leak (below);
+- **The working-set trim: "After every use"**, over only after a long idle, or never.
+
+**What was measured first.** Tools: VMMap, dotnet-counters, dotnet-gcdump and dotnet-dump. Places: a claude-desktops
+Windows 11 desktop ("bc-mem": no GPU, a seeded BC-TEST store of 3,300 entries and 15,000 prompts), and this PC's real GPU
+with isolated instances only.
+- **The installed 0.2.10 on the owner's PC** after two days: 267 MB private, ~9 MB of it live .NET objects. The rest was
+  native: the process heap (~93 MB: WinUI's XAML objects, text layouts, decoded images) and private allocations outside
+  any heap (~93 MB, 22 MB of it GPU write-combined memory); "What is left" below has the measured split.
+- **Settings in 0.2.10** (VM):
+  - the first open added 103 MB of private memory (76 → 179 MB), and every later open and close added another 17 to
+    22 MB for good (4 more cycles: 172 → 249 MB);
+  - a forced full collection gave nothing back, and a heap dump after five closes held all five Settings windows;
+  - GDI handles grew by 32 per open and close (52 → 191).
+- **Thumbnails** were decoded at the stored 720 × 400, whatever size they were drawn at.
+
+**Why a closed Settings window stayed in memory** **[verified]**:
+- **The cycle.** The XAML compiler's generated x:Bind code subscribes to the window's own `Activated` event
+  (`element1.Activated += bindings.Activated`, and the bindings refer back to the window) and never unsubscribes. Settings
+  also had handlers on itself (`Closed`, `Activated`) and on two `DispatcherQueueTimer`s (the search refresh and the
+  stored-data refresh); the update dialog had one more (its "Copied" timer).
+- **Why nothing collected it.** Those are native ↔ managed cycles that C#/WinRT's reference tracking cannot see through:
+  `Window` and `DispatcherQueueTimer` are not XAML elements, so the collector never learns that the window is unreachable.
+- **The fix.** `SettingsWindow.OnClosed` takes all of them off:
+  - `DetachGeneratedBindings` stops the bindings' tracking and removes the generated `Activated` handler, which it finds
+    by reflection (a log warning names it if a future XAML compiler renames it);
+  - the timers' `Tick` handlers are named methods and are removed (`CloseSearch`, `CloseStoredRefresh`);
+  - `UpdateDialog.Detach` stops the update dialog's timer;
+  - `AppController.OnSettingsWindowClosed` removes its own handler. `LanguageWindow` removes its `Closed` handler too.
+- **Afterwards** a heap dump holds no closed Settings window, and memory levels off (measured below).
+
+**The handle leak was the extended title bar** **[verified]**:
+- A WinUI window that extends its content into the title bar leaves 24 to 32 GDI handles behind per open and close.
+  Both APIs do it: `ExtendsContentIntoTitleBar` with `SetTitleBar`, and `AppWindow.TitleBar.ExtendsContentIntoTitleBar`.
+- With Windows' own title bar the growth is 3 per cycle. A diagnostic build without the app icon was never combined with
+  the standard title bar; the window icon is the likely source **[inferred]**.
+- A process may hold 10,000 GDI handles, so at 32 per cycle about 300 opens of Settings would have broken the app.
+- **The owner's choice:** Windows draws Settings' title bar now (the app icon, "BetterClipboard", Mica below it). It is
+  dark while the app's theme is dark (`DWMWA_USE_IMMERSIVE_DARK_MODE`, `WindowInterop.SetDarkTitleBar`), and follows a
+  theme change (`Root_ActualThemeChanged`).
+
+**Giving memory back** (`AppController.Memory.cs`; `Core/Diagnostics/MemoryReclaim`; `Windows/Diagnostics/ProcessMemory`):
+- **Why a reclaim is needed.** What a window or a decoded picture holds is native memory, freed only when the .NET
+  wrappers that own it are collected, and a tray app that allocates little may not collect for hours.
+- **When it is asked for, and how long it waits:**
+
+  | Reason (as logged) | Waits |
+  |---|---|
+  | "Settings closed", "the language picker closed" | 3 s |
+  | "using the panel" (the panel put away, `ClipboardFlyout.Conceal`) | 30 s |
+  | "a list refresh" (the hidden panel reloaded after copies) | 60 s |
+  | "the start" (imports and warm-up done) | 90 s |
+
+- **The plan** (`MemoryReclaimPlanner`, pure, tested):
+  - each reason waits for its own quiet period;
+  - a second request for the same reason postpones it, so a burst of summons ends first, but never past 2 minutes after
+    the burst's first request;
+  - nothing runs while the panel or Settings is on screen (a check again every 10 s).
+- **The reclaim** (`ProcessMemory.Reclaim`, on a pool thread):
+  - never on the UI thread, because a finalizer may need that thread to release a WinUI object;
+  - an aggressive, compacting full collection, the finalizers, a second collection, `HeapCompact` of the process heap,
+    then the working-set trim (`SetProcessWorkingSetSizeEx(-1, -1)`).
+- **Logged** (content-free) when it gave back 8 MB or more. The VM's line: "Memory after Settings closed: gave back 39 MB
+  of private memory (176 → 137 MB); now private 137 MB, memory 1 MB (working set 2 MB), .NET heap 4 MB." Since then
+  values below 10 MB carry one decimal, because a freshly trimmed working set read "0 MB".
+- **The trim, the owner's "After every use".** Task Manager's "Memory" column (the private working set) reads a few
+  megabytes while BetterClipboard waits: 3.7 to 6.7 MB on the VM, against 25 to 36 without the trim.
+  - The price, measured on the VM: the next summon brings its pages back from RAM, a median of 41 ms instead of 28.
+  - After Windows gave that RAM to another program, the pages come back from the page file, which Windows' own trimming
+    under memory pressure costs anyway.
+
+**Smaller pieces:**
+- **Thumbnails** (the cards; the *Delete stored…* dialog's examples): the `BitmapImage` goes to its `Image` before
+  `SetSourceAsync`, so WinUI decodes it at the size it is drawn.
+- **The image peek and viewer** drop their decoded full picture (up to 33 MB for a 4K one) when the panel is put away
+  (`ReleaseImageCache`).
+- **`GetImagePngAsync`** reads only the format it needs, the first of `ContentClassifier.PrimaryImageFormats` in the
+  classifier's order (`ClipStore.GetFirstFormat`). Before, it loaded every format of the entry, and a 4K copy holds a PNG
+  and a 33 MB DIB.
+- **No spelling checker or text prediction** in the search box, the shortcut box, the ignored-apps box and the group-name
+  boxes. Once a box with them had the keyboard, Windows' spelling engine with every installed language's dictionary stayed
+  loaded in the app.
+- **The segment heap** (`app.manifest`, `heapType` SegmentHeap) for the process heap: it hands freed memory back to
+  Windows, where the classic heap kept it committed after a burst. UWP apps and Edge use it.
+
+**Measured after** (rows in §5):
+- **8 Settings opens and closes** (VM, final build `0.2.11-dev.mem`):
+  - 87 MB private at the start, 179 MB with Settings open, 137 MB after the first close;
+  - then a plateau of 154 to 160 MB through the 8th close;
+  - Task Manager's "Memory" 6 to 12 MB six seconds after each close;
+  - GDI 44 → 71 (+3 per cycle), USER +1 per cycle.
+- **The images tab paged through, then the panel hidden for 45 s** (VM): 67.6 MB private, against 98.8 MB in 0.2.10.
+- **Idle after the start's reclaim:** 46 MB private on the VM, against 87 MB in 0.2.10. On this PC's real GPU 114 MB
+  private and a 3 MB .NET heap ("gave back 49 MB of private memory (163 → 114 MB)"), against 166 MB in 0.2.10.
+- **Settings cycles on this PC's real GPU:** a diagnostic build, never committed, opened Settings cloaked so nothing showed.
+  0.2.10 grew 166 → 262 MB in five cycles. The fix gave back 51 MB three seconds after the first close and levelled off at
+  190 to 193 MB.
+
+**What is left, measured 2026-11-12** with [`probe_memmap.cs`](tools/probes/probe_memmap.cs) on this PC (NVIDIA GPU). "Charged"
+is what Private Bytes and Task Manager's "Commit size" count; "resident" is the private working set, Task Manager's
+"Memory" column. The new build ran isolated on the seeded BC-TEST store, idle after its reclaim; 0.2.10 is the owner's
+installed copy after 2.5 days of use.
+
+| Kind (charged / resident) | New build, idle | 0.2.10, after 2.5 days |
+|---|---|---|
+| Native heap: WinUI's XAML trees, text layouts, DirectWrite, COM, SQLite caches | 34.8 / 7.1 MB | 97.1 / 51.3 MB |
+| NVIDIA driver DLLs' writable data (`nvwgf2umx.dll` 25.0, `nvppex.dll` 3.7, `nvgpucomp64.dll` 3.3) | 32.0 / 0.1 MB | 32.0 / 0.1 MB |
+| Write-combined memory the GPU reads (the driver's upload heaps) | 20.1 / 0.0 MB | 21.7 / 2.0 MB |
+| Other private allocations, owner not visible from outside | 6.5 / 1.1 MB | 72.7 / 4.9 MB |
+| Other DLLs' writable data | 4.2 / 1.1 MB | 5.3 / 2.1 MB |
+| .NET GC heap | 4.2 / 1.4 MB | 11.9 / 10.6 MB |
+| Thread stacks (66 and 75 threads) | 1.7 / 0.1 MB | 2.0 / 0.3 MB |
+| **Private Bytes / "Memory"** | **110 / 12 MB** (108 / 6.8 right after the reclaim) | **255 / 77 MB** |
+
+- **The rest of the address space is not charged:** DLL code (445–474 MB committed, shared with other processes), mapped
+  files (fonts, the font cache, locale data) and pagefile-backed sections (245–257 MB, mostly the CFG bitmap).
+- **0.2.10's "other private allocations"** are two 32 MB reservations (27.3 and 11.2 MB charged) and five 5.2 MB
+  blocks: no heap header, no visible owner, almost nothing resident. In the new build the reservations hold 1.6 MB and the
+  blocks are gone; most likely graphics resources of the Settings windows 0.2.10 kept alive **[inferred]**.
+- **The new build's heap is the segment heap** (`app.manifest`). Its page segments carry encoded signatures; the probe
+  groups them by the (signature ^ address) that every segment of one context shares, and a check of three 16 MB
+  reservations (29 MB) confirmed them as one context's segments.
+- **What is left is mostly the price of two things.** The instant summon keeps the panel's window and its XAML tree
+  alive, cloaked (§2.27): most of the 35 MB heap. Rendering with the GPU loads the NVIDIA driver: 52 MB charged and
+  almost nothing resident. The GPU's own memory ("Dedicated GPU memory" in Task Manager: 84 MB for 0.2.10) is video
+  memory, not RAM.
+
+**Found on the way: a timing test that followed the test assembly's folder.**
+- `CliPipeServerTests.ClientHangUp_CancelsHandler` hung up on a fixed 300-ms timer. When the request had not reached the
+  handler by then, the handler never ran and the test timed out.
+- With the same binaries it failed in every full run from one folder and in none from others (10 of 10 against 0 of 7):
+  xunit's test order follows the test assembly's path, and in that order the pipe's first connection waited behind the
+  tests beside it. The diagnosis: the handler started at 1–2 ms in the passing order, and never in the failing one.
+- It now hangs up once the handler runs (CLAUDE.md §4). Mutation check: with the server's hang-up handling removed, it
+  still fails.
+
+**Limits / not built:**
+- The first open of Settings leaves one-time caches behind (+50 to 60 MB private: XAML templates and resources, and five
+  window-size surfaces that later opens reuse). They are not given back by the process itself; since the same day the
+  silent restart (§2.46) replaces the process a few seconds after Settings closes.
+- The NVIDIA driver's share (52 MB of the idle 110 on this PC: its DLLs' writable data and write-combined GPU memory,
+  charged but hardly resident) is outside the app's reach while it renders with the GPU.
+- 3 GDI handles per Settings open remain (most likely the window icon).
+- The README's Settings photo (§3.4) still shows the old title bar.
+- The trim makes the first summon after a pause slower by about 13 ms (median, VM); more once Windows has reused the RAM.
+- Not run: a standard user account, ARM64, several monitors.
+
+### 2.46 The silent restart after Settings: the memory only a new process gives back (built 2026-11-12)
+
+User request (2026-11-12): "After opening settings, can the app silently restart while user doesn't have the clipboard panel
+open / The reason we want to restart is to free the loaded memory when settings opened which is permanent and we can't let
+go so a restart clears it well. / User must not see or feel or have UI flash or open accidentally during this silent
+restart." Two HTML questions; the owner chose **"Right after Settings closes"** (a few seconds after it closes, whenever
+the panel is not open) and **"No switch, always on"**.
+
+**What the user gets.**
+- A few seconds after Settings closes, BetterClipboard replaces itself with a fresh process. Its private memory goes back
+  to the start's level: on the test desktop 131 to 146 MB before, 44 to 49 MB after (45 MB after the first start).
+- Nothing shows: no window, no change of the window in front, no busy pointer, the tray icon stays in its place (also when
+  pinned to the taskbar), the shortcuts keep working through the switch, and a copy made in the gap is recorded.
+- No setting. The log says it happened (content-free): "Restarting silently to give back the memory Settings left
+  (private 131 MB, …); the new process holds the shortcuts; the tray icon was handed over.", and in the new process "…
+  starting (…, restarted silently after Settings)" and "Silent restart: the shortcuts were held during the switch; N
+  press(es) caught."
+- The README says so after its Settings list (and its Chinese translation).
+
+**When** (`Core/Diagnostics/SilentRestart`: `SilentRestartRules`, pure, tested). Asked once a second (a
+`DispatcherQueueTimer`, `AppController.SilentRestart.cs`) from the moment Settings closes:
+- only after Settings was opened in this process (the language picker alone does not count);
+- at least 5 s after Settings closed (`AfterSettingsClosed`: a quick reopen of a window closed by mistake does not restart);
+- never while Settings, the language picker or the panel shows, while an approved update downloads or installs (its
+  installer restarts the app itself), or while a command-line request is served (a `bclip wait` would lose its answer);
+- not while a modifier key or a mouse button is held, and only after 2 s without keyboard or mouse input anywhere in the
+  session (`QuietInput`, `GetLastInputInfo`): someone in the middle of something is left alone;
+- **never when the new process would ask for a language** (no language chosen yet, §2.37): that would open a window.
+- Opening Settings again stops the timer; closing it starts the count again.
+
+**How, in order.**
+1. **The old process starts the new one quietly** (`Windows/Shell/QuietProcess`: `CreateProcessW` with
+   `STARTF_FORCEOFFFEEDBACK`, no inherited handles, the same environment, so an isolated instance comes back as itself):
+   `BetterClipboard.exe --background --restart-after pid:startTicks --clipboard-sequence N`.
+2. **The new process prepares the switch before anything else** (`Program.Main`, before COM and XAML): it keeps the
+   instance's command events open (`SingleInstance.KeepCommandsAlive`: a `--show-flyout` sent during the switch is kept),
+   then `RestartBridge.Start` adds its tray icon **hidden** and holds the shortcuts with a keyboard hook only
+   (`HotkeyService.HoldWithHookAsync`: a hook installed later is called first, so the old process, still registered, no
+   longer sees them), and sets the event `Local\<instance>.RestartReady`. Then it waits for the old process to end, or
+   for `Local\<instance>.RestartCancel` (at most 2 minutes), and ends quietly when called off.
+3. **The old process waits up to 3 s for "ready"** (on the pool, so a Win+V in that moment still opens the panel at
+   once). If the new process ended meanwhile, it gives up for its lifetime (logged; no loop of starts). If the panel,
+   Settings or the picker opened, an update began or a command-line request came in (`SilentRestartRules.CallOffReason`),
+   it sets the cancel event and tries again once it is quiet ("Silent restart called off: the panel opened. Trying again
+   once it is quiet."). Otherwise it hands the tray icon over (below), leaves later commands to the new process
+   (`SingleInstance.StopListening`), and exits the usual way: queued captures drained, integrations stopped at their
+   checkpoints.
+4. **The new process becomes the app**: it takes the instance lock, starts as a background start (no Settings, no picker;
+   the Windows import is skipped, the old process captured until a moment ago), starts the clipboard listener with the
+   old process's last handled sequence number (`ClipboardMonitor.Start(uint?)`: a newer number is read at once, as if
+   notified), registers its shortcuts, then lets the bridge go (`TakeOverShortcuts`) and opens the panel for a press the
+   bridge caught meanwhile. It wires the bridge's tray icon and reveals it (a no-op when the old process did).
+
+**The tray icon: handed over, never doubled** (`TrayIcon` `startHidden`, `Reveal`, `HandOverTo`) **[verified]**:
+- An icon belongs to its window, and two processes cannot share one. The first version added the new icon visibly and
+  removed the old one when "ready" came: an icon pinned to the taskbar then showed twice for one captured frame (~60 ms,
+  the chevron jumping) — the user would have seen it.
+- A GUID-identified icon cannot be moved either: `NIM_MODIFY` with the new process's window was accepted, but the icon
+  vanished when the first window went (a frame capture shows it gone).
+- **Built:** the new process adds its icon with `NIS_HIDDEN` (registered, shown nowhere). At the hand-over the old process
+  finds the new one's icon window (`FindWindowByTitle` "BetterClipboard Tray" + its process id), reveals that icon
+  (`NIM_MODIFY` with `NIF_STATE` on the other process's window: Explorer accepts it) and deletes its own, the two calls
+  0.8 ms apart, on the tray thread. Captured every 24–34 ms with the icon pinned: no frame changed in two restarts (the
+  only other frame was the clock turning a minute).
+- `Shell_NotifyIconGetRect` answers S_OK for a shown icon and S_FALSE for a hidden one: what the tray sampler of the test
+  used.
+- When the hand-over cannot happen (no icon window found, Explorer refusing), the old icon goes and the new process
+  reveals its own as its controller starts: a moment without an icon, logged.
+
+**Facts found on the way** **[verified]** (test desktop, Windows 11 25H2):
+- **The busy pointer:** the pointer probe (`GetCursorInfo` every ~20 ms) caught the app-starting pointer for a start with
+  `STARTF_FORCEONFEEDBACK` from a foreground window, and none with `STARTF_FORCEOFFFEEDBACK`. A start with neither flag
+  (what `Process.Start` does) showed none there, neither from a hidden script nor through Explorer — Windows decides by
+  circumstances; the flag makes it certain.
+- **The shortcuts during the switch:** a Win+V sent 0.6 s into the switch, after the old process had ended, was caught by
+  the bridge ("1 press(es) caught") and opened the panel in the new process ("Panel on screen 1039 ms after the
+  shortcut"). One sent 0.14 s in, before the bridge held, opened the panel in the old process within 64 ms and called the
+  restart off; after Esc, the restart went through at the next quiet moment.
+- **Copies during the switch:** a copy made 64 ms (and in a second run 414 ms) after the old process ended, before the
+  new one listened, was recorded by the new process (hand-over of the sequence number; mutation-checked by a test).
+- **Times** (VM, no GPU; five restarts): the decision 5.3–6.4 s after Settings closed; the new process ready 0.3 s after
+  its start; the old process gone 0.2–0.3 s after the decision; the new process's shortcuts registered ~0.5 s after the
+  old one ended. Once, with three capture loops busy on the VM's four cores: ready after 1.3 s, the old process gone 1.6 s
+  after the decision.
+
+**Pieces.** Core `Diagnostics/SilentRestart.cs`; Windows `Shell/QuietProcess.cs`, `Input/UserActivity.cs`,
+`Interop/NativeMethods.Restart.cs`, `HotkeyService.HoldWithHookAsync`, `ClipboardMonitor.Start(uint?)` and
+`LastHandledSequence`, `CliPipeServer.ActiveConnections`, `TrayIcon` (hidden start, reveal, hand-over); App
+`AppController.SilentRestart.cs`, `RestartBridge.cs`, `Program.Main` (`WaitForSilentlyReplacedProcess`),
+`SingleInstance` (`KeepCommandsAlive`, the two event names, `StopListening`), `StartupOptions` (`--clipboard-sequence`,
+`IsSilentRestart`).
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- The switch takes about a second: a shortcut pressed in it opens the panel up to a second late (never lost).
+- Without the keyboard-hook fallback (Settings › Shortcut) and for an isolated instance next to the installed app, the
+  bridge holds no shortcut: a Win+V in that second does nothing (released from Explorer) or opens Windows' own panel.
+- A new process that fails to start ends the attempts for the old process's lifetime (logged); the next start of the app
+  tries again.
+- Not run: the owner's PC (a real GPU), several monitors, a standard user account, ARM64. The language-picker and
+  update-installing cases are unit-tested only.
+
+### 2.47 The Microsoft Store edition: the same app as an MSIX package, a welcome with consent, and the move from another copy (built 2026-11-13; a filled draft in Partner Center, not submitted)
+
+User request (2026-11-12): "I want to publish my product to microsoft marketplace". The full report is
+[`docs/microsoft-store.md`](docs/microsoft-store.md) (where to publish, Microsoft's rules, the measurements, the design,
+the package, what was verified, the owner's steps); the texts to paste into Partner Center are
+[`docs/store-listing.md`](docs/store-listing.md). This section keeps what the code and later decisions need; the package
+and the submission are §3.5.
+
+**Where.** "Microsoft Marketplace" is Microsoft's storefront for cloud and AI offers. A Windows desktop app goes to the
+**Microsoft Store**, as an MSIX package (Microsoft signs, hosts and updates it) or as an EXE/MSI installer (needs a
+CA-issued certificate on the installer and every PE file, and a versioned link on our side). Releases are unsigned (§3.3)
+and the installer is a PowerShell script, so the MSIX route is the one built. The developer account is free **[docs]**.
+
+**The owner's decisions** (three HTML questions; the pages are in session 66cdd808's scratchpad, `q/`):
+- **First start: "Welcome with consent (Recommended)"**, with the comment **"After language selection dialog"**.
+- **The history of a copy from the installer: "Bring it over (Recommended)"**, with the note "What will we do if store
+  edition is installing and we have a running any other edition? can store edition require uninstalling it?"
+- **The follow-up, in their own words:** "Can't we uninstall it? But we migrate user's data successfully, validate and
+  cleanup. We must validate all access permissions before starting (preflight checks)".
+- Read as: only one BetterClipboard is meant to be installed. The Store edition removes a copy from the installer
+  itself: it checks first that it can, brings the history over, proves the copy, uninstalls the other copy and removes
+  the old folder.
+
+**What a package changes** (measured 2026-11-12 with [`msix_lab`](tools/probes/msix_lab) in a test desktop; the whole
+table is in the doc's §2). A Store package of a desktop app runs at medium integrity (`runFullTrust`), and still:
+- **Its own `HKCU` writes and deletes go to a private hive.** They "succeed", and the real registry is unchanged. Reads
+  see the real registry.
+- **`RegNotifyChangeKeyValue` on a real key is never signalled** when another process writes. The key's last-write time
+  does move, so a packaged process polls.
+- **A new folder directly under `%LOCALAPPDATA%` is redirected** into the package. `…\Packages\<family>\LocalState` is
+  written directly, and Windows removes it with the package. File change notifications for real folders arrive.
+- **A child that is another program runs outside the package** (cmd, PowerShell: its registry and file writes are
+  real). **A child that is the package's own program keeps the package identity**, also for a signed package installed
+  in `C:\Program Files\WindowsApps`: the silent restart (§2.46) works unchanged.
+- **DPAPI and `Local\` named objects are shared** with unpackaged processes: the moved history opens with the same key
+  hierarchy (§2.6.1), and one instance lock serves every edition.
+- **`StartupTask.RequestEnableAsync()` from a desktop package** answers `Enabled` at once, without a prompt.
+
+**What is different in this edition.** A process is the Store edition when it has a package identity
+(`PackageIdentity.IsPackaged`, one kernel32 call) and no data-folder override; nothing else is compiled differently.
+
+| | Installer and Chocolatey editions | Microsoft Store edition |
+|---|---|---|
+| Data | `%LOCALAPPDATA%\BetterClipboard` | `%LOCALAPPDATA%\Packages\<family>\LocalState\BetterClipboard` (`AppPaths.PackagedDataDirectory`), removed by Windows with the app |
+| Win+V | Released from Explorer (`DisabledHotkeys`), or the hook | Only the keyboard hook, only after the welcome's switch. No *Release from Explorer* card |
+| Start with Windows | A Run value | The package's startup task `BetterClipboardStartup` (`Shell/PackagedStartup`); Windows' *Startup apps* list can overrule it |
+| Updates | The update service asks GitHub | The Store. No update service, **no network request at all**; `PackagedRestart.RegisterAfterUpdate` asks Windows to start the app again after an update |
+| `bclip` | A folder on the PATH (optional) | The package's one app execution alias, `bclip.exe`. The app itself has none ("The Store's upload check", below) |
+| Win+R history | A registry notification | `RunMruWatcher(pollOnly: true)`: the key's last-write time every 5 s |
+| Windows' own clipboard history | A switch (a registry write) | A button that opens Windows' Settings page |
+| Version shown by Windows | The release's | The package's, (X+1).Y.Z.0 (§3.5) |
+
+- **One place resolves the data folder:** `Program.ResolvePaths()` (`AppPaths.ResolveDefault(PackageIdentity.FamilyName)`).
+  `bclip` links `PackageIdentity.cs` and resolves the same folder.
+- **The instance lock is shared with every edition** (`Local\<instance>.Instance`), so two editions never run at once. The
+  Store edition marks the lock while it holds it (`Local\<instance>.StoreEdition`, `SingleInstance.PrimaryIsStoreEdition`).
+- **Settings:** `SettingsWindow.ApplyEdition` takes the cards that are not true for the edition **out of the page**
+  (*Release from Explorer* and *Updates* there; *Updates from the Microsoft Store* everywhere else). The version line
+  reads "Version … · Microsoft Store edition"; the PATH button is a sentence about the alias; the startup switch drives
+  the task and shows *Open Startup apps* while Windows has it off (`SettingsViewModel.Store.cs`).
+- **An isolated instance** (`BETTERCLIPBOARD_DATA_DIR`) of a packaged build is never "the Store edition" for the setup:
+  a test copy must not find, close or uninstall the user's installed app.
+
+**The first start** (`AppController.Store.cs`: `NeedsStoreSetup`, `RunStoreSetupAsync`; one window, `StoreSetupWindow`,
+whose pages are `StoreSetupView` + `StoreSetupViewModel`):
+
+```text
+Start by hand
+  └─ other copies and their data, one step at a time until nothing is left   (below)
+       └─ language picker, when no language was ever chosen (§2.37)
+            └─ welcome: what is kept, "Open with Win+V" (on), "Start with Windows" (on), Privacy, Not now | Start
+                 └─ Start: AppSettings.StoreWelcomeAccepted, the choices applied, and only now StartCore
+                    (the store, the clipboard listener, the shortcut, the tray icon)
+```
+
+- **Nothing before Start** (policies 10.2.8 and 10.5.5): until then the data folder holds a log and at most the
+  settings file. *Not now* and closing the window end the app; the welcome shows again at the next start by hand.
+- **The switches.** *Open with Win+V* off: Alt+Win+V opens the panel and Win+V stays Windows'. A user who came from
+  another copy keeps their shortcuts; the switch only adds or removes Win+V. *Start with Windows* shows the task's real
+  state (`PackagedStartupState`: also "off in Windows' list" and "by policy").
+- **Language and theme of the setup:** this edition's saved ones, else those of the copy it replaces, else Windows'
+  (`ApplySetupLook`). The setup runs before `StartCore`, so nothing in it may ask `Settings`.
+- **Only on a start by hand.** A start by Windows (the startup task, which passes no arguments:
+  `PackagedStartup.WasStartedByTask`; or again after a Store update) or by `bclip` never opens a window.
+  `Program.ContinueStoreEditionInBackground` ends such a start **before the instance lock** while the welcome was not
+  accepted or another copy is installed: a Store edition holding the lock would turn the other copy's own sign-in start
+  away, and then none would run. `AppController.Start` gives the same answer for what that check cannot see (a copy
+  that merely runs, a history to bring over). A silent restart skips the setup too. Each case logs one line.
+
+**Another copy on the PC** (`Windows/Store/OtherEditionLocator`: the Installed-apps records of the user and of the PC,
+Chocolatey's folder shape, and a copy that merely holds the lock; `Core/Editions/EditionSetupPlan.Next`, pure and
+tested, picks one step, and the setup asks again after each):
+
+| Found | Step (`EditionSetupStep`) | What happens |
+|---|---|---|
+| A copy this user installed with the installer | `MoveFromInstaller` | A page with the checks; on *Move to this edition* the move |
+| A copy for every user, or the Chocolatey copy | `GuideUninstall` | The page says how an administrator removes it (*Open Installed apps*, or `choco uninstall betterclipboard` to copy) and waits until it is gone |
+| A running copy without an install record | `CloseRunning` | Asked to exit, on the user's go-ahead; never ended by force |
+| No copy, but a history one left behind, and this edition has none | `ImportData` | Copied, checked, old folder removed, without a question |
+
+- **The checks before a move** change nothing: (1) the history can be read and the drive has room
+  (`EditionDataMigrator.EnsureReadable`, `RequiredFreeBytes`: the data, a tenth more, 64 MB); (2) this edition's folder
+  can be written; (3) the other copy can be uninstalled from here (`EditionUninstaller.CheckAsync`: the script is in the
+  package, Windows PowerShell exists, a script file really runs, and a probe script — run outside the package, where the
+  uninstaller will run — opens the Run key, the copy's Installed-apps entry, Explorer's settings and the environment key
+  for writing, writes and deletes a file in the copy's folder and opens its shortcut); (4) the old data folder can be
+  removed. A failed check names what failed in words (`DescribeDenied`) and offers *Check again*.
+- **The move** (`RunMoveAsync`): close the other copy and take the lock → copy `settings.json` and everything below
+  `stores` with a checksum per file (`EditionDataMigrator.CopyAsync`; **the files are listed right before each copy
+  attempt**, since closing the copy removes its database's write-ahead log) → open the copy with this account's key
+  and run SQLite's own check (`Validate`, `ClipStore.QuickCheck`; the app goes on with this very store) → uninstall the
+  other copy (`EditionUninstaller.UninstallAsync`, proven by its program and its entry being gone) → remove the old
+  data folder, and only now (`RemoveSource`).
+- **All or nothing.** The copy is marked (`edition-move.pending`) until the last step begins. A move that stops earlier
+  (the user quits, the uninstall fails, power is lost) is rolled back at once or at the next start
+  (`EditionDataMigrator.Rollback`), and quitting starts the closed copy again. A second launch during the setup brings
+  the same window forward (`SingleInstance.TryClaimStoreSetup`: the mutex `Local\<instance>.StoreSetup` and the event
+  `…StoreSetupShow`; the lock still belongs to the other copy then).
+- **Two histories are never merged.** An edition that already has a history uninstalls the other copy and leaves that
+  copy's history where it is; the page says so and shows no history lines.
+- **The uninstall** runs the `install.ps1` **this package carries**, with Windows PowerShell, outside the package:
+  `-Uninstall -InstallDir <folder> -KeepProcessId <this process> -ResultPath <file> -LogPath <file>`. `-KeepProcessId`
+  (new) keeps the uninstall from closing the Store edition itself; the two report parameters are now valid in the
+  uninstall's parameter set, and the uninstall writes its result file. Not the installed copy's own script: older ones
+  close every BetterClipboard of the session, and those up to 0.2.5 can empty Explorer's settings key (§2.25).
+- **The installer says it too:** `install.ps1` warns before it installs when the Store edition's data folder exists for
+  the account (`Get-StoreEditionData`), and says what the Store edition will then do.
+
+**Pieces.**
+- Core: `Editions/` (`OtherEdition`, `OtherEditionKind`, `EditionSetupStep`, `EditionSetupPlan`, `EditionData`,
+  `EditionDataMigrator`), `AppPaths` (`ResolveDefault(packageFamilyName)`, `PackagedDataDirectory`, `HomeDirectory`),
+  `AppSettings.StoreWelcomeAccepted`, `ClipStore.QuickCheck`, `UpdateSource.ChocolateyUninstallCommand`.
+- Windows: `Packaging/PackageIdentity`, `Packaging/PackagedRestart`, `Shell/PackagedStartup`, `Store/OtherEditionLocator`,
+  `Store/EditionUninstaller`, `Interop/NativeMethods.Packaging.cs`, `RunMruWatcher`'s `pollOnly`.
+- App: `AppController.Store.cs`, `StoreSetupWindow`, `StoreSetupView.xaml(.cs)`, `StoreSetupViewModel`,
+  `SettingsWindow.Store.cs`, `SettingsViewModel.Store.cs`, `Program` (`ResolvePaths`,
+  `ContinueStoreEditionInBackground`), `SingleInstance` (the marker, the setup claim, `TryBecomePrimary`, `StepDown`),
+  `AppController.Start` / `StartCore`, the App project's `WindowsPackageType=MSIX` part.
+- Strings: the setup's and Settings' texts in all five catalogs, each with its description.
+
+**Faults the live runs found, fixed:**
+- the setup crashed on the theme (the settings are not loaded yet at that point);
+- it ignored the replaced copy's language: `SettingsStore.TryReadSnapshot` returns the defaults for a missing file, so
+  "this edition has no settings" was never seen;
+- the copy step used a file list made while the other copy ran ("Could not find file …history.db-wal");
+- PowerShell refused the uninstall's command line before the script's first line ("ended with code 1", no log, no
+  result): the two report parameters belonged to the install parameter set only;
+- a failed check named its finding with an internal word, and the window was too short for four lines and an error;
+- the first page promised to bring a history over when this edition already had one;
+- a background start with a setup due would have opened a window at sign-in and held the lock.
+
+**The Store's upload check, and what it changed (2026-11-13).** The owner registered as a developer, and the first
+packages went into a draft submission (§3.5). Partner Center refused both at upload: "The package file … specifies a
+headless app. You don't have permission to create a headless app. Please update AppListEntry="none" in the
+AppxManifest file".
+- **The cause:** `bclip` was a second `Application`, hidden from Start. The Store allows that only with a waiver it
+  grants on request. MakeAppx had packed the manifest and Windows had installed it: only the Store objects.
+- **The second rule:** an application may declare one `windows.appExecutionAlias` extension (MakeAppx: "must only be
+  declared once", also for one `uap3` next to one `uap5`). All aliases of an extension start that extension's one
+  `Executable`, which may differ from the application's.
+- **So the package is one application** whose one alias is the console alias `bclip.exe`, started from `bclip.exe`.
+  The app's own alias `BetterClipboard.exe` is gone; nothing in the app used it. A script starts the Store edition
+  with `explorer.exe shell:AppsFolder\<family>!App`.
+- **The build checks it** (`package-msix.ps1` › `Get-ManifestStoreProblems`): one application, none hidden, the one
+  alias `bclip.exe` with `Subsystem="console"`. The refused manifest fails each check; the rebuilt package passes.
+- **Verified** with the test-signed twin in two test desktops (rows in §5): it installs; Start has one entry; `bclip`
+  runs by name in a console, with its output and exit codes; with the app stopped, `bclip status` starts it from the
+  `WindowsApps` folder and answers from the Store edition's data; silent restarts work. The Store then accepted both
+  rebuilt packages ("Validated").
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- **Not submitted yet.** The name is reserved and the first submission is a filled draft. One tick, the version rule
+  and *Submit for certification* are the owner's (§3.5).
+- A copy for every user and a Chocolatey copy are not removed by the Store edition; their two pages were not seen on
+  screen (the plan is unit-tested).
+- The move needs Windows PowerShell and script files that run; where a policy blocks them, the check says so.
+- Not run: a package served by the Store (its signature, an update, the restart after one), the Windows App
+  Certification Kit, a standard user account, UAC on, a real GPU, ARM64 on a device, the Spanish and Chinese setup pages.
+- The listing's screenshots are not made (§3.5).
+
+### 2.48 A portable copy updates itself; a newer copy takes over; the sign-in entry follows; a tray icon Explorer added late (built 2026-11-13)
+
+User request (2026-11-13): "try in a win desktop to download a portable older version, and check for update and see that
+update worked cleanly on the portable". That QA (§5) found two traps on a portable copy's *Download page* way and a dead
+tray icon. Asked with one HTML question (pages in session 4886d50a's scratchpad, `q/`), the owner chose **"Portable updates
+itself"**, **"Newer copy takes over (Recommended)"** and **"Sign-in entry follows (Recommended)"** (not "Clearer portable
+dialog"), and for the tray icon **"Fix it now (Recommended)"**.
+
+**What the user gets.**
+- **A copy extracted from the release zip updates itself in its own folder** (its own *Update and restart*, the dialog's
+  words: "Updating downloads it from GitHub, checks it, puts it into this copy's folder and restarts BetterClipboard. Your
+  history is kept."): when this user may write the folder and the offer is 0.2.11 or later. Otherwise the dialog keeps
+  the download page and the install command (Program Files without administrator rights, read-only media, and every offer
+  older than 0.2.11, whose program does not know the helper).
+- **Only the release's files are touched.** Each is renamed into a backup folder inside the portable folder, then the new
+  one is copied in; files the release does not ship stay (the user's own, and files an older release had and this one no
+  longer ships: no list of them exists). All or nothing: a file that cannot be replaced puts every file back.
+- **A newer copy takes over:** a plain start of a newer BetterClipboard while an older one runs asks the older one to exit
+  and becomes BetterClipboard (its Settings come up), instead of opening the older copy's Settings.
+- **"Start with Windows" follows the copy that runs:** at each start, the user's own entry is rewritten for this copy when
+  it starts a BetterClipboard that is gone or older. The entry for every user is never written, and Windows' "off" mark
+  for the user's entry stays (an entry turned off stays off).
+- **A tray icon Explorer added late now works:** a refused `NIM_ADD` is followed by a `NIM_MODIFY` that asks whether the
+  icon is there anyway; a real refusal is tried again on a timer.
+
+**The portable update, step by step** (`Core/Updates/PortableUpdate`, `Windows/Updates/PortableUpdateInstaller`,
+`Windows/Updates/PortableUpdateCommand`).
+1. The update service downloads and verifies the package as for an installed copy (§2.29), then
+   `PortableUpdateInstaller.StartAsync` unpacks it into `updates\portable-<version>` (a refused zip, or one without
+   `BetterClipboard.exe`, leaves nothing) and starts the **new** version's exe from there:
+   `BetterClipboard.exe --apply-portable-update --target <folder> --wait-for <pid>:<start ticks> --result <updates\result.json> --log <logs\betterclipboard-update.log>`.
+   Started directly (CreateProcess), with the app's environment (an isolated instance stays isolated), in the temp folder.
+2. `Program.Main` recognizes the switch before anything else (`ApplyPortableUpdate`): no lock, no XAML, no store.
+   `PortableUpdateHelper.Run`: a folder without `BetterClipboard.exe` is refused untouched (the old copy is not even asked
+   to exit); the old copy is asked to exit through its instance's `Exit` event (`SingleInstance.TrySignal`), waited for
+   30 s, then ended (10 s more).
+3. Files are replaced in name order with the program last; each held file is retried for 10 s. The backup folder
+   (`.betterclipboard-update-backup-<UTC stamp>`, hidden) is removed at the end; files another program still holds (a DLL
+   loaded through the PATH, §2.9) stay there until `PortableUpdateCommand.CleanLeftovers` removes them at a later start.
+4. The result goes into `result.json` in `install.ps1`'s shape (`UpdateResult.Write`), and BetterClipboard is started
+   again from the same path with `--background` (`QuietProcess`): the new version, or the previous one after a rollback.
+   The new start reads the result ("The update to X was installed.") and `UpdateService.Start` removes the staging folder.
+- **Exit codes:** 0 updated, 2 bad arguments, 3 not a BetterClipboard folder, 4 the old copy did not close, 5 rolled
+  back, 6 rollback incomplete. The seven failure sentences are `UpdateMessages` templates, translated in the dialog and the
+  notification (`ReportLastUpdate` now runs the result's error through `UiText.TranslateFormatted`).
+- **The helper's command line is a contract** (§4), like `install.ps1 -Update`'s.
+- **`PortableUpdate.MinimumVersion` = 0.2.11** must name the first release that ships the helper. If 0.2.11 is skipped,
+  raise it; an offer below it would start as a plain launch from the staging folder.
+
+**The take-over** (`Core/Startup/InstanceTakeover`, `Windows/Shell/RunningCopies`, `Program.TakeOverFromOlderCopy`).
+- Only for a plain start (`Activate`, not `--background`) of a non-Store copy that finds the lock taken.
+- **Conservative:** it takes over only when every other `BetterClipboard.exe` of the session runs (a leftover process
+  object without threads does not count, §4), reports a version strictly older than this one, runs from another path and
+  is not packaged. Anything unclear keeps the hand-over.
+- It signals the instance's `Exit` (every version understands it), polls `TryBecomePrimary` for up to 2 minutes, then
+  `DiscardPendingCommands`. A copy that does not exit in time is left as it is: the request is withdrawn and the launch
+  handed over as before. The controller logs it from `StartupOptions.TookOverFrom` ("… starting (…, took over from
+  BetterClipboard 0.2.11 (process 4948), which was asked to exit)"), because Program runs before the log exists.
+
+**The sign-in entry** (`SignInStartup.FollowThisCopy`, `AppController.SignIn.cs`, `Windows/Shell/ProgramVersion`).
+- At every start but a silent restart, on the UI thread before any window (Settings then shows the switch as it now is):
+  not for the Store edition, not for an isolated instance.
+- Rewritten only when the user's own entry starts a program named `BetterClipboard.exe` that no longer exists or whose
+  product version is older; the same or a newer version elsewhere, an unreadable version and another program are left
+  alone. Logged: "Start with Windows now starts this copy (0.2.12): its entry started an older BetterClipboard (0.2.11)
+  from another folder."
+
+**The tray icon** (`Windows/Shell/TrayIcon`).
+- `Shell_NotifyIcon` goes through an injectable delegate (an internal constructor), so tests play Explorer.
+- A refused `NIM_ADD` is followed by `NIM_MODIFY` (the tooltip again): when it succeeds, the icon is there, `added` is set
+  and `NIM_SETVERSION` sent ("Shell_NotifyIcon(NIM_ADD) reported a failure, but the icon is there (Explorer answered
+  late); it is set up now."). Otherwise a timer (id `0xB0C1`) tries again every 2 s for 30 tries, then every 30 s, besides
+  `TaskbarCreated`; one warning per outage, and an info line when it is in place.
+
+**Verified:** see §5 (unit tests with two mutations caught; every case live in a Windows 11 desktop, a real sign-in after
+a reboot included). The tray's refusal itself could not be provoked live: Windows 11 waited for a suspended Explorer.
+
+**Limits / not built:**
+- Files an older release had and the new one no longer ships stay in the folder (harmless for a self-contained app: the
+  host loads what its deps file names). A file list in the release would let the next helper remove them.
+- The first release with the helper is the first that can be updated in place to a *later* one: a 0.2.10 or older copy
+  still sees the download page, and needs one manual step (extract 0.2.11 over it, or run the install command).
+- A copy that runs as administrator, a standard user, ARM64 and a folder on a network share were not run.
+- The take-over does not apply to `--background` starts (two sign-in entries naming two copies: the first wins, as before).
+
+### 2.49 Pictures keep their files: copy the path or the file, open it or its folder, *Save to temp and*, the file in the viewer (built 2026-11-13)
+
+User request (2026-11-13): "Images are usually coming from either clipboard or from sources like ShareX saves all to
+files at C:\Users\ELI\Documents\ShareX\Screenshots\2026-11 / So any images we detect and has a path - we should keep the
+path persisted with the image / And then right click has copy path which copies original path (only shown if file exists
+on disk). also has "Copy image as a file" / also have Open file, Open folder which rely on the original path existing /
+And Save to temp and -> Copy path, copy image as a file, Open file, Open folder". Three HTML questions (pages in session
+2fc2c47a's scratchpad, `q/`); the owner chose:
+- **Screenshots stored before:** "Find their files once (Recommended)", with the comment "As a migration" and the note
+  "Also keep the file's metadata, dates, size, ext, format and so on".
+- **Temporary pictures:** an answer of their own, "Window's on restart delete temp after a month + restart
+  (configurable)": deleted when BetterClipboard starts, once a month old, the number of days a setting.
+- **Where the file shows:** "Both" (the menu and the viewer), with "At viewer: but must fit to the left of the image or
+  above it cleanly, less rows. and path and file are clickable".
+
+**What the user gets.**
+- **A picture read from a file keeps that file:** ShareX's screenshots (§2.10) and the Screenshots folder's (Snipping
+  Tool, Win+PrtScn, §2.22) remember the file's path, size, creation and last-change times, and its format as its bytes
+  say ("PNG", "JPEG", …), in the encrypted history. A clipboard copy of the same picture stored first gets the file when
+  the file arrives: the two are one entry by the pixel hash (§2.22).
+- **The card menu of a picture whose file is known**, after *Pin*: a dimmed line naming the file, then its format, size
+  and last change ("PNG · 5.1 KB · modified 5 min ago"), or "moved or deleted". While the file is on disk, four items
+  follow: *Copy path* (Segoe Fluent Icons E62F), *Copy image as a file* (E8A5), *Open file* (E8E5) and *Open folder*
+  (E838, File Explorer with the file selected).
+- **Every picture**, one copied from an app too, gets *Save to temp and ›* (E78C) with the same four items. They act on
+  a PNG written from the history into `%TEMP%\BetterClipboard\Images` first.
+- **The image viewer** (§2.24) shows the file on two rows above the picture, on a dark band: the name (a link that opens
+  the file) · format · size · pixel size, then the folder (a link: File Explorer with the file selected) · its dates.
+  With the file gone, the name and folder are plain text and the first row ends "moved or deleted".
+- **Settings › History › Keep temporary pictures for (days):** 0 to 3650, 30 by default; 0 deletes them at every start.
+- **`bclip list --json`** gives a picture's `file`: `path`, `name`, `extension`, `format`, `sizeBytes`, `created`,
+  `modified`.
+- **`install.ps1 -Uninstall -RemoveData`** deletes `%TEMP%\BetterClipboard` too (`Remove-TemporaryPictures`), best
+  effort: a picture another program holds open stays, and the note says where.
+
+**Storage** (`Core/Model/SourceFile`, `Storage/ClipStore.SourceFiles.cs`).
+- `clips.file_path`, `file_size`, `file_created_utc`, `file_modified_utc`, `file_format`: added idempotently like the
+  groups' column (an older build opens the file, ignores the columns, and a row it bumps keeps them). `NULL` path = no
+  file known. The five are always written together: a path never carries another file's dates.
+- `SourceFile.FromDisk` reads the details right after the bytes were read; a time before 1980 (Windows' "no time kept")
+  is left out. The format comes from the first bytes (`Content/ImageFileFormat.Detect`: PNG, JPEG, GIF, TIFF, JPEG XR,
+  WebP, AVIF, HEIF, BMP, ICO), so a file named after the wrong format still says what it is.
+- **Merge rules** (`UpsertCore`): a live duplicate with a file replaces the row's file whole; one without a file keeps
+  the row's (`coalesce`). An import (the Windows import, the catch-ups) fills a missing file only, and never reorders.
+- The capture carries the file (`ClipCapture.File`): `ShareXScreenshotWatcher` and `WindowsScreenshotWatcher` describe
+  the file they read. Clipboard copies carry none: the clipboard does not say where a picture came from.
+
+**The one-time search for earlier screenshots' files** (`Windows/Integrations/ScreenshotFileFinder`; the owner's "as a
+migration").
+- Per tab, once: ShareX (`state.sharex.files_searched`) and Snipping (`state.screenshots.files_searched`), 30 s after
+  that integration starts watching (`FileSearchDelay`, so the start's own work goes first), and only when the store does
+  not mark it done. An exit halfway is not marked, so the next start goes on; the search is idempotent anyway.
+- **Candidates:** the tab's pictures without a file (`ClipStore.FindPicturesWithoutFile`: kind Image, the tab's own
+  filter). **Files:** ShareX's watched folders recursively, through the same pattern rules as its catch-up; the
+  Screenshots folder's image files.
+- **By time first, then pixels:** only files written within 2 minutes of an entry's first-stored time are read, closest
+  first (a screenshot's entry is stored when its file is written, or when the tool copied it, seconds apart). A file
+  matches when its content hash (`ImageCodec.ContentHashAsync`: the analyzer's pixel hash) is the entry's. A file is
+  given to one entry at most, and each is read once. Never read: cloud placeholders and files over 256 MB.
+- `ClipStore.SetSourceFile` fills only what is missing, so the search can never replace a newer file, also when it races
+  a live import. Logged with counts only: "Earlier ShareX screenshots: found the files of 2 of 2 in 124 ms (searched
+  once; new ones keep their file as they are saved)."
+
+**Copying and opening** (`App/AppController.ImageFiles.cs`, `Views/ClipboardFlyout.ImageFiles.cs`).
+- **Is the file there?** `Windows/Shell/FileOnDisk.Check` answers OnDisk, Missing or Unknown. It looks only on local
+  fixed, removable and RAM drives; a network path (UNC, a mapped drive) or an optical drive is never touched (a dead
+  share would block the menu) and counts as there. Asked when the menu or the viewer opens, and again when an item is
+  chosen: a file gone meanwhile keeps the panel up with "The file was moved or deleted." in the footer.
+- **Copy path / Copy image as a file** write through the clipboard monitor (`ReplayFormats.ForFiles`: text, or
+  `CF_HDROP` with the drop effect "copy", like Explorer's Copy), so they are BetterClipboard's own writes and are not
+  recorded as copies. Like *Copy only*, they count as using the picture (`MoveToTopOnPaste`), and the panel goes away
+  with the focus handed back.
+- **Open file / Open folder** start the file's app, or `explorer.exe /select,"<path>"`, while the panel still holds the
+  foreground, and the panel hides after (the Run tab's order, §2.17). Failures: "Could not open it: …" in the footer.
+- Logs never name a path or a file.
+
+**Temporary pictures** (`Core/Content/TempImageFiles`).
+- **Where:** `%TEMP%\BetterClipboard\Images\<the first 12 hex digits of the content hash>\` (an isolated instance's
+  under `%TEMP%\BetterClipboard\<scope>\Images`, so its clean-up never deletes the regular instance's). The name is the
+  original file's with `.png`, else `Image yyyy-MM-dd HHmmss.png` at the copy's local time: the name travels with the
+  file into a chat or a mail. `%TEMP%` is real also for the Microsoft Store edition (`docs/microsoft-store.md` §2).
+- **Saving again** the same picture finds the earlier file (equal bytes) and touches it; a differing file of that name
+  (edited since in an image editor) is never overwritten: the next save is `name (2).png`. Written as `.part`, then
+  moved.
+- **Plain files, deliberately:** they exist because the user asked for a file. The README's *Privacy* says so.
+- **Clean-up** (`CleanTemporaryPictures`): at a start, never at a silent restart (§2.46) and never while running (a
+  picture just pasted as a file must not vanish under the app that reads it). It deletes pictures whose last write is
+  older than `AppSettings.TempImageDays` (all of them at 0), `.part` leftovers an hour old, and empty folders; a file
+  another program holds stays for a later start. On the pool; logged with a count.
+
+**The viewer band** (`BuildFileDetailsBand`, `ShowViewerAsync`).
+- Two rows of 12.5-DIP text on a dark rounded band, centered 16 DIPs below the screen's top, at most the screen's width
+  less 72 DIPs a side (clear of the close button). The name and folder take at most 60 % of the band and trim at their
+  end, so the facts after them stay readable.
+- The band is measured before the picture is laid out, and its height plus 16 DIPs is kept free above the scroll host
+  (`viewerTopReserve`): the picture fits below it, and zooming never puts the picture on it.
+- Links are a light blue (#9FD8FF) that reads on the dark band in either theme; a tap on the band does not close the
+  viewer.
+
+**A crash found in the QA, fixed before landing.** A click on the viewer's file-name link ended BetterClipboard: 2 of 2
+times, exception 0xC000027B in `Microsoft.UI.Xaml.dll` (a WinUI fail-fast, so `Application.UnhandledException` never saw
+it and the log has no line).
+- A WER dump (§4: how to get one in a test desktop) showed the UI thread in `Interop+Shell32.ShellExecuteExW`, under
+  `Process.Start`, under `AppController.OpenImageFile`, under the Hyperlink's Click handler.
+- The cause: `ShellExecuteEx` runs a message loop of its own while Windows activates a packaged app such as Photos, and
+  on the UI thread WinUI re-entered from inside that click, whose popup (the viewer) had just been closed.
+- The folder link (`explorer.exe`, plain process creation) and the menu's *Open file* (no popup closed in the same
+  click) had not crashed.
+- **The fix:** `LaunchAsync` runs the start on the thread pool and awaits it; .NET then calls `ShellExecuteEx` on an STA
+  thread of its own. Afterwards 0 crashes in three link clicks (Photos running, and started cold) and the menu's *Open
+  file*.
+- The convention is in §4; the app's older starts on the UI thread are in §6.
+
+**Pieces.**
+- Core: `Model/SourceFile`, `ClipCapture.File`, `ClipEntry.File`; `Content/ImageFileFormat`, `Content/TempImageFiles`;
+  `Storage/ClipStore.SourceFiles.cs` (`SetSourceFile`, `FindPicturesWithoutFile`, `PictureWithoutFile`);
+  `Services/ClipHistoryService.SourceFiles.cs` (`GetPicturesWithoutFileAsync`, `SetSourceFilesAsync`: one `Updated`
+  event per recorded entry); `Presentation/SourceFileText` (the menu's label, the viewer's facts and dates) and
+  `Presentation/ByteSizeText` (sizes like Explorer, shared with Settings); `AppSettings.TempImageDays`; `CliItem.File`
+  (`CliFile`).
+- Windows: `Shell/FileOnDisk`, `Integrations/ScreenshotFileFinder`, `ImageCodec.ContentHashAsync`; the two watchers and
+  integrations (`FilesSearchedStateName`, `FileSearchDelay`, `StartFileSearch`, `ListScreenshotFiles`).
+- App: `AppController.ImageFiles.cs`, `Views/ClipboardFlyout.ImageFiles.cs`, `ShowItemMenu`'s call to
+  `AddImageFileItems`, the viewer's band in `ClipboardFlyout.ImagePreview.cs`, the Settings card and
+  `SettingsViewModel.TempImageDays`.
+- `install.ps1`: `Remove-TemporaryPictures`. Strings: 15 entries in all five catalogs, each with its description.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- The path is a snapshot: a file renamed or moved afterwards is "moved or deleted", not followed.
+- Only screenshots read from their folders have a file. A picture copied from an app (a browser's *Copy image*, Paint)
+  has none, and a picture file copied in Explorer is a Files entry, not a picture. Paths in a copy's HTML (`<img src>`)
+  are not used.
+- Not run: the Microsoft Store edition with this feature, a file on a network share, a standard user account.
+
+### 2.50 Long texts: the dotted line and the eye, the hover peek, and the text viewer (built 2026-11-13)
+
+User request (2026-11-13), about a Codex-tab card whose four lines showed only the start of a long XML prompt: "we need
+similar functionality to an image where we get markdown rendered and highlighter with autodetect code language so that
+this xml would've been formatted and we can see the entire content if mouse pauses hover and we click the eye". Four
+HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
+- **Which cards: "Only cut-off cards"**, with "But via right-click we can open via 'View'" and "Also add a thin 5th line
+  with three dots impying there is more".
+- **The peek: "Centered, wheel scrolls"**, with "Appear Centered to the app" and "And support very long texts and
+  selection and right-click menu buttons".
+- **Formatting: "Formatted + "As copied" switch"**.
+- **The viewer's extras:** *Wrap switch*, *Line numbers*, *Language picker* ("making markdown default and as fallback to
+  undetected") and *Text size* ("persisted"), and in their own words "Also be capable of handling large (megabytes)
+  copies". *Find (Ctrl+F)* was not chosen.
+- The prompt the owner pasted holds their own data: it is in no test, mockup or document. The tests and the QA use an
+  invented BC-TEST prompt of the same shape.
+
+**What the user gets.**
+- **A card that shows less than its text says so:** a thin "⋯" line under its four lines and the eye (E7B3, as on
+  picture cards) at its corner. `ClipItemViewModel.IsCutOff`: the card's text block reported trimming, or the stored
+  preview is itself cut (`ContentClassifier.PreviewMaxChars`), or a file list's preview says "N more". Other cards look
+  as before.
+- **The peek:** the mouse resting 450 ms on a cut-off card's text opens the whole text centered on the panel, at most
+  900 DIPs wide and 80 % of the work area, drawn like the viewer.
+  - The mouse's first real move closes it, wherever the mouse goes, and the wheel scrolls it from anywhere without
+    closing it (the owner's follow-up, below). A right-click with the mouse still shows *Copy* and *Select all* above
+    the card's own menu (whose *View* opens the viewer), and the peek stays while that menu shows.
+  - Esc and a click outside the frame close it too.
+  - It shows at most one page, 64,000 characters, with "Showing the first N of M characters. F3 opens all of it."
+- **The viewer** (the eye, F3, or *View* in a text card's menu): the screen dims, and the text opens in a card of 90 %
+  of the work area (at most 1,400 DIPs wide) centered on the panel.
+  - A header (the card's kind and caption), a toolbar, the text, and a status line: "N lines · N characters", plus a
+    note when the text is limited.
+  - *Formatted* / *As copied*, only when they differ (Markdown, XML, JSON).
+  - *Wrap*, and *Line numbers* in a gutter left of the text (code only).
+  - The language button: every language (`TextLanguages.All`: Markdown and plain text first), the recognized one marked
+    "(detected)".
+  - A− / A+ (Ctrl+Minus, Ctrl+Plus, Ctrl+0, Ctrl+wheel), 50 to 300 %.
+  - A code text over 64,000 characters: ‹ Page N of M › (Ctrl+PageUp, Ctrl+PageDown); the line numbers count on.
+  - Wrap, line numbers and the size are remembered (`AppSettings.TextViewerWrap`, `TextViewerLineNumbers`,
+    `TextViewerTextSize`). Esc, the X, or a click on the dim area closes it.
+- **The whole text** (`AppController.TextView.cs`): a stored entry's `CF_UNICODETEXT`, else its HTML fragment, else its
+  RTF source; a file list's paths, one per line; an archived prompt's full text. Read on the pool, one format only.
+- **Copying** from the peek or the viewer puts plain text on the clipboard, and the history records it like any copy.
+
+**How a text is drawn** (`Core/TextView`, pure and unit-tested).
+- **`TextLanguageDetector`, precision over recall.** Structure first (JSON that parses, a leading tag, a diff's headers,
+  a shebang, Markdown code fences), then each of the first 200 lines of the first 64 K characters is scored per language
+  against prose and Markdown. A language wins with at least 3 points, more than the prose and Markdown signals together,
+  on at least 30 % of the lines (half of a text of one or two lines). Anything else is Markdown, the owner's fallback.
+  Each pattern runs with a 50 ms timeout.
+- **`SyntaxHighlighter`:** one small lexer per family (C-like, scripting, markup, data, diff) for the 22 languages of
+  `TextLanguage` besides Markdown and plain text: XML, HTML, JSON, YAML, INI and TOML, C#, Java, Kotlin, JavaScript,
+  TypeScript, Python, Ruby, PHP, Go, Rust, C and C++, PowerShell, shell scripts, batch files, SQL, CSS, diffs. One pass,
+  left to right; the first 2,000,000 characters are colored (`DefaultMaxChars`), the rest is in the default color.
+- **`StructuredTextFormatter`:** re-indents XML and JSON, and every token keeps its characters (entities, escapes, the
+  spelling of numbers). An element with text in it, such as an agent prompt's `<instructions>`, stays exactly as copied.
+  DTDs are ignored and nothing is resolved; at most 4,000,000 characters; invalid input is "not formattable".
+- **`RtfWriter` and `SyntaxPalette`:** an RTF document per page, VS Code's Dark+ and Light+ colors for tokens and
+  Windows' text colors for prose. Markdown is drawn as a document; a fenced block is colored in its fence's language
+  (`TextLanguages.FromFenceInfo`). Links are drawn, never live. One character of text is one character of RichEdit, so
+  the gutter maps positions to lines.
+- **`TextViewSource`** normalizes line breaks to `\n` and cuts the text to the caller's limit at a line break;
+  **`TextViewRendering`** is one view of it (a language, formatted or not), with its tokens or blocks and its `Pages`.
+- **`Presentation/Markdown`:** `MarkdownParseOptions` (`KeepLineBreaks`, since a prompt's line breaks are meant, and a
+  larger `MaxLength`), and the fence's info string on `MarkdownCodeBlock.Info`.
+
+**Megabyte texts: why pages** (measured 2026-11-13).
+- **The Core work is cheap:** detection, preparation and the RTF of a 6 MB log and of 2.3 MB of C# each took under
+  100 ms on this PC (session c073d86d's scratchpad, `bench/bench_textview.cs`).
+- **RichEdit is not.** In the QA desktop (no GPU) it took about 2.5 µs per character as plain text and 7 µs as RTF, on
+  the UI thread. The 6 MB log as one plain document: 15.4 s (12.0 s to set, 3.3 s to lay out), about 30 s with a format
+  pass over it; 2.3 MB of C# as RTF: 15.9 s.
+- **So RichEdit gets one page.** A code document is cut into pages of at most 64,000 characters at line breaks
+  (`TextViewRendering.Pages`; a longer line is cut at the limit, never inside a surrogate pair), and its tokens are cut
+  at the pages' edges.
+  - A page without tokens goes in as plain text, with the default character format set first instead of a format pass.
+  - Markdown is drawn whole, up to 100,000 characters (0.74 s); a longer text is shown as plain text.
+  - The peek and the viewer share one `TextPreviewPresenter`, warmed up with the panel: on a fresh one the viewer's
+    first colored page took 1.4 s.
+- **Afterwards:** the 6 MB log opens in 2 to 3 s as page 1 of 94, and 2.3 MB of C# as page 1 of 36; turning a page takes
+  under 0.5 s. A show of 50,000 characters or more that takes 500 ms or more is logged, without content: "Text surface:
+  N characters as RTF took N ms to show (set N ms, first layout N ms)".
+
+**Found by the live QA, fixed** (§4 has each lesson):
+- the overlays took their colors from Windows' app theme instead of the panel's: light over a dark panel, the prose
+  unreadable. The image peek's frame had the same fault since §2.24;
+- the peek closed at the first move of the mouse over its text, where the first version meant to keep it open (the
+  rule changed the same day, below);
+- the viewer's first text came out in the interface font, without colors;
+- the language menu did not open;
+- Esc did nothing in a viewer opened from a menu's *View*, the image viewer's too;
+- megabyte texts froze the panel for 15 to 30 s (pages, above).
+
+**The owner's follow-up the same day** (after trying `0.2.11-dev.17.g2fe6f72` on their PC): "When the text viewer
+appears because i paused my mouse (hover) above the text - it close immediately if i move the mouse BUT it should react
+to middlemouse scrolling just fine. Only keep open ignoring mouse movement when clicking the eye at the corner." and "I
+dont think Markdown renders at this with a scrollbar for some reason (on the local install)", about a 3,600-character
+note of theirs (32 lines).
+- **Any real move closes the peek.** The first version kept it while the mouse moved over it or its card, so that its
+  text could be selected. Now a move past 3 pixels from where it opened closes it, wherever the mouse goes
+  (`TextPeek_PointerMoved`), as the image peek does. Only its own right-click menu keeps it while the mouse goes to the
+  menu; once that menu closes, the next move counts from where the mouse is. Selecting with the mouse is the viewer's.
+- **The wheel scrolls it from anywhere** on its surface, which covers the panel's monitor, and no longer closes it. Over
+  the text box RichEdit scrolls by itself (91 pixels a notch for that note in the QA desktop); anywhere else
+  `TextPreviewPresenter.ScrollByWheel` scrolls it (three lines a notch at the text's size, 53 pixels there; quick
+  notches add up). Told apart by where the mouse is: RichEdit leaves the event unhandled, and the fix's first build,
+  which went by the handled flag, scrolled the text twice per notch over the text.
+- **A text of up to 20,000 characters taller than the frame was cut off, without a scrollbar.** Its row was an Auto row,
+  which measures the text box with unlimited height: the box grew to its whole text, the frame cut it at its
+  `MaxHeight`, and RichEdit's scroller had nothing to scroll. The owner's note was such a text: recognized as Markdown
+  and drawn as a document (checked locally on the note itself), with its end out of reach. The row is a star row now,
+  and a short text's frame still fits its text (§4).
+- Verified live with an invented look-alike of the note (§5). The note itself stayed on this PC: only the verdict was
+  read from it, in the scratchpad.
+
+**Pieces.**
+- Core: `TextView/` (`TextLanguage` and `TextLanguages`, `TextLanguageDetector`, `SyntaxToken`, `SyntaxHighlighter`
+  with its `.Code`, `.Markup` and `.Data` parts, `StructuredTextFormatter`, `SyntaxPalette`, `RtfWriter` with
+  `TextViewStyle`, and `TextViewDocument.cs` with `TextViewSource`, `TextViewRendering` and `TextViewPage`);
+  `Presentation/Markdown`; three members of `AppSettings`.
+- App: `Views/ClipboardFlyout.TextPreview.cs` (the peek, the viewer, their menus and keys),
+  `Views/TextPreviewPresenter.cs` (the RichEdit surface and its gutter), `AppController.TextView.cs`,
+  `ViewModels/ClipItemViewModel.TextView.cs`; the card template's "⋯" line and eye (`ClipboardFlyout.xaml`); F3 and
+  *View* (`ClipboardFlyout.xaml.cs`, `.Prompts.cs`, `.Shells.cs`); the overlay styles and `TextViewButtonStyle`
+  (`App.xaml`).
+- Strings: 28 entries and one plural string in all five catalogs, each with its description.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- No Find (not chosen). A selection, and *Select all*, stay within one page.
+- The peek recognizes the language from the start it shows: a megabyte log can read "Markdown" in the peek, while the
+  viewer says "Too long to draw as Markdown: shown as plain text."
+- The status line counts the copied text's lines: a flat XML copy reads "1 line" while the formatted view shows twenty.
+- A copy from the peek or the viewer becomes a new history entry (CRLF line breaks, source BetterClipboard). From a
+  Markdown document it is the drawn text (list numbers and bullets with a tab, no blank lines between paragraphs), not
+  the Markdown source; the card's *Copy only* copies the source.
+- Ctrl+wheel steps once per wheel event, so a high-resolution wheel changes the size quickly.
+- Not run: a real GPU, Narrator, touch and pen, the toolbar in a right-to-left language, a monitor with another scale
+  than the panel's.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 2,042 tests (Core 1,645, Windows 397; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 2,338 tests (Core 1,893, Windows 445; opt-in tests + 1 explicit measurement skipped)
 pwsh tools/release/test-update.ps1 -Version X.Y.Z -PackageDirectory artifacts/release   # install.ps1's update mode
                                                                # against a package; scratch folders only (§2.29)
 pwsh tools/release/test-iex.ps1                                # install.ps1's param block survives `irm | iex`
@@ -4685,6 +5586,13 @@ pwsh tools/release/test-all-users.ps1 -Version X.Y.Z -PackageDirectory artifacts
 pwsh tools/release/publish-dev.ps1 [-Install]                  # a dev build of HEAD's commit into this PC's
                                                                # dev-builds folder: the installed app's update
                                                                # button offers it (§2.39, skill local-dev)
+pwsh tools/release/package-msix.ps1 -Version X.Y.Z -Architectures x64 -NewTestCertificate   # the Microsoft Store
+                                                               # package, signed for a test desktop; -ForStore for a
+                                                               # submission (§3.5). Never register it on this PC
+pwsh tools/release/test-submit-store.ps1                       # the Store submission script against a stand-in
+                                                               # service on this PC: no network (§3.5)
+python tools/release/test-store-listing.py                     # the listing kit fits the Store's limits, and the
+                                                               # generator still fills Partner Center's export (§3.5)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -4705,6 +5613,11 @@ graceful quit (drains queued captures). **The exe is locked while running — `-
 Isolated dev run: `BETTERCLIPBOARD_DATA_DIR=<scratch>/data BetterClipboard.exe --background` — a scoped
 instance (§2.9), so `--exit` with the same variable set stops only it; **without** the variable, `--exit`
 stops the user's installed app.
+
+**The silent restart** (§2.46) runs about 5 s after Settings closes in any instance, an isolated one included: a test that
+opens Settings sees the process id change afterwards (the log says "Restarting silently …"). Its internal command line,
+`--background --restart-after pid:startTicks --clipboard-sequence N`, is for the app itself; started by hand it waits for
+that process and replaces it.
 
 **The language picker** (§2.37) shows at every start until a language is chosen: a new scratch folder
 (`BETTERCLIPBOARD_DATA_DIR=<a new scratch folder> BetterClipboard.exe`), or a `settings.json` that names no language
@@ -4825,11 +5738,15 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   3. builds and tests the Chocolatey package (stable tags only, §3.2);
   4. `gh release create --notes-file` with the zips, the `.7z` archives, `SHA256SUMS.txt`, `install.ps1` and
      `betterclipboard.X.Y.Z.nupkg`;
-  5. `choco push` (with the `CHOCOLATEY_API_KEY` secret; without it only a warning).
+  5. `choco push` (with the `CHOCOLATEY_API_KEY` secret; without it only a warning);
+  6. submits the two Microsoft Store packages (stable tags only; built before step 4 and kept as the run's artifact
+     `store-packages`) with `tools/release/submit-store.ps1` (§3.5). Without the three `PARTNER_CENTER_*` secrets, or
+     while the product's first submission is not published, the step only warns.
 
-  Tags with a pre-release suffix (`-rc.1`) become pre-releases and skip Chocolatey. CI
+  Tags with a pre-release suffix (`-rc.1`) become pre-releases and skip Chocolatey and the Store. CI
   ([`ci.yml`](.github/workflows/ci.yml)) builds, tests and packages x64 on every push/PR, runs the installer's update
-  mode against that zip, and installs, upgrades and uninstalls an x64 Chocolatey package.
+  mode against that zip, installs, upgrades and uninstalls an x64 Chocolatey package, builds a test-signed x64 Store
+  package, and runs the tests of the Store submission script and of the listing tools.
   - **Lesson (2026-10-02): v0.1.0–v0.2.3 were all published with the wrong notes.** Each shows its tagged commit's
     message ("Version 0.2.3"), although the tags on GitHub are annotated with the real notes.
     - Cause: `actions/checkout@v5` fetches a pushed tag by its commit (`+<sha>:refs/tags/<tag>`), so the runner's tag is
@@ -4859,6 +5776,18 @@ Snipping tab (2026-10-01), with a copy of the dev build:
        is the notes plus the footer, and every `SHA256SUMS.txt` line matches its asset's GitHub `digest`.
     - The `install.ps1` asset has CRLF line endings: the Windows runner checks it out with `core.autocrlf`. The blob
       and `irm | iex` (raw.githubusercontent.com) have LF. The content is identical, and both run.
+  - **Through a merge request** (0.2.10, 2026-11-10; the earlier releases pushed `main` straight):
+    1. Push local `main`'s head as `release/X.Y.Z` and open a pull request into GitHub's `main`, not a draft; CI
+       runs on it. Check `main` again right before merging: on 2026-11-10 two commits of another session had
+       landed after the request was opened, and the owner chose in one question to include them.
+    2. Merge with a merge commit, never a squash (the commit messages carry the notes draft): `gh pr merge N --repo
+       Nucs/BetterClipboard --merge --match-head-commit <full sha> --subject … --body …`, run from a folder outside
+       the repository, so `gh` cannot check out or pull in the shared tree. The guard needs the full hash
+       (`git rev-parse`): a guessed one was refused with "Head branch was modified", and nothing changed.
+    3. Wait for CI on the merge commit, then tag the merge commit with the anchored lookup's draft (`git log -1
+       --grep='^RELEASE NOTES (draft…' --format=%B <merge commit>`: GitHub's merge message has no marker line).
+    4. Afterwards fast-forward local `main` (`git merge --ff-only origin/main`: the merge commit has the same tree,
+       so no file of the shared tree changes) and delete the release branch on GitHub.
 - **Installer** ([`install.ps1`](install.ps1), Windows PowerShell 5.1 and PowerShell 7, StrictMode 3):
   GitHub API → zip for the **OS** architecture (`RuntimeInformation.OSArchitecture`, correct under x64
   emulation on ARM64) → SHA-256 vs `SHA256SUMS.txt` **and** GitHub's asset `digest` → `--exit` the running
@@ -4931,6 +5860,12 @@ Snipping tab (2026-10-01), with a copy of the dev build:
       sentence that says what to close. After a successful swap the clean-up is best effort and never fails the run.
     - **Who gets it:** every install and update that runs this `install.ps1`. The update button runs the new
       package's own installer, so a copy updates past the trap once the package it updates to has the fix.
+  - **Since 2026-11-13: the Microsoft Store edition** (§2.47).
+    - `-Uninstall` takes `-KeepProcessId <pid>` (that process is never closed: it is the Store edition, which runs
+      the uninstall), `-ResultPath` and `-LogPath` (both valid in the uninstall's parameter set now), and writes its
+      result file. This is the command line the Store edition runs, with the script its own package carries.
+    - An install warns, before it changes anything, when the Store edition is installed for the account
+      (`Get-StoreEditionData`), and says what that edition does when it is opened.
   - **A Chocolatey copy** (`lib\betterclipboard\tools\app`, §3.2) is respected:
     - install warns about it and leaves a startup entry that starts it;
     - `-Uninstall` keeps a startup entry that starts that copy; its own entry or a stale one goes, or, while that copy
@@ -5387,6 +6322,201 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 **Retake `update.png` with the first real update** (§6). It shows a build labelled 0.2.3 that is offered 0.2.5. With
 0.2.6 installed and a newer release out, steps 10 and 11 give a true pair without a labelled build.
 
+### 3.5 Microsoft Store: the MSIX package, the submission and the release pipeline (2026-11-13; a filled draft, not submitted)
+
+User request (2026-11-12): "I want to publish my product to microsoft marketplace". The app side is §2.47; this section
+is the package and the way into the Store. The full report is [`docs/microsoft-store.md`](docs/microsoft-store.md), the
+texts for Partner Center are [`docs/store-listing.md`](docs/store-listing.md), and the package source is
+[`packaging/msix`](packaging/msix).
+
+**The gates** **[docs]**, read 2026-11-12 (the doc's §9 has every address).
+- **Account:** free for individuals; registration at `https://storedeveloper.microsoft.com` (a Microsoft account, an ID,
+  a selfie).
+- **Name:** reserved in Partner Center before anything is submitted; a reservation unused for three months is removed.
+  "Better Clipboard" is already the title of another publisher's app (PAST-E Clipboard, `9NR75C5JPVVX`). Partner
+  Center reserved "BetterClipboard" all the same (2026-11-13); certification may still ask. The fallback is "Nucs
+  BetterClipboard" (the name chosen for code signing, §3.3).
+- **Package:** MSIX, at most 25 GB; the Store signs it after certification; its identity must be the reserved one.
+- **Version:** four numbers, the fourth must be 0, and **the first cannot be 0**.
+- **Listing:** a description of at most 10,000 characters without web addresses, up to 20 features of at most 200
+  characters, at least one PNG screenshot of 1366 × 768 or larger, a privacy policy address (the README's *Privacy*
+  section), an age rating from the IARC questionnaire, and a justification for the restricted capability
+  `runFullTrust`.
+- **Policies** (Microsoft Store Policies 7.20) that shaped the edition: 10.2.8 (consent and supported methods for any
+  change to Windows), 10.5.5 (express consent before sensitive data is stored), 10.5.1 (privacy policy), 10.1.1 (a clear
+  first run, a unique name), 10.2.7 (clean uninstall), 10.6 (capabilities), 10.7 (localized descriptions), 10.2.2 (no
+  code downloaded that changes the product).
+
+**The package.**
+- **Manifest** [`Package.appxmanifest`](packaging/msix/Package.appxmanifest), a template the build fills in: one
+  application (`BetterClipboard.exe`, with the startup task `BetterClipboardStartup` and the console alias `bclip.exe`,
+  which starts `bclip.exe`), `runFullTrust` only, the five languages, Windows 10 2004 (19041) or later. Until
+  2026-11-13 `bclip` was a second, hidden application: the Store refused that (§2.47).
+- **Identity** [`identity.json`](packaging/msix/identity.json), as Partner Center assigned it (none of it a secret):
+  name `Nucs.BetterClipboard`, publisher `CN=B31AB4B1-B96C-4DB9-83AE-B799D5192208`, display name "Nucs", family name
+  `Nucs.BetterClipboard_mgez7y7xa0my4`, Store ID `9PHL574X9BF9`. The build computes the family name from name and
+  publisher and refuses a Store package when it differs from the file's.
+- **Version: (X+1).Y.Z.0** for the release X.Y.Z (0.2.11 ships as 1.2.11.0), for every release, for good. The Store
+  refuses a first number of 0 and only ever offers the highest version, so a rule that stopped adding at 1.0.0 would
+  make that package older than the last 0.x one. The owner chose this over releasing 1.0.0 first (2026-11-13,
+  below).
+- **Logos:** [`tools/make_store_assets.py`](tools/make_store_assets.py) draws the 35 PNGs of `packaging/msix/Assets` from
+  the app icon's own drawing, and the listing's 300-pixel tile icon into `packaging/msix/Listing`.
+- **Build:** [`tools/release/package-msix.ps1`](tools/release/package-msix.ps1) `-Version X.Y.Z`, per architecture:
+  1. publishes `bclip` self-contained;
+  2. fills in the manifest (identity, version, architecture);
+  3. publishes the app with `WindowsPackageType=MSIX`, `StoreAppxManifest` and `StoreExtraFilesDir` (`bclip` and
+     `install.ps1` ride along in the package root), into `artifacts/store-build` (obj and bin of their own:
+     `Directory.Build.props`), which makes the `.msix`;
+  4. checks the package: identity, version and architecture as asked; nothing in the manifest that the Store refuses
+     at upload (one application, none hidden from Start, `bclip` as its console alias); the app, `bclip`, `install.ps1`
+     and the resource index inside; under 250 MB.
+  - Output: `artifacts/store/BetterClipboard-<version>-store-<arch>.msix` (x64 70.6 MB, ARM64 68.5 MB).
+  - `-ForStore`: unsigned (the Store signs), and refused while the identity is a placeholder.
+  - `-NewTestCertificate` / `-TestCertificate`: signed for a test desktop; the certificate's subject becomes the
+    publisher. A new certificate is made in memory and written to a `.pfx` and a `.cer`: nothing is added to a
+    certificate store of the build PC.
+- **Trying a package: only in a disposable test desktop** (§4). `Import-Certificate` of the `.cer` into
+  `Cert:\LocalMachine\TrustedPeople`, then `Add-AppxPackage <msix>`. For repeated tries, unpack it and register the
+  folder (`Add-AppxPackage -Register <folder>\AppxManifest.xml`, Developer Mode): a changed file is then replaced in
+  place.
+- **The listing kit** [`docs/store-listing.md`](docs/store-listing.md) is the source of every text in Partner Center.
+  [`check-store-listing.py`](tools/release/check-store-listing.py) checks it against the Store's limits,
+  [`make-store-listing-csv.py`](tools/release/make-store-listing-csv.py) fills Partner Center's exported listings file
+  from it, and with `--check` says whether an export is what the kit says (below).
+
+**The submission in Partner Center (2026-11-13).** Made through the owner's Chrome, in a tab of its own (skill
+`browser`); `docs/microsoft-store.md` §8 has the table of pages.
+- **The draft** ("Submission 1") holds: free, all markets; Utilities + tools and Productivity, with the privacy,
+  website and support links; both packages (`1.2.11.0`, built on this PC before the change was committed: a release's
+  own replace them); five listings with texts, search terms, six screenshots, captions and the tile icon; the
+  `runFullTrust` justification; the notes for certification.
+- **Left to the owner:** the IARC tick under the age ratings (the answers are filled, every one "No"; the tick is an
+  agreement in the owner's name), the version rule, and *Submit for certification*.
+
+**Facts about Partner Center** **[verified 2026-11-13]**:
+- **Listing languages appear only after packages are uploaded**: they are the manifest's `Resource` languages.
+- **The upload check** names what the Store refuses (the hidden application, §2.47) within about two minutes. A
+  restricted capability is only a notice there.
+- **The `runFullTrust` justification holds at most 500 characters**: "The justification must be 500 characters or
+  fewer", in red under the box, and the page saves nothing. The kit's first text had 993.
+- **The notes for certification** have a page of their own (*Supplemental info › Additional Testing Information*)
+  with its own *Save description* link.
+- **Utilities + tools has two subcategories** (*Backup + manage*, *File managers*); none is required.
+- **The age ratings** are saved only with a tick: "I agree to the IARC Terms of Use and I am the age of majority".
+- **Listings can be exported and imported** (the overview's *Export listings* and *Import listings*): a `.csv` with
+  one row per field (`Field, ID, Type (Type), default, <languages>`; 430 rows), written and read with PapaParse:
+  UTF-8 with a byte order mark, quoted fields may hold line breaks. An import saves nothing unless the whole file is
+  valid. Pictures are web addresses in an export and can be copied between the language columns: uploaded once in
+  the English listing, they served all five.
+- **An import does not keep the order of the screenshots** (three imports, each followed by an export).
+  - After the import that added the captions, the English listing showed Settings first and the main panel last,
+    although the file had them in the kit's order. After the next import the Spanish and the Hebrew listing were
+    out of order too, although the file had not changed them, and the English one was still wrong, although the
+    file asked for the kit's order. Two exports in a row were identical, so it is the import.
+  - A caption stayed with its picture every time: the import keeps the pairs of a file's rows, not their order.
+  - So `make-store-listing-csv.py` writes each caption under its own picture. It tells the pictures apart by the
+    captions they already have, by `--screenshots-in-order LANGUAGE`, or by the languages agreeing, and stops
+    when it cannot. `--check` compares an export with the kit and names the languages that are out of order.
+  - The script's first version wrote captions by position. Its file for the third import would have put five
+    English captions under the wrong pictures; a cell-by-cell comparison of that file with the export showed it
+    before anything was uploaded.
+- **The order is put right on the listing page of each language.** A screenshot dragged onto another one changes
+  places with it, and the page saves that at once, without *Save*. Until the page is loaded again it shows *Add
+  image caption* on the cards it moved; the captions are still saved with their pictures.
+  [`order-store-screenshots.js`](tools/release/order-store-screenshots.js) does it with the page's own drag
+  events. The browser tools' mouse drag exchanged the first two cards instead of the sixth and the first.
+- **A Hebrew Store page shows "Notepad++" as "++Notepad"** unless a left-to-right mark (U+200E) follows the
+  signs: the app's own fault of 2026-11-09 (§2.37), found again in a render of the Hebrew listing. The kit's reader
+  adds the marks to a right-to-left listing's shown texts (never to the kit itself, and never to search terms), and
+  an export showed that Partner Center keeps them.
+- **A listing page's picture inputs are hidden** (`input[type=file]#image-upload-input`, one file each; the first is
+  the desktop screenshots', the fifth the 300 × 300 tile icon's).
+
+**The listing's screenshots** (made 2026-11-13: six PNGs of 2560 × 1440 in `packaging/msix/Listing/Screenshots`).
+Whole screens, because the Store wants 1366 × 768 or more. Repeat it when the panel, Settings or the welcome change
+visibly. The README photos' way (§3.4), with these differences:
+1. **The app** is the test-signed twin of the Store package (`package-msix.ps1 -Architectures x64
+   -NewTestCertificate`): the certificate into `Cert:\LocalMachine\TrustedPeople`, `Add-AppxPackage`, then
+   `explorer.exe shell:AppsFolder\<family>!App`. `tools/readme/demo-data.ps1` runs before the first start.
+2. **The desktop:** `create_desktop(os="windows", width=2560, height=1440)`, the dark theme, scale 150 %. On
+   2026-11-13 the worker's drive was starved (the package install took 8.5 minutes, commands hung for 90 s); the same
+   setup took 16 s with `host="pc"`.
+3. **The scenes**, in the order of the pictures: the welcome window, before *Start*; then a short document in Notepad
+   (zoom 140 %) with the caret at the end of a line, and over it the panel (432 × 640 DIP, resized by dragging its
+   right and bottom borders); the same with a search word and the whole-word toggle; with the groups column and three
+   groups (**+**, a name, an icon; cards dragged onto the icons); with the pointer resting on the picture card (the
+   preview); and Settings scrolled to *Privacy*.
+4. **Captures:** `tools/readme/capture-screen.ps1` with the window showing, and again after it was closed; it also
+   prints the window's rectangle. `tools/readme/screen-shot.py` then rounds the window's corners and removes DWM's
+   border band, with a `--keep` rectangle for the preview, which lies across the panel's edge.
+5. **Lessons:**
+   - A start by hand opens Settings, and closing it restarts the app silently a few seconds later (§2.46): wait.
+   - After a click on the picture card's eye the pointer rests on the card, and the preview opens when the viewer
+     closes: move the pointer away before Esc.
+   - Look that the icon picker really opened before clicking where its name box would be. A click that lands on a
+     card pastes it into the document.
+   - After cards were dragged onto groups, they kept a selection bar until the app restarted (§6).
+
+**The release pipeline** (`docs/microsoft-store.md` §7 has it in full).
+- **In the release run:** `package-msix.ps1 -ForStore` before anything is published (the artifact `store-packages`),
+  and `submit-store.ps1` as the last step: a new submission made from the published one, the two new packages,
+  "What's new" from the tag's notes (1,500 characters at most), the commit, and the status followed into
+  certification.
+- **Exit codes:** 0 submitted; 1 the Store refused, or the commit failed; 2 wrong packages or arguments; 3 the
+  `PARTNER_CENTER_*` secrets are not set; 4 the product has no published submission yet. The release run warns for
+  3 and 4 and is red for the others.
+- **By hand:** *Actions › Microsoft Store* (`store.yml`): `check`, `submit`, `draft`.
+- **Not connected yet.** Microsoft's API needs a Microsoft Entra application with the Manager role, in a tenant
+  associated with the developer account, and it only updates a product that was published once.
+  - Associating a tenant asks for a *work* account of that tenant: the owner's personal Microsoft account was not
+    taken, although it administers their Azure directory **[verified]**. A Global administrator is not needed for
+    that step **[docs]**.
+  - Adding the application asks for more **[docs]**: "You must be signed in with a Manager account that also has
+    global administrator permissions for the Microsoft Entra ID tenant you're working in." Such an account has to
+    set up multi-factor authentication at its first sign-in (security defaults: the Authenticator app, or any
+    TOTP app).
+  - The owner's Azure directory holds one user, their personal account **[measured]**, so a work account has to
+    be made first. The plan is `docs/microsoft-store.md` §7: the work account and the application made with `az`,
+    one sign-in by the owner, the three secrets by pipe so that the key is never shown. It waits for the owner's
+    word, like the release.
+- **Why a script of our own and not Microsoft's `msstore` CLI:** its `publish` takes one package file, and this
+  edition ships one per architecture without a bundle.
+- **Tested without the service** (`test-submit-store.ps1`, 39 checks, in CI): a stand-in on this PC answers like the
+  documented API and records every request.
+
+**The owner's decisions** (2026-11-13; four HTML questions with the whole listing as review pages, made from the
+kit by a scratch generator, session 66cdd808):
+- **The Store page: "Change something"**, with the comment "We must replace the images BUT only after we do
+  everything else - ask me then again about it". Nothing else was asked to change: name, publisher, texts,
+  category, links and price stand. **The six screenshots are to be replaced, last, and only after asking the
+  owner again what they want instead.**
+- **Translations: "All five languages"**, with "Open gh issue per language (except hebrew and chinese) asking for
+  translator contributor to review existing translation". Done: issues #4 (Russian) and #5 (Spanish), labels
+  *help wanted* and *good first issue*. Each names the app's catalog, quotes that language's Store description
+  (not published yet), says what to look for and how to send corrections, and mentions nobody.
+- **Version: "Keep 0.2.x"**, with "Cant the store be 0.2.11.0? if no, all good." It cannot. Microsoft: "the last
+  (fourth) section of the version number is reserved for Store use and must be left as 0 when you build your
+  package … The other sections must be set to an integer between 0 and 65535 (except for the first section, which
+  cannot be 0)." So the rule above stands for good: release 0.2.11 is Store package 1.2.11.0.
+- **Go-ahead: "Prepare, I submit"**, with "I will tell you explicitly to release and then to publish. just prepare
+  all as we still have working going on and maybe use transcript of this session 2e2fae95-… to see how release
+  notes are formed." So: **no push, no tag, no release and no submission until the owner says each in words.**
+  The owner ticks the IARC agreement and presses *Submit for certification* themselves. Prepared: the version
+  bump to 0.2.11 with the notes draft in its message, in v0.2.10's shape (that session's transcript: the bare
+  title line, the install command, a bold lead-in per feature, **Fixed**, the files table, the signing note,
+  nothing that names an older version).
+
+**Open** (`docs/microsoft-store.md` §8).
+1. On the owner's word: the release (§3.1). Its `store-packages` artifact replaces the draft's packages.
+2. The screenshots: ask the owner what replaces them, retake, upload, order, check (`--check`).
+3. The owner: the IARC tick and *Submit for certification*.
+4. The pipeline's connection, on the owner's word and with one sign-in by them (the plan:
+   `docs/microsoft-store.md` §7): a work account in the owner's Azure directory, the tenant associated with the
+   developer account, the application with the Manager role, the three secrets, then *Microsoft Store › check*.
+   Submitting through it only works once the first submission is published.
+5. After approval: the Store link in the README and in the installer's warning.
+
 ---
 
 ## 4. Conventions (must follow)
@@ -5433,7 +6563,10 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   OpenFile E8E5 (*Open*), Hide ED1A (an eye with a slash: *Hide until opened again*), and for Settings › Third
   party (checked by rendering): Puzzle EA86 (*Works with*), Library E8F1 (*Built with*), and for the image overlays
   (§2.24, checked by rendering): RedEye E7B3 (the eye that opens the image viewer), Cancel E711 (the viewer's close button), and for updates
-  (§2.29, checked by rendering): Sync E895 (two arrows in a circle: the update button and the Settings card).
+  (§2.29, checked by rendering): Sync E895 (two arrows in a circle: the update button and the Settings card), and for
+  a picture's file (§2.49, checked by rendering): E62F (a box holding "\.."; *Copy path*), FolderOpen E838 (*Open
+  folder*) and SaveLocal E78C (*Save to temp and*, and its Settings card); *Copy image as a file* and *Open file* reuse
+  Document E8A5 and OpenFile E8E5.
   Group icons: `Core/Presentation/GroupIconCatalog`. Raw PUA characters slip into sources easily: twice
   on 2026-09-25 they landed in string literals, once a raw U+2009 thin space did, and on 2026-10-01 nine of
   them in the pick menu (the editing tool turned `\uXXXX` written in an edit into the raw character), and five more
@@ -5472,6 +6605,12 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     counted it (`ImportedThisSession` is bumped after `AddAsync` returns).
   - This PC did not reproduce any of them, also not with `DOTNET_PROCESSOR_COUNT=1`, pinned to one core, or with the
     pool capped at 4 threads (`DOTNET_ThreadPool_ForceMaxWorkerThreads=4`). CI is the check.
+  - Nor a timer that must outrun the code under test: cancel once the code under test is where the test needs it
+    (`CliPipeServerTests.ClientHangUp_CancelsHandler` hangs up once its handler runs, §2.45).
+  - **xunit's test order follows the test assembly's path** (2026-11-12, §2.45): the same binaries failed a timing test
+    in every run from one folder and in none from another. A test that passes in one worktree and fails in another, or
+    starts failing after an unrelated change, may only have met another order. Copy the test's output folder elsewhere
+    and run it there before blaming the change.
 - **Core tests run one class at a time** (`[assembly: Xunit.v3.Parallelization(Mode = ParallelMode.None)]` in
   `TestData.cs`; the old `CollectionBehavior.DisableTestParallelization` is a CS0619 error in xunit v3 4.x).
   - Why: `SqliteConnection.ClearAllPools` (`TempDirectory.Dispose`, `EncryptedStoreTests`) empties every pool
@@ -5490,6 +6629,19 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 - **Starting long-lived processes from a console tool:** `UseShellExecute = true` — with `false` the child
   inherits the tool's stdout/stderr pipes and whoever reads them (a shell pipe, an AI agent) waits for EOF
   until that child exits.
+- **In the app, a shell start (`Process.Start` with `UseShellExecute`) never runs on the UI thread inside a XAML event**
+  (found 2026-11-13, §2.49).
+  - Why: `ShellExecuteEx` can run a message loop of its own while Windows activates the app (a packaged app such as
+    Photos is started through COM and DDE). On the UI thread WinUI then re-enters from inside the event that asked.
+  - When that event's popup had just been closed (the image viewer's file-name link), WinUI ended the process: 2 of 2
+    clicks, 0xC000027B in `Microsoft.UI.Xaml.dll`, no log line.
+  - What to do: run the start on the thread pool and await it, `await Task.Run(() => Process.Start(info)?.Dispose())`;
+    .NET then calls `ShellExecuteEx` on an STA thread of its own. `AppController.LaunchAsync` (§2.49) does, and the Run
+    tab's `RunCommandLauncher` (its own STA thread) did already. The app's older starts on the UI thread are in §6.
+- **A crash with no log line is a WinUI fail-fast** (0xC000027B, "Application Error" 1000 in the event log naming
+  `Microsoft.UI.Xaml.dll`): `Application.UnhandledException` never sees it. Get a dump in a test desktop (the
+  claude-desktops lessons below) and read the UI thread's managed stack with `dotnet-dump analyze <dump> -c
+  "clrstack -all"`: it shows the call into native code where it failed (§2.49's dump showed `ShellExecuteExW`).
 - **Quote-dense scripts:** write them to a scratch file and run the file; big inline heredocs break the
   Bash tool's `eval` wrapper (`unexpected EOF while looking for matching '`). Escapes don't survive it
   either: a `\\n` inside a heredoc'd Python edit script reached the C# source as a real line break
@@ -5597,6 +6749,69 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   clearing and refilling it.
 - **A `CompositionTarget.Rendering` handler makes XAML render every frame** while it is attached, changed or not
   (measured: a frame every 16 ms). Attach one only for a bounded wait, and remove it in a `finally`.
+- **A WinUI window that closes must let go of every handler on itself and on its timers** (§2.45). Handlers on the
+  `Window` (`Closed`, `Activated`) and on a `DispatcherQueueTimer` that refer to the window form cycles that C#/WinRT's
+  reference tracking cannot see through: neither is a XAML element. The closed window then stays in memory with its whole
+  tree, 17 to 22 MB per Settings open in 0.2.10.
+  - Remove them in `Closed`: name timer handlers (no lambdas), stop the timers, and take off the x:Bind code's own
+    `Activated` handler (`SettingsWindow.DetachGeneratedBindings`).
+  - A new window, or a new timer or window handler in one, follows `SettingsWindow.OnClosed`.
+  - Check it with a heap dump (`dotnet-gcdump`) after a few opens and closes: no closed window may be in it.
+- **Don't extend a window's content into its title bar when the window opens and closes repeatedly.** Each lifetime of
+  such a window leaves 24 to 32 GDI handles behind (`ExtendsContentIntoTitleBar` and `AppWindow.TitleBar` alike, §2.45),
+  and a process may hold 10,000. Settings uses Windows' own title bar; the panel never closes, so its window is not
+  affected.
+- **Give a `BitmapImage` to its `Image` before its source**: assigned first, WinUI decodes the picture at the size it is
+  drawn; given its source first, at full size (`ClipItemViewModel.EnsureThumbnail`, §2.45).
+- **Text boxes that take the keyboard often get no spelling checker** (`IsSpellCheckEnabled` and
+  `IsTextPredictionEnabled` off): once a box with it had the keyboard, Windows' spelling engine stayed loaded in the app
+  for good (§2.45). Prose boxes may keep it; search, shortcut, name and list boxes do not need it.
+- **A windowed popup's colors come from Styles in `App.xaml`, never from `Application.Current.Resources` in code**
+  (§2.50). A brush looked up in code follows Windows' app theme, not the panel's `RequestedTheme`: the text peek and
+  the viewer came out light over a dark panel, and the image peek's frame had done so since §2.24. A style's
+  `{ThemeResource}` setters resolve in the element's own theme (`OverlayFrameStyle`, `OverlaySecondaryTextStyle`, …,
+  read with `ClipboardFlyout.OverlayStyle`). §2.11 found the same for the group buttons.
+- **`PointerExited` bubbles:** a parent hears it whenever the pointer crosses from one of its inner elements to another.
+  A hover surface that closes on it checks that the pointer really left its bounds (`ClipboardFlyout.IsInside`): the
+  text peek closed at the first move over its text (§2.50).
+- **A `RichEditBox` gets its text after its template:** `ApplyTemplate()` first, and a box that is not loaded yet gets
+  its text at `Loaded` (`TextPreviewPresenter.Show`). An RTF document set before the template was applied lost its fonts
+  and colors. Keep a loading box laid out (`Opacity` 0, no hit-testing), not collapsed (§2.50).
+- **RichEdit takes text slowly, on the UI thread:** about 2.5 µs per character as plain text and 7 µs as RTF on a test
+  desktop without a GPU, so 6 MB froze the panel for 15 s. Give it at most a page (`TextViewRendering.PageMaxChars`),
+  and load plain text with the default character format set first: a format pass over the range cost as much again
+  (§2.50).
+- **A `MenuFlyout` without items does not open:** build its items up front and only change them in `Opening` (the text
+  viewer's language menu, §2.50).
+- **A Grid's Auto row lets a scrolling control grow to its whole content.** An Auto row measures its child with
+  unlimited height, so a `RichEditBox` (or a `ScrollViewer`) in it reports its full text height, the container's
+  `MaxHeight` cuts it off, and its own scroller has nothing to scroll: no scrollbar, and the wheel does nothing (the
+  text peek, §2.50).
+  Give the scrolling child a star row inside a top-aligned container with a `MaxHeight`: the container then fits a short
+  content and caps a long one, which scrolls.
+- **RichEdit scrolls on the wheel without marking the event handled.** A handler that scrolls the "unhandled" wheel
+  events itself scrolls a `RichEditBox`'s text twice per notch; tell the cases apart by where the pointer is (§2.50).
+- **A menu that closes over an overlay hands the keyboard back to the overlay.** `Popup_Closed` used to give it to the
+  search box, where the panel's key model ignores keys while one of its popups is open (the overlay itself), so Esc did
+  nothing in a viewer opened from a menu's *View*. `FocusOpenViewer` gives it to the text or image viewer when one is
+  open (§2.50).
+- **A background start (`--background`) must never show anything: the silent restart is one** (§2.46). A few seconds
+  after every close of Settings the app starts again that way while the user works. A new window, dialog, notification
+  or first-run tip in the start path shows each time, unbidden. Gate it on `StartupOptions.IsSilentRestart` (or keep it
+  out of background starts), and when a start must ask the user something, add it to `SilentRestartRules` the way the
+  language picker is (`LanguageWouldBeAsked`: then no restart happens at all).
+- **A process the app starts while the user works gets `QuietProcess`, not `Process.Start`** (§2.46): only
+  `STARTUPINFO.dwFlags` = `STARTF_FORCEOFFFEEDBACK` keeps Windows' app-starting pointer away, and
+  `ProcessStartInfo` cannot set it. `QuietProcess` also inherits no handles (a script that redirected the app's output
+  must not wait for the new process) and passes the caller's environment (an isolated instance comes back as itself).
+- **A tray icon cannot be shared with, or moved to, another process** (§2.46): it belongs to its window, and a
+  GUID-identified one vanished with its first window although `NIM_MODIFY` had accepted a new one. Two processes that
+  must take turns add the second icon hidden (`TrayIcon` `startHidden`) and switch with `TrayIcon.HandOverTo`: reveal and
+  delete within a millisecond. Adding the second one visibly showed two icons for ~60 ms on a pinned icon.
+- **A named kernel object exists only while a handle to it is open.** The silent restart's events, and the instance's
+  command events while two processes change places, are kept by a handle on purpose (`SingleInstance.KeepCommandsAlive`,
+  the called-off restart's grace period); a process that closes its last handle early lets a signal sent a moment later
+  fall into nothing.
 - **A pointer event is not proof that the mouse moved** (§2.28, §2.24).
   - WinUI replays the last pointer position after every frame that changed the picture (at most every 500 ms), and
     Windows sends a move to a window that appears under the cursor. So `PointerEntered` and `PointerMoved` also come to
@@ -5832,6 +7047,13 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 - **Editing repository files from Python: bytes, or `newline=''`.** `Path.write_text` on Windows writes CRLF; on
   2026-10-03 it turned all of CLAUDE.md into CRLF (caught by `file`, put back before committing). The repository's files
   are LF in the working tree.
+- **Ask `git ls-files --eol`, `file` or Python about line endings, never `grep $'\r'`** (2026-11-13). In Git Bash that
+  grep answered 0 for a working file with CRLF on every line, and "every line" for blobs without a single one (piped
+  from `git show`): it proves nothing either way, and neither did the old landing script's check built on it.
+  - The shared tree's working `CLAUDE.md` was CRLF that day while the index holds LF; `core.autocrlf=true` hides the
+    difference from `git diff` and `git status`.
+  - A three-way merge into such a working copy converts it to LF first (`git merge-file` compares bytes) and writes
+    the file's own line endings back, so the other session finds its file as it left it.
 - **`install.ps1 -Update …` is a contract with every released app** (§2.29). The update button of an installed version
   runs the *new* release's `install.ps1` with `-Update -Package -PackageSha256 -InstallDir -ResultPath -LogPath`.
   - Never rename or remove one of these parameters, and never add a mandatory one: an app that is already installed
@@ -5841,6 +7063,13 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   - The result file's members (`version`, `ok`, `error`, `finishedUtc`) belong to the contract: the old app reads them.
   - [`tools/release/test-update.ps1`](tools/release/test-update.ps1) runs the command line against the packaged zip in CI
     and in the release job. It is safe on this PC too (scratch folders; it proves that nothing else changed).
+- **`BetterClipboard.exe --apply-portable-update …` is a contract too** (§2.48): a portable copy starts the *new*
+  release's exe with `--target --wait-for --result --log` (`PortableUpdate`'s constants). Never rename or remove one of
+  these switches or change their values' format (`pid:startTicks`, full paths); a later version may add a switch only
+  when every release it can update to ignores it (the parser skips unknown switches). Keep the helper to the release's
+  own files, all or nothing, and keep writing `install.ps1`'s result file. `Program.Main` must keep recognizing the switch
+  first, before the single-instance lock. `PortableUpdate.MinimumVersion` names the first release that ships the helper:
+  raise it if that number is skipped.
 - **No validation attributes in `install.ps1`'s param block** (`[ValidatePattern]`, `[ValidateSet]`,
   `[ValidateNotNullOrEmpty]`, `[ValidateScript]`, …). The README's `irm … | iex` runs the param block as variable
   declarations and checks every attribute against the empty value, so one of them stops every install before its first
@@ -6038,6 +7267,24 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
     A PowerShell UI Automation script run with `run_command` read and flipped its switches through `TogglePattern`.
   - `create_desktop` for Windows took longer than the MCP client's 300-s silence limit and was reported as failed,
     although the desktop came up: check `list_desktops` before creating another.
+- **claude-desktops Windows desktops, lessons of the silent restart (2026-11-12, §2.46):**
+  - **Windows desktops now go to a worker machine first** (a Proxmox host, `host="auto"`), whose persist folders live on
+    that machine (`/mnt/drive2/claude-desktops/persist/<name>`), not on this PC's `Q:`; a build cannot be copied in from
+    here. `create_desktop(…, host="pc")` still gives a desktop with its `Z:` on `Q:\claude-desktops\windows\desktops\`.
+  - **`launch` of a PowerShell script opens a Windows Terminal window** that takes the foreground (Windows hands the
+    console to Terminal). Background helpers go through `run_command` with `Start-Process … -WindowStyle Hidden`:
+    Windows never hands a hidden console to Terminal (§2.16).
+  - **A process started hidden gets its first `ShowWindow` call forced hidden** (STARTUPINFO's show state), so a test
+    window it shows never appears. Spend the first call on a throwaway window (`feedback-form.ps1`).
+  - **The pointer's shape is read with `GetCursorInfo`** (an I-beam over Notepad, the app-starting pointer during a start
+    with feedback forced on); the desktop's screenshots do not draw the pointer.
+  - **Whether a tray icon is registered**: `Shell_NotifyIconGetRect` on its window and id answers S_OK when shown, S_FALSE
+    when hidden, an error when gone; sampled every ~15 ms it shows a hand-over that frame captures (24–34 ms a frame in
+    a desktop, whatever the code) cannot.
+  - Windows PowerShell's `Add-Content` failed with "Stream was not readable" on a log another script had just written;
+    `[IO.File]::AppendAllText` does not read the file first.
+  - The scripts (`probe.ps1` with watch, tray, shots, Win+V, copy and settings modes; `run.ps1`; `fastshots.ps1`;
+    `trayswap.ps1`, `trayswap2.ps1`; `feedback-form.ps1`) are in session f1d22507's scratchpad, `restart-qa/`.
 - **Dev builds for the owner's PC go through `tools/release/publish-dev.ps1`** (§2.39): built from a commit in a
   temporary worktree, never from the shared tree (another session's uncommitted work would ship), and offered by the
   update button instead of installed behind the owner's back. `-Install` restarts their app: only on their request.
@@ -6046,6 +7293,115 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   unless given `--worktree` (with `extensions.worktreeConfig` on). On 2026-11-09 `git config core.autocrlf false` in a
   private worktree turned it off for the main tree that other sessions work in; it was put back to `true` at once. Pass
   settings per command instead (`git -c core.autocrlf=false …`).
+- **A process of the Microsoft Store edition never changes Windows through the registry** (§2.47). Its own `HKCU`
+  writes and deletes land in the package's private hive and report success, so a feature that "works" there changed
+  nothing.
+  - Anything that writes a Windows setting (`DisabledHotkeys`, the Run key, `EnableClipboardHistory`, the user PATH)
+    asks `AppController.IsStoreEdition` first, and that edition gets the documented way instead: the startup task, a
+    button that opens Windows' own Settings page (`AppController.OpenWindowsSettingsPage`), or nothing.
+  - A registry change notification never arrives in a package: poll the key's last-write time
+    (`RunMruWatcher`'s `pollOnly`).
+  - A new folder directly under `%LOCALAPPDATA%` is redirected: the edition's data goes to its `LocalState`
+    (`AppPaths.PackagedDataDirectory`), through `Program.ResolvePaths()` and nowhere else.
+  - What must be real is done by a child that is another program (Windows PowerShell running the package's
+    `install.ps1`): such a child runs outside the package.
+- **The Store edition makes no network request by itself, and records nothing before the welcome's Start.** The
+  listing, the certification notes and the README's *Privacy* section say so. A new request or a new source needs the
+  owner's decision first, then all three texts.
+- **A Settings card an edition must not show is taken out of the page, not collapsed** (`SettingsWindow.ApplyEdition`):
+  the search shows and hides every card of the page by itself, so a collapsed card comes back with the next search.
+- **The Store edition's setup shows only on a start by hand** (§2.47). A start by Windows or by `bclip` that still has
+  something to settle ends, before the instance lock where that can be told beforehand
+  (`Program.ContinueStoreEditionInBackground`). A new question that edition must ask goes into `NeedsStoreSetup` and the
+  setup's flow, never into a window opened from a background start (the same rule as the silent restart's).
+- **Code that runs before `StartCore` must not ask `AppController.Settings`.** The Store edition's setup builds its
+  window before the settings are loaded; the theme there is `settings?.Current.Theme ?? setupTheme`. The first live run
+  crashed on exactly that.
+- **`SettingsStore.TryReadSnapshot` returns the defaults for a missing file** and `null` only for an unreadable one.
+  Where "there is no settings file" must be told apart, check `File.Exists` first (`ApplySetupLook`).
+- **A list of another process's files is stale once that process closes.** SQLite removes a store's `-wal` and `-shm`
+  files when its last connection closes, so files of another copy are listed right before they are copied, never
+  before that copy was asked to exit (`BringDataOverAsync`).
+- **Every parameter a mode of `install.ps1` is run with must belong to that mode's parameter set.** PowerShell refuses
+  the whole command line otherwise, before the script's first line: no log, no result file, "ended with code 1". The
+  Store edition runs `-Uninstall -InstallDir -KeepProcessId -ResultPath -LogPath`
+  (`EditionUninstaller.UninstallParameters`); `EditionUninstallerTests.InstallScript_TakesTheUninstallParametersTogether`
+  asks `Get-Command` for the real script's parameter sets, which runs nothing. The update mode's line is §2.29's
+  contract.
+- **The Store package's version is (X+1).Y.Z.0, computed by `package-msix.ps1`, for every release** (§3.5). Never set
+  it by hand, and never change the rule after the first submission: the Store offers only the highest version.
+- **Never register or start a package on the owner's PC, and never run the Store edition's setup or an uninstall flow
+  there.** `msix_lab`, `Add-AppxPackage` and a packaged BetterClipboard belong in a claude-desktops Windows desktop.
+  On this PC the setup would find the installed app and offer to replace it, and an uninstall gives Win+V back and
+  restarts Explorer. A test certificate is written to files only, never into a certificate store of this PC.
+- **Manifest lessons** (§2.47): a console alias is `uap5:AppExecutionAlias` with `desktop4:Subsystem="console"`
+  (the `uap3` element refuses that attribute), and its `Application` needs `desktop4:SupportsMultipleInstances="true"`.
+  The manifest template's comments may not hold `--` (XML).
+  - **Never an application hidden from Start** (`AppListEntry="none"`): the Store refuses the package at upload
+    ("specifies a headless app"), although MakeAppx packs it and Windows installs it.
+  - **One `windows.appExecutionAlias` extension per application**; its `Executable` may be another program of the
+    package. A second tool that needs a name of its own does not fit into this package.
+  - `package-msix.ps1` checks both after every build (`Get-ManifestStoreProblems`).
+- **Partner Center in the owner's Chrome** (2026-11-13; skill `browser`):
+  - **Never click *Export listings*, or anything else that downloads.** The owner's Chrome asks where to save every
+    download, so a download opens a Save As dialog on their screen. Capture the file inside the page: wrap
+    `URL.createObjectURL` and `HTMLAnchorElement.prototype.click` for the length of the click, read the blob, and put
+    both back.
+  - **Tab numbers change when the DevTools connection restarts.** A snapshot taken by the old number landed on one of
+    the owner's own tabs. Before every action on the working tab, check its address (`location.href` holds the
+    submission's path), and after a pause find the tab again with `list_pages`.
+  - **Never the browser tools' mouse `drag` on a listing's screenshots**: it exchanged two other cards than the
+    ones named, and the page saved that at once. Dispatch the page's own drag events from a script
+    (`tools/release/order-store-screenshots.js`) and read the order back after loading the page again.
+  - **Hidden file inputs** take a file once they are shown and labelled (`style.display`, an `aria-label`), with
+    `upload_file` on the labelled input of a new snapshot.
+  - **Never tick an agreement for the owner** (the IARC terms and age-of-majority box), and never press *Submit for
+    certification* without their go-ahead. Fill everything else, and leave those two to them.
+  - Save each page before leaving it: only the listing import and the package upload save by themselves.
+- **A submission the Store's API made must not be edited in Partner Center before it is committed**: the API can then
+  no longer commit it. `submit-store.ps1` deletes a pending submission first, for the same reason.
+- **The listing kit is the source of what the Store shows.** Change `docs/store-listing.md`, run
+  `python tools/release/test-store-listing.py`, and import the generated file (`store-listing.md` §4). A text edited
+  only in Partner Center is overwritten by the next import and was in no review.
+  - **After every import, export again and run `make-store-listing-csv.py --check --template <export>
+    --screenshots 6`**, then put the screenshots back in order on the listing pages it names (§3.5). An import
+    shuffles them, and the first screenshot is the one the Store shows first.
+  - **Compare a generated import file with the export it was made from, cell by cell, before uploading it.** The
+    cells that differ must be exactly the ones you meant to change. That comparison caught captions about to go
+    under the wrong pictures (2026-11-13).
+  - **A right-to-left listing is checked in a right-to-left render** before it is imported: signs after a Latin
+    word, numbers and brackets move.
+- **When a release changes what the Store edition does** (a new data source, anything sent over the network, text
+  written by an AI model): the description, the certification notes, the age-rating answers ("content that is not
+  part of the download", "generated AI content") and the *generative AI* declaration under Properties change in that
+  release's submission, by hand, before it is committed. The pipeline carries all of them over unchanged.
+- **claude-desktops Windows desktops, lessons of the Store work (2026-11-13):**
+  - `Add-AppxPackage` and `Remove-AppxPackage` from `run_command` can outlast the call: start a script with
+    `start "" /min powershell … -File <script>` that writes a log, and read the log.
+  - A loosely registered package (`Add-AppxPackage -Register`) takes changed files in place (`tar -xf <zip> -C
+    <folder>`); register again only when the manifest changed. Start it by hand with
+    `explorer.exe shell:AppsFolder\<family>!App`.
+  - `%TIME%` in a cmd line with `&` is expanded when the line is parsed, not when the command runs.
+  - A file uploaded to a worker desktop's persist folder needs `chown -R 100000:100000` on the worker, or the guest
+    can read it but not replace it.
+  - **`delete_desktop` on the worker can crash the gateway.** On 2026-11-13 the delete's config reload made Caddy in
+    CT 810 panic and stay down (no automatic restart): every other worker desktop was unreachable until
+    `ssh worker 'pct exec 810 -- systemctl start caddy'`. After a delete, look at `list_desktops` (`ready` of the
+    others) and at the persist folder, which the interrupted delete left behind.
+- **claude-desktops Windows desktops, lessons of the picture-files work (2026-11-13, §2.49):**
+  - **A crash dump from a desktop:** Tiny11 has Windows Error Reporting off
+    (`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting` `Disabled` = 1) and keeps no report. Set `Disabled` to 0
+    and `DontShowUI` to 1, and add `LocalDumps\BetterClipboard.exe` with `DumpFolder`, `DumpType` 2 and `DumpCount`
+    (with `reg add`: `New-Item` on that path failed). The next crash writes a full dump (466 MB), and for a moment a
+    second `BetterClipboard.exe` runs: WER's copy of the process for the dump. Copy the dump to `Z:\` and read it on
+    this PC with `dotnet-dump` (no WinDbg here).
+  - **A new folder made in the persist folder from the host** stayed invisible to directory listings and wildcards in
+    the guest (`dir Z:\`, `Copy-Item Z:\pkg2\*`) for over a minute, while its files opened by their full names at once:
+    copy them one by one (`[IO.File]::Copy("Z:\pkg2\<name>", …)`).
+  - **Photos** is no process with "Photo" in its name: its windows belong to `ApplicationFrameHost.exe`. Find them with
+    `list_windows` (title "… - Photos") and close them with the `window` tool, so the next test starts Photos cold.
+  - The first `explorer.exe /select,"<file>"` after the installer restarted Explorer opened the folder without selecting
+    the file; every later one selected it (seen once; Explorer's, not the app's).
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -6055,6 +7411,38 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 | Feature | How | Result |
 |---|---|---|
+| **0.2.11 prepared for release** (2026-11-13; the owner: "Please prepare for releasing 0.2.11, reread head and tackle the release notes"). **The notes:** the newest draft (`5831dba`'s message) read against every commit since v0.2.10 and their records: every user-visible change is in it; the fixes their messages name besides the four in *Fixed* were caught before a release or are test-only; the Store edition left out on purpose (not in the Store until Microsoft certifies it; the owner's call), and `bclip`'s new `file` field like every earlier release's CLI details. One wording change: "a copy made meanwhile is recorded" → "anything you copy meanwhile is recorded" ("a fresh copy" two lines earlier is the app). Its four README links are headings at `5831dba` (the Chinese README has the same anchors); no line over 117 columns; no span cut by a wrap; GitHub's renderer (`gh api markdown`): six lists, 21 items, the table, the code block, four links, no Markdown left in the text; the files table matches what `release.yml` attaches. **The release job's steps in a private worktree at `5831dba`** (no uncommitted work of any session): `dotnet test --solution BetterClipboard.sln -c Release` 2,338 = 2,335 passed + 3 opt-in skipped, 0 failed (Core 1,895, Windows 443); `package.ps1 -Version 0.2.11`: zips x64 75,385,661 / ARM64 72,804,467 bytes, `.7z` 46,113,639 / 41,919,234, `SHA256SUMS.txt` checked, both exes `0.2.11+5831dba…`, the zip's `install.ps1` the commit's, only the known CS0108; `test-update.ps1` 17 of 17; `test-iex.ps1` in 7.5.8 and 5.1; `package-chocolatey.ps1` 84.0 MB (pack only); `package-msix.ps1 -ForStore`: x64 74,183,320 / ARM64 71,908,242 bytes, `1.2.11.0`, `Nucs.BetterClipboard`. **CI's new Store steps** (never run on GitHub yet): the test-signed `package-msix.ps1` build, `test-submit-store.ps1` 39 of 39, `test-store-listing.py` and `check-store-listing.py` pass. Not run here (they change the machine; CI and the release job run them): `test-chocolatey.ps1`, `test-all-users.ps1`. Nothing pushed, tagged or opened as a pull request: on the owner's word (§3.1 "Through a merge request"). The other session's uncommitted AI conversation work is not part of the release | worktree + the release job's scripts, `gh api markdown`, scratch checks (session 9cd38837's scratchpad) | ✅ ready. The Store steps of `ci.yml` and `release.yml` first run on GitHub with the pull request |
+| **The text peek's follow-up, live** (2026-11-13, §2.50; the owner: "it close immediately if i move the mouse BUT it should react to middlemouse scrolling just fine. Only keep open ignoring mouse movement when clicking the eye at the corner" and "I dont think Markdown renders at this with a scrollbar"). The owner's 3,596-character note, read on this PC in the scratchpad only (`repro/detect.cs`): Markdown, drawn as a document of one page. A disposable claude-desktops Windows 11 desktop on this PC (`bc-peek-pc`, 1600×900, no GPU; deleted afterwards with its persist folder), builds `0.2.11-dev.peek1` and `peek2` from a private worktree, the panel 800 DIPs tall, the morning's BC-TEST texts plus an invented look-alike of the note (3,735 characters, 32 lines, also Markdown). **Markdown and the scrollbar:** the peek drew the look-alike as a document capped at the frame's height, with a scrollbar, and three notches over the text scrolled it to its end. **The wheel:** over the text one notch moved it about 107 px in `peek1` (RichEdit's step and the redirect's together) and 91 px in `peek2` (RichEdit's alone); with the peek opened from the card's last visible line, below the frame, one notch moved it 53 px (the redirect's three lines); the peek stayed open every time. **Moves:** 10 px over the card closed it, and 7 px after its menu. **The menu:** a right-click with the mouse still opened it (*Copy* disabled, *Select all*, the card's items); moving onto *Select all* and clicking kept the peek, which then held the whole selection; a second right-click's *Copy* recorded the drawn text (all of it; list numbers with a tab, no blank lines). **Esc** closed the peek and left the panel. **The eye:** the viewer stayed open through two moves across the screen. **A short text** (`summarize.py`, 24 lines): the frame fits its text. The app's log over both builds: 87 lines, 0 WRN/ERR | claude-desktops MCP tools (`move_mouse`, `scroll` at the resting spot, `click` with the right button, region screenshots measured in pixels, `run_command`); `repro/detect.cs`, `repro/deferred-lookalike.md` and the guest's `C:\qa\compare.ps1` (session c073d86d's scratchpad) | ✅ after the one fault it found (`peek1` scrolled the text twice per notch). Not run: a real GPU, a high-resolution wheel, touch |
+| **Long texts: the peek and the text viewer, live** (2026-11-13, §2.50; the owner: "we can see the entire content if mouse pauses hover and we click the eye"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-textview-pc`, Tiny11 25H2, 1600×900, no GPU; the worker's drive 2 was starved; deleted afterwards with its persist folder), self-contained builds `0.2.11-dev.text1` to `text5` of a private worktree run as isolated instances, BC-TEST data only (session c073d86d's scratchpad, `qa/make_qa_data.py`: a heartbeat-shaped XML prompt, JSON, C#, Python, Markdown, YAML, SQL, a diff, a short text, a 6 MB log, 2.3 MB of C#, and Claude Code and Codex histories). **Cards:** the "⋯" line and the eye only on cut-off cards. **Peek:** centered on the panel in the dark and the light theme; moves inside it keep it open; the wheel scrolls it; its menu has *Copy* (disabled until a selection) and *Select all* above the card's own items; *Select all* + *Copy* put the text on the clipboard (equal to the file, with CRLF line breaks); Esc closes it; the 6 MB log shows one page with "Showing the first 63,944 of 6,000,031 characters. F3 opens all of it.". **Viewer:** *Formatted* / *As copied*, *Wrap*, *Line numbers*, the language menu with "(detected)", Markdown drawn as a document; the size by A±, Ctrl+Minus and Ctrl+wheel; `TextViewerTextSize` 1.1 and `TextViewerWrap` and `TextViewerLineNumbers` false were saved, then turned back on; opened by F3, by the card menu's *View* and by the peek menu's; closed by Esc and the X; the gutter in line with the text at 100 % and 150 %; a dragged selection copied exactly. **Codex tab:** the prompt card with its peek, menu and viewer. **Pages:** the 6 MB log in 2–3 s as page 1 of 94, page 2 starting at line 863; the C# as page 1 of 36 with "66,273 lines · 2,300,172 characters · Colored up to the first 2,000,000 characters."; turning a page under 0.5 s. **Pictures:** *View* on a picture opens the image viewer, and Esc closes it. The app's log over every build: 0 WRN/ERR | claude-desktops MCP tools (`move_mouse`, `scroll`, `press_keys`, `click`, `find_elements`, screenshots, `run_command`); the app's log and `settings.json` | ✅ after the six faults it found (§2.50). Not run: a real GPU, Narrator, touch and pen |
+| Long texts, the suite (2026-11-13, §2.50): Core 107 new — `TextLanguageDetectorTests` 62 (code in every language recognized, prose and Markdown left as Markdown, null and huge texts, a huge JSON judged by its head, the prose weight, the JSON reader), `SyntaxHighlighterTests` 19 (each language's forms, the limits, random input keeping its tokens ordered and inside the text), `StructuredTextFormatterTests` 9 (JSON and XML re-indented with every token kept, text left as copied, input declined, an external entity never resolved, cancellation), `TextViewRenderingTests` 17 (every character through RTF, control characters, token colors, Markdown's blocks, the views and the switch, the Markdown limit, sources, line starts, pages, the style). Mutations: pages cut at the limit instead of at line breaks (it survived until the tests' line breaks moved off the limit's multiples; then 2 tests failed); page tokens not moved to the page's positions (1 failed). The whole suite in a private worktree of `6c6ef8e` plus the change: Core 1,893 passed; Windows 445 (2 opt-in skipped, 1 explicit not run); a `--no-incremental` build with only the old CS0108; the documentation hook's checker 0 gaps; `catalog.py check` 0 missing in every language | the test executables, `dotnet build --no-incremental`, session c073d86d's scratchpad (`doc_gaps.py`, `escape_sweep.py`) | ✅ |
+| **Pictures keep their files, live** (2026-11-13, §2.49; the owner: "any images we detect and has a path - we should keep the path persisted with the image"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-imgfiles-pc`, Tiny11 25H2, 1600×900; the worker's drive was busy; deleted afterwards with its persist folder), BC-TEST pictures only: a fake ShareX folder through `BETTERCLIPBOARD_SHAREX_DIR`, PNGs written with chosen write times, Win+PrtScn, a Paint copy. **The update and the search:** the released 0.2.10 installed with the README's installer kept two ShareX screenshots and a Win+PrtScn one; then a package of this change (`0.2.11-dev.imgfiles`) installed over it with `install.ps1 -Package`: "Earlier ShareX screenshots: found the files of 2 of 2 in 124 ms" and "Earlier Snipping Tool and Win+PrtScn screenshots: found the files of 1 of 1 in 119 ms"; `bclip list --json` gave each its path, PNG, size and both times; a new ShareX screenshot kept its file as it was saved. **The menu** (a ShareX card): the dimmed "explorer_Live01Shot.png / PNG · 5.1 KB · modified 22 min ago" and the four items; *Copy path* put the path on the clipboard as text, *Copy image as a file* a file list with the drop effect "copy" (pasted in File Explorer, it copied the file), *Open file* opened it in Photos, *Open folder* File Explorer with the file selected (the first time after the installer's Explorer restart without the selection). *Save to temp and*: a byte-identical PNG under `%TEMP%\BetterClipboard\Images\<hash>\` with the original name; the Paint copy (no file) got only *Save to temp and*, and its PNG was named "Image 2026-11-13 115426.png". **The viewer:** the band's two rows above the picture, the name opening Photos and the folder File Explorer with the file selected. **A file deleted** after it was found: the menu's "chrome_Xk29Qa81Lm.png / moved or deleted" with only *Save to temp and*; the viewer's name and folder as plain text, the first row ending "moved or deleted". **Settings:** the search "temp" found the one card; 0 days saved `TempImageDays` 0; the silent restart after Settings closed kept the two temporary pictures; a real restart deleted them ("Deleted 2 temporary pictures …"; the wording for 0 days changed afterwards) and their empty folders. **Hebrew:** the menu's label and its five items read right, the facts line keeping "PNG · 5.1 KB" together. **A crash found:** the viewer's file-name link ended the app 2 of 2 times (§2.49: a WER dump read with `dotnet-dump` on this PC showed the UI thread in `ShellExecuteExW` under the link's Click); with the fix (`0.2.11-dev.imgfiles2`, installed over it) 0 crashes in three link clicks, one with Photos started cold, and the menu's *Open file*. The app's log over the day: 143 lines, 0 WRN/ERR (a fail-fast writes none) | claude-desktops MCP tools (`press_keys`, `click`, `find_elements`, `list_windows`, `window`, `run_command`, region screenshots); guest scripts `png.ps1`, `items.ps1` (bclip, content-free), `clip.ps1`, `setup.ps1` (session 2fc2c47a's scratchpad, `qa/`); `dotnet-dump analyze -c "clrstack -all"` | ✅ after the crash fix. Not run: the Microsoft Store edition, a file on a network share, a standard user account |
+| Pictures keep their files, the suite (2026-11-13, §2.49). Core `SourceFileTests` 41 cases and Windows `ImageFileTests` 4 plus `ShareXIntegrationTests.EarlierScreenshot_GetsItsFileOnce` (both watchers' tests also check the file their captures carry). Mutations: a bump that no longer keeps the row's file (`coalesce` dropped) failed `Bump_ReplacesTheFileWholeOrKeepsIt`; the search without its 2-minute window failed `Match_ByTimeThenPixels`. The whole suite on `3492df9` plus the change, in a private worktree: 2,231 = Core 1,786 + Windows 445; 2,228 passed, 3 opt-in skipped, 0 failed. A full build with only the known CS0108; the documentation hook's checker 0 gaps in 31 files; `catalog.py check`: 0 missing in every language. `install.ps1`'s `Remove-TemporaryPictures`, taken out of the script's syntax tree with `TMP` and `TEMP` pointing at a scratch folder: 9 of 9 checks in PowerShell 7.5.8 and 5.1 (the folder deleted with a scoped instance's subfolder, a neighbor of another name kept, a picture held open kept with the note, deleted at the next run); `test-iex.ps1` passes in both | the test executables, `dotnet test --solution`, scratch `test_remove_temp.ps1`, `doc_check.py` | ✅ |
+| **The prepared release commit tested, and the pipeline's connection planned** (2026-11-13, §3.5). The whole suite on `87bfd49` (Version 0.2.11), in a private worktree that holds exactly that commit: 2,185 = Core 1,745 + Windows 440; 2,182 passed, 3 opt-in skipped, 0 failed. For the connection, Microsoft's pages were read: associating a tenant takes "the Microsoft Entra ID credentials for the tenant that you want to associate" and no Global administrator; managing applications takes "a Manager account that also has global administrator permissions for the Microsoft Entra ID tenant you're working in"; security defaults make every user register multi-factor authentication at the first sign-in (the 14 days of grace ended on 2024-07-29), with the Authenticator app or "any non-Microsoft application using OATH TOTP". Read-only looks at the owner's Azure directory with the Azure CLI (2.71.0): one user (the owner's personal account) and one verified domain; its sign-in policies cannot be read with the CLI's token ("required scopes are missing in the token"); `az ad app credential reset --help`: a key lasts one year by default. Nothing was created or changed there | `dotnet test --solution` through scratch `suite-on-bump.sh`; WebFetch of four Microsoft Learn pages; `az rest --method get`, `az … --help` (session 66cdd808) | ✅ the suite. The connection itself waits for the owner's word and one sign-in by them |
+| **The owner's review of the Store draft, and what followed** (2026-11-13, §3.5). Four HTML questions, each option with a review page built from the kit (the English Store page with its facts, texts and six screenshots; the four translations, Hebrew first; the two version rules; the three ways to go on), rendered first with a headless Chrome and read. The answers: change the images, last, after asking again; all five languages, with review issues for Russian and Spanish; keep 0.2.x; prepare only, release and publish on the owner's explicit word. Done: issues #4 and #5 opened and read back through GitHub's API (titles and bodies whole, both labels, no mojibake, no mention); Microsoft's sentence on version numbers read on its page ("except for the first section, which cannot be 0"); the 0.2.11 notes drafted in v0.2.10's shape after reading the transcript of the session that formed those (52 lines, none over 117 columns, no wrap inside a link, code span or emphasis, no version but 0.2.11 named, rendered by GitHub's Markdown API: three lead-ins, four lists, one table, one code block) and put into the bump commit's message | `AskUserHtmlQuestion`; `gh issue create` and `gh issue view`; `gh api markdown`; `am_inspect.py turns … --minimal`; scratch `make_review.py`, `make_issues.py` (session 66cdd808) | ✅ prepared. Nothing pushed, tagged or submitted |
+| **The listings in Partner Center checked against the kit, and two faults put right** (2026-11-13, §3.5; found while the review pages for the owner were made). **(1) Hebrew:** a right-to-left render of the listing showed "Notepad++" as "++Notepad", in the description and in a feature. The kit's reader now finishes a right-to-left listing's shown texts with U+200E after such signs (the app's rule of §2.37, in Python). After the third import an export held two marks in the Hebrew listing and none elsewhere. **(2) Screenshot order:** the export taken for that import showed the English listing as settings, search, welcome, groups, preview, panel: the second import had sent the kit's order (panel first). After the third import the Spanish listing ended welcome, settings and the Hebrew one welcome, preview, settings, although the file had not changed them, and English was unchanged, although the file asked for the kit's order. Two exports in a row were byte-identical, so the import does it; a caption stayed with its picture every time. The order was put right on the three listing pages with the page's own drag events (English five exchanges, after one made by the browser tools' mouse drag, which exchanged the first two cards instead of the sixth and the first and was saved at once; Spanish one; Hebrew two). Each page, loaded again, showed pictures and captions in the kit's order. The final export: `make-store-listing-csv.py --check --screenshots 6` answers "is what the kit says, with 6 screenshots in the kit's order in every language"; on the export from before the dragging it names English (5, 2, 6, 3, 4, 1), Spanish and Hebrew and exits 1. The generator's first version wrote captions by position: its file for the third import would have put five English captions under the wrong pictures, which a cell-by-cell comparison with the export showed before anything was uploaded; the file that was uploaded had every caption in its picture's row. `test-store-listing.py`: 52 of 52 (25 new: the marks rule; captions under their pictures in rearranged listings; contradicting captions; different pictures; pictures without captions and `--screenshots-in-order`; `--check` for order, texts, marks and misplaced captions). With the finishing step removed, 3 fail. `order-store-screenshots.js`, run on the English page: order 1 to 6, no exchange. The overview afterwards: every page *Complete* except Age ratings | chrome-devtools on the owner's Chrome (the same tab of its own); in-page export captures; a headless Chrome with a throw-away profile for the renders; scratch `export_to_csv.py`, `picture_order.py`, `verify_listing.py` (session 66cdd808) | ✅ the draft is what the kit says. Not seen: the Store's own rendering of the Hebrew page (nothing is published) |
+| **The Store's upload check, and the one-application package** (2026-11-13, §2.47; the owner: "i registered, passed verification … Continue the rest"). **Refused first:** the two packages built with the reserved identity (`Nucs.BetterClipboard`, `1.2.11.0`), uploaded to the first submission's draft, came back with "Package acceptance validation error: The package file … specifies a headless app. You don't have permission to create a headless app. Please update AppListEntry="none" in the AppxManifest file" (the hidden second application of `bclip`), next to the expected notice that `runFullTrust` needs approval. **Why one alias:** MakeAppx on a small layout with the real manifest refused two alias extensions in one application ("The Extension element with Category attribute value "windows.appExecutionAlias" must only be declared once"; also one `uap3` next to one `uap5`) and packed the console alias alone. **The rebuilt packages** (one application; `bclip.exe` as its console alias with its own executable; x64 70.6 MB, ARM64 68.5 MB; both passed the build's new manifest check) were accepted: *Validated*, the `runFullTrust` notice only, device family Windows 10/11 Desktop ticked by Partner Center. **The test-signed twin, installed** (`Add-AppxPackage` after its certificate went into `TrustedPeople`): on a worker desktop `where bclip` found the alias, `bclip --version` printed "bclip 0.2.11" to the calling console and returned 0, `bclip status` returned 3 with "command-line access is off", and no `BetterClipboard.exe` alias existed; on a PC-host desktop `Get-StartApps` listed one entry ("BetterClipboard"), and with the app stopped and the command line switched on in its settings, `bclip status` started the app from `C:\Program Files\WindowsApps\…` and answered from the Store edition's data (9 items, 9 prompts), then `bclip list` printed its rows. The same desktop ran the first start (language picker, welcome, *Start*), Win+V through the hook, copies from Notepad, Explorer, Edge and Snipping Tool, a pin, three groups by drag and drop, a search with the whole-word toggle, the image preview and viewer, Settings, and two silent restarts: the app's log had 109 lines and 0 WRN/ERR. `Get-ManifestStoreProblems`, taken out of `package-msix.ps1`: the refused manifest named for two applications, a hidden one and two alias extensions; the rebuilt package clean; an alias that starts the app, and a manifest without an alias, named (6 of 6 in PowerShell 7.5.8 and 5.1) | Partner Center in the owner's Chrome (a tab of its own); MakeAppx 10.0.26100 on a scratch layout (`alias-test/try-variants.ps1`); claude-desktops `bc-shots` (worker) and `bc-shots-pc` (PC host), both deleted with their storage; scratch `test-manifest-check.ps1` (session 66cdd808) | ✅ after the manifest change. The worker desktop was unusable for more than the install (its drive starved: the install took 8.5 minutes, two commands hung for 70 and 90 s), so the rest ran on the PC host (the same setup in 16 s). Found there, not fixed: cards dragged onto groups kept a selection bar until the app restarted (§6) |
+| **The first submission, a draft in Partner Center** (2026-11-13, §3.5). The name "BetterClipboard" reserved (Store ID `9PHL574X9BF9`; the family name computed from name and publisher equals Partner Center's). Pages saved and shown *Complete* on the product's overview: Pricing and availability (free, all markets, public), Properties, Packages (both *Validated*), Store listings (five languages), Submission options. Age ratings: every question answered "No", the preview read ESRB Everyone, PEGI 3, IARC 3+; **not saved** (the IARC tick is the owner's), so the page reads *In Progress*. Listings: the export captured inside the page (430 field rows, five language columns), filled by `make-store-listing-csv.py` and imported; the English listing then held the 1,547-character description, 11 features, the short description, 7 search terms and the copyright line. Six screenshots (2560 × 1440) and the 300 × 300 tile icon uploaded once in the English listing; a second export named them by web address, and the second import copied them into the other four languages (28 cells) with six captions each: *Store listings Complete*. The `runFullTrust` justification: the kit's 993 characters were refused ("must be 500 characters or fewer"), a 499-character one saved. The notes for certification (1,770 characters) were still there after a reload. Nothing was submitted: *Submit for certification* was not pressed | chrome-devtools on the owner's Chrome (skill `browser`): snapshots to files, guarded `evaluate_script`, `fill`, `upload_file`; no download and no dialog on the owner's screen | ✅ a complete draft. Side effect: after the DevTools connection restarted, one snapshot taken by the old tab number read one of the owner's YouTube tabs (read-only; the file was deleted at once). The packages in the draft are local builds: a release's own must replace them before the submission |
+| The Store pipeline and the listing tools (2026-11-13, §3.5). `test-submit-store.ps1`: 39 of 39 against the stand-in (order of calls, one update, the packages marked, "What's new" in English only, untouched fields sent back as received, the archive uploaded in blocks byte for byte, a failed block retried, every refusal with its exit code and no request, no secret, token or upload address in the output). `test-store-listing.py`: 27 of 27 (the kit fits every limit; the generator fills the pristine export in the right rows and columns, with a byte order mark and CRLF; pictures copied between languages, never a trailer; a long justification, a long feature, an eighth search term, unequal captions, a kit without sections, a template with other languages or other row numbers refused). `package-msix.ps1 -ForStore` with the reserved identity: both packages, and the family-name check. The four workflow files parse as YAML. The documentation hook's check over the 8 changed scripts: 0 gaps; PowerShell 7.5.8 parses the three scripts, 5.1 parses `package-msix.ps1`. The whole suite in a private worktree of `fa6b3b4` plus this change, which changes no C# (so before the portable-update commit `b2aef33`, onto which the change was rebased afterwards): 2,151 = 2,147 passed + 3 opt-in skipped + `QuickSuccessiveCopies_AreAllCaptured` failed (the known timing test: also 3 of 3 alone at that moment, on a PC that was building packages and running a test desktop). **After the rebase onto `b2aef33`:** the test-signed x64 package built from the rebased tree in 65 s (70.7 MB, 511 files, 35 logos; the build's own checks passed; only the known CS0108), and again `test-submit-store.ps1` 39 of 39, `test-store-listing.py` 27 of 27, the kit check, 0 documentation gaps and the parse checks | the scripts themselves; `doc_gaps.py`, `parse_check.ps1`, `rebased-build.sh` (session 66cdd808) | ✅ the scripts. Not run: `submit-store.ps1` against Microsoft's service (it needs a published first submission and the three secrets), the new workflow steps on GitHub (they run with the next push and the next tag) |
+| **A portable copy updates itself; a newer copy takes over; the sign-in entry follows** (2026-11-13, §2.48; the owner chose "Portable updates itself", "Newer copy takes over" and "Sign-in entry follows", and "Fix it now" for the tray). A disposable claude-desktops Windows 11 desktop on this PC (`bc-portupd-pc`; the worker's drive 2 was I/O-starved, "full" ~60 %; deleted with its storage), x64 packages 0.2.11 and 0.2.12 of the change, a stand-in feed in the guest (`feed.ps1`, an `HttpListener` on 127.0.0.1). **In place:** 0.2.11 extracted into `Downloads\BetterClipboard-0.2.11-win-x64` beside a file of the user's own (`notes.txt`), run as an isolated instance on the feed: "this copy is not installed by the installer (it updates itself in its own folder…); automatic check on"; 60 s later one request (`User-Agent: BetterClipboard/0.2.11`) found 0.2.12; the lit button and the weekly reminder; the dialog "You have 0.2.11. Released just now. Updating downloads it from GitHub, checks it, puts it into this copy's folder and restarts BetterClipboard. Your history is kept." with *Update and restart*, *Later*, *Skip this version*. Approved at :35.45, verified :36.46, the old copy exited :38.86 (asked through its Exit event: "It exited after 508 ms"), 476 files replaced in 1,892 ms, 0.2.12 started at :42.04 from the same folder with `--background`: "The update to 0.2.12 was installed.", the same store ("new key: False"), the BC-TEST copy made before still listed, the button plain. Afterwards 477 files (the release's 476 and the user's notes, hash unchanged), product version 0.2.12, no backup folder, no staging folder (removed by the new start), no Mark of the Web. **Rollback:** back to 0.2.11 and a hidden process holding `THIRD-PARTY-NOTICES.md` without delete sharing: after that file's 10-s retry the ~460 files already replaced were put back in 0.4 s, and 0.2.11 started again (477 files, the notes intact, no backup folder), with the WRN "The update to 0.2.12 was not installed: THIRD-PARTY-NOTICES.md could not be replaced (The process cannot access the file because it is being used by another process). The previous version was put back." **Take-over and sign-in entry** (the regular instance): 0.2.11 in folder A running in the tray, *Start with Windows* naming A; 0.2.12 extracted into folder B and opened like a double click: A logged "Exiting.", and 0.6 s later "BetterClipboard 0.2.12 starting (…, took over from BetterClipboard 0.2.11 (process 4948), which was asked to exit)" and "Start with Windows now starts this copy (0.2.12): its entry started an older BetterClipboard (0.2.11) from another folder."; B's Settings opened with *Start with Windows* On; the entry named B. A opened again while B ran: it handed over and nothing changed. A guest reboot: Windows started B at sign-in. The tray icon's left click opened the panel, its right click the menu | claude-desktops MCP tools; guest scripts `feed.ps1`, `state.ps1` (content-free), `busy-explorer.ps1` (session 4886d50a's scratchpad, `qa1/`, `qa2/`); `make_feed.py` | ✅ Not run: a copy that runs as administrator, a standard user, ARM64, a folder on a network share |
+| The tray icon after a refused `NIM_ADD` (2026-11-13, §2.48): `TrayIconTests` 3 with a stand-in `Shell_NotifyIcon` (accepted at once; refused but there: a `NIM_MODIFY` finds it, it is set up, later tooltips and the removal are sent; refused and absent: tried again on the timer until accepted, then no more tries). Mutation: without the `NIM_MODIFY` probe the second test fails. Live attempts to provoke a refusal failed: with the guest's taskbar Explorer suspended (`NtSuspendProcess`) 12 s and 60 s after BetterClipboard started, and 8 s before plus 25 s after, `NIM_ADD` waited and then succeeded (Windows 11 26200; the app's start waited with it). So the starved guest's earlier refusal was not a hung Explorer timing out; most likely a notification area not ready yet at a slow start **[inferred]** | `TrayIconTests`; `busy-explorer.ps1` | ✅ unit-tested; ⚠️ the refusal not reproduced live |
+| Portable update, take-over, sign-in follow, tray: the suites (2026-11-13, §2.48). Core 13 new (`PortableUpdateTests` 10: which offers install in place, the staging name, the result file's round trip, the take-over rule; `FollowThisCopy_RewritesOnlyAnEntryForAGoneOrOlderCopy`; `Install_PortableCopy_UpdatesItsOwnFolder`; `UpdateAvailable_PortableCopyInItsOwnFolder`). Windows 21 new (`PortableUpdateTests` 18: the release's files replaced and the others kept; a file held open puts everything back; a DLL mapped as an image (`LOAD_LIBRARY_AS_IMAGE_RESOURCE`, as ShareX holds `DWriteCore.dll`) renamed aside and replaced, its old copy removed by `CleanLeftovers` once free; a folder without the program untouched; a copy that does not exit ended; the command line (9 cases); the installer's unpack, refusals and contract round trip; the write probe; the version read; `TrayIconTests` 3). Mutations: no rollback → `Run_AFileHeldOpen_PutsThePreviousVersionBack` fails; no `NIM_MODIFY` probe → `Add_RefusedButThere_IsSetUp` fails. In a private worktree of `c1294f8` plus the change: Core 1,745 and Windows 440 (2 opt-in skipped, 1 explicit), 0 failed; a `--no-incremental` build with 0 errors and no warning in a changed file; the documentation checker 0 gaps (it reported a planted one); `catalog.py check`: 0 missing in every language | the test executables; `doc_check.py` (session 4886d50a's scratchpad) | ✅ |
+| **A portable copy's update, from a release zip** (2026-11-13; the owner: "try in a win desktop to download a portable older version, and check for update and see that update worked cleanly on the portable"; §2.29). The released **0.2.9** x64 zip downloaded from its GitHub release page with Edge (SHA-256 `dc07a28e…` = GitHub's digest), given the Mark of the Web Edge writes (the desktops' Edge saves into the persist share by policy, which drops it), extracted with Explorer's own zip handler into *Extract All*'s default folder `Downloads\BetterClipboard-0.2.9-win-x64` (476 files, the mark on each), started from Explorer: SmartScreen "Windows protected your PC … Publisher: Unknown publisher", *More info* › *Run anyway*. Three BC-TEST copies, one pinned, *Start with Windows* on. **Detection:** "Updates: this copy is not installed by the installer (updates come from the download page)"; "Update check: BetterClipboard 0.2.10 is available (running 0.2.9)"; the panel's update button lit, the weekly reminder shown; *Settings › Updates*: "… This copy was not installed with the installer, so it does not replace itself. Get the new version from the download page, or install it with the command."; the dialog: *Download page*, *Copy install command*, *Later*, *Skip this version*, then 0.2.10's notes. **Copy install command** (a PC desktop): the button read "Copied", the clipboard held `irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 \| iex`, the history still 3 items; pasted into Windows PowerShell (from Start) and run: SHA-256 of 0.2.10 OK (`33c14ab5…`), "Closing the running BetterClipboard" (the portable copy: "Exiting."), installed into `%LOCALAPPDATA%\Programs\BetterClipboard`, Win+V taken over (one Explorer restart), started 9 s later: the same store (`new key: False`), "Win+V registered with RegisterHotKey", "this copy is installed by the installer (it can update itself)"; the language picker (by design after 0.2.9, §2.37); "3 items · 130 B · 1 pinned"; *Start with Windows* On with the Run value naming the installed exe; "BetterClipboard is up to date"; 0 WRN/ERR. The portable folder stayed as it was (0.2.9); its exe started afterwards only handed over to the running 0.2.10. **Download page** (a worker desktop): it opened `github.com/Nucs/BetterClipboard/releases/tag/v0.2.10` in the default browser; the 0.2.10 zip (SHA-256 OK) extracted into *Extract All*'s default, a new folder `…\BetterClipboard-0.2.10-win-x64`; started (SmartScreen again) **while 0.2.9 ran: nothing changed** — the new process handed over to 0.2.9 and exited, which brought up its own Settings ("Version 0.2.9", "0.2.10 is available"). After *Exit BetterClipboard* the new copy started: 0.2.10, the same store, "3 items · 130 B · 1 pinned", settings kept, 0 WRN/ERR, **but the Run value still named `…\BetterClipboard-0.2.9-win-x64\BetterClipboard.exe`, its *Start with Windows* switch read Off, and after a guest reboot Windows started 0.2.9 again** ("BetterClipboard 0.2.9 starting (… background: True)"; its tray menu offered *Update to 0.2.10…* again). **Extracted over the same folder after *Exit*** (a PC desktop, reset): 0.2.10 from the same path, the same store, the Run value still right, no 0.2.9 file left (both releases ship the same 476 file names). **Found on the way, not about updates:** in a starved guest the app logged "Shell_NotifyIcon(NIM_ADD) failed; waiting for TaskbarCreated", the icon appeared anyway (`Shell_NotifyIconGetRect`: shown), and it was dead: two left clicks opened nothing and a right click showed no menu, while the app responded and Win+V opened the panel; the same right click on bc-port-a's icon (no such warning) showed the menu (§6) | claude-desktops: two worker desktops (bc-port-a, bc-port-b) and one on this PC (bc-port-pc, reset once; `host="pc"` because the worker's shared drive ran at 42–58 % "full" I/O pressure from another VM); Edge on the release pages; Explorer's zip handler (`Shell.Application.CopyHere`); guest scripts `state.ps1` (content-free; kept in session 4886d50a's scratchpad), `extract.ps1`, `uia.ps1`, `trayicon.ps1` (the desktops were deleted with their storage) | ✅ *Copy install command*: clean. ⚠️ *Download page*: clean only when the user closes the app and extracts over the same folder; two traps otherwise (§6). ❌ The tray icon after a timed-out `NIM_ADD` (§6). Environment, not the app: the worker's DNS took 44.6 s to fail a `wpad` lookup (proxy auto-detection), so the first automatic check there failed with "The server did not answer in time (the release list)" and *Check now* then worked; on the PC desktop `wpad` failed in 2.8 s and the first check worked. Timings on the worker (a 0.2.9 exit that took ~5 minutes, a 9.9-s summon) are not judged |
+| **The Microsoft Store edition, live** (2026-11-12 and 13, §2.47; the owner: "I want to publish my product to microsoft marketplace", then "Can't we uninstall it? But we migrate user's data successfully, validate and cleanup. We must validate all access permissions before starting (preflight checks)"). One disposable claude-desktops Windows 11 desktop ("bc-store", Tiny11 25H2 26200, 1600×900, no GPU, an administrator with UAC off; deleted afterwards with its storage), BC-TEST data only, test-signed packages `0.2.11-dev.store1` to `store7` registered loosely (and one installed, the next row). **A fresh install:** the language picker with five languages, then the welcome; before *Start* the data folder held a log and a settings file with the welcome not accepted, and no store; after *Start* the encrypted store, "Win+V is owned by another component; intercepting it with a keyboard hook", the startup task `Enabled`, 0 WRN/ERR; the real Run key empty and `DisabledHotkeys` absent. **Use:** a copy captured, Win+V opened the panel at Notepad's caret, Enter pasted; `bclip status` and `list` through the alias; `BetterClipboard.exe --show-flyout` and `--exit` through the alias; a Win+R run recorded by the poll ("Win+R: 1 new run found (watch), 1 recorded."). **Settings:** no *Release from Explorer*; "Version … · Microsoft Store edition"; *Updates from the Microsoft Store* with *Open in Microsoft Store*; Windows' clipboard history as a button; the alias sentence instead of the PATH button; the startup switch turned the task off and on. **Silent restart** after Settings closed: the new process was the Store edition with the same data folder, 0 warnings. **Sign-in** (a guest reboot): the startup task started the app 37 s after boot, without arguments, into the tray, no window. **The move from the released 0.2.10** (installed with the README's command; Russian, 3 items with a pin, the command line on, Win+V released from Explorer, on the PATH; running): the setup in Russian, four checks passed, *Move*: "3 file(s), 160,225 bytes brought over and checked (3 item(s))", uninstalled in 3 s, old folder removed; afterwards no Run value, no Installed-apps entry, no shortcut, no install folder, the PATH entry gone, `DisabledHotkeys` empty, Explorer restarted once; the welcome said the 3 items came over and asked no language; after *Start* the same 3 items with the pin, Russian, the command line on, Win+V through the hook. **A failing check** (write access to the copy's folder taken away): the third line failed and named the folder; *Check again* passed once access was back. **Quit** on the first page: everything untouched; after a failed uninstall step: the copied history removed again and the closed copy started again with its 3 items. **A second launch** during the setup: the same window came forward. **The installer run while the Store edition is installed:** it warned before installing. **A background start** with another copy installed (running, and not), and before the welcome: ended before the lock with its log line; the other copy kept running. **An edition that already has a history:** the page said the other history stays; the copy was uninstalled, its data folder left alone. **A history left behind** by an uninstalled copy: imported without a question (4 items), old folder removed. ***Not now***, then a start by hand: the welcome again. ***Open with Win+V* off:** "Alt+Win+V registered with RegisterHotKey (no keyboard hook needed)" | claude-desktops MCP tools (`launch`, `press_keys`, `click`, screenshots, `run_command` with cmd); guest scripts `state.ps1` (a content-free report of the registry, folders, settings and processes), `register-store3.ps1`, `install-0210.ps1`, `remove-store.ps1` (not kept: the desktop was deleted) | ✅ after the faults it found (§2.47 "Faults the live runs found"). Not seen: the guided pages for a copy for every user and a Chocolatey copy, the Spanish and Chinese setup pages. Not run: a standard user, UAC on, a real GPU, a package served by the Store, the Windows App Certification Kit |
+| **The signed Store package, installed** (2026-11-13, the same desktop): `Add-AppxPackage` of `store7.msix` after its test certificate went into `LocalMachine\TrustedPeople` (signature kind Developer); Windows accepted package version `1.2.11.0` and ran the app from `C:\Program Files\WindowsApps\BetterClipboard.Unreserved_1.2.11.0_x64__…`. The released 0.2.10 was installed again, in **Hebrew**, and ran: the setup and the welcome showed in Hebrew; the move: "3 file(s), 160,216 bytes brought over and checked (5 item(s))", uninstalled, old folder removed, the registry clean; after *Start* the panel in Hebrew with the 5 items, Settings in Hebrew. Closing Settings: the silent restart's new process ran from the `WindowsApps` folder (`--background --restart-after … --clipboard-sequence 25`), "Silent restart: the shortcuts were held during the switch; 0 press(es) caught.", the hook installed again. Removing the package (6 s): no package, no data folder, no aliases, no process, the `WindowsApps` folder gone, the Run key empty, `DisabledHotkeys` absent; Win+V then opened Windows' own clipboard panel | the same tools; `install-signed.ps1`, `state.ps1`, `remove-store.ps1` in the guest | ✅ |
+| **What a package changes** (2026-11-12, §2.47), measured with `tools/probes/msix_lab` in the same desktop: a console program registered as a full-trust package, each result compared with what an unpackaged shell saw. Own `HKCU` writes and deletes redirected, reads real; `RegNotifyChangeKeyValue` never signalled for another process's write (also through `HKEY_USERS\<SID>`), the key's last-write time moved; file change notifications arrived (Roaming, Local, outside AppData); a new folder under `%LOCALAPPDATA%` redirected, `LocalState` real; children that are other programs ran outside the package (CreateProcess, ShellExecute, a scheduled task, Explorer), the package's own program kept its identity (CreateProcess, ShellExecute, desktop-app policy 1 and 4; loosely registered and installed in `WindowsApps`); DPAPI blobs opened both ways; `Local\` mutexes and events shared; `StartupTask.RequestEnableAsync()` `Enabled` without a prompt; WinRT clipboard history `Success` without a window; uninstalling removed the package's data folder and left real folders and values | `run-lab.ps1` in the guest (result file read back) | ✅ |
+| The Microsoft Store edition, unit tests and the suite (2026-11-13, §2.47): Core `EditionTests` 36 (the package's data folder and instance scope; `EditionSetupPlan.Next` for every mix of copies, other data and own history, and a walk through every step to the end; what is listed for a move; readable while a writer holds the file; nothing left by the write check; free space with its margin; a whole move that brings a history over, proves it and removes the old folder last; a rollback that leaves the original; a copy that is no history, and a history of another machine, refused; a copy that would damage a history refused; cancelling; what could not be deleted named; SQLite's check on a sound store; the welcome off until given). Windows `EditionUninstallerTests` 13 (the check and the uninstall run through the real Windows PowerShell against a stand-in `install.ps1` in a folder named with a space, a quote, an ampersand, percent signs and a non-ASCII letter: success proven by the program being gone, a reported failure in its words, "success" with the program still there refused, a missing script, every other kind of copy refused, a folder this account may not change named; and the real `install.ps1`'s uninstall parameter set read with `Get-Command`). Mutation checks: three one-line mutations in Core (`BringsDataOver` ignoring the own history, a Chocolatey copy no longer guided, a rollback that leaves the copied settings) failed 5 of the 36 `EditionTests`; with HEAD's `install.ps1` (before the parameter-set fix) `InstallScript_TakesTheUninstallParametersTogether` failed ("ResultPath", "LogPath" not found); both put back, both green. The whole suite on `1eede6f` plus this change, in a private worktree: 2,151 = Core 1,732 + Windows 419; 2,148 passed, 3 opt-in skipped, 0 failed. A `--no-incremental` rebuild: 0 errors, 0 documentation warnings; the documentation hook's check over the 36 changed code files: 0 gaps; `catalog.py check`: 0 missing and 0 to review in every language; `test-iex.ps1` passes in PowerShell 7.5.8 and 5.1; `install.ps1` and `package-msix.ps1` parse in both | the test executables, `dotnet test --solution`, scratch `doc_gaps.py`, `parse_check.ps1`, `mutate_editions.sh` (session 66cdd808) | ✅ |
+| The Store package build (2026-11-13, §3.5), on this PC into scratch folders (nothing registered, no certificate store touched): test-signed x64 packages `store1` to `store7` (70.6 MB, 511 files, 35 logos), a test-signed ARM64 package (68.5 MB), and `-ForStore` with a made-up reserved identity: both unsigned packages, version `1.2.11.0` for the release `0.2.11`. Refused before any build: `-ForStore` with the placeholder identity, and `-ForStore` with a test certificate. `make_store_assets.py` rewrote the 35 logos byte for byte and wrote the listing's 300-pixel tile icon; `check-store-listing.py` passed on the kit (five languages) and failed on a kit with a 230-character feature (exit 1) and on a file that is not the kit (exit 2) | `tools/release/package-msix.ps1`, `tools/make_store_assets.py`, `tools/release/check-store-listing.py` | ✅ Not run: the ARM64 package on a device |
+| The installer edition after the Store-edition change (2026-11-13, §2.47: `AppController.Start` / `StartCore`, `SingleInstance`, `Program.ResolvePaths` and `SettingsWindow.ApplyEdition` serve every edition). The solution build of exactly the landed code (`6f5a582`), as an isolated instance on this PC: its own data folder, capture paused, every source off and pointed at empty scratch folders, a shortcut nobody uses, a language already chosen; nobody had used the PC for over an hour. **Start in the tray:** the store opened encrypted, "Ctrl+Alt+Shift+F22 registered with RegisterHotKey (no keyboard hook needed)", "Updates: this copy is not installed by the installer …", "Panel prepared for the first Win+V in 472 ms", and `--exit` ended it ("Exiting."): 9 log lines, 0 WRN/ERR. **Its Settings,** read through UI Automation (no mouse, no keys): *Release from Explorer*, *Check for updates automatically* and *Start with Windows* are there, *Updates from the Microsoft Store* and *Open in Microsoft Store* are not, and the version line reads "Version 0.2.10" without the edition. **With the other session's uncommitted AI work** (a scratch checkout of this commit plus their diff and files, which merged cleanly in all nine files): 0 errors, 0 documentation warnings, 2,198 tests: 2,195 passed, 3 opt-in skipped. The installed app's process was the same before and after each run | scratch `smoke_unpackaged.ps1`, `settings_check.ps1` (it opens a window, so it runs only when nobody touched the PC for 90 s), `combo_check.sh` (session 66cdd808) | ✅ Not run: the installer edition's panel on screen, and an installed copy of this code (only the build output) |
+| **The silent restart, live** (2026-11-12, §2.46; the owner: "User must not see or feel or have UI flash or open accidentally during this silent restart"). A disposable claude-desktops Windows 11 desktop ("bc-restart", Tiny11 25H2, 1600×900, no GPU, on this PC's host; deleted afterwards with its storage), self-contained packages of the change (`0.2.11-dev.restart`, then `0.2.11-dev.restart2` with the tray hand-over) installed with `install.ps1 -Package` (Win+V released from Explorer), English chosen, the command line on, BC-TEST copies only, Notepad in front. Probes in the desktop: the pointer's shape, the window in front, the app's processes and every visible uncloaked window of theirs every 15–20 ms; each process's tray icon (`Shell_NotifyIconGetRect`) every ~15 ms; the tray region captured every 24–34 ms. **Seven restarts:** the decision 5.3–6.4 s after Settings closed; private memory 131–146 MB before, 44–49 MB after (45 MB after the first start); Notepad in front throughout (except for the panel the test's own Win+V opened); no window of either process except Settings itself and that panel; the pointer unchanged through every switch; the logs 0 WRN/ERR. **Win+V 0.6 s into the switch** (the old process already gone): "the shortcuts were held during the switch; 1 press(es) caught", "Panel on screen 1039 ms after the shortcut". **Win+V 0.14 s in** (before the bridge held): the panel in the old process within 64 ms, "Silent restart called off: the panel opened. Trying again once it is quiet.", the new process gone and its hidden icon never shown; after Esc the restart went through. **Copies** 64 ms and 414 ms after the old process ended were recorded. **Tray, icon pinned:** the first version (new icon added visibly) had two icons registered for 64 ms, and a captured frame showed two; with the hand-over no frame changed in two restarts (the only other frame was the clock turning) and the sampler never saw zero icons. The new process's icon opens the panel and its menu; after an Explorer restart it came back visible | claude-desktops MCP tools; `probe.ps1`, `run.ps1`, `fastshots.ps1` (session f1d22507's scratchpad, `restart-qa/`) | ✅ Not run: the owner's PC (a real GPU), several monitors, a standard user account |
+| The silent restart's controls (2026-11-12, §2.46), in the same desktop. **Pointer:** `GetCursorInfo` read an I-beam over Notepad; a start of the app with `STARTF_FORCEONFEEDBACK` from a foreground window gave 5 samples of the app-starting pointer, the same start with `STARTF_FORCEOFFFEEDBACK` none; a start with neither flag showed none from a hidden script, through Explorer and from a foreground window. **Tray:** a GUID-identified icon handed over by `NIM_MODIFY` with the new window (accepted) vanished when the first window went (frames); an icon added hidden and revealed by the other process 0.8 ms before that process deleted its own stayed in place in every frame, and Explorer accepted the reveal from the process that did not own the window | `control.ps1`, `feedback-form.ps1`, `trayswap.ps1`, `trayswap2.ps1` (same folder) | ✅ |
+| The silent restart, unit tests and the suite (2026-11-12, §2.46): Core `SilentRestartTests` 14 (the rules: restart at once when quiet, not wanted without Settings / while exiting / when a language would be asked, each blocker and its log words, inclusive pauses, the most lasting reason named, what calls a started restart off); Windows `SilentRestartTests` 4 (a quiet start of a console program and its end, refusals, the idle-time read, nothing to hold refused) and two take-over cases in `ClipboardCaptureTests` (a copy made while nobody listened is read; an unchanged clipboard is not). Mutation: with the hand-over read removed, `TakingOver_ReadsACopyMadeInBetween` fails. The whole suite on `9cc1018` plus the change: 2,102 = 2,099 passed + 3 opt-in skipped; with the other session's uncommitted AI work added in a scratch checkout: 2,149, 0 failed. No warning in a changed file; the documentation hook's checker 0 gaps | the test executables, two worktrees, `doc_check.py` | ✅ |
+| **What the memory is now, on this PC** (2026-11-12, §2.45; the owner: "What is consuming memory now"). `tools/probes/probe_memmap.cs` (new: read-only, no window, no injected thread, no dump) on the owner's installed 0.2.10 (2.5 days up: Private Bytes 255 MB, "Memory" 77 MB; native heap 97 MB charged / 51 MB resident, other private allocations 73 / 5 MB, NVIDIA DLL data 32 MB, write-combined 22 MB, .NET 12 MB) and on an isolated `0.2.11-dev.4.gc5dc861` with a seeded BC-TEST store (3,300 entries, 15,000 prompts), idle 60 s after its reclaim ("gave back 49 MB of private memory (158 → 109 MB)"): Private Bytes 108–110 MB, "Memory" 6.8–12 MB; native heap 34.8 / 7.1 MB, NVIDIA DLL data 32.0 MB, write-combined 20.1 MB, other private 6.5 MB, other DLL data 4.2 MB, .NET 4.2 MB, stacks 1.7 MB. The segment-heap grouping was checked separately: three 16 MB reservations share one context's (signature ^ address), the linked fourth belongs to the other context. The isolated instance's log: 0 WRN/ERR; the owner's app was only read | `probe_memmap.cs`, a signature check (session f1d22507's scratchpad, `memmap/sigcheck.cs`), GPU Process Memory counters | ✅ |
+| **Memory, the final build, live** (2026-11-12, §2.45; the owner: "Optimize memory end to end"). A claude-desktops Windows 11 desktop ("bc-mem", Tiny11 25H2, no GPU, golden 20261025-1036; deleted afterwards), a self-contained Release publish of the change (`0.2.11-dev.mem+e0b40be`, before the log's one-decimal wording), isolated instances on copies of a seeded BC-TEST store (3,300 entries, 17 pinned, 30 in groups, 15,000 prompts). **8 Settings opens and closes:** private 87 MB at the start, 179 MB open, 137 MB after the first close, then 154 / 154 / 156 / 157 / 159 / 160 / 160 MB; the private working set 5.9–11.6 MB six seconds after each close; GDI 44 → 71 (+3 a cycle), USER 58 → 66. **Panel uses with the trim** (four summons through the instance's own shortcut, 40 s apart): the private working set 3.7–6.7 MB before each summon, 19–28 MB with the panel open, private 55–60 MB. **Title bar:** Windows' own, light in the light theme and dark in the dark one (screenshots), with the search box and the hero below it as before. The four runs' logs: 0 WRN/ERR; the reclaims logged "gave back 39 MB … (176 → 137 MB)" after Settings closed and "gave back 37 MB … (84 → 47 MB)" after the start's list refresh | `cycles.ps1`, `trimtest.ps1`, `shot.ps1`, `mem.ps1` (session f1d22507's scratchpad, `vm/scripts`): `GetProcessMemoryInfo` and `GetGuiResources` per step | ✅ |
+| Memory before the change, and where it went (2026-11-12, §2.45). **0.2.10 on the same desktop:** start 87 MB private; Settings open 179 MB; after 4 more opens and closes 249 MB, a forced full collection giving back nothing, five Settings windows in a heap dump, GDI 52 → 191. **Experiments** with diagnostic builds (never committed): with the window's and timers' handlers removed, no window in the heap dump and a plateau; the GDI growth per open and close was 24–32 with the extended title bar (either API) and 3 without it. Images tab paged, then hidden 45 s: 98.8 MB (0.2.10) against 67.6 MB (the change); idle after the start 87 against 46 MB. Trim on against off (6 summons each): working set before a summon 3.8–6.7 against 24.6–37 MB, summon median 41 against 28 ms. **This PC's real GPU** (isolated instances, nothing on screen): the installed 0.2.10 held 267 MB private after two days with ~9 MB of live .NET objects (VMMap: process heap ~93 MB, driver ~90 MB); Settings cycled cloaked by a diagnostic build: 166 → 262 MB in five cycles (0.2.10) against 162 → 190–193 MB (the change); the final publish idle after the start: "gave back 49 MB of private memory (163 → 114 MB)", .NET heap 3 MB | VMMap (`-p PID out.csv`), dotnet-counters, dotnet-gcdump and dotnet-dump (the desktop needed the .NET 10.0.15 runtime), the scripts above, `local_run.ps1` | ✅ |
+| Memory, unit tests and the suite (2026-11-12, §2.45): `MemoryReclaimTests` 11 (Core) and `ProcessMemoryTests` 2 (Windows, a collection that runs alone: a reclaim blocks every thread and trims the test process). `CliPipeServerTests.ClientHangUp_CancelsHandler` failed 10 of 10 full runs of the change's worktree and 0 of 7 of HEAD's; instrumented, its handler started at 1–2 ms in HEAD's order and never in the other; the same binaries copied to other folders passed 4 of 4 and HEAD's failed once: xunit's order follows the assembly's path. Rewritten to hang up once its handler runs: 4 of 4 full runs from the failing folder, 3 of 3 alone; with the server's hang-up handling removed it fails. The whole suite on `e0b40be` plus the change: Core 1,682 passed; Windows 400 (397 passed, 2 opt-in skipped, 1 explicit not run); a Release publish with only the known CS0108 | the test executables, two worktrees, a mutation of `CliPipeServer` | ✅ |
+| **The merged tabs in time order, live** (2026-11-11, §2.44; the owner: "The first row in Claude tab is always old one"). A disposable claude-desktops Windows 11 desktop ("bc-taborder", Tiny11 25H2, 1600×900, golden 20261025-1036; deleted afterwards with its persist folder), BC-TEST data only: a Claude Code `history.jsonl` with four prompts sent 3 days to 1 hour ago, and a PowerShell history with three commands. **Before, on the released 0.2.10** (the README's installer, `-Version 0.2.10`, SHA-256 OK): "old prompt A" and "continue" pasted from the Claude tab into Notepad (each then kept); "sent after the keeps", "continue" and "newest" appended to the history afterwards, as Claude Code appends. The tab listed the two kept prompts first, above "newest" and "sent after the keeps", and selected the kept "continue". Pwsh: "old command 1" pasted from the tab, two commands appended after it; the kept command led the tab. **After, with a package of the fix** (`0.2.11-dev.taborder`, its own `install.ps1 -Package` over 0.2.10, history kept): Claude: "newest" first and selected, the kept "continue" at its re-send between "newest" and "sent after the keeps", the kept "old prompt A" below the prompts sent after it, footer "6 prompts (7 sent) · 2 kept". Pwsh: the two newer commands first, the kept "old command 1" at its place in the file ("2 min ago"). "old command 2" pasted from the tab after the newest command was typed: it led ("just now"). "BC-TEST an hour ago" pasted from the tab (kept), then sent again 2 min later: its card led with "just now" while `bclip list -f claude` gave its own last use as "3 min ago". The app's log over both versions: 42 lines, 0 WRN/ERR | claude-desktops MCP tools (`press_keys`, `type_text`, screenshots, `run_command`), `bclip prompts` / `list` in the guest | ✅ |
+| The merged tabs in time order, tests (2026-11-11, §2.44): `MergedTabOrderTests` 19 (11 facts, 8 seeded random-list cases of 200 rounds each: every entry once, no content twice, every other item shown, pins first, times non-increasing, the same rows in one page or in random pages), `ShellTabTests` 4 new or changed, `EverythingTabTests` 1 changed (a kept file opened again sorts at its opening), `PromptStoreTests.KeptPrompts_JoinTheArchiveByTime` (a kept prompt's content hash equals its archived text's, on a real store), Windows `ReadCommands_KnowsWhenTheNewestCommandWasTyped`. Mutations: every stored entry first again (the old order) failed 22 tests in the four classes, no twin handling 17. The whole suite in a private worktree of `c156038` plus the change: 2,069 = 2,066 passed + 3 opt-in skipped, 0 failed (Core 1,671, Windows 398); the build 0 errors, no new warning; the documentation hook's checker 0 gaps on the changed lines | the test executables, `dotnet test --solution`, a mutation script, `doc_check.py` (session 5f26896e's scratchpad) | ✅ |
+| **v0.2.10 released** (2026-11-10, the owner: "Lets merge and release a version"). Merge request #2 (`release/0.2.10` into GitHub's `main`, 37 commits: everything since v0.2.9, plus `9324621` and `5e4e731`, added after one scope question, and `27077f1`) was merged with a merge commit through `gh pr merge --merge --match-head-commit <full sha>` from outside the repository (a guessed full hash was refused first: "Head branch was modified"; nothing changed): `a2c5fd7`, parents `a347f06` and `27077f1`, its tree identical to `27077f1`'s. CI green on `27077f1` (run 42748098113) and on `a2c5fd7` (42748831071). Tag `v0.2.10`: annotated, `--cleanup=whitespace`, on `a2c5fd7`, its message the anchored lookup's draft (`27077f1`'s), equal to the notes file. Release run 42749428059 green at the first attempt; published 03:32:07Z, Latest, not a pre-release. Assets: zips x64 74,961,786 / ARM64 72,457,826 bytes, `.7z` 45,604,632 / 41,451,359, `betterclipboard.0.2.10.nupkg` 87,102,568 (attached only: no `CHOCOLATEY_API_KEY`, the step warned), `install.ps1`, `SHA256SUMS.txt`. All four sums equal GitHub's digests, and the downloaded x64 zip its own; the body is the notes plus the code-signing footer, with no mojibake; the `install.ps1` asset equals the blob except CRLF; `BetterClipboard.exe` and `bclip.exe` in the x64 zip report `0.2.10+a2c5fd7…`; the README's `irm | iex` URL serves `a2c5fd7`'s installer. Local `main` fast-forwarded to `a2c5fd7` (the shared tree's 19 uncommitted entries untouched); `release/0.2.10` deleted on GitHub. Not installed on this PC (not asked): it runs `0.2.10-dev.41.g9324621` (installed by another session on 2026-11-09 20:57Z), the newest build in the dev-builds folder, so its update button offers 0.2.10 at its next check (daily, or *Check now*); 0.2.10 reads the folder, so going back to a release no longer strands dev builds | `gh pr merge`, `gh api …/releases/tags/v0.2.10`, `gh release download`, `gh run view --log` | ✅ |
 | **The 0.2.10 release candidate `5e4e731`: an update from the real 0.2.9, and the two features added after the merge request** (2026-11-10, the owner: "Lets merge and release a version"; asked one question, because `main` had gained `9324621` (Settings search, *Delete stored…*) and `5e4e731` (the language picker until a language is chosen) after merge request #2 was opened, the owner chose "Include + quick QA"). **Exactly `5e4e731`** in a private worktree: a `--no-incremental` solution build with 0 errors and 0 documentation warnings; the whole suite 0 failed, 3 opt-in skipped. **A disposable claude-desktops Windows 11 desktop** ("bc-rel-0210", Tiny11 25H2, 1600×900; deleted afterwards with its persist folder): the real 0.2.9 installed with the README's installer (`-Version 0.2.9`, SHA-256 OK, Win+V taken over); two BC-TEST copies and a Win+R `winver` recorded by it. Then a self-contained package of `5e4e731` (`0.2.10-dev.42.g5e4e731`, published into a scratch data folder, so the owner's update button saw nothing) applied as 0.2.9's update button would: the package's own `install.ps1 -Update -Package … -PackageSha256 … -InstallDir … -ResultPath … -LogPath …`, exit 0, result `ok`, 0.2.9 closed and the new copy started with `--background`. The picker ("Choose your language", English suggested) showed at once; Enter saved `en` with `LanguageChosen` true and kept 0.2.9's other settings; the log "Interface language chosen at a start with a history already kept …", 0 WRN/ERR. The panel listed 0.2.9's two copies and `winver`, with the Run tab. **Settings search:** "clpbrd" gave "8 settings match" under their section titles with the matched letters marked; Esc emptied the box. ***Delete stored: Win+R history*:** "1 item stored · 14 B", the part "Commands run with Win+R" with its example `winver`, the note on Windows' own list, *Also turn off*, a red *Delete 1 item* and *Cancel*; Esc closed it with nothing deleted; *Delete 1 item* deleted exactly one entry ("Deleted stored data: 1 history entry …"), `RunMRU` still held `winver`, and the panel lost its Run tab and kept both copies. **Hebrew** chosen in Settings, *Restart now*: no picker (`LanguageChosen`), and the search "notepad++" found 3 settings with the whole name marked (the U+200E that `9c7ba87` puts after "Notepad++" is folded away by the search). The notes draft gained a **Settings.** section for the three (in this commit's message) | claude-desktops MCP tools; the UI Automation helper of the 2026-11-09 pass (recovered from the session's log, with its fix); `review_build.sh` and `publish-dev.ps1` with a scratch `BETTERCLIPBOARD_DATA_DIR` | ✅ |
 | **The language question after an update, live** (2026-11-09, §2.37). A disposable claude-desktops Windows 11 desktop ("bc-ask", Tiny11 25H2, en-US, 1600×900; deleted afterwards with its persist folder). The released 0.2.9 installed with the README's installer (`-Version 0.2.9 -NoLaunch`, SHA-256 OK), started in the background, two BC-TEST copies made; its own `settings.json` written by 0.2.9 (`--set-update-check on` while it was closed: 3,812 bytes, no language member); started again. A self-contained package of HEAD (`9324621`) plus only this change (`0.2.10-dev.ask`), applied the way the update button does: the package's own `install.ps1 -Update -Package … -PackageSha256 … -InstallDir … -ResultPath … -LogPath …` (SHA-256 OK, 0.2.9 closed gracefully, the folder swapped, the app started again with `--background`). **The picker showed at once**, before any other window, with the five languages and English suggested, next to the notification "BetterClipboard was updated to 0.2.10-dev.ask". Down ×4: the heading "Elige tu idioma"; Enter: `InterfaceLanguage` `es` and `LanguageChosen` true, 0.2.9's values kept (`CheckForUpdates`, `OpenHotkey`); the log "Interface language chosen at a start with a history already kept (…): es (Windows suggested en)", then the panel's warm-up; Win+V: the panel in Spanish with both copies made in 0.2.9. `--exit` and a plain start: no picker, Settings in Spanish. Settings › Idioma › *Usar la configuración de Windows*: saved `system` with `LanguageChosen` true, the box "🇺🇸 English · según Windows" with *Reiniciar ahora*; the restart: English, no picker. A new data folder (an isolated instance next to it): the picker; Esc kept English ("Interface language chosen at the first start: en", `LanguageChosen` true). No warning or error in the regular instance's log lines read; the isolated instance's only warning was Win+V taken (1409), which the regular instance held | claude-desktops MCP tools (`run_command`, `launch`, `press_keys`, `click`, `type_text`, screenshots) | ✅ Not run: an exit from the tray while the picker is open (the next start asks again), an update from a development build that had the earlier rule |
 | The language question, unit tests (2026-11-09, §2.37): `LocalizationTests.Start_AsksUntilALanguageIsChosen` (10 cases: never chosen with `system` in any case, blank or missing asks; an explicit language, a language not shipped, and every answered case do not) and `SettingsFiles_FromBeforeTheLanguageAsk_UntilAnswered` (a 0.2.9-style `settings.json` reads as `system` and unanswered, so it asks; answered with `es` and read back, it does not; `system` answered does not). The localization guards 77 of 77; Core 1,648 of 1,648 on HEAD (`9324621`) plus only this change in a private worktree, and 1,695 of 1,695 in the shared tree with the uncommitted AI work; the solution builds with 0 errors | the test executables | ✅ |
@@ -6221,6 +7609,99 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
 
 ## 6. Roadmap / known gaps
 
+- **Long texts** (2026-11-13, §2.50), next steps:
+  - Find (Ctrl+F) in the text viewer, across its pages (not chosen this time);
+  - a selection and *Select all* across pages (copy from the source text, not from RichEdit), and a *Copy* that gives a
+    Markdown document's source rather than its drawn text;
+  - the peek's language from the viewer's own detection, so a megabyte log no longer reads "Markdown" in the peek;
+  - measure RichEdit on a real GPU (the page size was set on a test desktop without one), and listen to Narrator in both
+    overlays;
+  - decide whether a copy made in the peek or the viewer belongs in the history (today it becomes a new entry, like any
+    copy).
+- **Pictures and their files** (2026-11-13, §2.49), next steps:
+  - follow a file that was renamed or moved (its NTFS file id could be kept with the path, or the folder searched by
+    pixels again), instead of calling it "moved or deleted";
+  - a file for pictures copied from apps: a browser's *Copy image* puts the picture's address in its HTML (a link, not a
+    file), and a picture file copied in File Explorer could offer the picture's actions next to the file list's;
+  - run it in the Microsoft Store edition, on a network share and on a standard user account.
+- **Shell starts still on the UI thread** (found 2026-11-13, §4): the Everything tab's *Open* and *Show in Explorer*
+  (`ClipboardFlyout.OpenPath`, `RevealPath`), `AppController.OpenWebLink` (the release notes' and Settings' links), the
+  data-folder button, Settings' *Restart now* and the Store edition's own starts (`OpenShellAddress`: Windows' Settings
+  pages and the Store, both packaged apps) call `Process.Start` with `UseShellExecute` on the UI thread.
+  None has crashed (no popup closes in the same click, as the viewer's link did), but each would be safer started from
+  the thread pool like `AppController.LaunchAsync`.
+- ~~**The tray icon after a timed-out `NIM_ADD`**~~ (found 2026-11-13 in the portable-update QA, §5): fixed the same day
+  (§2.48). A refused `NIM_ADD` is followed by a `NIM_MODIFY` that finds an icon Explorer added late, and a real refusal is
+  retried on a timer. Copies up to 0.2.10 still have the dead icon after a slow sign-in.
+- **The Microsoft Store edition** (2026-11-13, §2.47, §3.5), next steps:
+  - **waiting for the owner's word** (§3.5, decided 2026-11-13): "release", then "publish". Until then nothing is
+    pushed, tagged or submitted. The version bump to 0.2.11 and its notes draft are prepared; the owner ticks the
+    IARC agreement and presses *Submit for certification* themselves;
+  - **replace the listing's screenshots**, last, after asking the owner what they want instead (their words: "We
+    must replace the images BUT only after we do everything else - ask me then again about it");
+  - **translation reviews**: issues #4 (Russian) and #5 (Spanish) ask native speakers; corrections go into the
+    catalogs and into the kit, then one import;
+  - **connect the pipeline**, on the owner's word (`docs/microsoft-store.md` §7 has the plan and what Microsoft's
+    pages ask): a work account in the owner's Azure directory, one sign-in by the owner to associate the tenant,
+    the application with the Manager role, the three `PARTNER_CENTER_*` secrets by pipe, then *Microsoft Store ›
+    check*. `submit-store.ps1` has never met the real service; its first real run is the release after the first
+    published submission;
+  - **a sign-in without a stored key**: GitHub's OpenID Connect token and a federated credential on the
+    application would replace `PARTNER_CENTER_CLIENT_SECRET`, which runs out after a year and then fails the Store
+    step. It can only be tried once the connection exists;
+  - **install the package in CI**: the CI job builds the test-signed package; installing it on the runner (as
+    `test-chocolatey.ps1` does for Chocolatey) would also catch a package that builds but does not run;
+  - **localized screenshots**: all five listings show the English pictures (six scenes; §3.5 has the procedure);
+  - **the preview picture** shows a snip of the wallpaper over the same wallpaper: retake it with another image;
+  - optional: let the pipeline update the listing texts too (the API's submission holds them), from the kit;
+  - **see the two guided pages** (a copy for every user, a Chocolatey copy) on screen, and the setup in Spanish and
+    Chinese;
+  - **run it** on a standard user account, with UAC on, on a real GPU and on an ARM64 device; run the Windows App
+    Certification Kit on the submitted package;
+  - **after the first Store release:** an update served by the Store (the restart `PackagedRestart` asks for), and the
+    Store link in the README and in the installer's Store-edition warning;
+  - **a native review of the listing's translations** (zh-Hans, ru, es, he: written by Claude, like the catalogs);
+  - optional: let the Store edition offer the move also from a Chocolatey copy when the user is an administrator
+    (today it only guides), and merge two histories (today the other one stays where it is).
+- **The panel's first frame of a session can show unbound defaults** (seen once, 2026-11-13, on the GPU-less test
+  desktop, in the Store edition and equally possible in every edition): the "Paused" chip and the Everything tab's
+  *Start Everything* were drawn for one frame at the first summon. x:Bind in a `Window` initializes at the window's
+  first `Activated` (the generated `Activated += bindings.Activated`), and the panel is first activated by that
+  summon. Calling `Bindings.Initialize()` in the warm-up, before the panel is first shown cloaked, should bind earlier;
+  not done here, because another session has uncommitted changes in `ClipboardFlyout.*.cs`.
+- **Cards dragged onto a group keep a selection bar** (seen 2026-11-13 while the Store listing's screenshots were
+  made, §3.5; in the Store edition, whose list code is every edition's): cards that had been dragged onto group
+  icons were still drawn with a selection bar afterwards, next to the row that was really selected, until the app
+  was restarted. Not investigated. It looks like §2.27's second selection bar (a row's container handed on with its
+  bar still drawn) reached another way **[inferred]**: a drag selects the dragged row, and the membership change
+  then updates that card in place. First step: ask UI Automation which rows are selected after a drag (in §2.27 it
+  told the drawing from the state), then look at what `DragItemsStarting` and `DragItemsCompleted` leave selected.
+- **The worker's desktop gateway has no automatic restart** (found 2026-11-13, §4): a `delete_desktop` made Caddy
+  panic on its config reload ("context: internal error: missing cancel error") and stay down until it was started by
+  hand. It belongs to the claude-desktops repository (`Restart=on-failure` for the unit, and a delete that finishes
+  its persist-folder removal after a failed reload).
+- **The silent restart** (2026-11-12, §2.46), next steps:
+  - watch it on the owner's PC: a real GPU, several monitors (the log's "Restarting silently …" and "Silent restart: …"
+    lines, and the new process's memory), and on a standard user account;
+  - **a `WAIT` pointer over Settings, seen in the test desktop:** while Settings was open under a pointer that never
+    moved, the pointer read `WAIT` the whole time (and once for ~40 ms as Settings closed). It comes before the restart,
+    not from it, and was not investigated: check whether 0.2.10 does the same, and whether a real mouse ever sees it;
+  - instances that may not hook (the hook fallback switched off, an isolated instance next to the installed app) keep a
+    one-second gap for the shortcuts: `RegisterHotKey` cannot take a shortcut the old process still holds;
+  - the new process repeats the integrations' catch-up passes and the warm-up's list load, which the old process had
+    just done; skipping them after a silent restart would shorten the switch.
+- **Memory** (2026-11-12, §2.45), next steps:
+  - retake the README's Settings photo (§3.4): it shows the old title bar;
+  - the 3 GDI handles each Settings open still leaves: try the window icon first (`AppWindow.SetIcon` from a path, against
+    an icon handle the app loads once and keeps);
+  - the one-time caches of the first Settings open (+50 to 60 MB private): find out which of them a smaller window, or
+    fewer cards built at once, would avoid (the silent restart, §2.46, gives them back a few seconds after Settings
+    closes; avoiding them would spare it the switch);
+  - run it on a standard user account, ARM64 and several monitors, and watch the owner's installed copy over a few days
+    (the log's "Memory after …" lines);
+  - what is left (§2.45's table) costs speed to cut: tearing the cloaked panel down while idle brings back the slow first
+    summon (§2.27: 630 ms against 100 ms), and rendering without the GPU slows every frame. Worth measuring first: fewer
+    cards kept realized while the panel is hidden, SQLite's cache per pooled connection, thumbnails dropped while hidden.
 - **Line breaks inside a shortcut, app-wide** (found 2026-11-09 in the §2.43 QA): DirectWrite breaks "Win+PrtScn" before
   its "+" at a line's end — seen in the Russian Snipping card's description ("…от Win" / "+PrtScn"). The Delete stored
   dialog glues its texts (`StoredText.KeepShortcutsTogether`); the rest of the app does not. Doing it once where
@@ -6392,6 +7873,11 @@ Settings its shortcut list (§2.25, §2.26). The three window photos kept their 
   - a photo of it for the README's *Updates* section (the test desktop's helpers make one in a minute);
   - check it with Windows' text size raised, on a second monitor with another scale, and with touch.
 - Updates (§2.29), next steps:
+  - ~~**A portable copy's *Download page* way has two traps**~~ (found 2026-11-13, §5): built the same day (§2.48), as the
+    owner chose: a portable copy of 0.2.11 or later updates itself in its own folder, a newer copy takes over from an
+    older one that runs, and the sign-in entry follows the copy that runs. Not built: the dialog sentence "close
+    BetterClipboard, then extract over this folder". Next: a file list in each release, so the helper can also remove
+    files a release no longer ships.
   - ~~The first whole run with a real release~~: done 2026-10-10 on the owner's own install, 0.2.6 → 0.2.7, four
     times (§5).
   - Retake `docs/images/update.png` with the real pair: it shows a build labelled 0.2.3 that is offered 0.2.5

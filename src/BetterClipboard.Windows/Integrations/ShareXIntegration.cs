@@ -2,6 +2,7 @@ using System.Globalization;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Services;
+using BetterClipboard.Core.Storage;
 
 namespace BetterClipboard.Windows.Integrations;
 
@@ -38,6 +39,12 @@ public sealed class ShareXIntegration : IAsyncDisposable
     /// <summary>Most screenshots one catch-up imports (the newest ones), so a long absence cannot flood the history.</summary>
     public const int MaxCatchUpFiles = 100;
 
+    /// <summary>
+    /// Store state name that marks the one-time search for the files of ShareX screenshots stored before BetterClipboard kept
+    /// a picture's file as done (<see cref="ScreenshotFileFinder"/>; ISO 8601 UTC time; empty = not yet).
+    /// </summary>
+    public const string FilesSearchedStateName = "sharex.files_searched";
+
     /// <summary>How often ShareX is located again in the background (install, uninstall, folders appearing).</summary>
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
 
@@ -62,6 +69,9 @@ public sealed class ShareXIntegration : IAsyncDisposable
     private DateTimeOffset lastSeen;
     private int importedThisSession;
 
+    /// <summary>1 once this process started the one-time file search (<see cref="StartFileSearch"/>); it never starts twice.</summary>
+    private int fileSearchStarted;
+
     /// <summary>
     /// Creates the integration; nothing happens until <see cref="StartAsync"/>.
     /// </summary>
@@ -77,6 +87,12 @@ public sealed class ShareXIntegration : IAsyncDisposable
         this.locate = locate ?? ShareXLocator.Locate;
         this.time = time ?? TimeProvider.System;
     }
+
+    /// <summary>
+    /// How long after the watch starts the one-time search for earlier screenshots' files begins (<see cref="StartFileSearch"/>):
+    /// half a minute by default, so the start's own work (imports, the panel's warm-up) goes first. Tests set zero.
+    /// </summary>
+    public TimeSpan FileSearchDelay { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Raised on a pool thread whenever <see cref="Installation"/>, <see cref="IsWatching"/> or the import count changed.</summary>
     public event EventHandler? StatusChanged;
@@ -318,6 +334,62 @@ public sealed class ShareXIntegration : IAsyncDisposable
                 }
             }
         }
+
+        StartFileSearch(current);
+    }
+
+    /// <summary>
+    /// Starts, once per process and after <see cref="FileSearchDelay"/>, the one-time search for the files of ShareX
+    /// screenshots stored before BetterClipboard kept a picture's file (<see cref="ScreenshotFileFinder.RunOnceAsync"/>, which
+    /// does nothing when the store marks it done). Runs in the background; logged, never thrown.
+    /// </summary>
+    /// <param name="current">The location facts whose folders are searched.</param>
+    private void StartFileSearch(ShareXInstallation current)
+    {
+        if (Interlocked.Exchange(ref fileSearchStarted, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(FileSearchDelay, shutdown.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return; // exiting before it began: the next start runs it
+            }
+
+            await ScreenshotFileFinder.RunOnceAsync(history, ClipFilter.ShareX, FilesSearchedStateName, () => ListScreenshotFiles(current), "ShareX", shutdown.Token)
+                .ConfigureAwait(false);
+        });
+    }
+
+    /// <summary>
+    /// Lists the screenshot files of ShareX's folders, the way the catch-up finds them (the folders' patterns, image files,
+    /// no thumbnails), whatever their age.
+    /// </summary>
+    /// <param name="current">The location facts.</param>
+    /// <returns>The files; a folder that cannot be read is skipped (logged).</returns>
+    private static IReadOnlyList<FileInfo> ListScreenshotFiles(ShareXInstallation current)
+    {
+        var files = new List<FileInfo>();
+        var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.Hidden | FileAttributes.System };
+        foreach (var folder in current.WatchFolders.Where(Directory.Exists))
+        {
+            try
+            {
+                files.AddRange(new DirectoryInfo(folder).EnumerateFiles("*", options).Where(file => current.IsScreenshotFile(file.FullName)));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppLog.Warn($"Could not list a ShareX screenshots folder: {ex.Message}");
+            }
+        }
+
+        return files;
     }
 
     /// <summary>Stops the folder watcher (not the configuration watch).</summary>

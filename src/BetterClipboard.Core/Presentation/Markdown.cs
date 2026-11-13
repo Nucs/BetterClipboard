@@ -64,7 +64,25 @@ public sealed record MarkdownListItem(int Depth, string Marker, IReadOnlyList<Ma
 /// </summary>
 /// <param name="Code">The code, lines separated by <c>\n</c>, without the fences.</param>
 /// <param name="Indent">How many list levels it is indented by; 0 outside a list.</param>
-public sealed record MarkdownCodeBlock(string Code, int Indent = 0) : MarkdownBlock;
+/// <param name="Info">
+/// What the author wrote after the opening fence (<c>```csharp</c> gives <c>csharp</c>), trimmed; <see langword="null"/>
+/// for a bare fence. The text viewer colors the block as the language it names (TextView.TextLanguages.FromFenceInfo).
+/// </param>
+public sealed record MarkdownCodeBlock(string Code, int Indent = 0, string? Info = null) : MarkdownBlock;
+
+/// <summary>
+/// How <see cref="MarkdownParser.Parse(string?, MarkdownParseOptions)"/> reads a text, beyond CommonMark's defaults.
+/// </summary>
+/// <param name="KeepLineBreaks">
+/// Every line break inside a paragraph is a hard break, as GitHub's comments and chat apps draw text (CommonMark joins the
+/// lines of a paragraph with a space). For text people typed line by line (a prompt, a note), whose breaks are meant;
+/// release notes keep CommonMark's way.
+/// </param>
+/// <param name="MaxLength">
+/// The most characters parsed; the rest is cut off. The release notes' <see cref="MarkdownParser.MaxLength"/> by default;
+/// the text viewer allows more, since its text comes from the user's own history, not the network.
+/// </param>
+public sealed record MarkdownParseOptions(bool KeepLineBreaks = false, int MaxLength = MarkdownParser.MaxLength);
 
 /// <summary>
 /// One row of a table.
@@ -131,17 +149,28 @@ public static class MarkdownParser
     /// </summary>
     /// <param name="markdown">The text; may be <see langword="null"/> or empty.</param>
     /// <returns>The blocks in reading order; empty for no text.</returns>
-    public static IReadOnlyList<MarkdownBlock> Parse(string? markdown)
+    public static IReadOnlyList<MarkdownBlock> Parse(string? markdown) => Parse(markdown, new MarkdownParseOptions());
+
+    /// <summary>
+    /// Parses Markdown into blocks, with options beyond CommonMark's defaults (kept line breaks, a larger size limit).
+    /// </summary>
+    /// <param name="markdown">The text; may be <see langword="null"/> or empty.</param>
+    /// <param name="options">How to read it.</param>
+    /// <returns>The blocks in reading order; empty for no text.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
+    public static IReadOnlyList<MarkdownBlock> Parse(string? markdown, MarkdownParseOptions options)
     {
+        ArgumentNullException.ThrowIfNull(options);
         var blocks = new List<MarkdownBlock>();
         if (string.IsNullOrWhiteSpace(markdown))
         {
             return blocks;
         }
 
-        if (markdown.Length > MaxLength)
+        int maxLength = Math.Max(0, options.MaxLength);
+        if (markdown.Length > maxLength)
         {
-            markdown = markdown[..MaxLength];
+            markdown = markdown[..maxLength];
         }
 
         var lines = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
@@ -188,7 +217,9 @@ public static class MarkdownParser
                     code.Append(codeLine, Math.Min(indent, CountIndent(codeLine)), codeLine.Length - Math.Min(indent, CountIndent(codeLine)));
                 }
 
-                blocks.Add(new MarkdownCodeBlock(code.ToString(), levels.Count > 0 && indent >= levels[^1].ContentIndent ? levels.Count : 0));
+                // The fence's info string names the code's language: "```csharp", or "``` js title=x" (its first word).
+                var info = trimmed[fenceLength..].Trim();
+                blocks.Add(new MarkdownCodeBlock(code.ToString(), levels.Count > 0 && indent >= levels[^1].ContentIndent ? levels.Count : 0, info.Length > 0 ? info : null));
                 afterBlank = false;
                 previousHardBreak = false;
                 continue;
@@ -249,7 +280,7 @@ public static class MarkdownParser
                 var quoted = trimmed.AsSpan(1).TrimStart().ToString();
                 if (pending.Kind == PendingKind.Quote && !afterBlank)
                 {
-                    pending.Append(quoted, previousHardBreak);
+                    pending.Append(quoted, previousHardBreak || options.KeepLineBreaks);
                 }
                 else
                 {
@@ -296,7 +327,7 @@ public static class MarkdownParser
             // A line of text.
             if (pending.Kind != PendingKind.None && !afterBlank)
             {
-                pending.Append(trimmed, previousHardBreak);
+                pending.Append(trimmed, previousHardBreak || options.KeepLineBreaks);
             }
             else if (afterBlank && levels.Count > 0 && indent >= levels[^1].ContentIndent)
             {

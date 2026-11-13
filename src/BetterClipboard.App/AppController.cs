@@ -21,6 +21,7 @@ using BetterClipboard.Windows.Imaging;
 using BetterClipboard.Windows.Import;
 using BetterClipboard.Windows.Input;
 using BetterClipboard.Windows.Integrations;
+using BetterClipboard.Windows.Packaging;
 using BetterClipboard.Windows.Security;
 using BetterClipboard.Windows.Shell;
 using Microsoft.UI.Dispatching;
@@ -54,7 +55,18 @@ public sealed partial class AppController
 
     private readonly DispatcherQueue ui;
     private readonly StartupOptions options;
-    private readonly AppPaths paths = AppPaths.ResolveDefault();
+
+    /// <summary>
+    /// Where this copy keeps its data (<see cref="Program.ResolvePaths"/>): the override folder of an isolated instance,
+    /// the Microsoft Store package's own folder for the Store edition, otherwise the classic folder.
+    /// </summary>
+    private readonly AppPaths paths = Program.ResolvePaths();
+
+    /// <summary>
+    /// The single-instance guard. The Microsoft Store edition's setup needs it (AppController.Store.cs): it tells whether
+    /// another edition holds the lock, asks that copy to exit, and takes the lock over.
+    /// </summary>
+    private readonly SingleInstance instance;
 
     /// <summary>
     /// DIB → PNG encoder for <see cref="GetImagePngAsync"/> (the image overlays). Stateless, so one instance is reused.
@@ -117,10 +129,17 @@ public sealed partial class AppController
     /// </summary>
     /// <param name="ui">The UI thread's dispatcher.</param>
     /// <param name="options">Command-line options.</param>
-    public AppController(DispatcherQueue ui, StartupOptions options)
+    /// <param name="instance">
+    /// The single-instance guard of this process. It holds the lock, except in a Microsoft Store edition that was started
+    /// while another edition runs, whose setup takes the lock (AppController.Store.cs).
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="instance"/> is <see langword="null"/>.</exception>
+    public AppController(DispatcherQueue ui, StartupOptions options, SingleInstance instance)
     {
+        ArgumentNullException.ThrowIfNull(instance);
         this.ui = ui;
         this.options = options;
+        this.instance = instance;
     }
 
     /// <summary>Raised on the UI thread after the history changed (forwarded from the worker thread).</summary>
@@ -256,29 +275,115 @@ public sealed partial class AppController
         typeof(AppController).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
 
     /// <summary>
-    /// Starts storage, capture, the shortcut, the tray icon and (optionally) the Windows-history import.
+    /// Starts storage, capture, the shortcut, the tray icon and (optionally) the Windows-history import
+    /// (<see cref="StartCore"/>). The Microsoft Store edition first settles other copies of BetterClipboard on the PC and
+    /// shows its welcome when either is due (AppController.Store.cs, CLAUDE.md §2.47); everything else then starts once
+    /// that is done, or never, when the user leaves.
     /// </summary>
     /// <exception cref="Exception">Storage or the clipboard listener could not start (the app cannot work without them).</exception>
     public void Start()
     {
         paths.EnsureCreated();
         AppLog.Initialize(paths.LogDirectory);
-        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{(options.RestartAfter is null ? string.Empty : ", restarted from Settings")}).");
+        string restarted = options.IsSilentRestart ? ", restarted silently after Settings" : options.RestartAfter is null ? string.Empty : ", restarted from Settings";
+        string edition = IsStoreEdition ? $", Microsoft Store edition {PackageIdentity.FullName}" : string.Empty;
+
+        // Program.Main took the lock over from an older copy before the log existed (it writes to the same file): said here.
+        string tookOver = options.TookOverFrom is { } older ? $", took over from BetterClipboard {older}, which was asked to exit" : string.Empty;
+        AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{restarted}{edition}{tookOver}).");
+
+        // First, because it may undo a move that was left unfinished, which changes whether a history exists.
+        bool setupDue = NeedsStoreSetup(out bool welcomed);
 
         // Before the store is opened (which creates it): no history yet means the app's very first start in this folder.
         // The language picker asks whenever no language was ever chosen (LanguageChoice.ShouldAsk); this only tells its
         // log line a first start from a start after an update.
         bool historyExisted = paths.HasHistory();
 
-        settings = new SettingsStore(paths.SettingsPath);
-        settings.Load();
+        if (setupDue)
+        {
+            if (options.IsSilentRestart)
+            {
+                // A silent restart shows nothing, whatever it finds (CLAUDE.md §2.46): the process it replaces ran with the
+                // user's consent until a moment ago. What is due waits for the next start.
+                AppLog.Info("Microsoft Store edition: a setup is due (another copy of BetterClipboard on this PC, or the welcome), but a silent restart shows nothing; it waits for the next start.");
+            }
+            else if (options.Background)
+            {
+                // Started by Windows (the startup task at sign-in, or again after a Store update) or by bclip: the setup
+                // only ever shows on a start by hand, because a window out of nowhere is not the way to ask, and nothing
+                // may be recorded before the welcome's Start. Program.Main ends such a start before the lock whenever it
+                // can tell beforehand (ContinueStoreEditionInBackground); this is the same answer for what it could not
+                // see (another copy that merely runs, a history that waits to be brought over).
+                AppLog.Info(welcomed
+                    ? "Microsoft Store edition: started in the background while a setup is due (another copy of BetterClipboard on this PC, or a history to bring over). Exiting; the setup shows when BetterClipboard is opened by hand."
+                    : "Microsoft Store edition: started in the background before its welcome was accepted; nothing is recorded. Exiting; the welcome shows when BetterClipboard is opened by hand.");
+                _ = ExitAsync();
+                return;
+            }
+            else
+            {
+                _ = RunStoreSetupAsync(historyExisted);
+                return;
+            }
+        }
+        else if (!instance.IsPrimary)
+        {
+            // A Store edition that found another edition running when it started, and nothing left to settle now: that
+            // copy ended in between. Become the instance; if yet another start took the lock in that moment, hand over to
+            // it like any second launch.
+            if (!instance.TryBecomePrimary())
+            {
+                AppLog.Info("Another BetterClipboard became the running copy while this one started; handing over to it.");
+                instance.Signal(options.Command);
+                _ = ExitAsync();
+                return;
+            }
+
+            instance.DiscardPendingCommands();
+        }
+
+        StartCore(historyExisted, preopened: null);
+    }
+
+    /// <summary>
+    /// Loads the settings and applies the saved interface language, before any view model or XAML markup words a label.
+    /// </summary>
+    /// <returns>The loaded settings store.</returns>
+    /// <exception cref="IOException">The settings file exists but could not be read or set aside.</exception>
+    private SettingsStore LoadSettings()
+    {
+        var loaded = new SettingsStore(paths.SettingsPath);
+        loaded.Load();
+
         // Read the persisted selection before any view model or XAML markup resolves its labels.
-        Core.Localization.UiText.Language = settings.Current.InterfaceLanguage;
+        Core.Localization.UiText.Language = loaded.Current.InterfaceLanguage;
         ApplyLanguageToWindowsText(UiText.Current);
+        return loaded;
+    }
+
+    /// <summary>
+    /// The start itself: storage, capture, the integrations, the shortcuts, the tray icon, updates, the Windows-history
+    /// import, and then the language picker, the panel's warm-up and Settings, as the start asks. For every edition; the
+    /// Microsoft Store edition comes here once its setup has nothing left to settle.
+    /// </summary>
+    /// <param name="historyExisted">
+    /// Whether this copy's folder held a history before this start (or one was just brought over from another edition):
+    /// only the language picker's log line uses it, to tell a first start from a later one.
+    /// </param>
+    /// <param name="preopened">
+    /// The history store when the Store edition's setup already opened it to check a history it brought over; the start
+    /// goes on with that very store instead of opening it again. <see langword="null"/> for every other start.
+    /// </param>
+    /// <exception cref="Exception">Storage or the clipboard listener could not start (the app cannot work without them).</exception>
+    private void StartCore(bool historyExisted, MachineBoundHistoryResult? preopened)
+    {
+        // Loaded here, or a moment ago by the Store edition's setup, which needed them for its welcome.
+        settings ??= LoadSettings();
         rules = CaptureRules.FromSettings(settings.Current);
         settings.Changed += OnSettingsChanged;
 
-        var store = OpenMachineBoundStore();
+        var store = preopened is null ? OpenMachineBoundStore() : NoteStoreOpened(preopened);
         history = new ClipHistoryService(store, new WinRtImageAnalyzer(), () => rules);
         history.Changed += (_, e) => ui.TryEnqueue(() => HistoryChanged?.Invoke(this, e));
         history.GroupsChanged += (_, _) => ui.TryEnqueue(() => GroupsChanged?.Invoke(this, EventArgs.Empty));
@@ -306,7 +411,10 @@ public sealed partial class AppController
 
         monitor = new ClipboardMonitor(CreateCaptureOptions, new SourceAppResolver());
         monitor.Captured += (_, capture) => history.TryEnqueueCapture(capture);
-        monitor.Start();
+
+        // A silent restart hands over the old process's last clipboard state: a copy made while neither listened is read
+        // now (CLAUDE.md §2.46). Any other start leaves what is on the clipboard alone, as always.
+        monitor.Start(options.IsSilentRestart ? options.ClipboardSequence : null);
 
         // Located on a pool thread (registry + a few small files); the tab appears once it is found.
         shareX = new ShareXIntegration(history, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L);
@@ -350,9 +458,16 @@ public sealed partial class AppController
         // High priority: the summon goes ahead of whatever else is queued (a list refresh, thumbnail decodes), since every
         // millisecond until the panel is in front is a millisecond in which typed keys still reach the app underneath.
         hotkeys.Pressed += (_, context) => ui.TryEnqueue(DispatcherQueuePriority.High, () => OnHotkey(context));
-        _ = ApplyHotkeyAsync();
 
-        tray = new TrayIcon(IconPath, TrayTooltip(settings.Current));
+        // After a silent restart the bridge still holds the shortcuts: it lets go once ours are registered, and a press it
+        // caught meanwhile opens the panel then (AppController.SilentRestart.cs).
+        _ = ApplyHotkeysAndTakeOverAsync();
+
+        // A silent restart's icon was added hidden by the bridge, and the old process revealed it as it removed its own, so
+        // the icon never vanished or doubled: keep it, and wire it. Reveal brings it in line with that, and shows it when the
+        // old process could not (then the icon was missing for the moment in between).
+        tray = RestartBridge?.TakeTray() ?? new TrayIcon(IconPath, TrayTooltip(settings.Current));
+        tray.Reveal();
         tray.Invoked += (_, _) => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()));
         tray.MenuProvider = BuildTrayMenu;
 
@@ -360,10 +475,30 @@ public sealed partial class AppController
         // restarted the app is told through its notification. The first automatic check comes a minute later.
         StartUpdates();
 
-        if (settings.Current.ImportWindowsHistoryOnStartup)
+        // Before any window: Settings then shows the "Start with Windows" entry as it now is (AppController.SignIn.cs). A
+        // silent restart is the same program, which the entry names already.
+        if (!options.IsSilentRestart)
+        {
+            FollowSignInEntry();
+        }
+
+        // Not after a silent restart: the old process was capturing until a moment ago, and the clipboard hand-over above
+        // reads a copy made in between; the import would only repeat the start's work, on CPU the user may notice.
+        if (settings.Current.ImportWindowsHistoryOnStartup && !options.IsSilentRestart)
         {
             _ = ImportWindowsHistoryAsync();
         }
+
+        // Pictures "Save to temp and" wrote that the setting no longer keeps (AppController.ImageFiles.cs). Not after a silent
+        // restart: that is no start the user made, and with the setting at 0 it would delete a file pasted a moment ago.
+        if (!options.IsSilentRestart)
+        {
+            CleanTemporaryPictures();
+        }
+
+        // The start's imports, catch-ups and the panel's warm-up leave garbage behind, much of it native memory that only
+        // a collection gives back (AppController.Memory.cs).
+        RequestMemoryReclaim("the start", StartupReclaimDelay);
 
         // A start whose user never chose a language asks for it before any other window is built: a first start, and the
         // first start after an update from a version that never asked. The panel and Settings read their labels when they
@@ -399,6 +534,32 @@ public sealed partial class AppController
     /// <returns>A task completing once startup continued; failures are logged, never thrown (the app then follows Windows' language).</returns>
     private async Task AskForLanguageAsync(bool showSettingsAfter, bool afterUpdate)
     {
+        await PickLanguageAsync(afterUpdate);
+        if (exiting)
+        {
+            return;
+        }
+
+        _ = WarmUpFlyoutAsync();
+        if (showSettingsAfter)
+        {
+            ShowSettings();
+        }
+    }
+
+    /// <summary>
+    /// Shows the language picker and applies and saves the choice (see <see cref="AskForLanguageAsync"/>, which continues
+    /// a normal start afterwards). The Microsoft Store edition's setup calls it by itself, before its welcome and before
+    /// anything of the app started, so the welcome is worded in the chosen language.
+    /// </summary>
+    /// <param name="afterUpdate">Whether a history existed before this start; only the log line says it.</param>
+    /// <returns>
+    /// A task completing once the picker closed and the choice is saved. Failures are logged, never thrown (the app then
+    /// follows Windows' language and asks again at the next start); check the exiting state afterwards, because closing
+    /// the picker through an exit saves nothing.
+    /// </returns>
+    private async Task PickLanguageAsync(bool afterUpdate)
+    {
         try
         {
             var suggested = LanguageChoice.Suggest(CultureInfo.CurrentUICulture.Name);
@@ -406,6 +567,9 @@ public sealed partial class AppController
             languageWindow.Present();
             var chosen = await languageWindow.Choice;
             languageWindow = null;
+
+            // The picker's window and its flags are garbage now: given back once it is torn down (AppController.Memory.cs).
+            RequestMemoryReclaim("the language picker closed", SettingsClosedReclaimDelay);
 
             // Closed by an exit from the tray: the tray and the settings are being disposed, so nothing is saved, and the
             // question stays unanswered: the next start asks again.
@@ -431,17 +595,6 @@ public sealed partial class AppController
             // again.
             languageWindow = null;
             AppLog.Error("The language picker failed; the interface follows Windows' language.", ex);
-        }
-
-        if (exiting)
-        {
-            return;
-        }
-
-        _ = WarmUpFlyoutAsync();
-        if (showSettingsAfter)
-        {
-            ShowSettings();
         }
     }
 
@@ -488,6 +641,14 @@ public sealed partial class AppController
             return;
         }
 
+        // The Microsoft Store edition's setup is still open (AppController.Store.cs): nothing is recorded yet and there is
+        // no panel to show. Bring the setup forward, so "nothing happens" never looks like a broken app.
+        if (setupWindow is not null)
+        {
+            setupWindow.Present();
+            return;
+        }
+
         pasteTarget = context;
 
         // Everything may have started or exited since the last look; the tab follows when the refresh lands (ms).
@@ -523,10 +684,20 @@ public sealed partial class AppController
             return;
         }
 
+        // Same for the Microsoft Store edition's setup: Settings exists once it is done.
+        if (setupWindow is not null)
+        {
+            setupWindow.Present();
+            return;
+        }
+
         if (settingsWindow is null)
         {
             settingsWindow = new SettingsWindow(this);
-            settingsWindow.Closed += (_, _) => settingsWindow = null;
+            settingsWindow.Closed += OnSettingsWindowClosed;
+
+            // From now on this process carries memory only a restart gives back (AppController.SilentRestart.cs).
+            NoteSettingsOpened();
         }
 
         settingsWindow.Present();
@@ -543,6 +714,32 @@ public sealed partial class AppController
 
         // Same for Notepad++: a copy installed or started meanwhile shows in its cards at once.
         RefreshNotepadPlusPlus();
+    }
+
+    /// <summary>
+    /// The Settings window closed: forget it, take this handler off it, and give its memory back once its XAML tree is torn
+    /// down (AppController.Memory.cs).
+    /// </summary>
+    /// <remarks>
+    /// The handler unsubscribes itself: a <see cref="Microsoft.UI.Xaml.Window"/> is not covered by WinUI's reference
+    /// tracking, so any handler left on a closed window keeps the native window (and through it, its event plumbing) alive
+    /// (SettingsWindow.OnClosed has the measurements).
+    /// </remarks>
+    /// <param name="sender">The closed window.</param>
+    /// <param name="args">Close data.</param>
+    private void OnSettingsWindowClosed(object sender, WindowEventArgs args)
+    {
+        if (sender is SettingsWindow closed)
+        {
+            closed.Closed -= OnSettingsWindowClosed;
+        }
+
+        // Only one Settings window exists at a time (ShowSettings focuses it instead of making another).
+        settingsWindow = null;
+        RequestMemoryReclaim("Settings closed", SettingsClosedReclaimDelay);
+
+        // What the collector cannot give back, a silent restart does, a few seconds from now (AppController.SilentRestart.cs).
+        ScheduleSilentRestart();
     }
 
     /// <summary>
@@ -879,12 +1076,14 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Applies the theme preference to a window's root element.
+    /// Applies the theme preference to a window's root element. Before the settings are loaded (the Microsoft Store
+    /// edition's setup window is built that early), the theme the setup found is used: this edition's own saved choice,
+    /// else that of the copy it replaces, else Windows' (AppController.Store.cs).
     /// </summary>
     /// <param name="root">The window content.</param>
     public void ApplyTheme(FrameworkElement root)
     {
-        root.RequestedTheme = Settings.Current.Theme switch
+        root.RequestedTheme = (settings?.Current.Theme ?? setupTheme) switch
         {
             AppTheme.Light => ElementTheme.Light,
             AppTheme.Dark => ElementTheme.Dark,
@@ -905,13 +1104,19 @@ public sealed partial class AppController
     /// <exception cref="OperationCanceledException">The load was cancelled.</exception>
     public async Task<byte[]?> GetImagePngAsync(long id, CancellationToken cancellationToken = default)
     {
-        var formats = await History.GetFormatsAsync(id).ConfigureAwait(false);
+        // Only the picture the panel shows is read: an entry copied from an app may hold a PNG and a DIB of tens of
+        // megabytes side by side, and every hover over an image card preloads its picture (ClipboardFlyout.ImagePreview).
+        var primary = await History.GetFirstFormatAsync(id, ContentClassifier.PrimaryImageFormats).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
+        if (primary is null)
+        {
+            return null;
+        }
 
-        // Prefer the stored PNG as-is (lossless, no re-encode); fall back to encoding whatever bitmap format is stored.
-        var png = formats.FirstOrDefault(f => f.Name is ClipFormatNames.Png or ClipFormatNames.PngMime)?.Data;
-        png ??= await imageExporter.ToPngAsync(formats, cancellationToken).ConfigureAwait(false);
-        return png;
+        // Prefer the stored PNG as-is (lossless, no re-encode); fall back to encoding the stored bitmap.
+        return primary.Name is ClipFormatNames.Png or ClipFormatNames.PngMime
+            ? primary.Data
+            : await imageExporter.ToPngAsync([primary], cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Opens the data folder in Explorer.</summary>
@@ -1029,6 +1234,11 @@ public sealed partial class AppController
 
         // An exit from the tray while the first start's picker is open closes it, which keeps its selected language.
         languageWindow?.Close();
+
+        // An exit while the Microsoft Store edition's setup is open (its own Quit, or --exit from a script) closes its
+        // window; whoever waits for a button there gets "quit" and finds the app exiting. The field stays: the setup's
+        // own code still holds on to the window for a moment, and a closed window ignores what it is asked.
+        setupWindow?.CloseWhenDone();
         AppLog.Shutdown();
         Application.Current.Exit();
     }
@@ -1037,6 +1247,13 @@ public sealed partial class AppController
     /// <param name="context">Where the user was when pressing it.</param>
     private void OnHotkey(ForegroundContext context)
     {
+        // An exit (or a silent restart's hand-over) is under way: building the panel now would race its teardown. During a
+        // silent restart the new process holds the shortcuts by then and opens the panel itself (RestartBridge).
+        if (exiting)
+        {
+            return;
+        }
+
         var window = EnsureFlyout();
         if (window.IsOpen)
         {
@@ -1064,23 +1281,34 @@ public sealed partial class AppController
         var binding = MachineBinding.Derive(identity.MachineGuid, identity.UserSid);
         try
         {
-            var opened = MachineBoundHistory.Open(paths, new DpapiKeyProtector(), binding, DateTimeOffset.Now);
-            StorageInfo = opened;
-
-            // Ids and flags only — never the key, the binding or the identifiers they come from.
-            AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
-                        $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
-            if (opened.QuarantinedDirectory is not null)
-            {
-                AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
-            }
-
-            return opened.Store;
+            return NoteStoreOpened(MachineBoundHistory.Open(paths, new DpapiKeyProtector(), binding, DateTimeOffset.Now));
         }
         finally
         {
             CryptographicOperations.ZeroMemory(binding);
         }
+    }
+
+    /// <summary>
+    /// Records an opened history store as the one this app runs on: keeps what <see cref="StorageInfo"/> shows and writes
+    /// the log line. For a store <see cref="OpenMachineBoundStore"/> just opened, and for one the Microsoft Store
+    /// edition's setup opened to check a history it brought over.
+    /// </summary>
+    /// <param name="opened">The opened store with what happened while opening it.</param>
+    /// <returns>The store itself.</returns>
+    private ClipStore NoteStoreOpened(MachineBoundHistoryResult opened)
+    {
+        StorageInfo = opened;
+
+        // Ids and flags only — never the key, the binding or the identifiers they come from.
+        AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
+                    $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
+        if (opened.QuarantinedDirectory is not null)
+        {
+            AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
+        }
+
+        return opened.Store;
     }
 
     /// <summary>The paste target captured when the flyout was summoned (0 when none).</summary>
@@ -1466,9 +1694,12 @@ public sealed partial class AppController
         AppLog.Info($"Interface language: {language.Tag} (WinUI's own text: {string.Join(", ", names)}).");
     }
 
-    /// <summary>Tray hover text reflecting capture state and shortcut.</summary>
+    /// <summary>
+    /// Tray hover text reflecting capture state and shortcut, in the interface language <see cref="UiText.Language"/>
+    /// names. Static: a silent restart's bridge words its tray icon before any controller exists (RestartBridge).
+    /// </summary>
     /// <param name="current">Current settings.</param>
     /// <returns>The tooltip.</returns>
-    private string TrayTooltip(AppSettings current) =>
+    internal static string TrayTooltip(AppSettings current) =>
         current.IsCapturePaused ? UiText.Translate("BetterClipboard — paused") : UiText.Format($"BetterClipboard — {current.OpenHotkey} to open");
 }

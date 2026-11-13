@@ -13,17 +13,28 @@ public partial class App : Application
 {
     private readonly StartupOptions options;
     private readonly SingleInstance instance;
+
+    /// <summary>What a silent restart's process held before the old one let go (CLAUDE.md §2.46); handed to the controller.</summary>
+    private readonly RestartBridge? bridge;
     private AppController? controller;
 
     /// <summary>
     /// Creates the application.
     /// </summary>
     /// <param name="options">Parsed command line.</param>
-    /// <param name="instance">The (primary) single-instance guard, used to receive activation requests.</param>
-    public App(StartupOptions options, SingleInstance instance)
+    /// <param name="instance">
+    /// The single-instance guard, used to receive activation requests. It holds the lock, except in a Microsoft Store
+    /// edition that was started while another edition runs: that one takes the lock in its setup (CLAUDE.md §2.47).
+    /// </param>
+    /// <param name="bridge">
+    /// For a silent restart (CLAUDE.md §2.46): the shortcuts and the tray icon this process held before the old one let go;
+    /// <see langword="null"/> for any other start.
+    /// </param>
+    public App(StartupOptions options, SingleInstance instance, RestartBridge? bridge = null)
     {
         this.options = options;
         this.instance = instance;
+        this.bridge = bridge;
         InitializeComponent();
 
         // A tray utility must survive closing its last window; only "Exit" ends the process.
@@ -42,7 +53,13 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         var dispatcher = DispatcherQueue.GetForCurrentThread();
-        controller = new AppController(dispatcher, options);
+        controller = new AppController(dispatcher, options, instance)
+        {
+            RestartBridge = bridge,
+
+            // A silent restart hands the commands sent from then on to the next process (CLAUDE.md §2.46).
+            StopListeningForCommands = instance.StopListening,
+        };
         try
         {
             controller.Start();
@@ -53,10 +70,31 @@ public partial class App : Application
             // rather than lingering as a tray icon that silently records nothing.
             AppLog.Error("Startup failed.", ex);
             AppLog.Shutdown();
+
+            // A silent restart's bridge would hold the shortcuts until its timer let go: give them back now.
+            bridge?.Dispose();
             Exit();
             return;
         }
 
+        // A Microsoft Store edition that starts while another edition runs has no lock yet (CLAUDE.md §2.47): it listens
+        // once its setup closed that copy and took the lock (AppController.Store.cs).
+        if (instance.IsPrimary)
+        {
+            Listen(dispatcher);
+        }
+        else
+        {
+            controller.BecamePrimary += (_, _) => Listen(dispatcher);
+        }
+    }
+
+    /// <summary>
+    /// Starts answering what later launches ask of this instance (<c>--show-flyout</c>, <c>--exit</c>, a plain launch).
+    /// </summary>
+    /// <param name="dispatcher">The UI thread's dispatcher, where every command is carried out.</param>
+    private void Listen(DispatcherQueue dispatcher)
+    {
         instance.Listen(command => dispatcher.TryEnqueue(() =>
         {
             switch (command)
@@ -64,13 +102,13 @@ public partial class App : Application
                 case InstanceCommand.ShowFlyout:
                     // Captured on the UI thread right after the signal: the foreground window is still
                     // whatever the user was working in, so pasting goes back there.
-                    controller.ShowFlyout(ForegroundContext.Capture());
+                    controller!.ShowFlyout(ForegroundContext.Capture());
                     break;
                 case InstanceCommand.Exit:
-                    _ = controller.ExitAsync();
+                    controller!.ExitOnRequest();
                     break;
                 default:
-                    controller.ShowSettings();
+                    controller!.ShowSettings();
                     break;
             }
         }));

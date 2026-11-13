@@ -333,11 +333,12 @@ public sealed class EverythingTabTests
     }
 
     /// <summary>
-    /// A pick whose file is stored shows once, as the stored entry (which carries pins and groups); forgotten and
-    /// hidden picks and a repeated path are left out; the rest sort newest first.
+    /// A pick whose file is stored shows once, as the stored entry (which carries pins and groups), at the newer of its last
+    /// use and the pick's last opening (until 2026-11-11 at its last use: the file kept 10 minutes ago and opened a minute
+    /// ago sorted last); forgotten and hidden picks and a repeated path are left out; the rest sort newest first.
     /// </summary>
     [Fact]
-    public void Merge_StoredEntriesWin_ForgottenAndHiddenNeverShow()
+    public void Merge_StoredEntriesWin_AtTheNewerTime_ForgottenAndHiddenNeverShow()
     {
         var kept = Pick(@"C:\BC-TEST\kept.txt", Now.AddMinutes(-1));
         var forgotten = Pick(@"C:\BC-TEST\forgotten.txt", Now.AddMinutes(-2));
@@ -353,9 +354,9 @@ public sealed class EverythingTabTests
             new HashSet<string>([forgotten.FilesHash]),
             pinnedFirst: false);
 
-        Assert.Equal([plain, null, null], rows.Select(r => r.Pick));
-        Assert.Equal([null, 2L, 1L], rows.Select(r => r.Entry?.Id));
-        Assert.Equal(Now.AddMinutes(-4), rows[0].Time);
+        Assert.Equal([null, plain, null], rows.Select(r => r.Pick));
+        Assert.Equal([1L, null, 2L], rows.Select(r => r.Entry?.Id));
+        Assert.Equal([Now.AddMinutes(-1), Now.AddMinutes(-4), Now.AddMinutes(-5)], rows.Select(r => r.Time));
     }
 
     /// <summary>

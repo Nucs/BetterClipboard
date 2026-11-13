@@ -6,9 +6,11 @@ namespace BetterClipboard.Core.Updates;
 public enum UpdateInstallKind
 {
     /// <summary>
-    /// Extracted or built by hand: nothing recorded that an installer owns its folder. It never replaces itself, because
-    /// its folder may hold other files (a zip extracted into a shared tools folder), and an update swaps the whole
-    /// folder. The dialog points at the download page instead.
+    /// Extracted or built by hand: nothing recorded that an installer owns its folder. It never has its folder swapped as a
+    /// whole (an installer's update does that), because the folder may hold other files (a zip extracted into a shared
+    /// tools folder). Since 0.2.11 it updates itself file by file instead, when it can write the folder and the offer is new
+    /// enough (<see cref="PortableUpdate"/>, CLAUDE.md §2.29): only the release's own files are replaced, the user's stay.
+    /// Otherwise the dialog points at the download page and the install command.
     /// </summary>
     Portable = 0,
 

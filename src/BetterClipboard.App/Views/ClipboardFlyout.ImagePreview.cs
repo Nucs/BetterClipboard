@@ -168,11 +168,27 @@ public sealed partial class ClipboardFlyout
         _ = ShowViewerAsync(card);
     }
 
-    /// <summary>Closes both overlays (on a new summon, on dismiss, on deactivation, at exit).</summary>
+    /// <summary>
+    /// Closes both overlays (on a new summon, on dismiss, on deactivation, at exit) — and the text overlays with them
+    /// (ClipboardFlyout.TextPreview.cs), which go away at the same moments.
+    /// </summary>
     private void CloseImageOverlays()
     {
         HidePeek();
         CloseViewer();
+        CloseTextOverlays();
+    }
+
+    /// <summary>
+    /// Forgets the full-size picture kept for the peek and the viewer (the panel was put away). It is the largest single
+    /// thing the panel holds — a decoded 4K screenshot is 33 MB — and only a peek or viewer of the same card in the same use
+    /// needs it again; the next use decodes it again from the store. The text viewer's last text (megabytes, for a large copy)
+    /// goes with it (ClipboardFlyout.TextPreview.cs).
+    /// </summary>
+    private void ReleaseImageCache()
+    {
+        imageCache = null;
+        ReleaseTextCache();
     }
 
     /// <summary>The card behind an event source, or <see langword="null"/>.</summary>
@@ -187,7 +203,8 @@ public sealed partial class ClipboardFlyout
     /// either would be noise. <see cref="openPopups"/> being 0 rules out an open context menu or the viewer itself.
     /// </remarks>
     private bool CanShowPeek() =>
-        IsOpen && peekPopup is null && viewerPopup is null && drag is null && draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
+        IsOpen && peekPopup is null && viewerPopup is null && textPeekPopup is null && textViewer is null && drag is null &&
+        draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
 
     /// <summary>(Re)starts the rest timer so the peek opens one <see cref="HoverPeekDelayMs"/> after the mouse last moved.</summary>
     private void RestartHoverTimer()
@@ -278,8 +295,7 @@ public sealed partial class ClipboardFlyout
             Padding = new Thickness(6),
             CornerRadius = new CornerRadius(8),
             BorderThickness = new Thickness(1),
-            Background = (Brush)Application.Current.Resources["SolidBackgroundFillColorBaseBrush"],
-            BorderBrush = (Brush)Application.Current.Resources["SurfaceStrokeColorDefaultBrush"],
+            Style = OverlayStyle("OverlayFrameStyle"),
             Child = new Image
             {
                 Source = bitmap,
@@ -356,9 +372,13 @@ public sealed partial class ClipboardFlyout
         return ((dx * dx) + (dy * dy)) > (long)PeekMoveThresholdPx * PeekMoveThresholdPx;
     }
 
-    /// <summary>Closes the hover peek, if any (safe to call when none is open).</summary>
+    /// <summary>
+    /// Closes the hover peek, if any (safe to call when none is open) — the text peek too (ClipboardFlyout.TextPreview.cs): a
+    /// key that reaches the panel closes whichever peek shows.
+    /// </summary>
     private void HidePeek()
     {
+        HideTextPeek();
         if (peekPopup is not { } popup)
         {
             return;
@@ -462,7 +482,7 @@ public sealed partial class ClipboardFlyout
         var ring = new ProgressRing { IsActive = true, Width = 48, Height = 48, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var closeButton = new Button
         {
-            Content = "", // Cancel (an X), Segoe Fluent Icons
+            Content = "\uE711", // Cancel (an X), Segoe Fluent Icons
             FontFamily = (FontFamily)Application.Current.Resources["SymbolThemeFontFamily"],
             FontSize = 16,
             Width = 40,
@@ -509,6 +529,21 @@ public sealed partial class ClipboardFlyout
             IsTabStop = true,
         };
         dim.Children.Add(ring);
+
+        // A picture with a known file shows its details above it, in a band the picture never covers: the band's height is
+        // kept free above the scroll host (BuildViewerContent), so the picture fits below it and zooms below it.
+        viewerTopReserve = 0;
+        if (card.Entry.File is { } file)
+        {
+            double bandWidth = Math.Max(200, geometry.Width - (2 * ViewerBandSideMargin));
+            var band = BuildFileDetailsBand(card, file, bandWidth);
+            band.Measure(new global::Windows.Foundation.Size(geometry.Width, double.PositiveInfinity));
+
+            // DesiredSize includes the band's top margin; the same margin again keeps a gap between it and the picture.
+            viewerTopReserve = band.DesiredSize.Height + ViewerBandMargin;
+            dim.Children.Add(band);
+        }
+
         dim.Children.Add(zoomChip);
         dim.Children.Add(closeButton);
         dim.Tapped += (_, _) => CloseViewer();
@@ -579,9 +614,10 @@ public sealed partial class ClipboardFlyout
         double naturalWidth = pixelWidth / geometry.Scale;
         double naturalHeight = pixelHeight / geometry.Scale;
 
-        // The viewport leaves a margin so the dim backdrop frames the image (and clicking that margin closes the viewer).
+        // The viewport leaves a margin so the dim backdrop frames the image (and clicking that margin closes the viewer). With
+        // a file details band (ClipboardFlyout.ImageFiles.cs) it starts below the band, so no zoom ever puts the picture on it.
         double viewportWidth = geometry.Width * 0.94;
-        double viewportHeight = geometry.Height * 0.9;
+        double viewportHeight = (geometry.Height - viewerTopReserve) * 0.9;
 
         // Fit the whole image in at the start (never upscaled past 100%); allow zooming well below and far above it.
         viewerFitZoom = Math.Min(ImagePreviewLayout.FitZoom(naturalWidth, naturalHeight, viewportWidth, viewportHeight), 1.0);
@@ -615,6 +651,7 @@ public sealed partial class ClipboardFlyout
             Height = viewportHeight,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, viewerTopReserve, 0, 0), // centered in what the details band leaves (0 without one)
             Background = new SolidColorBrush(Colors.Transparent), // a click on the letterbox bubbles to the dim → close
             ZoomMode = ZoomMode.Enabled,
             MinZoomFactor = (float)viewerMinZoom,

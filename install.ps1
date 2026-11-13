@@ -118,10 +118,12 @@
 
 .PARAMETER ResultPath
     Write the outcome to this file as JSON (version, ok, error, finishedUtc), before BetterClipboard is started
-    again - how the app learns, at its next start, whether its update worked.
+    again - how the app learns, at its next start, whether its update worked. With -Uninstall too (the version is
+    then empty): how the Microsoft Store edition learns whether the copy it replaces was removed.
 
 .PARAMETER LogPath
-    Also write everything the installer prints to this file (a PowerShell transcript), for runs without a window.
+    Also write everything the installer prints to this file (a PowerShell transcript), for runs without a window:
+    an update the app started, and the uninstall the Microsoft Store edition runs.
 
 .PARAMETER Uninstall
     Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). While BetterClipboard's Chocolatey
@@ -131,10 +133,16 @@
     asks for administrator rights when it does not have them.
 
 .PARAMETER RemoveData
-    With -Uninstall: also delete the history, settings and logs folder. Irreversible.
+    With -Uninstall: also delete the history, settings and logs folder, and the temporary pictures in
+    %TEMP%\BetterClipboard. Irreversible.
 
 .PARAMETER KeepWinVReleased
     With -Uninstall: leave Explorer's DisabledHotkeys as it is.
+
+.PARAMETER KeepProcessId
+    With -Uninstall: a BetterClipboard process that this run must not close. The Microsoft Store edition passes its own
+    process id when it uninstalls this copy to take its place (it runs the install.ps1 it carries, not this copy's):
+    an uninstall closes every BetterClipboard of the session first, and would otherwise end the program that asked.
 
 .PARAMETER Repository
     GitHub repository to install from (owner/name), for forks. Default: Nucs/BetterClipboard.
@@ -218,10 +226,11 @@ param(
     [Parameter(ParameterSetName = 'Install')]
     [switch] $Update,
 
-    [Parameter(ParameterSetName = 'Install')]
+    # In both parameter sets, like -InstallDir: an update reports through them to the app that asked for it, and so
+    # does the uninstall the Microsoft Store edition runs when it takes this copy's place. As members of the install
+    # set only, they made PowerShell refuse that uninstall's command line before the script's first line.
     [string] $ResultPath,
 
-    [Parameter(ParameterSetName = 'Install')]
     [string] $LogPath,
 
     [Parameter(ParameterSetName = 'Uninstall', Mandatory = $true)]
@@ -232,6 +241,9 @@ param(
 
     [Parameter(ParameterSetName = 'Uninstall')]
     [switch] $KeepWinVReleased,
+
+    [Parameter(ParameterSetName = 'Uninstall')]
+    [int] $KeepProcessId = 0,
 
     [string] $Repository = 'Nucs/BetterClipboard'
 )
@@ -603,6 +615,9 @@ function Stop-RunningApp([string] $PreferredExe) {
         A copy that cannot be stopped (it runs as administrator) is not fatal either: when it runs from the install
         folder, the swap that follows fails, puts the previous version back and says why; when it runs from another
         folder, it does not stand in the way.
+        The process named by -KeepProcessId is never closed: it is the Microsoft Store edition that runs this uninstall
+        (it ignores the exit signal while it does). When it is the only BetterClipboard left, nothing is signalled at
+        all: the exit signal goes to whichever copy is the running instance, and that would be the one that asked.
     .PARAMETER PreferredExe
         The exe to send --exit with; any copy works, since the running instance listens on a session-wide event.
     .OUTPUTS
@@ -610,7 +625,7 @@ function Stop-RunningApp([string] $PreferredExe) {
     #>
     $session = (Get-Process -Id $PID).SessionId
     $running = @(Get-Process -Name $AppName -ErrorAction SilentlyContinue |
-            Where-Object { $_.SessionId -eq $session -and (Test-ProcessRuns $_) })
+            Where-Object { $_.SessionId -eq $session -and $_.Id -ne $KeepProcessId -and (Test-ProcessRuns $_) })
     if ($running.Count -eq 0) {
         return $false
     }
@@ -717,6 +732,26 @@ function Remove-StaleLeftovers {
     if (-not $parent -or -not (Test-Path -LiteralPath $parent -PathType Container)) { return }
     foreach ($stale in @(Get-ChildItem -LiteralPath $parent -Directory -Filter "$leaf.*-stale-*" -ErrorAction SilentlyContinue)) {
         Remove-Item -LiteralPath $stale.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Remove-TemporaryPictures {
+    <#
+    .SYNOPSIS
+        With -RemoveData: deletes the pictures the app's "Save to temp and" wrote, %TEMP%\BetterClipboard (CLAUDE.md
+        2.49), which are plain PNG files outside the history and which the app deletes only when it starts again.
+    .DESCRIPTION
+        Best effort: a file another program still holds open (a picture pasted into it as a file) stays, and the note
+        says where; Windows' own clean-up of temporary files removes it later. This account's temporary folder only:
+        other accounts' pictures are in their own profiles. The folder holds nothing but those pictures (an isolated
+        instance's are in a subfolder of it); the installer's own staging folders have other names.
+    #>
+    $folder = Join-Path ([IO.Path]::GetTempPath()) $AppName
+    if (-not (Test-Path -LiteralPath $folder)) { return }
+    Write-Step "Deleting the temporary pictures in $folder"
+    Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $folder) {
+        Write-Note "Some temporary pictures are still open in another program and stay in $folder until Windows cleans up its temporary files."
     }
 }
 
@@ -1140,6 +1175,38 @@ function Get-ChocolateyCopy {
     $root = if ($env:ChocolateyInstall) { $env:ChocolateyInstall } else { Join-Path $env:ProgramData 'chocolatey' }
     $exe = Join-Path $root 'lib\betterclipboard\tools\app\BetterClipboard.exe'
     if (Test-Path -LiteralPath $exe) { return $exe }
+    return $null
+}
+
+function Get-StoreEditionData {
+    <#
+    .SYNOPSIS
+        The data folder of BetterClipboard's Microsoft Store edition for this account, or $null when that edition is not
+        installed here or was never opened.
+    .DESCRIPTION
+        Windows keeps a Store app's data in %LOCALAPPDATA%\Packages\<package family name> and removes that folder with
+        the app, so the folder tells whether the edition is installed. The family name begins with the publisher's
+        prefix, which this script does not know; the folder is recognized by "BetterClipboard" in its name and by the
+        BetterClipboard folder the edition creates in LocalState at its first start (docs/microsoft-store.md).
+
+        No Appx cmdlet is used: loading that module takes seconds, Windows PowerShell and PowerShell 7 load it in
+        different ways, and a look at one folder answers the question.
+
+        Only one BetterClipboard is meant to be installed. The Store edition enforces that itself: while this
+        installer's copy is installed it does not start with Windows, and opened by hand it offers to take the copy's
+        place. This function only lets the installer say so beforehand.
+    .OUTPUTS
+        System.String, or $null.
+    #>
+    # An account without a profile of its own (SYSTEM in some contexts) has no such folder; Join-Path refuses ''.
+    if (-not $env:LOCALAPPDATA) { return $null }
+    $packages = Join-Path $env:LOCALAPPDATA 'Packages'
+    if (-not (Test-Path -LiteralPath $packages)) { return $null }
+    foreach ($folder in @(Get-ChildItem -LiteralPath $packages -Directory -Filter '*BetterClipboard*' -ErrorAction SilentlyContinue)) {
+        $data = Join-Path $folder.FullName 'LocalState\BetterClipboard'
+        if (Test-Path -LiteralPath $data) { return $data }
+    }
+
     return $null
 }
 
@@ -1657,6 +1724,7 @@ function Invoke-ElevatedUninstall {
     $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Uninstall', '-AllUsers', '-InstallDir', "`"$InstallDir`"")
     if ($RemoveData) { $arguments += '-RemoveData' }
     if ($KeepWinVReleased) { $arguments += '-KeepWinVReleased' }
+    if ($KeepProcessId) { $arguments += @('-KeepProcessId', "$KeepProcessId") }
     Write-Step 'Asking for administrator rights to remove BetterClipboard for every user'
     try {
         $process = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -Verb RunAs -PassThru
@@ -1905,6 +1973,12 @@ function Install-BetterClipboard {
     $allUsersCopy = if ($script:ForAllUsers -or $Update) { $null } else { Get-AllUsersCopy }
     if ($allUsersCopy) {
         Write-Warning "BetterClipboard is also installed for every user of this PC ($allUsersCopy). This installs a second copy, just for you, which starts instead of that one when you sign in; both use your history. To update the copy for every user, run the installer in PowerShell as administrator."
+    }
+
+    # The Microsoft Store edition keeps its own history and wants to be the only BetterClipboard: said before anything
+    # is installed, so nobody is surprised by its offer later. Not on an update, which installs nothing new.
+    if (-not $Update -and (Get-StoreEditionData)) {
+        Write-Warning "BetterClipboard's Microsoft Store edition is also installed for this account, and only one BetterClipboard is meant to be installed. While this copy is installed, the Store edition does not start with Windows, and the next time it is opened it offers to take this copy's place (it then uninstalls this copy). To keep this copy, uninstall the Store edition in Settings > Apps > Installed apps; to keep the Store edition, just open it. The two keep separate histories."
     }
 
     $arch = Get-OsArchitecture
@@ -2474,6 +2548,7 @@ function Uninstall-BetterClipboard {
     if ($RemoveData) {
         Write-Step "Deleting history, settings and logs in $DataDir"
         if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
+        Remove-TemporaryPictures
     }
     else {
         Write-Note "Your history was kept in $DataDir (use -RemoveData to delete it)."
@@ -2623,7 +2698,8 @@ function Uninstall-BetterClipboardForAllUsers {
     if ($RemoveData) {
         Write-Step "Deleting history, settings and logs in $DataDir"
         if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
-        Write-Note "Other users' histories stay in their own %LOCALAPPDATA%\$AppName."
+        Remove-TemporaryPictures
+        Write-Note "Other users' histories stay in their own %LOCALAPPDATA%\$AppName, and their temporary pictures in their own %TEMP%\$AppName."
     }
     else {
         Write-Note "Each user's history was kept in their own %LOCALAPPDATA%\$AppName."
@@ -2676,9 +2752,12 @@ Enter-WorkingFolder
 try {
     if ($Uninstall -and $script:ForAllUsers) {
         Uninstall-BetterClipboardForAllUsers
+        Write-InstallResult $true ''
     }
     elseif ($Uninstall) {
         Uninstall-BetterClipboard
+        # For the Microsoft Store edition, which runs this uninstall without a window and reads the outcome.
+        Write-InstallResult $true ''
     }
     else {
         Install-BetterClipboard

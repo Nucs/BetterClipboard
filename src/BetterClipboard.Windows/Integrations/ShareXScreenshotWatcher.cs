@@ -308,6 +308,7 @@ public sealed class ShareXScreenshotWatcher : IDisposable
                 CapturedAtUtc = file.WrittenUtc,
                 Source = new SourceAppInfo("ShareX", installation.ExecutablePath, "ShareX"),
                 Origin = ClipOrigin.ShareX,
+                File = file.File,
             };
 
             return await deliver(capture).ConfigureAwait(false);
@@ -390,7 +391,10 @@ public sealed class ShareXScreenshotWatcher : IDisposable
                     var formats = await ImageCodec.ToClipboardFormatsAsync(bytes, shutdown.Token).ConfigureAwait(false);
                     info.Refresh();
                     writtenUtc = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
-                    return (new LoadedScreenshot(formats, bytes.Length, writtenUtc.Value), writtenUtc);
+
+                    // The file and its details as read now, kept with the entry: the card's menu can then copy its path,
+                    // open it or its folder, and still tell what it was after it is gone (CLAUDE.md §2.49).
+                    return (new LoadedScreenshot(formats, bytes.Length, writtenUtc.Value, SourceFile.FromDisk(info, bytes)), writtenUtc);
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
                 {
@@ -435,5 +439,6 @@ public sealed class ShareXScreenshotWatcher : IDisposable
     /// <param name="Formats">PNG + DIBV5.</param>
     /// <param name="Length">File size (dedupe key part).</param>
     /// <param name="WrittenUtc">File write time (capture time and dedupe key part).</param>
-    private readonly record struct LoadedScreenshot(IReadOnlyList<ClipFormatData> Formats, long Length, DateTimeOffset WrittenUtc);
+    /// <param name="File">The file with its details as read, stored as the entry's <see cref="ClipEntry.File"/>.</param>
+    private readonly record struct LoadedScreenshot(IReadOnlyList<ClipFormatData> Formats, long Length, DateTimeOffset WrittenUtc, SourceFile File);
 }

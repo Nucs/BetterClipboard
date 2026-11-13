@@ -10,8 +10,23 @@ internal static partial class WindowInterop
     private const uint DWMWA_TRANSITIONS_FORCEDISABLED = 3;
     private const uint DWMWA_CLOAK = 13;
     private const uint DWMWA_CLOAKED = 14;
+    private const uint DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const uint DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWCP_ROUND = 2;
+
+    /// <summary>
+    /// Draws a window's title bar (the one Windows draws: caption, icon, buttons) dark or light, to match the app's theme:
+    /// Windows draws it in the light colors unless asked, whatever the content's theme.
+    /// </summary>
+    /// <remarks>Windows 10 2004 and later honor the attribute (20); earlier builds ignore it, which only costs the match.</remarks>
+    /// <param name="hwnd">Top-level window.</param>
+    /// <param name="dark">Dark title bar (<see langword="true"/>) or light.</param>
+    /// <returns><see langword="true"/> when DWM took the setting.</returns>
+    public static bool SetDarkTitleBar(nint hwnd, bool dark)
+    {
+        int value = dark ? 1 : 0;
+        return DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ref value, sizeof(int)) >= 0;
+    }
 
     /// <summary>
     /// Turns off DWM's own show and hide animations for a window (the zoom-and-fade Windows plays when "Animation effects"

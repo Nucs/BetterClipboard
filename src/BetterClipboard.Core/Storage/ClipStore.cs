@@ -103,6 +103,14 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// idempotently like the groups; an older build ignores them, and a row it bumps keeps them.
 /// </para>
 /// <para>
+/// <b>Source files.</b> <c>clips.file_path</c>, <c>file_size</c>, <c>file_created_utc</c>, <c>file_modified_utc</c> and
+/// <c>file_format</c> keep the file a picture was read from (a screenshot ShareX, Snipping Tool or Win+PrtScn saved) and what
+/// it looked like then (<see cref="ClipEntry.File"/>); <c>NULL</c> path = no file known. Always written together: the path
+/// never carries another file's dates. Added idempotently like the groups' column (<c>ClipStore.SourceFiles.cs</c>); an older
+/// build ignores the columns, and a row it bumps keeps them. The one-time search for the files of screenshots stored before
+/// the columns existed fills rows through <see cref="SetSourceFile"/>, which never replaces a file a row already has.
+/// </para>
+/// <para>
 /// <b>Threading.</b> Every public method opens its own pooled connection, so the store may be used from
 /// any thread. WAL journaling lets the UI read while the history worker writes. Writers are expected to
 /// be serialized by <see cref="Services.ClipHistoryService"/>; concurrent writers are still correct
@@ -143,7 +151,8 @@ public sealed partial class ClipStore
         "c.origin, c.source_app_name, c.source_app_path, c.size_bytes, c.format_names, c.image_width, " +
         "c.image_height, (c.thumbnail IS NOT NULL) AS has_thumbnail, " +
         "(SELECT group_concat(cg.group_id) FROM clip_groups cg WHERE cg.clip_id = c.id) AS group_ids, " +
-        "coalesce(c.path_count, 0) AS path_count, c.run_last_utc, c.source_title, c.edited_utc";
+        "coalesce(c.path_count, 0) AS path_count, c.run_last_utc, c.source_title, c.edited_utc, " +
+        "c.file_path, c.file_size, c.file_created_utc, c.file_modified_utc, c.file_format";
 
     /// <summary>
     /// <c>meta</c> flag of the path verdicts' rules (see <see cref="BackfillPathCounts"/>): a new
@@ -346,7 +355,8 @@ public sealed partial class ClipStore
     /// <summary>Creates or upgrades the schema inside one transaction (see <see cref="Initialize"/>).</summary>
     /// <remarks>
     /// Every additive object (groups, the forget list, path counts, run times, the prompt archive, source titles and edit
-    /// times, tracked documents) is ensured at every start, so an older store gains them and a newer build's file still opens.
+    /// times, tracked documents, a picture's source file) is ensured at every start, so an older store gains them and a newer
+    /// build's file still opens.
     /// </remarks>
     /// <exception cref="InvalidOperationException">The database's schema version is newer than this build supports.</exception>
     /// <exception cref="SqliteException">The schema could not be read or changed; the migration transaction rolls back.</exception>
@@ -380,6 +390,7 @@ public sealed partial class ClipStore
         EnsurePromptsSchema(connection);
         EnsureSourceTitleAndEditedColumns(connection);
         EnsureTrackedDocumentsSchema(connection);
+        EnsureSourceFileColumns(connection);
         transaction.Commit();
         ApplyDataFixups(connection);
         BackfillPathCounts(connection);
@@ -588,8 +599,14 @@ public sealed partial class ClipStore
     /// a bumped one, and an existing row an import leaves otherwise untouched — the Run tab then lists the
     /// entry whatever its origin. Other origins keep the run time a row already has.
     /// </para>
+    /// <para>
+    /// A capture's <see cref="ClipCapture.File"/> (a screenshot's file and its details) goes into a new row; a bump replaces
+    /// the row's file as a whole with it, and keeps the row's file when the capture has none — ShareX and Snipping Tool also
+    /// copy the picture, and the order of that copy and the file is not fixed. An import (no bump) adds a file only to a row
+    /// that has none.
+    /// </para>
     /// </remarks>
-    /// <param name="capture">The raw capture (formats, time, source, origin, pin request).</param>
+    /// <param name="capture">The raw capture (formats, time, source, origin, pin request, the file it was read from).</param>
     /// <param name="classified">Its classification from <see cref="ContentClassifier.Classify"/>.</param>
     /// <param name="image">Image analysis for image clips (dimensions, thumbnail); may be <see langword="null"/>.</param>
     /// <param name="bumpIfExists">Whether a duplicate should be treated as a fresh copy (see remarks).</param>
@@ -643,7 +660,8 @@ public sealed partial class ClipStore
         long? existingId = null;
         bool existingPinned = false;
         long? existingRunAt = null;
-        using (var find = Command(connection, "SELECT id, is_pinned, run_last_utc FROM clips WHERE content_hash = $hash;"))
+        bool existingHasFile = false;
+        using (var find = Command(connection, "SELECT id, is_pinned, run_last_utc, file_path IS NOT NULL FROM clips WHERE content_hash = $hash;"))
         {
             find.Parameters.AddWithValue("$hash", hash);
             using var reader = find.ExecuteReader();
@@ -652,6 +670,7 @@ public sealed partial class ClipStore
                 existingId = reader.GetInt64(0);
                 existingPinned = reader.GetInt64(1) != 0;
                 existingRunAt = reader.IsDBNull(2) ? null : reader.GetInt64(2);
+                existingHasFile = reader.GetInt64(3) != 0;
             }
         }
 
@@ -681,11 +700,13 @@ public sealed partial class ClipStore
                 INSERT INTO clips (kind, preview, search_text, content_hash, created_utc, last_used_utc, use_count,
                                    is_pinned, pinned_utc, origin, source_app_name, source_app_path, size_bytes,
                                    format_names, image_width, image_height, thumbnail, path_count, run_last_utc,
-                                   source_title)
+                                   source_title, file_path, file_size, file_created_utc, file_modified_utc, file_format)
                 VALUES ($kind, $preview, $search, $hash, $when, $when, 1, $pinned, $pinnedUtc, $origin, $srcName,
-                        $srcPath, $size, $formats, $width, $height, $thumb, $paths, $run, $title)
+                        $srcPath, $size, $formats, $width, $height, $thumb, $paths, $run, $title,
+                        $filePath, $fileSize, $fileCreated, $fileModified, $fileFormat)
                 RETURNING id;
                 """);
+            AddSourceFileParameters(insert, capture.File);
             insert.Parameters.AddWithValue("$kind", (int)classified.Kind);
             insert.Parameters.AddWithValue("$paths", classified.PathCount);
             insert.Parameters.AddWithValue("$run", (object?)runAt ?? DBNull.Value);
@@ -724,9 +745,17 @@ public sealed partial class ClipStore
                     image_width = coalesce($width, image_width), image_height = coalesce($height, image_height),
                     thumbnail = coalesce($thumb, thumbnail),
                     run_last_utc = CASE WHEN $run IS NULL THEN run_last_utc ELSE max(coalesce(run_last_utc, 0), $run) END,
-                    source_title = coalesce($title, source_title)
+                    source_title = coalesce($title, source_title),
+                    file_path = coalesce($filePath, file_path),
+                    file_size = CASE WHEN $filePath IS NULL THEN file_size ELSE $fileSize END,
+                    file_created_utc = CASE WHEN $filePath IS NULL THEN file_created_utc ELSE $fileCreated END,
+                    file_modified_utc = CASE WHEN $filePath IS NULL THEN file_modified_utc ELSE $fileModified END,
+                    file_format = CASE WHEN $filePath IS NULL THEN file_format ELSE $fileFormat END
                 WHERE id = $id;
                 """);
+
+            // A new file replaces the earlier one as a whole (never a path with another file's dates); none keeps it as it is.
+            AddSourceFileParameters(update, capture.File);
             update.Parameters.AddWithValue("$kind", (int)classified.Kind);
             update.Parameters.AddWithValue("$paths", classified.PathCount);
             update.Parameters.AddWithValue("$run", (object?)runAt ?? DBNull.Value);
@@ -776,6 +805,13 @@ public sealed partial class ClipStore
                 mark.Parameters.AddWithValue("$id", id);
                 mark.ExecuteNonQuery();
                 changed = true;
+            }
+
+            // An import that knows the file of content already in history fills in what was missing, without reordering;
+            // a file the row already has is the user's newer one and stays.
+            if (capture.File is not null && !existingHasFile)
+            {
+                changed |= WriteSourceFile(connection, id, capture.File, onlyIfMissing: true);
             }
         }
 
@@ -969,6 +1005,57 @@ public sealed partial class ClipStore
     {
         using var connection = Open();
         return GetFormats(connection, id);
+    }
+
+    /// <summary>
+    /// Loads one payload of an entry: the first of <paramref name="names"/> that it stores, in the order the names are given
+    /// (and, among payloads of one name, the first stored). Only that payload is read.
+    /// </summary>
+    /// <remarks>
+    /// For an image the panel shows full size: an entry copied from an app can hold a PNG next to a DIB of tens of megabytes
+    /// (a 4K screenshot's DIBV5 is 33 MB), and <see cref="GetFormats(long)"/> would read all of them to use one. The names
+    /// are read first — they come before the payload in each row, so no overflow page is read — then the one payload.
+    /// </remarks>
+    /// <param name="id">The entry id.</param>
+    /// <param name="names">Format names, most wanted first (e.g. <see cref="Content.ContentClassifier.PrimaryImageFormats"/>).</param>
+    /// <returns>The payload, or <see langword="null"/> when the entry stores none of them or does not exist.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="names"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public ClipFormatData? GetFirstFormat(long id, IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        using var connection = Open();
+        var stored = new List<(long Ordinal, string Name)>();
+        using (var list = Command(connection, "SELECT ordinal, name FROM clip_formats WHERE clip_id = $id ORDER BY ordinal;"))
+        {
+            list.Parameters.AddWithValue("$id", id);
+            using var reader = list.ExecuteReader();
+            while (reader.Read())
+            {
+                stored.Add((reader.GetInt64(0), reader.GetString(1)));
+            }
+        }
+
+        foreach (var name in names)
+        {
+            foreach (var (ordinal, storedName) in stored)
+            {
+                if (!string.Equals(storedName, name, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                using var read = Command(connection, "SELECT data FROM clip_formats WHERE clip_id = $id AND ordinal = $ordinal;");
+                read.Parameters.AddWithValue("$id", id);
+                read.Parameters.AddWithValue("$ordinal", ordinal);
+                using var reader = read.ExecuteReader();
+
+                // Deleted between the two reads (another thread's delete): the entry is gone, so is its picture.
+                return reader.Read() ? new ClipFormatData(storedName, (byte[])reader.GetValue(0)) : null;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Loads an entry's payloads through an existing connection (e.g. inside a transaction).</summary>
@@ -2254,6 +2341,14 @@ public sealed partial class ClipStore
         LastRunUtc = reader.IsDBNull(18) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(18)),
         SourceTitle = reader.IsDBNull(19) ? null : reader.GetString(19),
         EditedUtc = reader.IsDBNull(20) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(20)),
+
+        // The file's details are only ever written together with its path (ClipStore.SourceFiles.cs): no path, no file.
+        File = reader.IsDBNull(21) ? null : new SourceFile(
+            reader.GetString(21),
+            reader.IsDBNull(22) ? null : reader.GetInt64(22),
+            reader.IsDBNull(23) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(23)),
+            reader.IsDBNull(24) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(24)),
+            reader.IsDBNull(25) ? null : reader.GetString(25)),
     };
 
     /// <summary>Parses <c>group_concat</c>'s comma list (unspecified order) into ascending ids.</summary>

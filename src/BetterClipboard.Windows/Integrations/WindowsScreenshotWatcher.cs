@@ -361,6 +361,9 @@ public sealed class WindowsScreenshotWatcher : IDisposable
                 CapturedAtUtc = loaded.WrittenUtc,
                 Source = WindowsScreenshots.SourceFor(WindowsScreenshots.Classify(path), location.SnippingToolPath),
                 Origin = ClipOrigin.WindowsScreenshot,
+
+                // The file and its details as read: the card's menu acts on it while it exists (CLAUDE.md §2.49).
+                File = loaded.File,
             };
             return await deliver(capture).ConfigureAwait(false);
         }
@@ -432,7 +435,7 @@ public sealed class WindowsScreenshotWatcher : IDisposable
                     var complete = WindowsScreenshots.LooksComplete(bytes, path);
                     if (complete == true && info.Length == bytes.LongLength)
                     {
-                        return new Loaded(LoadOutcome.Ready, bytes, bytes.LongLength, written);
+                        return new Loaded(LoadOutcome.Ready, bytes, bytes.LongLength, written, SourceFile.FromDisk(info, bytes));
                     }
 
                     if (complete is null)
@@ -446,7 +449,7 @@ public sealed class WindowsScreenshotWatcher : IDisposable
                         }
                         else if (clock.Elapsed - stableSince >= StableDelay)
                         {
-                            return new Loaded(LoadOutcome.Ready, bytes, bytes.LongLength, written);
+                            return new Loaded(LoadOutcome.Ready, bytes, bytes.LongLength, written, SourceFile.FromDisk(info, bytes));
                         }
                     }
                 }
@@ -521,5 +524,6 @@ public sealed class WindowsScreenshotWatcher : IDisposable
     /// <param name="Bytes">The file (only for <see cref="LoadOutcome.Ready"/>).</param>
     /// <param name="Length">Its size in bytes (0 when vanished or timed out).</param>
     /// <param name="WrittenUtc">Its write time when read or sized.</param>
-    private readonly record struct Loaded(LoadOutcome Outcome, byte[]? Bytes, long Length, DateTimeOffset WrittenUtc);
+    /// <param name="File">The file and its details as read (only for <see cref="LoadOutcome.Ready"/>): the entry's <see cref="ClipEntry.File"/>.</param>
+    private readonly record struct Loaded(LoadOutcome Outcome, byte[]? Bytes, long Length, DateTimeOffset WrittenUtc, SourceFile? File = null);
 }

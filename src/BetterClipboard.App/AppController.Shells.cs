@@ -50,6 +50,13 @@ public sealed partial class AppController
     /// <summary>Commands in PowerShell's files at the last read (repeats included), -1 before the first read.</summary>
     public int PowerShellRecordCount => powerShell?.LastRecordCount ?? -1;
 
+    /// <summary>
+    /// When PowerShell's newest command was typed, as of the last read (<see cref="PowerShellHistorySource.LastNewestCommandUtc"/>):
+    /// the Pwsh tab puts a command used from the panel after it above every command. <see langword="null"/> before the first
+    /// read and when no file holds a command.
+    /// </summary>
+    public DateTimeOffset? PowerShellNewestCommandUtc => powerShell?.LastNewestCommandUtc;
+
     /// <summary>Whether the Cmd tab's periodic reading runs.</summary>
     public bool IsCmdHistoryReading => cmdHistory?.IsRunning == true;
 

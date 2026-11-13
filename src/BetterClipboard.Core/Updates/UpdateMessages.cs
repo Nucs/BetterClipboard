@@ -130,6 +130,30 @@ public static class UpdateMessages
     /// <summary>{0}: a local build's asset that is not a plain file in the dev-builds folder.</summary>
     public const string BuildAssetNotAFile = "{0} is not a file in the dev-builds folder, so it was not used. Nothing was installed.";
 
+    /// <summary>{0}: why a portable copy's verified package could not be unpacked (the system's reason, in Windows' language).</summary>
+    public const string PortablePackageUnreadable = "The update package could not be unpacked ({0}). The installed version is unchanged.";
+
+    /// <summary>A portable copy's package without the program that applies it.</summary>
+    public const string PortablePackageNoProgram = "The update package holds no BetterClipboard.exe, so this copy cannot update itself from it. The installed version is unchanged.";
+
+    /// <summary>{0}: why the new version's program could not be started to apply a portable update (the system's reason).</summary>
+    public const string PortableHelperNotStarted = "The new version could not be started to replace this copy's files ({0}). The installed version is unchanged.";
+
+    /// <summary>{0}: the folder a portable update was asked to apply to, which holds no BetterClipboard.exe.</summary>
+    public const string PortableNotAppFolder = "{0} is not a BetterClipboard folder, so nothing in it was replaced.";
+
+    /// <summary>The running copy neither closed when asked nor could be ended, so its files stayed in use.</summary>
+    public const string PortableAppDidNotClose = "BetterClipboard did not close, so its files could not be replaced. The installed version is unchanged.";
+
+    /// <summary>{0}: the file (relative to the folder) that could not be replaced; {1}: the system's reason. Everything was put back.</summary>
+    public const string PortableFileNotReplaced = "{0} could not be replaced ({1}). The previous version was put back.";
+
+    /// <summary>
+    /// {0}: the file that could not be replaced; {1}: the system's reason; {2}: the portable folder. Putting the previous
+    /// version back failed too, so the folder holds a mix.
+    /// </summary>
+    public const string PortableRestoreIncomplete = "{0} could not be replaced ({1}), and the previous version could not be put back completely. Download the release again and extract it over {2}.";
+
     /// <summary>
     /// Every template above, for translating a finished message (and the release list's two names, which the messages
     /// carry inside them).
@@ -142,6 +166,8 @@ public static class UpdateMessages
         InstallerReported, InstallerEnded, InstallerNeverStarted, TheReleaseList, ReleaseListSubject,
         NoDevBuildsFolder, BuildChecksumMissing, CopyMismatch, BuildChecksumsGone, BuildChecksumsTooLarge, BuildChecksumsUnreadable,
         BuildPackageGone, BuildPackageChangedSinceOffer, BuildPackageChangedWhileCopied, BuildNotCopied, BuildAssetNotAFile,
+        PortablePackageUnreadable, PortablePackageNoProgram, PortableHelperNotStarted, PortableNotAppFolder, PortableAppDidNotClose,
+        PortableFileNotReplaced, PortableRestoreIncomplete,
     ];
 
     /// <summary>

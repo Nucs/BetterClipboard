@@ -208,7 +208,10 @@ public sealed partial class UpdateView : UserControl
             switch (snapshot.InstallKind)
             {
                 case UpdateInstallKind.Installer:
-                    // "Install and restart" for the way back from a development build to an older release.
+                case UpdateInstallKind.Portable when snapshot.CanInstall:
+                    // A copy that installs updates itself: the installer's, or one extracted by hand that can write its
+                    // folder (the new version replaces its files there). "Install and restart" for the way back from a
+                    // development build to an older release.
                     primary = UpdateText.ApproveButton(snapshot);
                     primaryAction = () => InstallRequested?.Invoke(this, EventArgs.Empty);
                     secondary = UiText.Translate("Later");
@@ -313,14 +316,34 @@ public sealed partial class UpdateView : UserControl
         var timer = DispatcherQueue.CreateTimer();
         timer.Interval = CopiedFeedback;
         timer.IsRepeating = false;
-        timer.Tick += (_, _) =>
-        {
-            if (lastSnapshot is { } snapshot)
-            {
-                RenderButtons(snapshot);
-            }
-        };
+        timer.Tick += CopiedTimer_Tick;
         return timer;
+    }
+
+    /// <summary>The "Copied" feedback has shown long enough: the buttons of the last state come back.</summary>
+    /// <param name="sender">The timer.</param>
+    /// <param name="args">Nothing.</param>
+    private void CopiedTimer_Tick(DispatcherQueueTimer sender, object args)
+    {
+        if (lastSnapshot is { } snapshot)
+        {
+            RenderButtons(snapshot);
+        }
+    }
+
+    /// <summary>
+    /// Stops the "Copied" timer and takes this view's handler off it (its window is closing; CLAUDE.md §2.45). A
+    /// <see cref="DispatcherQueueTimer"/> is outside WinUI's reference tracking, so a handler left on it and this view's
+    /// reference to the timer would keep each other — and the window around this view — in memory for good.
+    /// </summary>
+    internal void DetachTimers()
+    {
+        if (copiedTimer is { } timer)
+        {
+            timer.Stop();
+            timer.Tick -= CopiedTimer_Tick;
+            copiedTimer = null;
+        }
     }
 
     /// <summary>

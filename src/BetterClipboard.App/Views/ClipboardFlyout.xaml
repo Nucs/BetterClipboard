@@ -507,15 +507,56 @@
                                 Visibility="{x:Bind PinVisibility, Mode=OneWay}" />
                         </Grid>
 
-                        <TextBlock
+                        <!--
+                            The text, at most 4 lines. A card that shows less than its whole text (ClipItemViewModel.IsCutOff)
+                            gets a thin dotted line under them and the eye at their bottom right, and resting the mouse on it
+                            opens the text peek (ClipboardFlyout.TextPreview.cs). The pointer handlers are on the grid, with
+                            a transparent background, so the space around short lines and the eye count as the card's text too.
+                        -->
+                        <Grid
                             Grid.Row="1"
-                            FontFamily="{x:Bind BodyFontFamily}"
-                            FontSize="13.5"
-                            MaxLines="4"
-                            Text="{x:Bind Preview}"
-                            TextTrimming="CharacterEllipsis"
-                            TextWrapping="Wrap"
-                            Visibility="{x:Bind TextVisibility}" />
+                            Background="Transparent"
+                            PointerEntered="TextCard_PointerEntered"
+                            PointerExited="TextCard_PointerExited"
+                            PointerMoved="TextCard_PointerMoved"
+                            Visibility="{x:Bind TextVisibility}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <TextBlock
+                                DataContextChanged="CardText_DataContextChanged"
+                                FontFamily="{x:Bind BodyFontFamily}"
+                                FontSize="13.5"
+                                IsTextTrimmedChanged="CardText_IsTextTrimmedChanged"
+                                MaxLines="4"
+                                Text="{x:Bind Preview}"
+                                TextTrimming="CharacterEllipsis"
+                                TextWrapping="Wrap" />
+                            <!--  A thin fifth line of three dots: there is more than the card shows (the owner's ask, 2026-11-13).  -->
+                            <TextBlock
+                                Grid.Row="1"
+                                Margin="0,-3,0,-1"
+                                AutomationProperties.AccessibilityView="Raw"
+                                FontSize="12"
+                                Foreground="{ThemeResource TextFillColorTertiaryBrush}"
+                                LineHeight="12"
+                                LineStackingStrategy="BlockLineHeight"
+                                Text="&#x22EF;"
+                                Visibility="{x:Bind MoreVisibility, Mode=OneWay}" />
+                            <!--  Opens the text viewer (F3 and the card menu's View do too).  -->
+                            <Button
+                                Grid.RowSpan="2"
+                                Margin="0,0,-2,-2"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Bottom"
+                                AutomationProperties.Name="{loc:Tr Text='View the whole text'}"
+                                Click="ViewText_Click"
+                                Content="&#xE7B3;"
+                                Style="{StaticResource TextViewButtonStyle}"
+                                ToolTipService.ToolTip="{loc:Tr Text='View the whole text (F3)'}"
+                                Visibility="{x:Bind MoreVisibility, Mode=OneWay}" />
+                        </Grid>
 
                         <!--
                             Image thumbnail. Resting the mouse on it opens a full-screen peek after a short delay, gone the

@@ -16,8 +16,32 @@ namespace BetterClipboard.App;
 /// The process this start replaces (<see cref="RestartSwitch"/>): Settings' <em>Restart now</em> starts the new process
 /// before the old one exits, and the new one waits for it before it takes the single-instance lock.
 /// </param>
-public sealed record StartupOptions(bool Background, InstanceCommand Command, bool FromAllUsersEntry = false, RestartTarget? RestartAfter = null)
+/// <param name="ClipboardSequence">
+/// The old process's last handled clipboard sequence number (<see cref="ClipboardSequenceSwitch"/>), passed by a silent
+/// restart so the new process reads a copy made while neither listened (CLAUDE.md §2.46).
+/// </param>
+public sealed record StartupOptions(bool Background, InstanceCommand Command, bool FromAllUsersEntry = false, RestartTarget? RestartAfter = null, uint? ClipboardSequence = null)
 {
+    /// <summary>
+    /// Switch, followed by a number, with which a silent restart hands its last handled clipboard sequence number to the new
+    /// process (<see cref="ClipboardSequence"/>).
+    /// </summary>
+    public const string ClipboardSequenceSwitch = "--clipboard-sequence";
+
+    /// <summary>
+    /// Whether this start is a silent restart (CLAUDE.md §2.46): it replaces a process (<see cref="RestartAfter"/>) and
+    /// shows nothing (<see cref="Background"/>). Settings' <em>Restart now</em> is a restart too, but a visible one: it
+    /// opens Settings again.
+    /// </summary>
+    public bool IsSilentRestart => Background && RestartAfter is not null;
+
+    /// <summary>
+    /// The older copies this start replaced, for the log (e.g. <c>0.2.10 (process 4312)</c>), or <see langword="null"/>.
+    /// Set by <c>Program.Main</c>, not from the command line: a newer copy started by hand while an older one ran asked it
+    /// to exit and took its place (<see cref="Core.Startup.InstanceTakeover"/>, CLAUDE.md §2.29).
+    /// </summary>
+    public string? TookOverFrom { get; init; }
+
     /// <summary>Switch that opens the flyout in the running instance.</summary>
     public const string ShowFlyoutSwitch = "--show-flyout";
 
@@ -43,15 +67,21 @@ public sealed record StartupOptions(bool Background, InstanceCommand Command, bo
             : InstanceCommand.Activate;
         bool fromAllUsers = Has(StartupRegistration.AllUsersSwitch);
         RestartTarget? restartAfter = null;
+        uint? clipboardSequence = null;
         for (int i = 0; i + 1 < args.Count; i++)
         {
             if (string.Equals(args[i], RestartSwitch, StringComparison.OrdinalIgnoreCase) && RestartTarget.TryParse(args[i + 1], out var target))
             {
                 restartAfter = target;
             }
+            else if (string.Equals(args[i], ClipboardSequenceSwitch, StringComparison.OrdinalIgnoreCase)
+                && uint.TryParse(args[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out uint sequence))
+            {
+                clipboardSequence = sequence;
+            }
         }
 
-        return new StartupOptions(Has(StartupRegistration.BackgroundSwitch) || fromAllUsers, command, fromAllUsers, restartAfter);
+        return new StartupOptions(Has(StartupRegistration.BackgroundSwitch) || fromAllUsers, command, fromAllUsers, restartAfter, clipboardSequence);
     }
 }
 

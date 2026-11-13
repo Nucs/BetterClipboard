@@ -51,4 +51,41 @@
   <ItemGroup>
     <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!--
+    The Microsoft Store edition (CLAUDE.md §2.47, docs/microsoft-store.md): the same app, built as an MSIX package.
+    Nothing below applies to the unpackaged build. tools/release/package-msix.ps1 publishes with
+    WindowsPackageType=MSIX and passes:
+      StoreAppxManifest    the manifest it filled in from packaging/msix/Package.appxmanifest (identity, version,
+                           architecture);
+      StoreExtraFilesDir   a folder of files that ride along in the package root: bclip (the package declares it as a
+                           second application with a console alias) and install.ps1, which that edition runs in its
+                           uninstall mode to remove a copy of BetterClipboard it replaces.
+    The package's logos are the files in packaging/msix/Assets (tools/make_store_assets.py draws them); they are
+    linked to Assets\Store, where the manifest names them, and Windows picks by the qualifiers in their names.
+  -->
+  <PropertyGroup Condition="'$(WindowsPackageType)' == 'MSIX'">
+    <!-- The Store signs what it publishes; a test package is signed by the script after the build. -->
+    <AppxPackageSigningEnabled Condition="'$(AppxPackageSigningEnabled)' == ''">false</AppxPackageSigningEnabled>
+
+    <!-- One flat package per architecture: no bundle (a bundle could never go back to flat packages), no installer file, no symbols package. -->
+    <AppxBundle>Never</AppxBundle>
+    <GenerateAppInstallerFile>false</GenerateAppInstallerFile>
+    <AppxSymbolPackageEnabled>false</AppxSymbolPackageEnabled>
+    <StoreAssetsDir Condition="'$(StoreAssetsDir)' == ''">$(MSBuildThisFileDirectory)..\..\packaging\msix\Assets\</StoreAssetsDir>
+
+    <!--
+      The package build's obj and bin are under artifacts (Directory.Build.props), so the SDK no longer leaves this
+      folder's own obj and bin out by itself: without this line the unpackaged build's generated sources there would
+      be compiled into the package build a second time.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;obj\**</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(WindowsPackageType)' == 'MSIX'">
+    <AppxManifest Include="$(StoreAppxManifest)" />
+    <Content Include="$(StoreAssetsDir)*.png" Link="Assets\Store\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(WindowsPackageType)' == 'MSIX' And '$(StoreExtraFilesDir)' != ''">
+    <Content Include="$(StoreExtraFilesDir)**\*" Link="%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

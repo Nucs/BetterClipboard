@@ -451,6 +451,14 @@ public sealed class ShareXScreenshotWatcherTests : IDisposable
         Assert.Equal([ClipFormatNames.Png, ClipFormatNames.DibV5], capture.Formats.Select(f => f.Name));
         Assert.Equal(png, capture.Formats[0].Data);
         Assert.Equal(capture.CapturedAtUtc, Assert.Single(handled));
+
+        // The file and its details as read (CLAUDE.md §2.49): the card's menu acts on it, its details outlive it.
+        var file = capture.File!;
+        Assert.Equal(Path.Combine(month, "Code_AbCdEf1234.png"), file.Path);
+        Assert.Equal(png.Length, file.SizeBytes);
+        Assert.Equal("PNG", file.Format);
+        Assert.Equal(capture.CapturedAtUtc, file.ModifiedUtc);
+        Assert.NotNull(file.CreatedUtc);
     }
 
     /// <summary>While ShareX still holds the file open for writing, nothing is read; the complete file is imported once it closes.</summary>
@@ -763,6 +771,64 @@ public sealed class ShareXIntegrationTests : IAsyncLifetime
         Assert.True(integration.IsWatching);
         await Task.Delay(500, TestContext.Current.CancellationToken);
         Assert.Empty(await ShareXItemsAsync());
+    }
+
+    /// <summary>
+    /// The one-time search (CLAUDE.md §2.49): a ShareX picture stored before files were kept gets the file saved a few seconds
+    /// from it with the same pixels, and the store marks the search done; the next start searches no more, even for a new
+    /// candidate.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task EarlierScreenshot_GetsItsFileOnce()
+    {
+        var shareX = new SourceAppInfo("ShareX", @"C:\Program Files\ShareX\ShareX.exe", "ShareX");
+        var saved = DateTime.UtcNow.AddDays(-2);
+        saved = new DateTime(saved.Ticks - (saved.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
+        var png = await ShareXScreenshotWatcherTests.PngAsync(12, 9, 21);
+        var path = Path.Combine(month, "earlier.png");
+        await File.WriteAllBytesAsync(path, png, TestContext.Current.CancellationToken);
+        File.SetLastWriteTimeUtc(path, saved);
+
+        // ShareX's clipboard copy of it, three seconds after the save, stored before BetterClipboard kept files.
+        var copy = (await history.AddAsync(new ClipCapture
+        {
+            Formats = [new ClipFormatData(ClipFormatNames.Png, png)],
+            CapturedAtUtc = new DateTimeOffset(saved.AddSeconds(3), TimeSpan.Zero),
+            Source = shareX,
+        }))!;
+        Assert.Null(copy.File);
+
+        await using (var integration = new ShareXIntegration(history, () => long.MaxValue, () => installation) { FileSearchDelay = TimeSpan.Zero })
+        {
+            await integration.StartAsync(enable: true);
+            await ShareXScreenshotWatcherTests.WaitUntilAsync(() => !string.IsNullOrEmpty(history.GetStateValueAsync(ShareXIntegration.FilesSearchedStateName).Result));
+        }
+
+        var found = (await ShareXItemsAsync()).Single(e => e.Id == copy.Id).File!;
+        Assert.Equal(path, found.Path);
+        Assert.Equal(png.Length, found.SizeBytes);
+        Assert.Equal(new DateTimeOffset(saved, TimeSpan.Zero), found.ModifiedUtc);
+        Assert.Equal("PNG", found.Format);
+
+        // A start after the search: a new candidate with its file next to it is left alone.
+        var laterPng = await ShareXScreenshotWatcherTests.PngAsync(12, 9, 22);
+        var laterPath = Path.Combine(month, "later.png");
+        await File.WriteAllBytesAsync(laterPath, laterPng, TestContext.Current.CancellationToken);
+        File.SetLastWriteTimeUtc(laterPath, saved.AddHours(1));
+        var later = (await history.AddAsync(new ClipCapture
+        {
+            Formats = [new ClipFormatData(ClipFormatNames.Png, laterPng)],
+            CapturedAtUtc = new DateTimeOffset(saved.AddHours(1), TimeSpan.Zero),
+            Source = shareX,
+        }))!;
+        await using (var integration = new ShareXIntegration(history, () => long.MaxValue, () => installation) { FileSearchDelay = TimeSpan.Zero })
+        {
+            await integration.StartAsync(enable: true);
+            await Task.Delay(800, TestContext.Current.CancellationToken);
+        }
+
+        Assert.Null((await ShareXItemsAsync()).Single(e => e.Id == later.Id).File);
     }
 
     /// <summary>Without ShareX nothing is watched, whatever the setting.</summary>

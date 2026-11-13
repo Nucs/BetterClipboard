@@ -102,6 +102,14 @@ public sealed class ClipEntry
     /// </summary>
     public DateTimeOffset? EditedUtc { get; init; }
 
+    /// <summary>
+    /// The file the picture was read from — a screenshot ShareX, Snipping Tool or Win+PrtScn saved, or one found for an
+    /// earlier screenshot by the one-time search (CLAUDE.md §2.49) — with its details as they were when read;
+    /// <see langword="null"/> for content no file is known for (most clipboard copies). The file may be gone since: check before
+    /// acting on <see cref="SourceFile.Path"/>.
+    /// </summary>
+    public SourceFile? File { get; init; }
+
     /// <summary>Whether any rich text format (HTML/RTF) is stored, i.e. "paste as plain text" differs from paste.</summary>
     public bool HasRichFormats =>
         FormatNames.Contains(ClipFormatNames.Html) || FormatNames.Contains(ClipFormatNames.Rtf);

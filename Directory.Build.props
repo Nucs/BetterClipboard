@@ -16,6 +16,19 @@
     <Product>BetterClipboard</Product>
     <Authors>Eli Belash</Authors>
     <Copyright>© 2026 Eli Belash</Copyright>
-    <Version>0.2.10</Version>
+    <Version>0.2.11</Version>
+  </PropertyGroup>
+
+  <!--
+    The Microsoft Store package of the app (CLAUDE.md §2.47; tools/release/package-msix.ps1 passes
+    WindowsPackageType=MSIX on the command line) is built in folders of its own, under artifacts. The package build and
+    the unpackaged build make different intermediate files from the same sources (the resource index, the manifests),
+    and MSBuild's up-to-date checks do not look at properties: with shared obj and bin folders one build would reuse
+    the other's leftovers. Here and not in the project file, because the base paths must be known before the SDK's own
+    props are read. The project file then keeps the unpackaged build's obj and bin out of the package build's sources.
+  -->
+  <PropertyGroup Condition="'$(WindowsPackageType)' == 'MSIX' And '$(MSBuildProjectName)' == 'BetterClipboard.App'">
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)artifacts\store-build\obj\</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(MSBuildThisFileDirectory)artifacts\store-build\bin\</BaseOutputPath>
   </PropertyGroup>
 </Project>

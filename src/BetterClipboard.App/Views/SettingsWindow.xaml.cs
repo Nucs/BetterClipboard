@@ -61,14 +61,20 @@ public sealed partial class SettingsWindow : Window
         this.controller = controller;
         ViewModel = new SettingsViewModel(controller);
         InitializeComponent();
+
+        // Before the search indexes the page: each edition keeps only the cards that are true for it.
+        ApplyEdition();
         hwnd = WindowNative.GetWindowHandle(this);
 
+        // Windows' own title bar (the content is not extended into it): WinUI's extended title bar leaked about 30 GDI
+        // handles at every open and close of this window (CLAUDE.md §2.45). Windows draws it light unless told otherwise,
+        // so it follows the content's theme (ApplyCaptionTheme), now and whenever that theme changes.
         Title = "BetterClipboard";
         AppWindow.SetIcon(AppController.IconPath);
-        ExtendsContentIntoTitleBar = true;
-        SetTitleBar(TitleBar);
         SystemBackdrop = new MicaBackdrop();
         controller.ApplyTheme(Root);
+        ApplyCaptionTheme();
+        Root.ActualThemeChanged += Root_ActualThemeChanged;
         SizeAndCenter();
 
         controller.HotkeyStatusChanged += OnHotkeyStatusChanged;
@@ -130,6 +136,31 @@ public sealed partial class SettingsWindow : Window
         Scroller.Focus(FocusState.Programmatic);
     }
 
+    /// <summary>
+    /// Draws Windows' title bar of this window dark or light, as the content is: the app's theme setting when it names one,
+    /// otherwise the theme the content resolved to (Windows' app mode).
+    /// </summary>
+    /// <remarks>
+    /// Before the content is loaded its resolved theme is not known yet, so the application's theme (Windows' app mode when
+    /// the app started) stands in; <see cref="Root_ActualThemeChanged"/> corrects it when the content resolves, and whenever
+    /// Windows' mode or the setting changes later.
+    /// </remarks>
+    private void ApplyCaptionTheme()
+    {
+        bool dark = Root.RequestedTheme switch
+        {
+            ElementTheme.Dark => true,
+            ElementTheme.Light => false,
+            _ => Root.IsLoaded ? Root.ActualTheme == ElementTheme.Dark : Application.Current.RequestedTheme == ApplicationTheme.Dark,
+        };
+        WindowInterop.SetDarkTitleBar(hwnd, dark);
+    }
+
+    /// <summary>The content's theme changed (the theme setting, or Windows' app mode): the title bar follows.</summary>
+    /// <param name="sender">The window's root element.</param>
+    /// <param name="args">Nothing.</param>
+    private void Root_ActualThemeChanged(FrameworkElement sender, object args) => ApplyCaptionTheme();
+
     /// <summary>Sizes the window for the current monitor's DPI and centers it in the work area.</summary>
     private void SizeAndCenter()
     {
@@ -140,11 +171,32 @@ public sealed partial class SettingsWindow : Window
         AppWindow.MoveAndResize(new RectInt32(area.X + ((area.Width - width) / 2), area.Y + ((area.Height - height) / 2), width, height));
     }
 
-    /// <summary>Unsubscribes from app-lifetime events so the closed window can be collected.</summary>
+    /// <summary>
+    /// Unsubscribes from app-lifetime events, and takes every handler off this window's own events and timers, so the
+    /// closed window can be collected.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Unsubscribing from the controller's events is not enough. A <see cref="Window"/> and a
+    /// <see cref="Microsoft.UI.Dispatching.DispatcherQueueTimer"/> are plain WinRT objects: WinUI's reference tracking, which
+    /// lets the garbage collector see through the XAML tree, does not cover them. A handler on one of them that holds this
+    /// window (our own <see cref="Window.Closed"/> handler, the timers' <c>Tick</c> handlers, and the <c>Activated</c> handler
+    /// the XAML compiler generates for <c>x:Bind</c>, whose bindings object holds the window) and this window's reference to
+    /// that object form a cycle across the native boundary that no collection can break.
+    /// </para>
+    /// <para>
+    /// Measured 2026-11-12 on a Windows 11 test desktop (0.2.10): every Settings window ever closed stayed in memory with its
+    /// whole XAML tree — 103 MB more after the first open, then 17 to 22 MB more per open and close, and nothing given back by
+    /// a full garbage collection (five closed windows alive in the heap dump after five). With the handlers taken off, none
+    /// stays (CLAUDE.md §2.45).
+    /// </para>
+    /// </remarks>
     /// <param name="sender">Window.</param>
     /// <param name="args">Close data.</param>
     private void OnClosed(object sender, WindowEventArgs args)
     {
+        Closed -= OnClosed;
+        DetachGeneratedBindings();
         controller.HotkeyStatusChanged -= OnHotkeyStatusChanged;
         controller.HistoryChanged -= OnHistoryChanged;
         controller.CommandLineStatusChanged -= OnCommandLineStatusChanged;
@@ -160,16 +212,55 @@ public sealed partial class SettingsWindow : Window
         controller.Settings.Changed -= OnSettingsChanged;
         Activated -= OnActivated;
         CloseSearch();
-        storedRefresh?.Stop();
+        CloseStoredRefresh();
 
-        // Closing the dialog also ends its own subscription to the update status.
-        updateDialog.Hide();
+        // Closing the dialog also ends its own subscription to the update status; detaching it also lets go of its timer.
+        updateDialog.Detach();
 
         // The recorder's hook must never outlive the box it records for.
         closed = true;
         wantListening = false;
         recorder?.Dispose();
         recorder = null;
+    }
+
+    /// <summary>
+    /// Stops the <c>x:Bind</c> bindings and takes their <c>Activated</c> handler off this window (window closing; see
+    /// <see cref="OnClosed"/> for why it must go).
+    /// </summary>
+    /// <remarks>
+    /// The XAML compiler's generated code subscribes its bindings object to <see cref="Window.Activated"/> (to run the
+    /// bindings on first activation) and never unsubscribes it; the bindings object holds this window as its data root. Its
+    /// class exists only in the second XAML pass, after this file is first compiled, so the handler is found by its name:
+    /// a public <c>Activated(object, WindowActivatedEventArgs)</c> method on the object in <c>Bindings</c>. When a future
+    /// compiler names it otherwise, nothing is detached and the log says so — the window then leaks as it did before
+    /// 2026-11-12, it does not break.
+    /// </remarks>
+    private void DetachGeneratedBindings()
+    {
+        if (Bindings is not { } bindings)
+        {
+            return;
+        }
+
+        try
+        {
+            bindings.StopTracking();
+            var handler = bindings.GetType().GetMethod("Activated", [typeof(object), typeof(WindowActivatedEventArgs)]);
+            if (handler is null)
+            {
+                Core.Diagnostics.AppLog.Warn("The closed Settings window keeps its x:Bind Activated handler (no such method on the generated bindings), so it stays in memory.");
+                return;
+            }
+
+            // Delegates are equal when their target and method are: this removes the generated subscription.
+            Activated -= handler.CreateDelegate<global::Windows.Foundation.TypedEventHandler<object, WindowActivatedEventArgs>>(bindings);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or MemberAccessException or System.Runtime.InteropServices.COMException)
+        {
+            // Closing must go on whatever happens here: the worst case is the old leak of this one window.
+            Core.Diagnostics.AppLog.Warn($"Detaching the closed Settings window's x:Bind bindings failed: {ex.Message}");
+        }
     }
 
     /// <summary>

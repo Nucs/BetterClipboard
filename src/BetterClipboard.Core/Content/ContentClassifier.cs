@@ -120,6 +120,14 @@ public static class ContentClassifier
     }
 
     /// <summary>
+    /// The image formats <see cref="FindPrimaryImage"/> looks for, most wanted first: what a reader that needs only the
+    /// picture asks the store for (<c>ClipStore.GetFirstFormat</c>), so it never reads the DIB next to a PNG.
+    /// </summary>
+    /// <remarks>Must stay in <see cref="FindPrimaryImage"/>'s order; a unit test holds the two together.</remarks>
+    public static IReadOnlyList<string> PrimaryImageFormats { get; } =
+        [ClipFormatNames.Png, ClipFormatNames.PngMime, ClipFormatNames.DibV5, ClipFormatNames.Dib];
+
+    /// <summary>
     /// Picks the image format used for hashing and thumbnails: PNG first (lossless and alpha-correct
     /// from browsers/Office), then DIBV5 (alpha-capable), then plain DIB.
     /// </summary>

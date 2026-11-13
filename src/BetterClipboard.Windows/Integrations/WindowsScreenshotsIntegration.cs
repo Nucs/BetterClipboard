@@ -1,7 +1,9 @@
 using System.Globalization;
 using BetterClipboard.Core.Diagnostics;
+using BetterClipboard.Core.Integrations;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Services;
+using BetterClipboard.Core.Storage;
 
 namespace BetterClipboard.Windows.Integrations;
 
@@ -38,6 +40,12 @@ public sealed class WindowsScreenshotsIntegration : IAsyncDisposable
     /// <summary>Most screenshots one catch-up imports (the newest ones), so a long absence cannot flood the history.</summary>
     public const int MaxCatchUpFiles = 100;
 
+    /// <summary>
+    /// Store state name that marks the one-time search for the files of Snipping Tool and Win+PrtScn screenshots stored before
+    /// BetterClipboard kept a picture's file as done (<see cref="ScreenshotFileFinder"/>; ISO 8601 UTC time; empty = not yet).
+    /// </summary>
+    public const string FilesSearchedStateName = "screenshots.files_searched";
+
     /// <summary>How often the folder and Snipping Tool are located again in the background.</summary>
     public static readonly TimeSpan RefreshInterval = TimeSpan.FromMinutes(5);
 
@@ -56,6 +64,9 @@ public sealed class WindowsScreenshotsIntegration : IAsyncDisposable
     private bool disposed;
     private DateTimeOffset lastSeen;
     private int importedThisSession;
+
+    /// <summary>1 once this process started the one-time file search (<see cref="StartFileSearch"/>); it never starts twice.</summary>
+    private int fileSearchStarted;
 
     /// <summary>Creates the integration; nothing happens until <see cref="StartAsync"/>.</summary>
     /// <param name="history">Where screenshots are stored and the marker is kept.</param>
@@ -76,6 +87,12 @@ public sealed class WindowsScreenshotsIntegration : IAsyncDisposable
 
     /// <summary>The last snapshot of the facts (<see cref="WindowsScreenshotsLocation.None"/> until located).</summary>
     public WindowsScreenshotsLocation Location => location;
+
+    /// <summary>
+    /// How long after the watch starts the one-time search for earlier screenshots' files begins (<see cref="StartFileSearch"/>):
+    /// half a minute by default, so the start's own work (imports, the panel's warm-up) goes first. Tests set zero.
+    /// </summary>
+    public TimeSpan FileSearchDelay { get; init; } = TimeSpan.FromSeconds(30);
 
     /// <summary>Whether the Screenshots folder is being watched right now.</summary>
     public bool IsWatching => Volatile.Read(ref watcher)?.WatchedFolder is not null;
@@ -303,6 +320,58 @@ public sealed class WindowsScreenshotsIntegration : IAsyncDisposable
                     // Already logged by PersistMarker's continuation; the in-memory marker still guards this session.
                 }
             }
+        }
+
+        if (created.WatchedFolder is { } folder)
+        {
+            StartFileSearch(folder);
+        }
+    }
+
+    /// <summary>
+    /// Starts, once per process and after <see cref="FileSearchDelay"/>, the one-time search for the files of Snipping Tool and
+    /// Win+PrtScn screenshots stored before BetterClipboard kept a picture's file (<see cref="ScreenshotFileFinder.RunOnceAsync"/>,
+    /// which does nothing when the store marks it done). Runs in the background; logged, never thrown.
+    /// </summary>
+    /// <param name="folder">The Screenshots folder (not recursive: both tools save straight into it).</param>
+    private void StartFileSearch(string folder)
+    {
+        if (Interlocked.Exchange(ref fileSearchStarted, 1) != 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(FileSearchDelay, shutdown.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return; // exiting before it began: the next start runs it
+            }
+
+            await ScreenshotFileFinder.RunOnceAsync(history, ClipFilter.Snipping, FilesSearchedStateName, () => ListScreenshotFiles(folder), "Snipping Tool and Win+PrtScn", shutdown.Token)
+                .ConfigureAwait(false);
+        });
+    }
+
+    /// <summary>Lists the image files straight in the Screenshots folder, whatever their age.</summary>
+    /// <param name="folder">The folder.</param>
+    /// <returns>The files; none when the folder cannot be read (logged).</returns>
+    private static IReadOnlyList<FileInfo> ListScreenshotFiles(string folder)
+    {
+        try
+        {
+            return Directory.Exists(folder)
+                ? new DirectoryInfo(folder).EnumerateFiles().Where(file => WindowsScreenshots.IsImageFile(file.Name)).ToList()
+                : [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            AppLog.Warn($"Could not list the Screenshots folder: {ex.Message}");
+            return [];
         }
     }
 

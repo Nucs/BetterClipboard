@@ -42,6 +42,13 @@ public sealed class UpdateServiceOptions
     public IUpdateInstaller? Installer { get; init; }
 
     /// <summary>
+    /// For a copy extracted by hand (<see cref="UpdateInstallKind.Portable"/>): whether this user can write its folder, so
+    /// that it may update itself there (<see cref="UpdateSnapshot.PortableInPlace"/>). Ignored for the other kinds. The host
+    /// pairs it with an <see cref="Installer"/> that applies the update to the folder.
+    /// </summary>
+    public bool PortableInPlace { get; init; }
+
+    /// <summary>
     /// This PC's dev-builds folder (<see cref="AppPaths.DevBuildsDirectory"/>), whose newer builds are offered before
     /// GitHub's releases (<see cref="LocalBuildFeed"/>); <see langword="null"/> for a copy that must not read it — every
     /// copy the installer did not install, since only those can install a build by themselves.
@@ -175,7 +182,12 @@ public sealed class UpdateService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         this.client = client;
         this.options = options;
-        current = Derive(new UpdateSnapshot { CurrentVersion = options.CurrentVersion, InstallKind = options.InstallKind });
+        current = Derive(new UpdateSnapshot
+        {
+            CurrentVersion = options.CurrentVersion,
+            InstallKind = options.InstallKind,
+            PortableInPlace = options.InstallKind == UpdateInstallKind.Portable && options.PortableInPlace,
+        });
     }
 
     /// <summary>
@@ -993,8 +1005,9 @@ public sealed class UpdateService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Removes what earlier updates left in the working folder (packages, partial downloads, installer scripts), keeping
-    /// the release-list cache. Failures are ignored: a file still in use is removed at the next start.
+    /// Removes what earlier updates left in the working folder (packages, partial downloads, installer scripts, a portable
+    /// update's staging folder), keeping the release-list cache. Failures are ignored: a file still in use is removed at the
+    /// next start.
     /// </summary>
     private void CleanWorkDirectory()
     {
@@ -1011,6 +1024,20 @@ public sealed class UpdateService : IAsyncDisposable
                 if (!name.Equals(CacheBodyFile, StringComparison.OrdinalIgnoreCase) && !name.Equals(CacheStateFile, StringComparison.OrdinalIgnoreCase))
                 {
                     TryDelete(file);
+                }
+            }
+
+            // A portable update's staging folder (some 190 MB): the helper ran from it, so it is removed only now, by the next
+            // start. One the helper still holds (it ends a moment after it started this process) goes at the start after.
+            foreach (var folder in Directory.EnumerateDirectories(options.WorkDirectory, PortableUpdate.StagingFolderPrefix + "*"))
+            {
+                try
+                {
+                    Directory.Delete(folder, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // In use for a moment longer; the next start tries again.
                 }
             }
         }

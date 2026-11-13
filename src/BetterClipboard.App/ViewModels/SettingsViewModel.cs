@@ -98,7 +98,9 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>Version string for the About card.</summary>
-    public string VersionText => UiText.Format($"Version {AppController.Version}");
+    public string VersionText => IsStoreEdition
+        ? UiText.Format($"Version {AppController.Version} · Microsoft Store edition")
+        : UiText.Format($"Version {AppController.Version}");
 
     /// <summary>Data folder path.</summary>
     public string DataFolder => controller.Paths.DataDirectory;
@@ -186,6 +188,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>See <see cref="AppSettings.MaxTotalSizeMB"/>.</summary>
     [ObservableProperty]
     public partial double MaxTotalSizeMB { get; set; }
+
+    /// <summary>See <see cref="AppSettings.TempImageDays"/>: how many days a picture "Save to temp and" wrote is kept.</summary>
+    [ObservableProperty]
+    public partial double TempImageDays { get; set; }
 
     /// <summary>See <see cref="AppSettings.CaptureImages"/>.</summary>
     [ObservableProperty]
@@ -413,6 +419,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             RetentionDays = settings.RetentionDays;
             MaxItemSizeMB = settings.MaxItemSizeMB;
             MaxTotalSizeMB = settings.MaxTotalSizeMB;
+            TempImageDays = settings.TempImageDays;
             CaptureImages = settings.CaptureImages;
             CaptureFiles = settings.CaptureFiles;
             PreserveAllFormats = settings.PreserveAllFormats;
@@ -506,13 +513,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     public void RefreshCommandLineStatus()
     {
         bool exists = File.Exists(AppController.CommandLinePath);
-        bool onPath = exists && UserPath.Contains(AppController.CommandLineDirectory);
-        CanAddCommandLineToPath = exists && !onPath;
+
+        // The Microsoft Store edition never touches the PATH: its package declares bclip as an app execution alias.
+        bool onPath = exists && !IsStoreEdition && UserPath.Contains(AppController.CommandLineDirectory);
+        CanAddCommandLineToPath = exists && !onPath && !IsStoreEdition;
         // The path is the file's own; the words after it are the interface language's, one whole template each.
         var where = exists
-            ? onPath
-                ? UiText.Format($"{AppController.CommandLinePath} · on your PATH (new terminals run it as bclip)")
-                : UiText.Format($"{AppController.CommandLinePath} · not on your PATH")
+            ? IsStoreEdition
+                ? UiText.Translate("In this edition every new terminal runs it as bclip: Windows lists it under Settings › Apps › Advanced app settings › App execution aliases.")
+                : onPath
+                    ? UiText.Format($"{AppController.CommandLinePath} · on your PATH (new terminals run it as bclip)")
+                    : UiText.Format($"{AppController.CommandLinePath} · not on your PATH")
             : UiText.Translate("bclip.exe is not next to the app (development build) — release builds include it.");
         var state = controller.CommandLineError is { } error ? UiText.Format($"Could not start: {error}")
             : controller.IsCommandLineActive ? UiText.Translate("Serving bclip now.")
@@ -1094,16 +1105,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         RefreshHotkeyStatus();
     }
 
-    /// <summary>Formats a byte count (KB/MB/GB); shared with the Delete stored dialog, which shows the same sizes.</summary>
+    /// <summary>
+    /// Formats a byte count (KB/MB/GB); shared with the Delete stored dialog, which shows the same sizes, and with a picture's
+    /// file details in the panel — all through <see cref="ByteSizeText"/>, so one rule formats every size the app shows.
+    /// </summary>
     /// <param name="bytes">Byte count.</param>
     /// <returns>The formatted size.</returns>
-    internal static string FormatBytes(long bytes) => bytes switch
-    {
-        < 1024 => $"{bytes} B",
-        < 1024 * 1024 => $"{bytes / 1024.0:0.#} KB",
-        < 1024L * 1024 * 1024 => $"{bytes / (1024.0 * 1024):0.#} MB",
-        _ => $"{bytes / (1024.0 * 1024 * 1024):0.##} GB",
-    };
+    internal static string FormatBytes(long bytes) => ByteSizeText.Format(bytes);
 
     /// <summary>Persists a settings change unless loading.</summary>
     /// <param name="mutate">The change.</param>
@@ -1145,6 +1153,16 @@ public sealed partial class SettingsViewModel : ObservableObject
         if (!double.IsNaN(value))
         {
             Update(s => s with { RetentionDays = (int)value });
+        }
+    }
+
+    /// <summary>Persists the change (a NumberBox cleared by hand reports NaN, which keeps the saved value).</summary>
+    /// <param name="value">New value.</param>
+    partial void OnTempImageDaysChanged(double value)
+    {
+        if (!double.IsNaN(value))
+        {
+            Update(s => s with { TempImageDays = (int)value });
         }
     }
 
@@ -1310,6 +1328,14 @@ public sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
+        // The Microsoft Store edition starts through its package's startup task, never through the Run key
+        // (SettingsViewModel.Store.cs).
+        if (IsStoreEdition)
+        {
+            _ = SetPackagedStartupAsync(value);
+            return;
+        }
+
         var exe = AppController.ExecutablePath;
         var skipBefore = controller.Settings.Current.SkipAllUsersStartup;
         try
@@ -1345,6 +1371,14 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <remarks>Never throws: <see cref="StartupRegistration.ReadEntries()"/> takes an unreadable key for an empty one.</remarks>
     private void RefreshLaunchAtStartup(AppSettings settings)
     {
+        // The Microsoft Store edition asks Windows about its startup task instead; the answer arrives a moment later
+        // (SettingsViewModel.Store.cs).
+        if (IsStoreEdition)
+        {
+            _ = RefreshPackagedStartupAsync();
+            return;
+        }
+
         var exe = AppController.ExecutablePath;
         var entries = StartupRegistration.ReadEntries();
         LaunchAtStartup = SignInStartup.StartsThisCopy(entries, exe, settings.SkipAllUsersStartup);

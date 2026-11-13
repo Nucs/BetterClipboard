@@ -14,9 +14,20 @@
     <RootNamespace>BetterClipboard.Cli</RootNamespace>
     <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
     <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
+    <!-- For the two imports of the linked PackageIdentity.cs (LibraryImport generates unsafe code). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\BetterClipboard.Core\BetterClipboard.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The same source the app uses to tell that it runs from the Microsoft Store package: bclip from that package must
+      resolve the same data folder (AppPaths.ResolveDefault), and it references Core only, so the file is linked
+      instead of pulling in BetterClipboard.Windows with its WinRT projection.
+    -->
+    <Compile Include="..\BetterClipboard.Windows\Packaging\PackageIdentity.cs" Link="Packaging\PackageIdentity.cs" />
   </ItemGroup>
 </Project>

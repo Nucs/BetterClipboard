@@ -45,6 +45,12 @@ public sealed class CliPipeServer : IAsyncDisposable
     private Task? acceptLoop;
 
     /// <summary>
+    /// Clients being served right now (connected, and not yet answered and hung up). The silent restart waits while any is
+    /// (CLAUDE.md §2.46): a restart would cut a <c>bclip wait</c> off from its answer.
+    /// </summary>
+    public int ActiveConnections => connections.Count;
+
+    /// <summary>
     /// Creates a server; nothing listens until <see cref="Start"/>.
     /// </summary>
     /// <param name="pipeName">From <see cref="CliEndpoint.PipeName"/>.</param>

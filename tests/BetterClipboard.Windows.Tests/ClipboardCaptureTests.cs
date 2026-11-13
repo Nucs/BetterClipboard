@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Windows.Clipboard;
+using BetterClipboard.Windows.Interop;
 
 namespace BetterClipboard.Windows.Tests;
 
@@ -163,10 +164,55 @@ public sealed class ClipboardCaptureTests : IDisposable
         Assert.Equal(1, producer.RendersServed);
     }
 
+    /// <summary>
+    /// A silent restart's new process (CLAUDE.md §2.46) reads a copy made while neither process listened: started with the
+    /// old process's last handled sequence number, the monitor reads the newer state at once, as if notified, and its
+    /// accounting stays balanced.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task TakingOver_ReadsACopyMadeInBetween()
+    {
+        using var producer = new ClipboardProducer(isolation);
+        await producer.WriteBurstAsync(["handled by the old process"]);
+        uint handedOver = NativeMethods.GetClipboardSequenceNumber();
+        await producer.WriteBurstAsync(["copied while nobody listened"]);
+
+        using var monitor = StartMonitor(previousSequence: handedOver);
+        await WaitUntil(monitor, () => captured.Count == 1 && Balanced(monitor.Statistics));
+
+        Assert.Equal("copied while nobody listened", captured.Single());
+        Assert.Equal(NativeMethods.GetClipboardSequenceNumber(), monitor.LastHandledSequence);
+    }
+
+    /// <summary>
+    /// The same take-over with nothing new on the clipboard reads nothing: the old process already recorded what is there,
+    /// and an unchanged sequence number is not a copy.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task TakingOver_WithNothingNew_ReadsNothing()
+    {
+        using var producer = new ClipboardProducer(isolation);
+        await producer.WriteBurstAsync(["handled by the old process"]);
+        uint handedOver = NativeMethods.GetClipboardSequenceNumber();
+
+        using var monitor = StartMonitor(previousSequence: handedOver);
+
+        // Long enough for a posted notification to be read (milliseconds); a later copy proves the monitor listens.
+        await Task.Delay(300, TestContext.Current.CancellationToken);
+        Assert.Empty(captured);
+        await producer.WriteBurstAsync(["a live copy afterwards"]);
+        await WaitUntil(monitor, () => captured.Count == 1);
+        Assert.Equal("a live copy afterwards", captured.Single());
+        Assert.Equal(1, monitor.Statistics.Notifications);
+    }
+
     /// <summary>Starts a monitor on the isolated desktop that records captured text.</summary>
     /// <param name="watchdogMilliseconds">Watchdog period.</param>
+    /// <param name="previousSequence">For a take-over (<see cref="ClipboardMonitor.Start(uint?)"/>): the last sequence number a previous process handled.</param>
     /// <returns>The running monitor.</returns>
-    private ClipboardMonitor StartMonitor(uint watchdogMilliseconds = 2000)
+    private ClipboardMonitor StartMonitor(uint watchdogMilliseconds = 2000, uint? previousSequence = null)
     {
         var monitor = new ClipboardMonitor(() => new CaptureOptions(), new SourceAppResolver())
         {
@@ -174,7 +220,7 @@ public sealed class ClipboardCaptureTests : IDisposable
             WatchdogMilliseconds = watchdogMilliseconds,
         };
         monitor.Captured += (_, capture) => captured.Enqueue(UnicodeTextCodec.Decode(capture.Find(ClipFormatNames.UnicodeText)!.Data));
-        monitor.Start();
+        monitor.Start(previousSequence);
         return monitor;
     }
 

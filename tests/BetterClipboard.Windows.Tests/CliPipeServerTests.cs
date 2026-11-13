@@ -64,12 +64,21 @@ public sealed class CliPipeServerTests
 
     /// <summary>When the client hangs up mid-request (Ctrl+C on bclip wait), the handler's token fires.</summary>
     /// <returns>A task.</returns>
+    /// <remarks>
+    /// The client hangs up once the handler runs, never after a fixed time. A hang-up 300 ms after the send started failed
+    /// whenever the request had not reached the handler by then: the client gave up before sending, the handler never ran,
+    /// and nothing was left to cancel. On 2026-11-12 that happened in every full run from one folder and in none from
+    /// another, with the same binaries: xunit's test order follows the test assembly's path, and in that order the pipe's
+    /// first connection waited behind the tests that ran beside it (CLAUDE.md §4, timing tests).
+    /// </remarks>
     [Fact]
     public async Task ClientHangUp_CancelsHandler()
     {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         await using var server = StartServer(async (_, cancellationToken) =>
         {
+            started.TrySetResult();
             try
             {
                 await Task.Delay(Timeout.Infinite, cancellationToken);
@@ -83,8 +92,20 @@ public sealed class CliPipeServerTests
             return new CliResponse { Ok = true };
         });
 
-        using var hangUp = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => CliClient.SendAsync(server.PipeName, new CliRequest { Command = CliCommands.Wait }, TimeSpan.FromSeconds(5), hangUp.Token));
+        using var hangUp = new CancellationTokenSource();
+        var send = CliClient.SendAsync(server.PipeName, new CliRequest { Command = CliCommands.Wait }, TimeSpan.FromSeconds(5), hangUp.Token);
+
+        // The send cannot end before its request is handled (the handler never answers), unless it failed: then its own
+        // exception is the better message than a timeout.
+        var first = await Task.WhenAny(started.Task, send).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        if (first == send)
+        {
+            await send;
+            Assert.Fail("The send ended before its request reached the handler.");
+        }
+
+        await hangUp.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => send);
         await cancelled.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
     }
 

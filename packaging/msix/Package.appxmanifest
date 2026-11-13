@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The manifest of BetterClipboard's Microsoft Store package (CLAUDE.md §2.47, docs/microsoft-store.md).
+
+  A template: tools/release/package-msix.ps1 replaces the {{…}} tokens (the identity from identity.json or its
+  parameters, the version and the architecture of the build) and hands the result to the app's build as its
+  AppxManifest. Do not put real values here.
+
+  What each part is for:
+
+  - Identity: Name and Publisher are assigned by Partner Center when the app's name is reserved; the Store refuses a
+    package whose values differ. Version is (X+1).Y.Z.0 for the release X.Y.Z: the Store keeps the fourth number
+    for itself and refuses a first number of 0, and the releases are 0.x (package-msix.ps1 has the whole reasoning).
+  - TargetDeviceFamily: desktop Windows from 10.0.19041 (Windows 10 2004), the app's own minimum.
+  - Resources: the five interface languages the app ships (BetterClipboard.Core/Localization). They are declared here
+    because the app's texts live in its own catalogs, not in the package's resource index, which is where Windows and
+    the Store would otherwise look. Store policy 10.7 then asks for a listing description in each of them.
+  - Application "App": the app itself, a full-trust desktop program, and the only application of the package.
+      * SupportsMultipleInstances: every launch is a new process, as for the unpackaged app. The second process finds
+        the first through the single-instance lock, tells it what was asked (open Settings, show the panel, exit) and
+        ends; the app has no other way to hear about a second launch. Windows also asks for it on an application
+        with a console alias.
+      * windows.startupTask: "Start with Windows". Enabled="false": nothing starts at sign-in until the user says so in
+        the welcome or in Settings (PackagedStartup); Windows lists the task under Settings > Apps > Startup, where the
+        user can overrule it. The task starts the program without arguments; the app recognizes that start and stays
+        in the tray.
+      * windows.appExecutionAlias "bclip.exe": the command line, a console program in the same package, by name in
+        every terminal. It replaces the PATH entry of the unpackaged edition. The extension names its own Executable
+        (bclip.exe, not the application's), and Subsystem "console" makes a terminal wait for it and get its output.
+  - Two rules shaped that alias, both met the hard way (docs/microsoft-store.md has the story):
+      * The Store refuses a package with a hidden application (AppListEntry="none": "specifies a headless app"),
+        so bclip cannot be a second application kept out of Start, which is how this manifest first declared it.
+      * Windows allows one windows.appExecutionAlias extension per application ("must only be declared once"), and all
+        aliases of one extension start that extension's one Executable. So the app has no "BetterClipboard.exe" alias
+        next to it: the one alias a package of one application can have goes to the command line, which scripts need.
+  - runFullTrust: the restricted capability every packaged desktop program has. The submission explains why
+    (docs/microsoft-store.md has the text): a clipboard manager listens for clipboard changes in every app, answers a
+    global shortcut and pastes into the window the user came from, which the app container model has no way to do.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap5 desktop desktop4 rescap">
+
+  <Identity Name="{{Name}}" Publisher="{{Publisher}}" Version="{{Version}}" ProcessorArchitecture="{{Architecture}}" />
+
+  <Properties>
+    <DisplayName>{{DisplayName}}</DisplayName>
+    <PublisherDisplayName>{{PublisherDisplayName}}</PublisherDisplayName>
+    <Logo>Assets\Store\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-US" />
+    <Resource Language="zh-Hans" />
+    <Resource Language="ru" />
+    <Resource Language="es" />
+    <Resource Language="he" />
+  </Resources>
+
+  <Applications>
+    <Application Id="App" Executable="BetterClipboard.exe" EntryPoint="Windows.FullTrustApplication" desktop4:SupportsMultipleInstances="true">
+      <uap:VisualElements
+        DisplayName="{{DisplayName}}"
+        Description="Clipboard history that is kept, searchable and encrypted. Opens with Win+V."
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Store\Square150x150Logo.png"
+        Square44x44Logo="Assets\Store\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Store\Wide310x150Logo.png" />
+      </uap:VisualElements>
+      <Extensions>
+        <desktop:Extension Category="windows.startupTask" Executable="BetterClipboard.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="BetterClipboardStartup" Enabled="false" DisplayName="{{DisplayName}}" />
+        </desktop:Extension>
+        <uap5:Extension Category="windows.appExecutionAlias" Executable="bclip.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap5:AppExecutionAlias desktop4:Subsystem="console">
+            <uap5:ExecutionAlias Alias="bclip.exe" />
+          </uap5:AppExecutionAlias>
+        </uap5:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

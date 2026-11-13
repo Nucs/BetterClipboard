@@ -75,6 +75,19 @@ public sealed record AppSettings
     public bool LanguageChosen { get; init; }
 
     /// <summary>
+    /// Whether the user pressed <em>Start</em> in the Microsoft Store edition's welcome window: their yes to keeping
+    /// what they copy, and to the choices in that window (Win+V, Start with Windows). Until then that edition records
+    /// nothing, takes no shortcut and shows the welcome at every start (CLAUDE.md §2.47). Other editions never read it:
+    /// there, running the installer is the yes.
+    /// </summary>
+    /// <remarks>
+    /// The Microsoft Store's policies ask for it (10.2.8: consent before the Windows experience is changed; 10.5.5:
+    /// express consent before sensitive data is stored). Footgun: a version that does not know this member drops it
+    /// when it saves the file; only a Store edition older than the member could, and there is none.
+    /// </remarks>
+    public bool StoreWelcomeAccepted { get; init; }
+
+    /// <summary>
     /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).
     /// The outer window's width, frame included, without the groups column.
     /// </summary>
@@ -207,6 +220,17 @@ public sealed record AppSettings
 
     /// <summary>Record image-only copies (screenshots etc.).</summary>
     public bool CaptureImages { get; init; } = true;
+
+    /// <summary>
+    /// How many days a picture the card menu's <em>Save to temp and</em> wrote is kept: the start deletes the ones whose last
+    /// use is older (<see cref="Content.TempImageFiles"/>); 0 = every one at every start. A month by default.
+    /// </summary>
+    /// <remarks>
+    /// Checked only when BetterClipboard starts (after Windows starts, as a rule), never while it runs: a picture just pasted
+    /// as a file into a chat that uploads it later must still be there. Footgun: a version from before this member drops it
+    /// when it saves the file; the next newer version then keeps a month again.
+    /// </remarks>
+    public int TempImageDays { get; init; } = Content.TempImageFiles.DefaultKeepDays;
 
     /// <summary>Record file lists copied in Explorer (paths only, not file contents).</summary>
     public bool CaptureFiles { get; init; } = true;
@@ -363,6 +387,25 @@ public sealed record AppSettings
     /// Off by default; remembered (see <see cref="SearchMatchCase"/>).
     /// </summary>
     public bool SearchUseRegex { get; init; }
+
+    /// <summary>
+    /// The text viewer's text size (the eye's viewer and the hover peek of a long text), as a factor of the normal size:
+    /// 1 is 100 %. Changed with Ctrl+wheel, Ctrl+= and Ctrl+- in the viewer and remembered (the owner's choice,
+    /// 2026-11-13); clamped to 0.5–3 by <see cref="Normalize"/>.
+    /// </summary>
+    public double TextViewerTextSize { get; init; } = 1;
+
+    /// <summary>
+    /// The text viewer's Wrap switch: long lines wrap at the window's edge (on, the default) or keep their shape and scroll
+    /// sideways (off). Remembered like <see cref="TextViewerTextSize"/>.
+    /// </summary>
+    public bool TextViewerWrap { get; init; } = true;
+
+    /// <summary>
+    /// Whether the text viewer shows line numbers next to code (never next to Markdown drawn as a document). On by default;
+    /// remembered.
+    /// </summary>
+    public bool TextViewerLineNumbers { get; init; } = true;
 
     /// <summary>Import Windows' current Win+V history (including its pinned items) at every startup.</summary>
     public bool ImportWindowsHistoryOnStartup { get; init; } = true;
@@ -860,10 +903,14 @@ public sealed record AppSettings
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
             MaxTotalSizeMB = Math.Clamp(MaxTotalSizeMB, 0, 1_048_576),
+            TempImageDays = Math.Clamp(TempImageDays, 0, Content.TempImageFiles.MaxKeepDays),
 
             // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
             FlyoutWidth = Math.Clamp(FlyoutWidth, MinFlyoutWidth, MaxFlyoutSize),
             FlyoutHeight = Math.Clamp(FlyoutHeight, MinFlyoutHeight, MaxFlyoutSize),
+
+            // The viewer's text size within what its zoom allows; a hand-edited NaN or infinity is 100 %.
+            TextViewerTextSize = double.IsFinite(TextViewerTextSize) ? Math.Clamp(TextViewerTextSize, TextView.TextViewStyle.MinScale, TextView.TextViewStyle.MaxScale) : 1,
             IgnoredApps = withCatalog,
             SeededIgnoredApps = seen,
 

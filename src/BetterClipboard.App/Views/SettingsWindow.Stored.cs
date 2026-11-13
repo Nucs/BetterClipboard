@@ -31,8 +31,26 @@ public sealed partial class SettingsWindow
         storedRefresh = DispatcherQueue.CreateTimer();
         storedRefresh.Interval = TimeSpan.FromSeconds(2);
         storedRefresh.IsRepeating = false;
-        storedRefresh.Tick += (_, _) => _ = ViewModel.RefreshStoredAsync();
+        storedRefresh.Tick += StoredRefresh_Tick;
     }
+
+    /// <summary>
+    /// Stops the recount timer and takes this window's handler off it (window closing): like the search's timer
+    /// (<see cref="CloseSearch"/>), a handler left on it would keep the closed window and its whole XAML tree in memory.
+    /// </summary>
+    private void CloseStoredRefresh()
+    {
+        if (storedRefresh is { } timer)
+        {
+            timer.Stop();
+            timer.Tick -= StoredRefresh_Tick;
+        }
+    }
+
+    /// <summary>Two seconds passed since the last change: count again what the integrations stored.</summary>
+    /// <param name="sender">The timer.</param>
+    /// <param name="args">Nothing.</param>
+    private void StoredRefresh_Tick(DispatcherQueueTimer sender, object args) => _ = ViewModel.RefreshStoredAsync();
 
     /// <summary>Asks for a recount of what the integrations stored, two seconds from now (see <see cref="storedRefresh"/>).</summary>
     private void ScheduleStoredRefresh()

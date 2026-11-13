@@ -33,7 +33,8 @@ public sealed class UpdateServiceTests
         /// <param name="workDirectory">A working folder to reuse (a second service over the same cache); a new one by default.</param>
         /// <param name="time">A clock to reuse; a new one at <see cref="Start"/> by default.</param>
         /// <param name="readsLocalBuilds">Whether the copy reads a dev-builds folder (<see cref="LocalBuilds"/>), as one the installer installed does.</param>
-        public Harness(string current = "0.2.6", UpdateInstallKind kind = UpdateInstallKind.Installer, bool allowAutomaticChecks = true, string? workDirectory = null, ManualTimeProvider? time = null, bool readsLocalBuilds = false)
+        /// <param name="portableInPlace">For a portable copy: whether it can write its folder, and so update itself there.</param>
+        public Harness(string current = "0.2.6", UpdateInstallKind kind = UpdateInstallKind.Installer, bool allowAutomaticChecks = true, string? workDirectory = null, ManualTimeProvider? time = null, bool readsLocalBuilds = false, bool portableInPlace = false)
         {
             Time = time ?? new ManualTimeProvider(Start);
             WorkDirectory = workDirectory ?? Path.Combine(temp.Path, "updates");
@@ -52,6 +53,7 @@ public sealed class UpdateServiceTests
                 Installer = Installer,
                 Time = Time,
                 LocalBuildsDirectory = readsLocalBuilds ? LocalBuilds : null,
+                PortableInPlace = portableInPlace,
             });
             Service.Changed += (_, _) => Interlocked.Increment(ref changes);
         }
@@ -870,6 +872,59 @@ public sealed class UpdateServiceTests
         await portable.Service.InstallAsync();
         Assert.Null(portable.Installer.Request);
         Assert.Equal(0, portable.Handler.CountOf(portable.PackageUrl));
+    }
+
+    /// <summary>
+    /// A portable copy that can write its folder installs a release that applies itself there (0.2.11 or newer) through its
+    /// installer, as an installed copy does, and a failure its helper reports reaches the dialog. An older release, or a
+    /// folder it may not write, keeps the download page: no package is downloaded (CLAUDE.md §2.29).
+    /// </summary>
+    /// <returns>A task for the test.</returns>
+    [Fact]
+    public async Task Install_PortableCopy_UpdatesItsOwnFolder()
+    {
+        // 0.2.10's program does not know the helper's command line: it is offered, but not installed in place.
+        await using (var older = new Harness(kind: UpdateInstallKind.Portable, portableInPlace: true))
+        {
+            older.Serve("0.2.10");
+            await older.Service.CheckAsync();
+            Assert.True(older.Service.Current.IsUpdateAvailable);
+            Assert.False(older.Service.Current.CanInstall);
+            await older.Service.InstallAsync();
+            Assert.Null(older.Installer.Request);
+        }
+
+        // A folder this user may not write: the download page, whatever the release.
+        await using (var readOnly = new Harness(current: "0.2.11", kind: UpdateInstallKind.Portable, portableInPlace: false))
+        {
+            readOnly.Serve("0.2.12");
+            await readOnly.Service.CheckAsync();
+            Assert.False(readOnly.Service.Current.CanInstall);
+            Assert.False(readOnly.Service.Current.PortableInPlace);
+        }
+
+        await using var portable = new Harness(current: "0.2.11", kind: UpdateInstallKind.Portable, portableInPlace: true);
+        portable.Serve("0.2.12", "0.2.11");
+        await portable.Service.CheckAsync();
+        Assert.True(portable.Service.Current.PortableInPlace);
+        Assert.True(portable.Service.Current.CanInstall);
+
+        var install = portable.Service.InstallAsync();
+        var request = await portable.Installer.Started.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        Assert.Equal("0.2.12", request.Version.ToString());
+        Assert.Equal(portable.Service.ResultPath, request.ResultPath);
+        Assert.Equal(portable.Package, portable.Installer.PackageBytes);
+
+        // The helper put the previous version back and said so; the copy that asked still runs.
+        var reason = UpdateMessages.Format(UpdateMessages.PortableFileNotReplaced, "Microsoft.UI.Xaml.dll", "The process cannot access the file");
+        new UpdateResult("0.2.12", false, reason, DateTimeOffset.UtcNow).Write(request.ResultPath);
+        portable.Installer.End(5);
+        await install;
+
+        var problem = portable.Service.Current.InstallProblem!;
+        Assert.Equal(UpdateFailure.Installer, problem.Failure);
+        Assert.Contains(reason, problem.Message, StringComparison.Ordinal);
+        Assert.True(portable.Service.Current.CanInstall);
     }
 
     /// <summary>

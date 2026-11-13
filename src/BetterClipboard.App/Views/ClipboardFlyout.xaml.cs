@@ -348,6 +348,9 @@ public sealed partial class ClipboardFlyout : Window
                 await RefreshConcealedListAsync();
             }
 
+            // RichEdit's one-time start, for the first text peek (ClipboardFlyout.TextPreview.cs).
+            WarmUpTextPreview();
+
             // A couple of frames more, so the first render (backdrop, swap chain, glyph atlas, the cards) is paid now too.
             await Task.Delay(100);
             if (!presented && !cloaking)
@@ -798,6 +801,14 @@ public sealed partial class ClipboardFlyout : Window
             case VirtualKey.G when ctrl:
                 SetGroupsPane(!groupsPaneOpen);
                 break;
+            case VirtualKey.F3:
+                // View: the selected card in the text or image viewer (the card menu's View).
+                if (Selected is { } toView)
+                {
+                    ViewCard(toView);
+                }
+
+                break;
 
             // The search box's toggles, with Visual Studio's keys. They never take focus, so this is their keyboard
             // route. Not VS Code's Alt+R for the pattern: GPU overlays (NVIDIA, AMD) own Alt+R globally (see the XAML).
@@ -1227,15 +1238,24 @@ public sealed partial class ClipboardFlyout : Window
 
         // A popup going away is not a move of the mouse, but WinUI reports "pointer entered" to the row it uncovers.
         SuspendPointerSelection();
-        SearchBox.Focus(FocusState.Programmatic);
+
+        // A viewer that stays open keeps the keyboard (FocusOpenViewer's remarks); otherwise it goes back to the search.
+        if (!FocusOpenViewer())
+        {
+            SearchBox.Focus(FocusState.Programmatic);
+        }
     }
 
     /// <summary>Shows the per-item context menu.</summary>
     /// <param name="item">The card.</param>
     /// <param name="target">Placement target.</param>
     /// <param name="position">Position relative to <paramref name="target"/>.</param>
+    /// <param name="leading">
+    /// Items shown above the card's own, or <see langword="null"/>: the text peek and the text viewer put Copy and Select
+    /// all for their selection there (ClipboardFlyout.TextPreview.cs).
+    /// </param>
     /// <returns>The menu, already opening (for callers that must act when it closes).</returns>
-    private MenuFlyout ShowItemMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position)
+    private MenuFlyout ShowItemMenu(ClipItemViewModel item, FrameworkElement target, global::Windows.Foundation.Point position, IReadOnlyList<MenuFlyoutItemBase>? leading = null)
     {
         if (item.Pick is { } pick)
         {
@@ -1244,15 +1264,16 @@ public sealed partial class ClipboardFlyout : Window
 
         if (item.Command is not null)
         {
-            return ShowCommandMenu(item, target, position);
+            return ShowCommandMenu(item, target, position, leading);
         }
 
         if (item.Prompt is not null)
         {
-            return ShowPromptMenu(item, target, position);
+            return ShowPromptMenu(item, target, position, leading);
         }
 
         var menu = new MenuFlyout();
+        AddLeadingItems(menu, leading);
         menu.Items.Add(MenuItem(UiText.Translate("Paste"), "\uE77F", "Enter", () => _ = PasteItemAsync(item, plainText: false)));
         if (item.Entry.HasRichFormats || item.Kind == ClipKind.Files)
         {
@@ -1261,6 +1282,7 @@ public sealed partial class ClipboardFlyout : Window
         }
 
         menu.Items.Add(MenuItem(UiText.Translate("Copy only"), "\uE8C8", null, () => _ = PasteItemAsync(item, plainText: false, paste: false)));
+        AddViewItem(menu, item);
         menu.Items.Add(MenuItem(item.IsPinned ? UiText.Translate("Unpin") : UiText.Translate("Pin"), item.IsPinned ? "\uE77A" : "\uE718", "Ctrl+P",
             () => _ = TogglePinAsync(item)));
 
@@ -1277,6 +1299,9 @@ public sealed partial class ClipboardFlyout : Window
                 menu.Items.Add(MenuItem(UiText.Translate("Show in Everything"), "\uE721", null, () => _ = ShowStoredInEverythingAsync(item)));
             }
         }
+
+        // A picture: its file's line and actions while the file is on disk, and "Save to temp and" (ClipboardFlyout.ImageFiles.cs).
+        AddImageFileItems(menu, item);
 
         // Only commands run with Win+R before: running arbitrary copied text is one mistaken click from harm.
         if (item.Pick is null && item.Entry.HasRunHistory)
@@ -1307,6 +1332,34 @@ public sealed partial class ClipboardFlyout : Window
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });
         return menu;
+    }
+
+    /// <summary>
+    /// Puts items above a card menu's own (the text peek's and viewer's Copy and Select all), when there are any.
+    /// </summary>
+    /// <param name="menu">The card menu, still empty.</param>
+    /// <param name="leading">The items, or <see langword="null"/>.</param>
+    private static void AddLeadingItems(MenuFlyout menu, IReadOnlyList<MenuFlyoutItemBase>? leading)
+    {
+        foreach (var item in leading ?? [])
+        {
+            menu.Items.Add(item);
+        }
+    }
+
+    /// <summary>
+    /// Adds View (F3) to a card menu: the image viewer for a picture, the text viewer for a card with text
+    /// (ClipboardFlyout.TextPreview.cs) — for every card, also one the card already shows whole (the owner's choice,
+    /// 2026-11-13). Queued, so the viewer opens after the menu has closed.
+    /// </summary>
+    /// <param name="menu">The card menu.</param>
+    /// <param name="item">The card.</param>
+    private void AddViewItem(MenuFlyout menu, ClipItemViewModel item)
+    {
+        if (item.Kind == ClipKind.Image || item.CanViewText)
+        {
+            menu.Items.Add(MenuItem(UiText.Translate("View"), ViewGlyph, "F3", () => DispatcherQueue.TryEnqueue(() => ViewCard(item))));
+        }
     }
 
     /// <summary>Builds a menu item with glyph and accelerator hint.</summary>
@@ -2255,7 +2308,9 @@ public sealed partial class ClipboardFlyout : Window
         TextBox? nameBox = null;
         if (existing is null)
         {
-            nameBox = new TextBox { PlaceholderText = UiText.Translate("Name (optional)"), MaxLength = ClipGroup.MaxNameLength };
+            // No spelling checker (here and in the rename box): a group name is a label, and the checker, once a box with it
+            // had the keyboard, would stay loaded in the app for good (CLAUDE.md §2.45).
+            nameBox = new TextBox { PlaceholderText = UiText.Translate("Name (optional)"), MaxLength = ClipGroup.MaxNameLength, IsSpellCheckEnabled = false, IsTextPredictionEnabled = false };
             AutomationProperties.SetName(nameBox, UiText.Translate("Group name"));
             panel.Children.Add(nameBox);
         }
@@ -2322,7 +2377,7 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="anchor">Placement target.</param>
     private void ShowRenameFlyout(ClipGroup group, FrameworkElement anchor)
     {
-        var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220 };
+        var box = new TextBox { Text = group.Name, MaxLength = ClipGroup.MaxNameLength, Width = 220, IsSpellCheckEnabled = false, IsTextPredictionEnabled = false };
         AutomationProperties.SetName(box, UiText.Translate("Group name"));
         var save = new Button { Content = UiText.Translate("Rename"), HorizontalAlignment = HorizontalAlignment.Right, Style = (Style)Application.Current.Resources["AccentButtonStyle"] };
         var panel = new StackPanel { Spacing = 10 };

@@ -60,6 +60,19 @@ public sealed class PowerShellHistorySource
     public int LastFileCount { get; private set; }
 
     /// <summary>
+    /// When the newest command of the last read was typed: the last write of the history file it came from (PSReadLine
+    /// appends each command to its file the moment Enter is pressed, CLAUDE.md §2.16). The file's records carry no times,
+    /// so this is the only time known; the Pwsh tab puts a command used from the panel after it above every command
+    /// (<see cref="ShellTab.Merge"/>). <see langword="null"/> before the first read and when no file holds a command.
+    /// </summary>
+    /// <remarks>
+    /// Footgun: with PSReadLine's <c>SaveAtExit</c> the file is written when the console closes, so this is that moment, a
+    /// little later than the command. Set by every read like <see cref="LastRecordCount"/>; two reads at once (a load
+    /// superseded while typing) read the same files and set the same time.
+    /// </remarks>
+    public DateTimeOffset? LastNewestCommandUtc { get; private set; }
+
+    /// <summary>
     /// PSReadLine's folder: <see cref="FolderVariable"/> when set, else
     /// <c>Environment.GetFolderPath(ApplicationData)\Microsoft\Windows\PowerShell\PSReadLine</c> — the known folder,
     /// exactly as PSReadLine builds it (not the <c>%APPDATA%</c> variable).
@@ -110,6 +123,7 @@ public sealed class PowerShellHistorySource
         var order = new List<(string Text, string Source)>();
         var counts = new Dictionary<string, int>(StringComparer.Ordinal);
         int records = 0;
+        DateTimeOffset? newest = null;
         foreach (var file in files)
         {
             var parsed = Parse(file);
@@ -127,10 +141,17 @@ public sealed class PowerShellHistorySource
                     order.Add((text, source));
                 }
             }
+
+            // The first file with a command holds the newest one (newest written first); an empty file says nothing.
+            if (newest is null && parsed.Count > 0)
+            {
+                newest = new DateTimeOffset(file.LastWriteTimeUtc, TimeSpan.Zero);
+            }
         }
 
         LastRecordCount = records;
         LastFileCount = files.Count;
+        LastNewestCommandUtc = newest;
         return order.Select(o => new ShellCommand(ShellKind.PowerShell, o.Text, counts[o.Text], null, o.Source)).ToList();
     }
 

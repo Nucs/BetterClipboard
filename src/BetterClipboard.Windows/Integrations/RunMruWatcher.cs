@@ -33,6 +33,13 @@ namespace BetterClipboard.Windows.Integrations;
 /// polls every <see cref="PollInterval"/> and reports a change only when the key appeared, disappeared or its last
 /// write moved.
 /// </para>
+/// <para>
+/// <b>The Microsoft Store edition always polls</b> (<c>pollOnly</c>). Inside a package, a process sees the user's
+/// registry merged with the package's private one, and a notification registered on such a key is never signalled
+/// when another process writes it (measured 2026-11-12 on <c>HKEY_CURRENT_USER</c> and through
+/// <c>HKEY_USERS\&lt;SID&gt;</c>, CLAUDE.md §2.47), while the key's last-write time does move. A registration there
+/// would succeed and then wait for ever.
+/// </para>
 /// </remarks>
 public sealed class RunMruWatcher : IDisposable
 {
@@ -43,6 +50,9 @@ public sealed class RunMruWatcher : IDisposable
     private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(2);
 
     private readonly string keyPath;
+
+    /// <summary>Never register for a notification; only compare the key's last write every <see cref="PollInterval"/>.</summary>
+    private readonly bool pollOnly;
     private readonly ManualResetEvent stop = new(false);
     private Thread? thread;
     private int disposed;
@@ -51,11 +61,16 @@ public sealed class RunMruWatcher : IDisposable
     /// Creates the watcher; nothing is watched until <see cref="Start"/>.
     /// </summary>
     /// <param name="keyPath">The key, relative to <c>HKEY_CURRENT_USER</c> (<see cref="RunMruReader.ResolveKeyPath"/>).</param>
+    /// <param name="pollOnly">
+    /// Poll instead of waiting for a notification: for a process that runs from a package, where the notification never
+    /// comes (see the class remarks). A change is then seen up to <see cref="PollInterval"/> late.
+    /// </param>
     /// <exception cref="ArgumentException"><paramref name="keyPath"/> is null or blank.</exception>
-    public RunMruWatcher(string keyPath)
+    public RunMruWatcher(string keyPath, bool pollOnly = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(keyPath);
         this.keyPath = keyPath;
+        this.pollOnly = pollOnly;
     }
 
     /// <summary>
@@ -115,7 +130,8 @@ public sealed class RunMruWatcher : IDisposable
             bool isKey = false;
             try
             {
-                watched = OpenWatchTarget(out isKey);
+                // A polling watcher opens nothing here: the stamp below reads the key each round.
+                watched = pollOnly ? null : OpenWatchTarget(out isKey);
                 if (watched is not null)
                 {
                     // The key: any value written. Its parent (while the key is missing): subkeys created or deleted.

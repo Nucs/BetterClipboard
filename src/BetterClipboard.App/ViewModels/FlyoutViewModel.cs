@@ -483,7 +483,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
             if (IsPromptView)
             {
-                // A prompt tab: kept prompts, then the archive one card per text, paged (FlyoutViewModel.Prompts.cs).
+                // A prompt tab: kept prompts and the archive merged newest first, one card per text, paged
+                // (FlyoutViewModel.Prompts.cs).
                 await ReloadPromptsAsync(cancellation.Token);
                 MarkLoaded(search, cancellation, view, version);
                 return;
@@ -498,12 +499,13 @@ public sealed partial class FlyoutViewModel : ObservableObject
                     return;
                 }
 
-                // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
+                // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems). A kept
+                // file opened again in Everything since shows that newer time, the one its place in the list follows.
                 var cards = new List<ClipItemViewModel>(rows.Count);
                 long syntheticId = -1;
                 foreach (var row in rows)
                 {
-                    cards.Add(row.Entry is { } stored ? CreateItem(stored) : ClipItemViewModel.ForPick(row.Pick!, syntheticId--));
+                    cards.Add(row.Entry is { } stored ? CreateItem(stored, row.Time) : ClipItemViewModel.ForPick(row.Pick!, syntheticId--));
                 }
 
                 ReplaceItems(cards);
@@ -579,7 +581,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
         {
             if (IsPromptView)
             {
-                // The archive pages by its own offset (the kept prompts above it are loaded once).
+                // The archive pages by its own offset; the kept prompts, loaded once, join the page their time falls on.
                 await LoadMorePromptsAsync(token);
                 return;
             }
@@ -630,6 +632,12 @@ public sealed partial class FlyoutViewModel : ObservableObject
         switch (change.Kind)
         {
             case ClipChangeKind.Removed when change.EntryId is { } removedId:
+                // A kept prompt whose place lies on a page not loaded yet must not come back with that page.
+                if (IsPromptView)
+                {
+                    promptOrder?.Forget(removedId);
+                }
+
                 var removed = Items.FirstOrDefault(i => i.Id == removedId);
                 if (removed is not null)
                 {
@@ -1032,6 +1040,21 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <param name="entry">The entry.</param>
     /// <returns>The card model.</returns>
     private ClipItemViewModel CreateItem(ClipEntry entry) => new(entry, controller.History.GetThumbnailAsync, FindGroup);
+
+    /// <summary>
+    /// Wraps an entry of a merged tab (Claude, Codex, Pwsh, Cmd, Everything) in a card model that shows the time its row
+    /// sorts by (<see cref="Core.Presentation.MergedTabRow{TItem}.Time"/>): its twin's in the other app when that is newer —
+    /// a kept prompt sent again — so the card's time matches its place in the list.
+    /// </summary>
+    /// <param name="entry">The entry.</param>
+    /// <param name="rowTime">The row's time; <see langword="null"/>, or not newer than the entry's last use, shows the last use.</param>
+    /// <returns>The card model.</returns>
+    private ClipItemViewModel CreateItem(ClipEntry entry, DateTimeOffset? rowTime)
+    {
+        var item = CreateItem(entry);
+        item.ShowNewerTime(rowTime);
+        return item;
+    }
 
     /// <summary>Chooses the empty-state wording for the current search/filter.</summary>
     private void UpdateEmptyState()

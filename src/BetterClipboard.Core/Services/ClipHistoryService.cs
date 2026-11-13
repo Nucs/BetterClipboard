@@ -469,6 +469,20 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     public Task<IReadOnlyList<ClipFormatData>> GetFormatsAsync(long id) => Task.Run(() => store.GetFormats(id));
 
     /// <summary>
+    /// Loads one payload of an entry on the thread pool: the first of <paramref name="names"/> it stores, in the order given
+    /// (see <see cref="ClipStore.GetFirstFormat"/>). Only that payload is read, never the others next to it.
+    /// </summary>
+    /// <param name="id">Entry id.</param>
+    /// <param name="names">Format names, most wanted first.</param>
+    /// <returns>The payload, or <see langword="null"/> when the entry stores none of them or is gone.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="names"/> is <see langword="null"/>.</exception>
+    public Task<ClipFormatData?> GetFirstFormatAsync(long id, IReadOnlyList<string> names)
+    {
+        ArgumentNullException.ThrowIfNull(names);
+        return Task.Run(() => store.GetFirstFormat(id, names));
+    }
+
+    /// <summary>
     /// Loads an entry's thumbnail on the thread pool.
     /// </summary>
     /// <param name="id">Entry id.</param>

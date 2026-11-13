@@ -921,6 +921,32 @@ public sealed class UpdateTextTests
     }
 
     /// <summary>
+    /// A portable copy that can write its folder, offered a release that applies itself there (0.2.11 or newer), says that
+    /// updating puts the new version into its folder, with the approving button an installed copy has. The same copy in a
+    /// folder it may not write, or offered an older release, keeps the download page's words (CLAUDE.md §2.29).
+    /// </summary>
+    [Fact]
+    public void UpdateAvailable_PortableCopyInItsOwnFolder()
+    {
+        var release = UpdateTestData.Release("0.2.12");
+        var newer = new UpdateOffer(release, release.FindAsset("BetterClipboard-0.2.12-win-x64.zip")!, release.FindAsset(UpdateCatalog.ChecksumsFileName)!);
+        var inPlace = Running(UpdateInstallKind.Portable) with { Offer = newer, PortableInPlace = true };
+        Assert.True(inPlace.CanInstall);
+        var detail = UpdateText.Detail(inPlace, Now, TimeZoneInfo.Utc, Culture);
+        Assert.StartsWith("You have 0.2.6. Released Thu 12:00.", detail, StringComparison.Ordinal);
+        Assert.Contains("puts it into this copy's folder and restarts BetterClipboard", detail, StringComparison.Ordinal);
+        Assert.Equal("Update and restart", UpdateText.ApproveButton(inPlace));
+
+        var readOnly = inPlace with { PortableInPlace = false };
+        Assert.False(readOnly.CanInstall);
+        Assert.Contains("does not replace itself", UpdateText.Detail(readOnly, Now, TimeZoneInfo.Utc, Culture), StringComparison.Ordinal);
+
+        var tooOld = Running(UpdateInstallKind.Portable) with { Offer = Offer(), PortableInPlace = true };
+        Assert.False(tooOld.CanInstall);
+        Assert.Contains("does not replace itself", UpdateText.Detail(tooOld, Now, TimeZoneInfo.Utc, Culture), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A copy installed for every user says an administrator updates it, with the command for PowerShell as administrator,
     /// and why it does not check by itself.
     /// </summary>
