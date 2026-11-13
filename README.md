@@ -75,6 +75,10 @@ you send to Claude Code and Codex.
   icons, drag cards onto them, and show one group or several at once (`Ctrl+click`, `Shift+click`, or `Space` on a group
   you reach with the arrow keys). Pinned and grouped items outlive every limit, and *Clear* keeps them
   ([Groups](#groups)).
+- **Light on memory.** After each use it hands back the memory it no longer needs: while it waits for your next Win+V,
+  Task Manager's *Memory* column shows a few megabytes. What Settings leaves behind goes too: a few seconds after you
+  close it, BetterClipboard quietly replaces itself with a fresh copy, and nothing opens or flickers
+  ([How it works](#how-it-works)).
 - **Reads every copy at once.** Copies 2 ms apart or more are all kept. A program that copies faster than that
   overwrites its own copies before any app, Win+V included, can read them: BetterClipboard keeps the last one and
   counts the rest (*Settings › Capture reliability*).
@@ -337,11 +341,12 @@ type, typos included; `Esc` clears it. Its sections:
 - **Third party:** the apps BetterClipboard works with and the components it is built with, with their official
   links.
 
-**Closing Settings gives its memory back.** Settings leaves memory behind that only a new process returns (about 80 to
-100 MB), so a few seconds after you close it, once the panel is closed and keyboard and mouse have paused, BetterClipboard
-quietly replaces itself with a fresh copy. Nothing opens or flickers, and the pointer does not change: the tray icon stays
-where it is, the shortcuts keep working (one pressed in that second opens the panel a moment later), and a copy made
-meanwhile is recorded.
+**Memory goes back after each use.** A little while after you put the panel away or close Settings, BetterClipboard
+hands back the memory it no longer needs, so while it waits, Task Manager's *Memory* column shows a few megabytes.
+Settings also leaves memory behind that only a new process returns (about 80 to 100 MB), so a few seconds after you
+close it, once the panel is closed and keyboard and mouse have paused, BetterClipboard quietly replaces itself with a
+fresh copy. Nothing opens or flickers, and the pointer does not change: the tray icon stays where it is, the shortcuts
+keep working (one pressed in that second opens the panel a moment later), and a copy made meanwhile is recorded.
 
 <p align="center">
   <img src="docs/images/settings.png" width="694" alt="BetterClipboard Settings: the app's name and three chips (Capturing; Win+V; 7 items, 3.3 MB, 1 pinned, 5 in groups). Then the Shortcut section: the box that records a shortcut with its Add button and menu, the Win+V row, the switch that takes over shortcuts owned by Windows, and Release from Explorer. Then the History section: maximum items, days to keep, largest item.">
@@ -785,6 +790,14 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   stays drawn, and after every copy its list is updated in the background. Win+V moves the finished panel to your cursor
   and puts it on screen in one step, with no fade or slide. On a test machine without a graphics card, the panel was
   complete about 0.1 s after the key, against 0.6 s before this change.
+- **Memory.** A little while after you put the panel away or close Settings (never while either shows),
+  BetterClipboard frees the memory it no longer uses and hands its pages back to Windows; the next Win+V brings them
+  back. Pictures are decoded at the size they are drawn, and a decoded full-size picture is let go when the panel
+  closes. Settings leaves caches behind that only a new process gives back, so a few seconds after it closes,
+  BetterClipboard starts a fresh copy of itself: the new copy holds the shortcuts and takes over the tray icon before
+  the old one exits, and reads any copy made in between. On a test machine without a graphics card, it needed about
+  46 MB of private memory at rest (87 MB in 0.2.10) and showed 4 to 7 MB in Task Manager's *Memory* column; a Win+V
+  after a pause took about 13 ms longer, for bringing the pages back.
 - **Capture.** BetterClipboard listens with `AddClipboardFormatListener` — the same change notification
   Windows' own clipboard-history service uses (there is no "atomic, never miss" clipboard API in
   Windows; every consumer reads the clipboard right after being told it changed). It reads each change
