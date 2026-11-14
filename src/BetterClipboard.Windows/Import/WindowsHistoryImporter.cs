@@ -34,6 +34,11 @@ public sealed record WindowsImportResult(IReadOnlyList<ClipCapture> Captures, bo
 /// user has turned Windows history off after switching to BetterClipboard. Duplicates between the two
 /// sources collapse in the store by content hash; imports never reorder existing entries.
 /// </para>
+/// <para>
+/// This reader reports every pin at every call. Whether a pin is applied is the history service's decision: each Windows
+/// pin comes over once (<see cref="Core.Services.WindowsPinLedger"/>), because Windows keeps its pins for good and the
+/// owner's unpin of an item pinned in Windows since March 2026 was undone at every start until 2026-11-14.
+/// </para>
 /// </remarks>
 public sealed class WindowsHistoryImporter
 {

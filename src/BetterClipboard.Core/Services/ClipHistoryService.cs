@@ -130,6 +130,12 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// Imports a batch (e.g. Windows' current history) in one queue slot and raises a single
     /// <see cref="ClipChangeKind.Reset"/> when anything changed, instead of one event per item.
     /// </summary>
+    /// <remarks>
+    /// A batch with captures of Windows' own history brings each Windows pin over once (<see cref="WindowsPinLedger"/>):
+    /// content an earlier import brought over is left as the user keeps it here, pinned, unpinned or deleted. The ledger is
+    /// read before the first capture and written after the last one; a batch without Windows captures (Win+R's list)
+    /// neither reads nor writes it.
+    /// </remarks>
     /// <param name="captures">Captures with an import <see cref="ClipCapture.Origin"/>.</param>
     /// <returns>How many new entries were created.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="captures"/> is <see langword="null"/>.</exception>
@@ -139,13 +145,17 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(captures);
         return EnqueueAsync(async () =>
         {
+            // Read on the worker, so no other write can slip between the ledger and the captures it decides about.
+            var windowsPins = captures.Any(capture => IsFromWindowsHistory(capture.Origin))
+                ? WindowsPinLedger.Parse(store.GetStateValue(WindowsPinLedger.StateName))
+                : null;
             int created = 0;
             bool anyChange = false;
             foreach (var capture in captures)
             {
                 try
                 {
-                    var result = await StoreAsync(capture, raiseEvents: false).ConfigureAwait(false);
+                    var result = await StoreAsync(capture, raiseEvents: false, windowsPins).ConfigureAwait(false);
                     if (result is not null)
                     {
                         created += result.IsNew ? 1 : 0;
@@ -157,6 +167,11 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
                     // One unreadable Windows item must not abort the rest of the import.
                     AppLog.Error("Failed to import one clipboard item.", ex);
                 }
+            }
+
+            if (windowsPins is not null)
+            {
+                SaveWindowsPins(windowsPins);
             }
 
             if (anyChange)
@@ -756,8 +771,15 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// </summary>
     /// <param name="capture">The capture.</param>
     /// <param name="raiseEvents">Whether to raise per-item events (false inside batch imports).</param>
-    /// <returns>The upsert result, or <see langword="null"/> when rejected (rules, classification, forgotten, or a suppressed import).</returns>
-    private async Task<UpsertResult?> StoreAsync(ClipCapture capture, bool raiseEvents)
+    /// <param name="windowsPins">
+    /// The batch's ledger of Windows pins already brought over (<see cref="ImportAsync"/>), or <see langword="null"/> outside
+    /// an import of Windows' history.
+    /// </param>
+    /// <returns>
+    /// The upsert result, or <see langword="null"/> when rejected (rules, classification, forgotten, a suppressed import, or
+    /// content of a Windows pin that the ledger leaves as the user keeps it).
+    /// </returns>
+    private async Task<UpsertResult?> StoreAsync(ClipCapture capture, bool raiseEvents, WindowsPinLedger? windowsPins = null)
     {
         var rules = rulesProvider();
 
@@ -835,6 +857,27 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
                     RaiseForgottenChanged();
                 }
 
+                return null;
+            }
+        }
+
+        // Windows keeps its pins for good and offers them at every import: each comes over once, and from then on the
+        // user's pin, unpin or delete here stands (WindowsPinLedger). After the forget check on purpose: forgotten content
+        // is never recorded as brought over, so "Allow again" lets its Windows pin come over once more.
+        if (windowsPins is not null && IsFromWindowsHistory(capture.Origin))
+        {
+            var hash = classified.ContentHash;
+            if (capture.Pin)
+            {
+                if (windowsPins.Decide(hash, store.FindPinnedState(hash)) == WindowsPinDecision.LeaveAsIs)
+                {
+                    return null;
+                }
+            }
+            else if (windowsPins.WasBroughtOver(hash))
+            {
+                // The same content arriving unmarked (a WinRT item whose timestamp missed its pin's) must not bring back
+                // an entry the user deleted here either.
                 return null;
             }
         }

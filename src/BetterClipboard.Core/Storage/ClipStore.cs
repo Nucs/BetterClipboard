@@ -143,7 +143,11 @@ public sealed partial class ClipStore
     /// <summary>Separator for <c>clips.format_names</c>; the ASCII unit separator cannot appear in real format names.</summary>
     private const char FormatNameSeparator = '\u001F';
 
-    /// <summary>Tombstones older than this are purged; Windows' own history never outlives a reboot anyway.</summary>
+    /// <summary>
+    /// Tombstones older than this are purged; Windows' own unpinned history never outlives a reboot anyway. Its pins do,
+    /// so the history service keeps a deleted pin out by other means once it has brought it over
+    /// (<see cref="Services.WindowsPinLedger"/>): this lifetime alone let such an item come back a month after its delete.
+    /// </summary>
     private static readonly TimeSpan TombstoneLifetime = TimeSpan.FromDays(30);
 
     private const string EntryColumns =
@@ -581,7 +585,9 @@ public sealed partial class ClipStore
     /// user copied most recently.</item>
     /// <item><see langword="false"/> (import): the existing row is left untouched except that a requested
     /// pin is added. Imported content that the user deleted (tombstone) or that predates the last
-    /// "clear history" is skipped entirely.</item>
+    /// "clear history" is skipped entirely. The history service requests a pin of Windows' own history only the first
+    /// time it brings that pin over (<see cref="Services.WindowsPinLedger"/>): Windows keeps its pins for good, and this
+    /// rule alone re-pinned an entry the user had unpinned at every start.</item>
     /// </list>
     /// A live copy removes any tombstone for its hash: copying something again is explicit consent to keep it.
     /// <see cref="ClipOrigin.ShareX"/> is the hybrid. The caller bumps its duplicates (it is a new
@@ -1107,6 +1113,28 @@ public sealed partial class ClipStore
         command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$id", id);
         return command.ExecuteNonQuery() > 0;
+    }
+
+    /// <summary>
+    /// Tells whether the entry holding some content is pinned, without loading it: what the import asks before it brings a
+    /// Windows pin over (<see cref="Services.WindowsPinLedger.Decide"/>).
+    /// </summary>
+    /// <param name="contentHash">The content hash (<see cref="ContentHasher"/>; a picture's pixel hash).</param>
+    /// <returns>
+    /// <see langword="true"/> or <see langword="false"/> for the entry's pin; <see langword="null"/> when no entry holds
+    /// the content (never kept, deleted, or pruned).
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="contentHash"/> is <see langword="null"/> or empty.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public bool? FindPinnedState(string contentHash)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(contentHash);
+        using var connection = Open();
+        using var command = Command(connection, "SELECT is_pinned FROM clips WHERE content_hash = $hash;");
+        command.Parameters.AddWithValue("$hash", contentHash);
+
+        // content_hash is unique, so there is one row or none; is_pinned is NOT NULL, read as a 64-bit integer.
+        return command.ExecuteScalar() is long pinned ? pinned != 0 : null;
     }
 
     /// <summary>
