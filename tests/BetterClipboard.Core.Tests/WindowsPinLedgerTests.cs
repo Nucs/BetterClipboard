@@ -163,6 +163,27 @@ public sealed class WindowsPinLedgerTests : IAsyncLifetime
         Assert.Equal(WindowsPinLedger.MaxEntries, after.Format().Split(',').Length);
     }
 
+    /// <summary>
+    /// A pin whose storing failed is taken back, so the next import applies it instead of leaving it out for good; a pin an
+    /// earlier import brought over cannot be taken back, and the same pin offered again in the import is recorded again.
+    /// </summary>
+    [Fact]
+    public void Withdraw_TakesBackOnlyAPinThisImportMetFirst()
+    {
+        var ledger = WindowsPinLedger.Parse($"v1:{Hash("old")}");
+        Assert.Equal(WindowsPinDecision.Apply, ledger.Decide(Hash("new"), entryPinned: null));
+        Assert.Equal(WindowsPinDecision.LeaveAsIs, ledger.Decide(Hash("old"), entryPinned: false));
+
+        ledger.Withdraw(Hash("new"));
+        ledger.Withdraw(Hash("old"));
+        Assert.Equal($"v1:{Hash("old")}", ledger.Format());
+        Assert.False(WindowsPinLedger.Parse(ledger.Format()).WasBroughtOver(Hash("new")));
+
+        // The pinned store offers the same pin after the WinRT item: met again, it is recorded again.
+        Assert.Equal(WindowsPinDecision.Apply, ledger.Decide(Hash("new"), entryPinned: null));
+        Assert.True(WindowsPinLedger.Parse(ledger.Format()).WasBroughtOver(Hash("new")));
+    }
+
     /// <summary>An import that saw the same pins in the same order changes nothing, so the store is not written.</summary>
     [Fact]
     public void Changed_OnlyWhenTheValueDiffers()

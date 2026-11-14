@@ -1091,6 +1091,48 @@ function Get-RecordedReleasedKeys($State) {
     return , @($keys | Where-Object { $_ -match '^[A-Z0-9]$' } | Select-Object -Unique)
 }
 
+function Test-Reinstall($State, [string] $Folder) {
+    <#
+    .SYNOPSIS
+        Whether this run installs over an earlier install of the same folder, whose installer.json names it.
+    .DESCRIPTION
+        Such a run is an update ("Running it again updates in place", README), so it keeps what was chosen in Settings
+        since: Start with Windows turned off, a Win+letter shortcut given back to Windows. Until 2026-11-14 every re-run
+        turned both back on. -Uninstall deletes installer.json, so an install after an uninstall is a fresh one, set up as
+        usual; installer.json is written only at the end of a run, so it describes the earlier install throughout this one.
+    .PARAMETER State
+        Read-InstallerState's answer, or $null.
+    .PARAMETER Folder
+        The folder this run installs into (a full path).
+    .OUTPUTS
+        System.Boolean.
+    #>
+    if ($null -eq $State -or -not $State.PSObject.Properties['installDir'] -or -not $State.installDir) {
+        return $false
+    }
+
+    return (Test-SamePath ([string] $State.installDir) $Folder)
+}
+
+function Get-KeysGivenBack($Wanted, $Recorded) {
+    <#
+    .SYNOPSIS
+        The Win+<key> shortcuts a re-run leaves with Windows: an earlier install released them, and they are not released
+        now, so they were given back to Windows in Settings (Shortcut > Release from Explorer > Give back).
+    .DESCRIPTION
+        While a copy stays installed, nothing but that button (or a hand edit of DisabledHotkeys) takes a key the installer
+        released out of Explorer's list: a choice the re-run keeps. The caller asks only on a re-install (Test-Reinstall),
+        and -TakeOverWinV still takes Win+V over again. A key no earlier install released is taken over as usual.
+    .PARAMETER Wanted
+        The keys of BetterClipboard's Win+letter shortcuts (Get-ReleasableKey).
+    .PARAMETER Recorded
+        Get-RecordedReleasedKeys' answer for the earlier install.
+    .OUTPUTS
+        System.Char[] (one array, never unrolled).
+    #>
+    return , @(@($Wanted) | Where-Object { @($Recorded) -contains $_ -and -not (Test-KeyReleased $_) })
+}
+
 # User PATH helpers - the same rules as the app's "Add bclip to PATH" button (Shell\UserPath.cs), so the
 # two never disagree about whether the folder is listed.
 
@@ -2261,6 +2303,10 @@ function Install-BetterClipboard {
         $link.Save()
     }
 
+    # A re-run over this very copy is an update: it keeps what was chosen in Settings since the earlier install (Start with
+    # Windows turned off, a Win+letter shortcut given back to Windows). See Test-Reinstall.
+    $reinstall = Test-Reinstall (Read-InstallerState) $InstallDir
+
     if (-not $NoStartup -and $script:ForAllUsers) {
         # The entry for every user. The one value is shared with the Chocolatey package's copy, which writes it when someone
         # else than the signed-in user installs it: never taken over from that copy while it exists.
@@ -2278,6 +2324,11 @@ function Install-BetterClipboard {
         if ($startupTarget -and $chocolateyCopy -and [string]::Equals($startupTarget, $chocolateyCopy, [StringComparison]::OrdinalIgnoreCase)) {
             # One value for both copies: taking it over would leave no copy starting once this one is uninstalled.
             Write-Note "Start with Windows stays with the Chocolatey copy ($chocolateyCopy); both use the same history."
+        }
+        elseif ($reinstall -and -not $startupTarget) {
+            # This copy was installed before and has no Run value: Start with Windows was turned off in Settings (or that
+            # install had -NoStartup). An update keeps it off; until 2026-11-14 every re-run turned it back on.
+            Write-Note 'Start with Windows stays off, as it was before this update (Settings > App > Start with Windows turns it on).'
         }
         else {
             Write-Step 'Starting with Windows (Settings > Start with Windows toggles this)'
@@ -2363,13 +2414,31 @@ function Install-BetterClipboard {
     }
     else {
         $wanted = @(@($effective) | ForEach-Object { Get-ReleasableKey $_ } | Where-Object { $null -ne $_ } | Select-Object -Unique)
-        $released = @($wanted | Where-Object { -not (Test-KeyReleased $_) })
+
+        # An update keeps a key given back to Windows in Settings since the earlier install; only an explicit -TakeOverWinV
+        # takes Win+V over again. Not wrapped in @(): the function returns its array as one object, and @() would nest it.
+        $keptWithWindows = @()
+        if ($reinstall) {
+            $keptWithWindows = Get-KeysGivenBack $wanted $recorded
+            if ($TakeOverWinV) {
+                $keptWithWindows = @($keptWithWindows | Where-Object { $_ -ne [char] 'V' })
+            }
+        }
+
+        if ($keptWithWindows.Count -gt 0) {
+            $one = $keptWithWindows.Count -eq 1
+            Write-Note ("$(Format-KeyNames $keptWithWindows) $(if ($one) { 'stays' } else { 'stay' }) with Windows, as $(if ($one) { 'it was' } else { 'they were' }) " +
+                "given back in Settings > Shortcut$(if ($keptWithWindows -contains [char] 'V') { ' (-TakeOverWinV takes Win+V over again)' }).")
+        }
+
+        $released = @($wanted | Where-Object { -not (Test-KeyReleased $_) -and $keptWithWindows -notcontains $_ })
+        $alreadyReleased = @($wanted | Where-Object { $keptWithWindows -notcontains $_ })
         if ($released.Count -gt 0) {
             Write-Step "Taking over $(Format-KeyNames $released): Explorer stops registering $(if ($released.Count -eq 1) { 'it' } else { 'them' }) (DisabledHotkeys)"
             Set-ExplorerHotkeysReleased $released $true | Out-Null
         }
-        elseif ($wanted.Count -gt 0) {
-            Write-Note "$(Format-KeyNames $wanted) $(if ($wanted.Count -eq 1) { 'was' } else { 'were' }) already released from Explorer."
+        elseif ($alreadyReleased.Count -gt 0) {
+            Write-Note "$(Format-KeyNames $alreadyReleased) $(if ($alreadyReleased.Count -eq 1) { 'was' } else { 'were' }) already released from Explorer."
         }
 
         if ($NoTakeOverWinV -and $wanted -notcontains [char] 'V' -and (Test-KeyReleased 'V')) {

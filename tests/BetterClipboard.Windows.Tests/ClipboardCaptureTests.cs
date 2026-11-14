@@ -208,16 +208,66 @@ public sealed class ClipboardCaptureTests : IDisposable
         Assert.Equal(1, monitor.Statistics.Notifications);
     }
 
+    /// <summary>
+    /// A copy that another application keeps the clipboard open on for 1.5 s — Windows' own clipboard history service did so
+    /// for longer than half a second on the owner's PC, and 7 copies were lost in 16 days — is read once the clipboard is
+    /// let go, and nothing is locked out.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task ACopyHeldOpenForSeconds_IsReadOnceLetGo()
+    {
+        using var monitor = StartMonitor();
+        using var producer = new ClipboardProducer(isolation);
+
+        // Each round re-opens right after its copy; a round whose consumer read first proves nothing, so the next one tries
+        // again (CLAUDE.md §4: no test may depend on winning a race once).
+        for (int round = 1; round <= 3 && monitor.LateReads == 0; round++)
+        {
+            await producer.WriteThenHoldAsync($"held copy {round}", TimeSpan.FromMilliseconds(1500));
+            await WaitUntil(monitor, () => captured.Count == round && Balanced(monitor.Statistics));
+        }
+
+        Assert.True(monitor.LateReads >= 1, $"The holder never held first in 3 rounds; {monitor.Statistics}.");
+        Assert.Equal(0, monitor.Statistics.LockedOut);
+        Assert.Equal(captured.Count, monitor.Statistics.Captured);
+        Assert.All(captured, text => Assert.StartsWith("held copy", text, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A holder that keeps the clipboard open past the wait (shortened here to 0.4 s) loses that one change, which is counted
+    /// as locked out, never silently; the next copy is read as usual.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task ACopyHeldPastTheWait_IsCountedAsLockedOut()
+    {
+        using var monitor = StartMonitor(maxLockWait: TimeSpan.FromMilliseconds(400));
+        using var producer = new ClipboardProducer(isolation);
+
+        for (int round = 1; round <= 3 && monitor.Statistics.LockedOut == 0; round++)
+        {
+            await producer.WriteThenHoldAsync($"held too long {round}", TimeSpan.FromMilliseconds(1200));
+            await WaitUntil(monitor, () => monitor.Statistics.Notifications == round && Balanced(monitor.Statistics));
+        }
+
+        Assert.Equal(1, monitor.Statistics.LockedOut);
+        await producer.WriteBurstAsync(["after the holder"]);
+        await WaitUntil(monitor, () => captured.Contains("after the holder") && Balanced(monitor.Statistics));
+    }
+
     /// <summary>Starts a monitor on the isolated desktop that records captured text.</summary>
     /// <param name="watchdogMilliseconds">Watchdog period.</param>
     /// <param name="previousSequence">For a take-over (<see cref="ClipboardMonitor.Start(uint?)"/>): the last sequence number a previous process handled.</param>
+    /// <param name="maxLockWait">How long a held clipboard is waited for (<see cref="ClipboardMonitor.MaxLockWait"/>); production's when omitted.</param>
     /// <returns>The running monitor.</returns>
-    private ClipboardMonitor StartMonitor(uint watchdogMilliseconds = 2000, uint? previousSequence = null)
+    private ClipboardMonitor StartMonitor(uint watchdogMilliseconds = 2000, uint? previousSequence = null, TimeSpan? maxLockWait = null)
     {
         var monitor = new ClipboardMonitor(() => new CaptureOptions(), new SourceAppResolver())
         {
             IsolatedDesktop = isolation.Desktop,
             WatchdogMilliseconds = watchdogMilliseconds,
+            MaxLockWait = maxLockWait ?? TimeSpan.FromSeconds(10),
         };
         monitor.Captured += (_, capture) => captured.Enqueue(UnicodeTextCodec.Decode(capture.Find(ClipFormatNames.UnicodeText)!.Data));
         monitor.Start(previousSequence);

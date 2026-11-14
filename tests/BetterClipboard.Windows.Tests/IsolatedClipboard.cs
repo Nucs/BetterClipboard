@@ -169,6 +169,44 @@ internal sealed class ClipboardProducer : IDisposable
     });
 
     /// <summary>
+    /// Copies <paramref name="text"/>, then at once opens the clipboard again and keeps it open for <paramref name="hold"/>:
+    /// what Windows' own clipboard history service (<c>cbdhsvc</c>) did on the owner's PC for longer than half a second, so a
+    /// consumer told about the copy finds the clipboard held until then.
+    /// </summary>
+    /// <remarks>
+    /// The re-open runs on this thread right after the close, while the consumer still has to wake up for its notification and
+    /// resolve the copy's source first, so it nearly always comes first. Not always: a test checks how its consumer's read
+    /// went and repeats the copy when the consumer was first.
+    /// </remarks>
+    /// <param name="text">Text to copy.</param>
+    /// <param name="hold">How long the clipboard stays open after the copy.</param>
+    /// <returns>A task completing once the clipboard was let go.</returns>
+    /// <exception cref="IOException">The clipboard stayed locked for 2 s before the copy or the hold.</exception>
+    public Task WriteThenHoldAsync(string text, TimeSpan hold) => thread.InvokeAsync(() =>
+    {
+        WriteSession(() => SetClipboardData(CF_UNICODETEXT, Allocate(text)));
+
+        // Spin, not sleep: Thread.Sleep would round up to the timer tick and hand the consumer 15 ms to read first.
+        var deadline = Environment.TickCount64 + 2000;
+        while (!OpenClipboard(thread.Handle))
+        {
+            if (Environment.TickCount64 > deadline)
+            {
+                throw new IOException("The isolated clipboard stayed locked.");
+            }
+        }
+
+        try
+        {
+            Thread.Sleep(hold);
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    });
+
+    /// <summary>
     /// Promises <c>CF_UNICODETEXT</c> without data (delayed rendering); it is rendered when a consumer asks.
     /// </summary>
     /// <param name="text">Text to render on demand.</param>

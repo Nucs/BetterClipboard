@@ -132,8 +132,9 @@ your architecture, **verifies its SHA-256**, installs per user into `%LOCALAPPDA
 (no admin rights), adds a Start menu shortcut, starts BetterClipboard with Windows and registers it under
 *Settings › Apps › Installed apps*. It also **takes over Win+V**: Explorer stops registering it and restarts once (the
 taskbar blinks, and open folder windows close). See [Taking over Win+V](#taking-over-winv). Running it again updates in
-place, and so does the app's own update button ([Updates](#updates)); your history is never touched. It runs from any
-folder, also one you cannot write to, and leaves your PowerShell in that folder when it is done.
+place and keeps what you changed in Settings (*Start with Windows* turned off, Win+V given back to Windows), as does
+the app's own update button ([Updates](#updates)); your history is never touched. It runs from any folder, also one
+you cannot write to, and leaves your PowerShell in that folder when it is done.
 
 At its first start, BetterClipboard asks for your language: English, 简体中文, Русский, Español or עברית, each with its
 flag, with Windows' language already selected. Press the green check (or `Enter`) and everything opens in that
@@ -153,7 +154,7 @@ Options (pass them through a script block):
 |---|---|
 | `-NoTakeOverWinV` | Leave Win+V to Windows. BetterClipboard then opens with the `-Hotkey` shortcuts, or with Win+Alt+V. If Win+V was released before, Explorer gets it back. |
 | `-Hotkey A, B, …` | The shortcuts that open BetterClipboard, e.g. `-Hotkey Win+Alt+V, Ctrl+Alt+F9`. Win+V comes first unless `-NoTakeOverWinV` is given. Each one is taken over the same way as Win+V (see [Taking over Win+V](#taking-over-winv)). |
-| `-TakeOverWinV` | The default. Kept for older command lines; if your shortcuts no longer include Win+V, it adds Win+V back. |
+| `-TakeOverWinV` | The default. Kept for older command lines; if your shortcuts no longer include Win+V, it adds Win+V back. On a re-run, it also takes back a Win+V you gave back to Windows in Settings. |
 | `-AddToPath` | Put the install folder on your user PATH so terminals can run `bclip` (see [Command line](#command-line-for-scripts-and-ai-agents)). |
 | `-NoUpdateCheck` | Install with the automatic update check off: BetterClipboard then never asks GitHub by itself. *Settings › Updates* has *Check now* and the switch to turn it on again. |
 | `-Version 0.1.0` | Install a specific release instead of the latest. |

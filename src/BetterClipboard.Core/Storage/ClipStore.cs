@@ -54,8 +54,9 @@ public sealed record GroupRemoval(bool Removed, bool RetentionReset);
 /// <para>
 /// <b>Groups.</b> <c>groups</c> (name, icon glyph, order) and <c>clip_groups</c> (membership, cascade-deleted
 /// with either side) hold the user's collections. Membership protects an entry like a pin: retention and
-/// <see cref="ClearUnpinned"/> skip it. When an entry leaves its last group, <c>clips.retain_from_utc</c> is set
-/// to that moment. Retention then measures age and recency from <c>max(last_used_utc, retain_from_utc)</c>
+/// <see cref="ClearUnpinned"/> skip it. When an entry leaves its last group, or is unpinned (<see cref="SetPinned"/>, since
+/// 2026-11-14), <c>clips.retain_from_utc</c> is set to that moment. Retention then measures age and recency from
+/// <c>max(last_used_utc, retain_from_utc)</c>
 /// (<see cref="RetentionKey"/>), so an item grouped months ago is not pruned the moment it is ungrouped — and
 /// its place in the list (by <c>last_used_utc</c>) does not change. These objects are <b>added idempotently at
 /// every <see cref="Initialize"/></b> without bumping <see cref="SchemaVersion"/>: an older build still
@@ -1097,18 +1098,32 @@ public sealed partial class ClipStore
     }
 
     /// <summary>
-    /// Pins or unpins an entry. Pinned entries ignore retention and survive <see cref="ClearUnpinned"/>.
+    /// Pins or unpins an entry. Pinned entries ignore retention and survive <see cref="ClearUnpinned"/>. An unpinned entry
+    /// re-enters retention with its clock reset to <paramref name="now"/>, exactly like one that leaves its last group
+    /// (<see cref="RemoveFromGroup"/>): it is neither pruned at once for its old age nor moved in the list.
     /// </summary>
+    /// <remarks>
+    /// Until 2026-11-14 unpinning left the clock alone, so with a days limit (or a history at its item cap) an entry pinned
+    /// for months was deleted at the very next copy after its unpin: "unpin" acted as "delete". Only a real unpin resets
+    /// the clock; unpinning an entry that is not pinned changes nothing.
+    /// </remarks>
     /// <param name="id">The entry id.</param>
     /// <param name="pinned">The new state.</param>
-    /// <param name="now">Timestamp recorded as the pin time.</param>
+    /// <param name="now">Timestamp recorded as the pin time, or as the reset retention clock when the entry is unpinned.</param>
     /// <returns><see langword="true"/> when the entry exists (whether or not the state actually changed).</returns>
     /// <exception cref="SqliteException">The write failed.</exception>
     public bool SetPinned(long id, bool pinned, DateTimeOffset now)
     {
         using var connection = Open();
+
+        // SQLite evaluates every SET expression against the row as it was, so is_pinned in the CASE is the old state.
         using var command = Command(connection,
-            "UPDATE clips SET is_pinned = $p, pinned_utc = CASE WHEN $p = 1 THEN coalesce(pinned_utc, $now) ELSE NULL END WHERE id = $id;");
+            """
+            UPDATE clips SET is_pinned = $p,
+                pinned_utc = CASE WHEN $p = 1 THEN coalesce(pinned_utc, $now) ELSE NULL END,
+                retain_from_utc = CASE WHEN $p = 0 AND is_pinned = 1 THEN $now ELSE retain_from_utc END
+            WHERE id = $id;
+            """);
         command.Parameters.AddWithValue("$p", pinned ? 1 : 0);
         command.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$id", id);

@@ -864,6 +864,7 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         // Windows keeps its pins for good and offers them at every import: each comes over once, and from then on the
         // user's pin, unpin or delete here stands (WindowsPinLedger). After the forget check on purpose: forgotten content
         // is never recorded as brought over, so "Allow again" lets its Windows pin come over once more.
+        string? newWindowsPin = null;
         if (windowsPins is not null && IsFromWindowsHistory(capture.Origin))
         {
             var hash = classified.ContentHash;
@@ -873,6 +874,8 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
                 {
                     return null;
                 }
+
+                newWindowsPin = hash;
             }
             else if (windowsPins.WasBroughtOver(hash))
             {
@@ -884,7 +887,18 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
 
         // New events (live copies, ShareX screenshots, Win+R runs) move an existing duplicate to the top — ShareX
         // often copied the same screenshot to the clipboard a moment earlier, and the pixel hash merges the two.
-        var result = store.Upsert(capture, classified, image, bumpIfExists: isNewEvent);
+        UpsertResult? result;
+        try
+        {
+            result = store.Upsert(capture, classified, image, bumpIfExists: isNewEvent);
+        }
+        catch when (newWindowsPin is not null)
+        {
+            // Decide recorded the pin as brought over; storing it failed, so the next import must meet it as new again.
+            windowsPins!.Withdraw(newWindowsPin);
+            throw;
+        }
+
         if (result is null || !raiseEvents)
         {
             return result;

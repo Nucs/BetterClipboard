@@ -198,6 +198,24 @@ public sealed class WindowsPinLedger
     }
 
     /// <summary>
+    /// Takes back what <see cref="Decide"/> recorded for a pin it said to apply, when storing that pin failed (a database
+    /// error mid-import): the next import then meets the pin as new and applies it, instead of believing it was brought over
+    /// and leaving it out for good.
+    /// </summary>
+    /// <remarks>
+    /// Only a pin this import met for the first time is taken back: one an earlier import brought over stays brought over.
+    /// The kept count is left alone, since <see cref="Decide"/> counts only pins it leaves as they are.
+    /// </remarks>
+    /// <param name="contentHash">The hash <see cref="Decide"/> was given.</param>
+    public void Withdraw(string contentHash)
+    {
+        if (!previousSet.Contains(contentHash) && seenSet.Remove(contentHash))
+        {
+            seen.Remove(contentHash);
+        }
+    }
+
+    /// <summary>
     /// The value to store after this import: the earlier hashes this import did not see, then the ones it saw, trimmed
     /// from the front to <see cref="MaxEntries"/>.
     /// </summary>

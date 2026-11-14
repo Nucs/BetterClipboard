@@ -24,7 +24,10 @@ namespace BetterClipboard.Windows.Clipboard;
 /// losing anything, so this is an upper bound on losses, not a count of them.
 /// </param>
 /// <param name="SelfWrites">Notifications caused by our own <see cref="ClipboardMonitor.WriteAsync"/> (ignored on purpose).</param>
-/// <param name="LockedOut">Changes given up because another application kept the clipboard open for about half a second.</param>
+/// <param name="LockedOut">
+/// Changes given up because another application kept the clipboard open for <see cref="ClipboardMonitor.MaxLockWait"/>
+/// (10 s; half a second until 2026-11-14).
+/// </param>
 /// <param name="Recovered">Changes found by the watchdog without any notification (the listener had silently stopped); each one re-registers the listener.</param>
 public readonly record struct ClipboardMonitorStatistics(
     long Notifications, long Read, long Captured, long Superseded, long SelfWrites, long LockedOut, long Recovered);
@@ -56,8 +59,13 @@ public readonly record struct ClipboardMonitorStatistics(
 /// </para>
 /// <para>
 /// <b>Retry.</b> If another consumer holds the clipboard open when we try to read, capture is retried on a
-/// 10 ms timer up to 50 times (~0.5 s) — timers, not sleeps, keep the message loop responsive, and a newer
-/// notification cancels the retry and reads the newest state at once.
+/// 10 ms timer 50 times (~0.5 s), then every 100 ms until <see cref="MaxLockWait"/> (10 s) has passed since the
+/// first failed attempt. Timers, not sleeps, keep the message loop responsive, and a newer notification cancels the
+/// retry and reads the newest state at once. The slow phase exists because Windows' own clipboard history service
+/// (<c>cbdhsvc</c>, an OLE <c>CLIPBRDWNDCLASS</c> window in <c>svchost</c>) sometimes holds the clipboard longer than
+/// half a second: until 2026-11-14 the retry gave up there, and the owner's PC lost 7 copies in 16 days ("Clipboard
+/// stayed locked … not captured"). Nothing is lost by waiting longer: while a change is pending the clipboard still
+/// holds exactly it, and a newer copy ends the wait anyway.
 /// </para>
 /// <para>
 /// <b>Watchdog.</b> Every 2 s the monitor compares <c>GetClipboardSequenceNumber</c> (no clipboard access,
@@ -81,8 +89,19 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
 {
     private const nuint RetryTimerId = 1;
     private const nuint WatchdogTimerId = 2;
+
+    /// <summary>The fast retries' pace: a consumer that reads quickly is waited for in 10 ms steps.</summary>
     private const uint RetryMilliseconds = 10;
-    private const int MaxOpenAttempts = 50;
+
+    /// <summary>How many fast retries come first (~0.5 s); every later one waits <see cref="SlowRetryMilliseconds"/>.</summary>
+    private const int FastOpenAttempts = 50;
+
+    /// <summary>
+    /// The slow retries' pace, once the clipboard has been held for half a second: a consumer that slow is busy for a
+    /// while (a large or delay-rendered copy), and asking 10 times a second costs nothing.
+    /// </summary>
+    private const uint SlowRetryMilliseconds = 100;
+
     private const uint DefaultWatchdogMilliseconds = 2000;
 
     private readonly Func<CaptureOptions> optionsProvider;
@@ -92,6 +111,15 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
     private uint lastHandledSequence;
     private uint selfWriteSequence;
     private int openAttempts;
+
+    /// <summary><see cref="TimeProvider.GetTimestamp"/> of the first failed open for the change being read.</summary>
+    private long lockWaitStarted;
+
+    /// <summary>The window that held the clipboard at the latest failed open (for the log; 0 = unknown).</summary>
+    private nint lastHolder;
+
+    /// <summary>Reads that succeeded only after the fast retries (the clipboard was held for over ~0.5 s).</summary>
+    private long lateReadCount;
 
     /// <summary>Notifications received whose state has not been settled yet (read, skipped or given up).</summary>
     private int pendingNotifications;
@@ -151,6 +179,18 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
 
     /// <summary>Tests only: watchdog period (production: 2 s).</summary>
     internal uint WatchdogMilliseconds { get; init; } = DefaultWatchdogMilliseconds;
+
+    /// <summary>
+    /// How long a change is waited for while another application keeps the clipboard open, counted from the first failed
+    /// attempt, before it is given up (<see cref="ClipboardMonitorStatistics.LockedOut"/>). Tests shorten it.
+    /// </summary>
+    internal TimeSpan MaxLockWait { get; init; } = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// Tests only: reads that succeeded only after the fast retries, i.e. the clipboard was held for over ~0.5 s. Each
+    /// one was a lost copy before the slow retries existed.
+    /// </summary>
+    internal long LateReads => Interlocked.Read(ref lateReadCount);
 
     /// <summary>
     /// The clipboard sequence number of the last state this monitor handled (read, skipped, or its own write): what a
@@ -337,9 +377,20 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
 
         if (!OpenClipboard(hwnd))
         {
-            if (++openAttempts < MaxOpenAttempts)
+            // The first failure starts the clock. The holder is noted at every failure for the log; asking needs no
+            // clipboard access.
+            if (openAttempts++ == 0)
             {
-                SetTimer(hwnd, RetryTimerId, RetryMilliseconds, 0);
+                lockWaitStarted = time.GetTimestamp();
+            }
+
+            lastHolder = GetOpenClipboardWindow();
+            var waited = time.GetElapsedTime(lockWaitStarted);
+            if (waited < MaxLockWait)
+            {
+                // Fast at first (most holders read for milliseconds), then slower: Windows' own clipboard history service
+                // sometimes holds the clipboard for seconds, and giving up after half a second lost those copies.
+                SetTimer(hwnd, RetryTimerId, openAttempts < FastOpenAttempts ? RetryMilliseconds : SlowRetryMilliseconds, 0);
             }
             else
             {
@@ -347,11 +398,15 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
                 openAttempts = 0;
                 pendingSource = null;
                 Settle(ref lockedOutCount);
-                AppLog.Warn($"Clipboard stayed locked (held by window 0x{GetOpenClipboardWindow():X}); change #{sequence} not captured.");
+                AppLog.Warn($"Clipboard stayed locked for {(long)waited.TotalMilliseconds} ms ({DescribeHolder(lastHolder)}); change #{sequence} not captured.");
             }
 
             return;
         }
+
+        // Read before the counters reset below: whether this read needed the slow retries, and how long it waited.
+        bool late = openAttempts >= FastOpenAttempts;
+        long lateMilliseconds = late ? (long)time.GetElapsedTime(lockWaitStarted).TotalMilliseconds : 0;
 
         ClipboardReadResult result;
         try
@@ -371,6 +426,13 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
         openAttempts = 0;
         pendingSource = null;
         Settle(ref readCount);
+        if (late)
+        {
+            // Each of these was a lost copy before the slow retries: the log keeps how long the holder took (content-free).
+            Interlocked.Increment(ref lateReadCount);
+            AppLog.Info($"Clipboard change #{sequence} read after {lateMilliseconds} ms: {DescribeHolder(lastHolder)} kept the clipboard open until then.");
+        }
+
         if (result.ExcludedByProducer)
         {
             AppLog.Info($"Skipped a copy marked private by '{source?.ProcessName ?? "unknown"}'.");
@@ -458,6 +520,32 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
     {
         nint owner = GetClipboardOwner();
         return owner != 0 ? resolver.Resolve(owner) : resolver.ResolveForegroundGuess(GetForegroundWindow());
+    }
+
+    /// <summary>
+    /// Names the window that kept the clipboard open, for the log: its handle, window class and process, never content.
+    /// Windows' clipboard history service is named as such: its OLE window (<c>CLIPBRDWNDCLASS</c>) lives in a
+    /// <c>svchost</c> and says nothing to someone reading the log.
+    /// </summary>
+    /// <param name="holder">The window <c>GetOpenClipboardWindow</c> reported, or 0.</param>
+    /// <returns>For example "window 0x40D96 (CLIPBRDWNDCLASS of svchost: Windows' clipboard history service)".</returns>
+    private unsafe string DescribeHolder(nint holder)
+    {
+        if (holder == 0)
+        {
+            return "a window that could not be told";
+        }
+
+        // A window that closed meanwhile has no class and no process any more; the handle alone still tells repeats apart.
+        char* buffer = stackalloc char[128];
+        int length = GetClassName(holder, buffer, 128);
+        string windowClass = length > 0 ? new string(buffer, 0, length) : "a closed window";
+        string? process = resolver.Resolve(holder)?.ProcessName;
+        string service = string.Equals(windowClass, "CLIPBRDWNDCLASS", StringComparison.Ordinal)
+                         && string.Equals(process, "svchost", StringComparison.OrdinalIgnoreCase)
+            ? ": Windows' clipboard history service"
+            : string.Empty;
+        return $"window 0x{holder:X} ({windowClass}{(process is null ? string.Empty : " of " + process)}{service})";
     }
 
     /// <summary>Places formats on the clipboard (monitor thread).</summary>

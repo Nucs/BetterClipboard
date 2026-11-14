@@ -247,6 +247,36 @@ public sealed class GroupStoreTests : IDisposable
     }
 
     /// <summary>
+    /// Unpinning restarts the retention clock exactly like leaving the last group (since 2026-11-14): an entry last used
+    /// 100 days ago and pinned since is not pruned by a 30-day limit right after its unpin, ranks as newest for the count
+    /// limit, and keeps its place in the list. Before, unpinning it deleted it at the next prune. Unpinning an entry that was
+    /// never pinned resets nothing.
+    /// </summary>
+    [Fact]
+    public void Unpinning_ResetsTheRetentionClockLikeUngrouping()
+    {
+        var pinned = Add(TestData.Text("BC-TEST pinned long ago", TestData.Now.AddDays(-100)));
+        var never = Add(TestData.Text("BC-TEST never pinned", TestData.Now.AddDays(-101)));
+        var recent = Add(TestData.Text("BC-TEST recent", TestData.Now.AddDays(-1)));
+        Assert.True(store.SetPinned(pinned.Id, true, TestData.Now.AddDays(-99)));
+
+        Assert.True(store.SetPinned(pinned.Id, false, TestData.Now));
+        Assert.True(store.SetPinned(never.Id, false, TestData.Now));
+        Assert.False(store.GetEntry(pinned.Id)!.IsPinned);
+        Assert.Equal(TestData.Now.AddDays(-100), store.GetEntry(pinned.Id)!.LastUsedUtc);
+        Assert.Equal([recent.Id, pinned.Id, never.Id], store.Query(new ClipQuery()).Select(e => e.Id));
+
+        // A day later a 30-day limit takes the entry that was never pinned and keeps the one unpinned a day ago.
+        Assert.Equal(1, store.Prune(new RetentionPolicy(0, TimeSpan.FromDays(30), 0), TestData.Now.AddDays(1)));
+        Assert.Equal([recent.Id, pinned.Id], store.Query(new ClipQuery()).Select(e => e.Id));
+        Assert.Equal(1, store.Prune(new RetentionPolicy(1, null, 0), TestData.Now.AddDays(1)));
+        Assert.Equal([pinned.Id], store.Query(new ClipQuery()).Select(e => e.Id));
+
+        // The fresh clock runs out like any other: 31 days after the unpin, the age limit applies again.
+        Assert.Equal(1, store.Prune(new RetentionPolicy(0, TimeSpan.FromDays(30), 0), TestData.Now.AddDays(31)));
+    }
+
+    /// <summary>
     /// Deleting a group keeps its items; only those in no other group get the reset clock (and lose their
     /// protection), and the former members are reported.
     /// </summary>

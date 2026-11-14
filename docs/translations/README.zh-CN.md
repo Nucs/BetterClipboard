@@ -70,7 +70,7 @@
 irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
 ```
 
-安装程序会为你的架构下载最新的[发布版本](https://github.com/Nucs/BetterClipboard/releases/latest)，**校验其 SHA-256**，按用户安装到 `%LOCALAPPDATA%\Programs\BetterClipboard`（无需管理员权限），添加“开始”菜单快捷方式，设置 BetterClipboard 随 Windows 启动，并在 *设置 › 应用 › 已安装的应用* 中注册。它还会**接管 Win+V**：资源管理器不再注册它，并重启一次（任务栏会闪一下，已打开的文件夹窗口会关闭）。详见[接管 Win+V](#taking-over-winv)。再次运行即可原地更新，应用自己的更新按钮也是如此（[更新](#updates)）；你的历史永远不会被改动。它可以从任何文件夹运行，包括你没有写入权限的文件夹，完成后你的 PowerShell 仍停留在那个文件夹。
+安装程序会为你的架构下载最新的[发布版本](https://github.com/Nucs/BetterClipboard/releases/latest)，**校验其 SHA-256**，按用户安装到 `%LOCALAPPDATA%\Programs\BetterClipboard`（无需管理员权限），添加“开始”菜单快捷方式，设置 BetterClipboard 随 Windows 启动，并在 *设置 › 应用 › 已安装的应用* 中注册。它还会**接管 Win+V**：资源管理器不再注册它，并重启一次（任务栏会闪一下，已打开的文件夹窗口会关闭）。详见[接管 Win+V](#taking-over-winv)。再次运行即可原地更新，并保留你在设置中做的更改（关闭的 *随 Windows 启动*、还给 Windows 的 Win+V），应用自己的更新按钮也是如此（[更新](#updates)）；你的历史永远不会被改动。它可以从任何文件夹运行，包括你没有写入权限的文件夹，完成后你的 PowerShell 仍停留在那个文件夹。
 
 首次启动时，BetterClipboard 会询问你的语言：English、简体中文、Русский、Español 或 עברית，各自带有国旗，并已选中 Windows 的语言。按下绿色对勾（或 `Enter`），所有窗口就会以这种语言打开。如果你从尚未询问过语言的版本更新，更新后的首次启动会询问一次。
 
@@ -86,7 +86,7 @@ irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | ie
 |---|---|
 | `-NoTakeOverWinV` | 把 Win+V 留给 Windows。BetterClipboard 改用 `-Hotkey` 指定的快捷键打开，或用 Win+Alt+V。如果 Win+V 之前已被释放，会把它还给资源管理器。 |
 | `-Hotkey A, B, …` | 打开 BetterClipboard 的快捷键，例如 `-Hotkey Win+Alt+V, Ctrl+Alt+F9`。除非指定了 `-NoTakeOverWinV`，否则 Win+V 排在第一位。每个快捷键都按与 Win+V 相同的方式接管（参见[接管 Win+V](#taking-over-winv)）。 |
-| `-TakeOverWinV` | 默认行为。为兼容旧命令行而保留；如果你的快捷键中已不包含 Win+V，它会把 Win+V 加回来。 |
+| `-TakeOverWinV` | 默认行为。为兼容旧命令行而保留；如果你的快捷键中已不包含 Win+V，它会把 Win+V 加回来。重新运行时，它还会收回你在设置中还给 Windows 的 Win+V。 |
 | `-AddToPath` | 把安装文件夹加入你的用户 PATH，使终端可以运行 `bclip`（参见[命令行](#command-line-for-scripts-and-ai-agents)）。 |
 | `-NoUpdateCheck` | 安装时关闭自动更新检查：BetterClipboard 从此不会主动访问 GitHub。*设置 › 更新* 中有 *立即检查* 和重新打开它的开关。 |
 | `-Version 0.1.0` | 安装指定版本，而不是最新版本。 |
