@@ -692,8 +692,21 @@ public sealed partial class ClipboardFlyout : Window
     /// </summary>
     /// <param name="sender">Root grid.</param>
     /// <param name="e">Key data.</param>
+    /// <remarks>
+    /// Keys typed into the text peek's own text, and into its right-click menu, pass through here first, although the peek
+    /// is a popup of its own. They belong to the peek (<see cref="IsTextPeekKey"/>) and are left alone before anything else.
+    /// </remarks>
     private void Root_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
+        // The peek's text has the keyboard (its menu's Select all, Shift+F10): Ctrl+C, Ctrl+A and the arrows are its own,
+        // and Esc and F3 are TextPeek_KeyDown's. Or its menu is open, whose keys are the menu's. The dismissal below closed
+        // the peek at each of them, before the text or the menu saw the key: Ctrl+C after Select all copied nothing, and
+        // Down on the menu closed it with the peek (QA, 2026-11-14).
+        if (IsTextPeekKey(e.OriginalSource))
+        {
+            return;
+        }
+
         // A stray hover peek must never swallow a keystroke: dismiss it first (it also frees its popup count, so the
         // IsPopupKey check below is not fooled into treating this key as belonging to the peek).
         HidePeek();

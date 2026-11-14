@@ -33,8 +33,11 @@ namespace BetterClipboard.App.Views;
 /// replaced the first version's peek that stayed while the mouse moved over it or its card: "it close immediately if i
 /// move the mouse BUT it should react to middlemouse scrolling just fine. Only keep open ignoring mouse movement when
 /// clicking the eye at the corner". A right-click with the mouse still opens the card's own menu with Copy and Select all,
-/// and the peek stays while that menu shows; Esc and a click outside the frame close it too. Selecting with the mouse,
-/// and everything else that needs the mouse to move, is the viewer's.
+/// and the peek stays while that menu shows; Esc and a click outside the frame close it too. The menu's keys are its own
+/// (the arrows, Enter, and Esc, which closes only the menu), and once it has closed the keyboard is in the peek's text:
+/// Ctrl+C copies its selection and the arrow keys move it (<see cref="IsTextPeekKey"/>; until 2026-11-14 any key closed the
+/// peek first, the menu's included). Keys typed while the mouse merely rests on a card are still the search box's, and close
+/// the peek. Selecting with the mouse, and everything else that needs the mouse to move, is the viewer's.
 /// </para>
 /// <para>
 /// <b>The viewer</b> dims the screen and shows the whole text in a large card centered on the panel, with a Formatted / As
@@ -963,6 +966,51 @@ public sealed partial class ClipboardFlyout
         sender is FrameworkElement element &&
         new Rect(0, 0, element.ActualWidth, element.ActualHeight).Contains(e.GetCurrentPoint(element).Position);
 
+    /// <summary>
+    /// Whether a key belongs to the text peek, so the panel's key model must leave it alone: the peek's right-click menu is
+    /// open (its keys are the menu's: the arrows, Enter, and Esc, which closes only the menu), or the key comes from the
+    /// peek's own text (Ctrl+C, Ctrl+A and the arrows to the text, Esc and F3 to <see cref="TextPeek_KeyDown"/>).
+    /// </summary>
+    /// <param name="source">The key event's original source (the focused element).</param>
+    /// <returns><see langword="true"/> while a text peek shows and the key is its own or its menu's.</returns>
+    /// <remarks>
+    /// <para>
+    /// A peek that opened under a resting mouse leaves the keyboard in the search box, so keys typed then are the panel's
+    /// and close it (Root_PreviewKeyDown's dismissal, unchanged). The peek's text takes the keyboard from its own menu (it
+    /// gets it before the menu opens, and again when the menu closes: FocusOpenViewer), or from Shift+F10 and the Menu key
+    /// there.
+    /// </para>
+    /// <para>
+    /// Measured 2026-11-14 in a test desktop: while the peek's text had the keyboard (UI Automation's focused element),
+    /// Windows' focus stayed on the panel's own input window, and Ctrl+C, an arrow key and a letter each closed the peek
+    /// before its text saw them; with the peek's menu open, Down closed the menu and the peek alike. The menu needs its own
+    /// flag: the visual tree does not lead from its items to the peek (the walk below did not find the Down key's source
+    /// inside the surface).
+    /// </para>
+    /// </remarks>
+    private bool IsTextPeekKey(object? source)
+    {
+        if (textPeekPopup?.Child is not { } surface)
+        {
+            return false;
+        }
+
+        if (textPeekMenuOpen)
+        {
+            return true;
+        }
+
+        for (var current = source as DependencyObject; current is not null; current = VisualTreeHelper.GetParent(current))
+        {
+            if (ReferenceEquals(current, surface))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Esc closes the peek; F3 opens its card in the viewer. Other keys belong to the text (Ctrl+C, Ctrl+A, arrows).</summary>
     /// <param name="sender">The surface.</param>
     /// <param name="e">Key data.</param>
@@ -997,6 +1045,12 @@ public sealed partial class ClipboardFlyout
         copy.IsEnabled = presenter.SelectedText.Length > 0;
         var selectAll = MenuItem(UiText.Translate("Select all"), "\uE8B3", "Ctrl+A", presenter.SelectAll);
         textPeekMenuOpen = true;
+
+        // The peek's text takes the keyboard before the menu opens: a closing flyout gives the keyboard back to whatever had
+        // it, and a peek that opened under a resting mouse never had it (the search box did). Ctrl+C after Select all would
+        // then go to the search box and copy nothing from the peek; with the keyboard in the peek's text, the panel's key
+        // model leaves the key to the peek (IsTextPeekKey).
+        presenter.Editor.Focus(FocusState.Programmatic);
         var menu = ShowItemMenu(card, presenter.Editor, position, [copy, selectAll, new MenuFlyoutSeparator()]);
         menu.Closed += (_, _) =>
         {
@@ -1071,13 +1125,16 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Gives the keyboard to a viewer that is open when a popup closes under it: the text viewer's text (or the viewer
-    /// itself while the text loads), or the image viewer.
+    /// itself while the text loads), the image viewer, or the text peek's text (its own menu closed).
     /// </summary>
-    /// <returns>Whether a viewer took the keyboard (else the caller gives it to the search box).</returns>
+    /// <returns>Whether a viewer or the peek took the keyboard (else the caller gives it to the search box).</returns>
     /// <remarks>
     /// A viewer opened from a menu's View opens before that menu has finished closing, and the peek's popup closes as the
     /// viewer opens. Their closing handed the keyboard to the search box, where keys are ignored while a popup is open, so
-    /// Esc no longer closed the viewer (QA, 2026-11-13).
+    /// Esc no longer closed the viewer (QA, 2026-11-13). A peek still open when a popup closes was the parent of that
+    /// popup, its right-click menu: the keyboard stays in the peek's text, so Esc and Ctrl+C act on the peek (2026-11-14).
+    /// Given to the search box, the keyboard would only come back to the peek with the menu's queued focus, and a key
+    /// typed in between would close the peek (Root_PreviewKeyDown dismisses a peek at any key of the panel's own).
     /// </remarks>
     private bool FocusOpenViewer()
     {
@@ -1091,6 +1148,12 @@ public sealed partial class ClipboardFlyout
         if (viewerPopup?.Child is { } imageViewer)
         {
             imageViewer.Focus(FocusState.Programmatic);
+            return true;
+        }
+
+        if (textPeekPopup is not null && textPeekPresenter is { } peek)
+        {
+            peek.Editor.Focus(FocusState.Programmatic);
             return true;
         }
 
@@ -1420,12 +1483,7 @@ public sealed partial class ClipboardFlyout
         state.Ring.Visibility = Visibility.Collapsed;
         presenter.View.Opacity = 1;
         presenter.View.IsHitTestVisible = true;
-        presenter.Show(prepared.View, prepared.Page, prepared.Rtf, style, palette, state.Wrap, state.LineNumbers);
-        if (scrollTo is { } position && position > prepared.Page.Start)
-        {
-            presenter.ScrollToPosition(position);
-        }
-
+        presenter.Show(prepared.View, prepared.Page, prepared.Rtf, style, palette, state.Wrap, state.LineNumbers, scrollTo);
         UpdatePageControls(state);
 
         state.SwitchPanel.Visibility = prepared.View.HasFormattedAlternative ? Visibility.Visible : Visibility.Collapsed;

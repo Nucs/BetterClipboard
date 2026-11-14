@@ -5648,6 +5648,39 @@ note of theirs (32 lines).
 - Verified live with an invented look-alike of the note (§5). The note itself stayed on this PC: only the verdict was
   read from it, in the scratchpad.
 
+**Selecting in the viewer and the peek** (fixed 2026-11-14). User report: "In the text viewer, selecting text and right
+clicking, text selection is all clumsy slow and on rightclick or randomally the selection blinks / fix". Found in a
+claude-desktops Windows 11 desktop with diagnostic builds (never committed), and in WinUI's source:
+- **The selection vanished whenever the box lost the keyboard.** WinUI's text boxes start with `m_hideSelection`
+  (`CTextBoxBase`), which hides an unfocused box's selection (`TXTBIT_HIDESELECTION`), and keep the focused look only
+  while the box's own `ContextFlyout` or `SelectionFlyout` is open (`ShouldForceFocusedVisualState`). The right-click menu
+  is a menu of ours, so every right-click hid the selection until the menu closed, and a toolbar button or another window
+  taking the keyboard hid it too ("randomly"). A sampler counting the selection's accent pixels in screen captures read
+  9,588 after a drag and 3 while the menu showed; with the fix, 9,588 throughout. `TextPreviewPresenter` now binds
+  `SelectionHighlightColorWhenNotFocused` to `SelectionHighlightColor`, so the theme's and high contrast's color follow.
+- **The line numbers were wrong once the text scrolled, and a size change went back to the top.** RichEdit's coordinates
+  are the whole document's: WinUI's `TextBoxView` tells RichEdit its client rectangle is as large as the content
+  (`TxGetClientRect`) and scrolls it itself, so `GetRangeFromPoint` with `ClientCoordinates` at the box's top-left corner
+  found the document's first line, whatever was in view. The gutter numbered the rows in view from there, and a text-size change
+  (A+, A−, Ctrl+=, Ctrl+−, Ctrl+wheel), which redraws the text and comes back to the first line in view, came back to
+  the top. Now the scroller's offsets turn the view's corner into the document's (`VisibleTopLeft`).
+- **Coming back needs one scroll request, with the caret at the target.** The redraw put the caret at the start
+  (`Selection.SetRange(0, 0)`), and WinUI then scrolled the caret into view, undoing the scroll (a diagnostic build logged
+  offset 862, then 0 with the extent unchanged). `ITextRange.ScrollIntoView` does nothing in a WinUI box, and of two
+  `ChangeView` calls in one pass the first won. Now `Show(…, scrollTo)` puts the caret at the target and asks the
+  scroller once (`ScrollToLineOf`).
+- **The gutter's width came late, so the text was laid out twice.** The queued gutter update set it about 0.6 s after the
+  text showed: the text first took the whole width (1,370 DIPs), then was laid out again narrower (1,311), and its
+  wrapped lines moved. Now the width is set with the text (`ApplyGutterWidth`, in `Show` and `SetLineNumbers`).
+- **A key in the peek closed it before its text saw the key.** Keys typed in the peek's text, and in its right-click menu,
+  pass through the panel's `Root_PreviewKeyDown` although the peek is a popup of its own (Windows' focus stays on the
+  panel's input window while UI Automation shows the peek's RichEditBox focused), and that handler's first line closed
+  any peek. So Ctrl+C after *Select all* copied nothing, an arrow key or Shift+F10 closed the peek, and Down on the
+  peek's menu closed the menu and the peek. Now such keys are left to the peek (`IsTextPeekKey`: its menu is open, or the
+  key's source lies in its surface), and the peek's text takes the keyboard before its menu opens and when it closes
+  (`FocusOpenViewer`). A key typed while the mouse merely rests on a card is still the search box's, and closes the peek.
+- Not slow in our code: a selection dragged over the viewer drew a frame every 16 ms (median) on the GPU-less desktop.
+
 **Pieces.**
 - Core: `TextView/` (`TextLanguage` and `TextLanguages`, `TextLanguageDetector`, `SyntaxToken`, `SyntaxHighlighter`
   with its `.Code`, `.Markup` and `.Data` parts, `StructuredTextFormatter`, `SyntaxPalette`, `RtfWriter` with
@@ -6989,7 +7022,23 @@ kit by a scratch generator, session 66cdd808):
 - **A menu that closes over an overlay hands the keyboard back to the overlay.** `Popup_Closed` used to give it to the
   search box, where the panel's key model ignores keys while one of its popups is open (the overlay itself), so Esc did
   nothing in a viewer opened from a menu's *View*. `FocusOpenViewer` gives it to the text or image viewer when one is
-  open (§2.50).
+  open, and to the text peek's text after its own menu (§2.50).
+- **A WinUI text box hides its selection whenever it loses the keyboard,** to a menu of ours, a button or another
+  window: it keeps the focused look only for its own `ContextFlyout` and `SelectionFlyout`. A read-only box that shows a
+  selection beside a menu sets `SelectionHighlightColorWhenNotFocused` (bound to `SelectionHighlightColor`, so the
+  theme's color follows), as `TextPreviewPresenter` does (§2.50).
+- **A `RichEditBox`'s RichEdit coordinates are the whole document's,** not the view's: WinUI's `TextBoxView` gives RichEdit
+  a client rectangle as large as the content and scrolls it itself. `GetRangeFromPoint` and `GetPoint` with
+  `ClientCoordinates` need the scroller's offsets added or subtracted (`TextPreviewPresenter.VisibleTopLeft`); a fixed point
+  such as the box's corner always finds the document's first line (§2.50).
+- **To show a place in a `RichEditBox`, put the caret there and scroll once.** WinUI scrolls the caret into view after a
+  text change, so a caret left at 0 undid a scroll to the middle; `ITextRange.ScrollIntoView` does nothing in a WinUI box;
+  and of two `ChangeView` calls in one pass the first won (`TextPreviewPresenter.Show`'s `scrollTo`, §2.50).
+- **Keys typed into the panel's own popups pass through `Root_PreviewKeyDown`,** also into one that has no parent (the
+  text peek) and into a menu over it, while Windows' focus stays on the panel's input window. That handler closes a
+  hover peek at any key first: an overlay that takes the keyboard needs its keys exempted before that line
+  (`IsTextPeekKey`, §2.50). The keys of a menu over an overlay do not bubble to the overlay's own `KeyDown` handler
+  (measured: the text viewer's Esc handler, registered for handled events too, did not see its menu's Esc).
 - **A background start (`--background`) must never show anything: the silent restart is one** (§2.46). A few seconds
   after every close of Settings the app starts again that way while the user works. A new window, dialog, notification
   or first-run tip in the start path shows each time, unbidden. Gate it on `StartupOptions.IsSilentRestart` (or keep it
@@ -7671,6 +7720,7 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **Selecting in the text viewer and the peek, live** (2026-11-14, §2.50; the owner: "selecting text and right clicking, text selection is all clumsy slow and on rightclick or randomally the selection blinks"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-selblink`, 1920×1080, no GPU; deleted afterwards with its persist folder), self-contained builds of a private worktree (`e6d4c02` plus only this change: `0.2.12-dev.diag1` to `diag7` with temporary diagnostics, never committed, then `selfix` to `selfix5`), BC-TEST texts only, from session c073d86d's `make_qa_data.py` (the heartbeat-shaped XML prompt, 29 lines; a JSON text; a Markdown note; the 2.3 MB C# text, whose page 2 starts at line 1863). **The blink:** a sampler counting the selection's accent pixels every frame read 9,588 after a drag and 3 while the right-click menu showed (old build), and 9,588 from the drag to the end with the fix; also unchanged after *Copy* (337 characters on the clipboard, recorded in the history), with another window in front, and in a Markdown document. **Line numbers:** right after wheel scrolls (rows 50, 58, 74 where they belong), on page 2 (starting at line 1863), with Wrap off, and in wrapped long lines. **Text size:** Ctrl+= and Ctrl+− kept line 52 at the top. **Gutter:** its width set with the text (the text box 1,311 DIPs from the first layout, no second one). **Drag:** a frame every 16 ms (median). **The peek** (`selfix5`): UI Automation showed its RichEditBox focused after its menu while Windows' focus stayed on the panel's input window; before the fix Ctrl+C, Right and a letter each closed the peek and copied or typed nothing, and Down on its menu closed both. With the fix: Down moves in the menu (to *Paste*), Esc closes only the menu and then the peek, *Select all* + Ctrl+C copied the whole text (1,055 characters, 29 lines), Shift+Down ×3 + Ctrl+C the first three lines (141 characters, entry 17), Shift+F10 opened the menu with *Copy* enabled; a letter typed over a peek opened under a resting mouse still closed it and went into the search box ("heartbeatq"). **The viewer** (`selfix4`): a dragged selection stayed drawn under the right-click menu, Esc closed only the menu. The app's log since `selfix5` started: 16 lines, 0 WRN/ERR. The whole solution with this change and the other session's uncommitted AI work, `--no-incremental`: 0 errors, no warning in a changed file (165: xUnit analyzers and CS0108) | claude-desktops MCP tools (`move_mouse`, `click`, `drag`, `press_keys`, `screenshot`, `run_command`); guest scripts `sampler.ps1`, `log.ps1`, `focus.ps1` (UI Automation), `w32focus.ps1` (`GetGUIThreadInfo`), `install.ps1` | ✅ Not run: a real GPU, touch and pen, Narrator, the owner's PC |
 | **A hunt for bugs like the reviving pin** (2026-11-14, §2.3, §2.7, §2.11, §3.1, §4; the owner: "Investigate more bugs like this around and others"). **The owner's logs** (16 days, content-free): 7 warnings, all "Clipboard stayed locked … not captured". 5 came from window 0x40D96, a `CLIPBRDWNDCLASS` window of `svchost` PID 15860, the service `cbdhsvc_b0d86` (Windows' clipboard history), which was still running. Fixed: the retry now waits up to 10 s (§2.3). 220 info lines "a CodexRollout file was rewritten and read again" in three bursts are no bug: 97 session files got a status-change time of 06:45:38–39 today with an unchanged modification time, all `.jsonl.zst` (Codex compressed sessions that had turned 7 days old), and every re-read found 0 new prompts. **Code sweeps:** number parsing without a culture (one `int.TryParse` of an icon index: harmless); state values written invariantly (dates as `o`, counts and ticks with `InvariantCulture`); 24 `async void` handlers, 4 without a try/catch (Settings' allow-again and clear buttons), harmless because `App.OnUnhandledException` logs UI exceptions and marks them handled; `pinned_utc` written but never read. **Fixed:** the lock wait; an unpin restarting the retention clock (§2.11); the installer keeping Settings' choices on a re-run (§3.1, the owner's choice); the pin ledger taking back a pin whose storing failed (§2.7). **Tests:** `ACopyHeldOpenForSeconds_IsReadOnceLetGo` and `ACopyHeldPastTheWait_IsCountedAsLockedOut` (a producer re-opens the clipboard right after its copy, in the private window station; 5 of 5 repeated runs green), `Unpinning_ResetsTheRetentionClockLikeUngrouping`, `Withdraw_TakesBackOnlyAPinThisImportMetFirst`. Mutations: the old give-up rule fails the first test, no reset fails the unpin test. The whole suite on `73b3fe3` plus the other session's uncommitted AI work plus this change: 2,453 = 2,450 passed + 3 opt-in skipped, 0 failed; a solution build with only the known CS0108 | the owner's logs, `GetWindowThreadProcessId` and `Win32_Service`, `find -newerct`, scratch scripts (session 44deb2ae) | ✅ |
 | **The installer's re-run, for real** (2026-11-14, §3.1), in a claude-desktops Windows 11 desktop on this PC (deleted afterwards with its storage): the working tree's `install.ps1` with `-Package` (the v0.2.11 x64 zip, checksum checked) and `-NoLaunch`. **Fresh install:** a Run value, `DisabledHotkeys` `V`, `releasedKeys` `V`, Explorer restarted. **The Run value removed and `V` taken out** (what Settings does), then a plain re-run: "Start with Windows stays off …" and "Win+V stays with Windows … (-TakeOverWinV takes Win+V over again)", Explorer's process unchanged. **`-TakeOverWinV`:** `V` released again, Explorer restarted, startup still off. **Startup on again, then a re-run:** the value refreshed, "Win+V was already released", no restart. **`-Uninstall`:** everything given back and `installer.json` gone; a fresh install afterwards set the defaults again. The two functions: 12 checks on a scratch key in PowerShell 7.5.8 and 5.1, with the owner's `DisabledHotkeys` unchanged | guest script `reinstall-test.ps1`, scratch `test_reinstall.ps1` (session 44deb2ae) | ✅ |
 | **The Store edition shares `%LOCALAPPDATA%\BetterClipboard` with every kind of install, live** (2026-11-14, §2.47; the owner: "can we somehow actually require access to that one folder for interopability with all kinds of install a user can have on a machine safely", answered "Share it (Recommended)"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-shared-qa`, Tiny11 25H2 26200, 1600×900; deleted afterwards with its persist folder), Store packages of the release 0.2.11 (1.2.11.0) and of this change (0.2.12, 1.2.12.0), test-signed for the Store's own publisher so they install as one family, BC-TEST copies only. (1) 1.2.11 installed, with BC-TEST copies in its `LocalState\BetterClipboard`. (2) 1.2.12 installed over it as an update: "Made the shared data folder", "written for real on this Windows build (10.0.26200.7171)", "Moved this edition's history …", "… settings into the shared data folder"; the same store and key ("new key: False"), no language picker, no welcome; the record `{"folder": "shared", "windowsBuild": "10.0.26200.7171"}`; *Settings › Data folder* named the shared folder with its note. (3) The released 0.2.11 installed with its `install.ps1`: the warning said the two use the same history; it ran on that history and recorded a fourth copy. (4) The Store edition's setup: the shared wording ("Your history, pins and settings stay as they are …") and two check lines; *Move to this edition*: "the installer copy was uninstalled", its uninstall log "Your history was kept in …", the installer folder gone, the same store opened. (5) The package removed: package and its own folders (the record, 1.2.11's old logs) gone, `%LOCALAPPDATA%\BetterClipboard` with its store, key, settings and logs still there. (6) Installed again over that history with `StoreWelcomeAccepted` false (as an installer copy leaves it): the proof again, no picker, no move, the welcome with "Your history and settings from the BetterClipboard you used before are kept: every kind of install uses the same folder."; after *Start* the panel listed the four copies with the pin (the installer copy's among them); `bclip status` with the command line on started the app by itself from `WindowsApps` and listed the same four. Found: the two processes' appends to one log lost the second Store start's "starting" line (§6) | claude-desktops MCP tools; guest scripts `C:\qa\state.ps1`, `remove.ps1`, `reinstall.ps1`, `swap.ps1`; `qa-shared/sign_both.ps1` (session 66cdd808's scratchpad) | ✅ |
@@ -7894,7 +7944,11 @@ kit by a scratch generator, session 66cdd808):
   - measure RichEdit on a real GPU (the page size was set on a test desktop without one), and listen to Narrator in both
     overlays;
   - decide whether a copy made in the peek or the viewer belongs in the history (today it becomes a new entry, like any
-    copy).
+    copy);
+  - a panel whose text viewer was open when another window took the foreground stays shown, behind that window, after
+    the viewer closes (seen 2026-11-14 in the selection QA, not changed): `OnActivated` conceals the panel only while
+    none of its popups is counted, and closing the last one does not look at the foreground (the update dialog's does,
+    §2.29). The image viewer and the peeks are counted the same way.
 - **Pictures and their files** (2026-11-13, §2.49), next steps:
   - follow a file that was renamed or moved (its NTFS file id could be kept with the path, or the folder searched by
     pixels again), instead of calling it "moved or deleted";

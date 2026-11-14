@@ -33,9 +33,17 @@ namespace BetterClipboard.App.Views;
 /// history records it.
 /// </para>
 /// <para>
+/// <b>The selection stays drawn</b> while the box does not have the keyboard: the right-click menu, a toolbar button and
+/// another window all take it, and WinUI hides an unfocused box's selection by default. Before 2026-11-14 it vanished for
+/// as long as the menu showed: the owner's report, "on rightclick or randomally the selection blinks".
+/// </para>
+/// <para>
 /// <b>Line numbers.</b> RichEdit has no gutter. The numbers are drawn beside it, each at the top of its line's first row as
 /// RichEdit reports it (<see cref="ITextRange.GetPoint"/>), so a wrapped line keeps one number. Only the lines in view are
-/// asked about, again whenever the view scrolls or resizes.
+/// asked about, again whenever the view scrolls or resizes. RichEdit's coordinates are the whole document's: the box's
+/// scroller moves the document and RichEdit never hears of it (WinUI's TextBoxView gives RichEdit a client rectangle as
+/// large as the content), so the scroller's offsets turn them into the view's (<see cref="VisibleTopLeft"/>). The gutter's
+/// width is set with the text, never afterwards: a change of it lays the whole text out again.
 /// </para>
 /// <para>UI thread only: it creates XAML elements.</para>
 /// </remarks>
@@ -171,6 +179,17 @@ internal sealed class TextPreviewPresenter
         Grid.SetColumn(editor, 1);
         root.Children.Add(gutter);
         root.Children.Add(editor);
+
+        // The selection stays drawn, in its own color, while the box does not have the keyboard (the class remarks). WinUI
+        // hides an unfocused box's selection unless SelectionHighlightColorWhenNotFocused is set (CTextBoxBase starts with
+        // m_hideSelection), and keeps the focused look only while the box's own ContextFlyout is open; our menu is another
+        // flyout. Bound to the focused color rather than given a brush, so the theme's and high contrast's color follow.
+        editor.SetBinding(RichEditBox.SelectionHighlightColorWhenNotFocusedProperty, new Microsoft.UI.Xaml.Data.Binding
+        {
+            Source = editor,
+            Path = new PropertyPath(nameof(RichEditBox.SelectionHighlightColor)),
+            Mode = Microsoft.UI.Xaml.Data.BindingMode.OneWay,
+        });
     }
 
     /// <summary>
@@ -190,7 +209,7 @@ internal sealed class TextPreviewPresenter
 
     /// <summary>
     /// Shows a view: loads its RTF (or, for a large plain view without colors, its text with one format), sets wrapping
-    /// and the gutter, and scrolls to the top.
+    /// and the gutter, and scrolls to the top, or to the line holding <paramref name="scrollTo"/>.
     /// </summary>
     /// <param name="view">The view.</param>
     /// <param name="page">The page of the view to show (one of its <see cref="TextViewRendering.Pages"/>).</param>
@@ -199,19 +218,24 @@ internal sealed class TextPreviewPresenter
     /// <param name="palette">The theme's colors (used for the plain load).</param>
     /// <param name="wrap">Whether long lines wrap.</param>
     /// <param name="lineNumbers">Whether the gutter shows (only ever for a code view).</param>
+    /// <param name="scrollTo">
+    /// A position in the view's text (<see cref="FirstVisiblePosition"/>) whose line goes to the top of the view, with the
+    /// caret: a text drawn again at another size comes back to the same place. <see langword="null"/>, or a position before
+    /// this page, shows the page from its start.
+    /// </param>
     /// <remarks>
     /// RichEdit drops an RTF document's fonts and colors when the box gets its template after the text was set: the
     /// viewer's first text came out in the interface font and color (QA, 2026-11-13), while the peek's box, warmed up
     /// beforehand, kept them. So the template is applied first, and a box that is not in a live tree yet is emptied now
     /// and gets the view once it is loaded (a frame later).
     /// </remarks>
-    public void Show(TextViewRendering view, TextViewPage page, string? rtf, TextViewStyle style, SyntaxPalette palette, bool wrap, bool lineNumbers)
+    public void Show(TextViewRendering view, TextViewPage page, string? rtf, TextViewStyle style, SyntaxPalette palette, bool wrap, bool lineNumbers, int? scrollTo = null)
     {
         editor.ApplyTemplate();
         if (!editor.IsLoaded)
         {
             Clear();
-            pendingShow = new PendingShow(view, page, rtf, style, palette, wrap, lineNumbers);
+            pendingShow = new PendingShow(view, page, rtf, style, palette, wrap, lineNumbers, scrollTo);
             return;
         }
 
@@ -220,6 +244,11 @@ internal sealed class TextPreviewPresenter
         this.page = page;
         numberSize = style.CodeSize;
         lineNumbersWanted = lineNumbers;
+
+        // The gutter takes its width now, before the text is laid out. Set later, by the queued placement of the numbers,
+        // it narrowed the text box after the text showed (seconds later in one QA run, 2026-11-14): the text jumped sideways
+        // and wrapped again, under a selection being made.
+        ApplyGutterWidth();
         var clock = Stopwatch.StartNew();
 
         // RichEdit refuses new text while read-only, and keeps no undo history for text nobody edits (it would hold a copy).
@@ -244,10 +273,25 @@ internal sealed class TextPreviewPresenter
         long setMs = clock.ElapsedMilliseconds;
         editor.IsReadOnly = true;
         editor.TextWrapping = wrap ? TextWrapping.Wrap : TextWrapping.NoWrap;
-        editor.Document.Selection.SetRange(0, 0);
+
+        // The caret goes where the view goes. The text box keeps its caret in view, a moment later: a caret left at the
+        // page's start took the view back to the top after it had gone to the old place (QA, 2026-11-14).
+        int caret = scrollTo is { } position && position > page.Start ? Math.Min(position - page.Start, page.Length) : 0;
+        editor.Document.Selection.SetRange(caret, caret);
         wheelTargetX = null;
         wheelTargetY = null;
-        scroller?.ChangeView(0, 0, null, disableAnimation: true);
+
+        // One scroll request only. A request to the top made here as well came after the one to the old place and undid
+        // it (QA, 2026-11-14).
+        if (caret > 0)
+        {
+            ScrollToLineOf(caret);
+        }
+        else
+        {
+            scroller?.ChangeView(0, 0, null, disableAnimation: true);
+        }
+
         QueueGutterUpdate();
         TimeFirstLayout(page.Length, rtf is not null, setMs, clock);
     }
@@ -342,17 +386,21 @@ internal sealed class TextPreviewPresenter
     public void SetLineNumbers(bool lineNumbers)
     {
         lineNumbersWanted = lineNumbers;
+        ApplyGutterWidth();
         QueueGutterUpdate();
     }
 
-    /// <summary>The position of the first character in view, so a reload (another text size) can come back to it.</summary>
-    /// <returns>A character position.</returns>
+    /// <summary>
+    /// The position of the first character in view, so a reload (another text size) can come back to it with
+    /// <see cref="Show"/>'s scrollTo.
+    /// </summary>
+    /// <returns>A character position in the whole text; 0 when RichEdit cannot report one (logged).</returns>
     public int FirstVisiblePosition()
     {
         try
         {
             // RichEdit counts in the page; the caller counts in the whole text.
-            return page.Start + editor.Document.GetRangeFromPoint(new global::Windows.Foundation.Point(EditorPadding.Left + 1, EditorPadding.Top + 1), PointOptions.ClientCoordinates).StartPosition;
+            return page.Start + editor.Document.GetRangeFromPoint(VisibleTopLeft(), PointOptions.ClientCoordinates).StartPosition;
         }
         catch (Exception ex)
         {
@@ -361,19 +409,40 @@ internal sealed class TextPreviewPresenter
         }
     }
 
-    /// <summary>Scrolls a character position to the top of the view (after a reload at another text size).</summary>
-    /// <param name="position">The position.</param>
-    public void ScrollToPosition(int position)
+    /// <summary>
+    /// The point a DIP inside the top-left corner of the text in view, in RichEdit's client coordinates.
+    /// </summary>
+    /// <returns>The point.</returns>
+    /// <remarks>
+    /// RichEdit's client coordinates are the whole document's, not the view's: the box's scroller moves the document, and
+    /// RichEdit never hears of it (the class remarks). The box's own top-left corner is the document's first character
+    /// however far the text is scrolled; the scroller's offsets take it to the text in view. Without them the line numbers
+    /// read 1, 2, 3 from the top whatever was in view, and a new text size went back to the top of the page (QA,
+    /// 2026-11-14).
+    /// </remarks>
+    private global::Windows.Foundation.Point VisibleTopLeft() =>
+        new((scroller?.HorizontalOffset ?? 0) + 1, (scroller?.VerticalOffset ?? 0) + 1);
+
+    /// <summary>Scrolls the line holding a position of the page to the top of the view (<see cref="Show"/>'s scrollTo).</summary>
+    /// <param name="local">The position, in the page (RichEdit's own count).</param>
+    /// <remarks>
+    /// The box's scroller is moved, to the line's top as RichEdit reports it. RichEdit's own
+    /// <see cref="ITextRange.ScrollIntoView"/>, used until 2026-11-14, scrolls nothing here: RichEdit believes the whole
+    /// document is in view (<see cref="VisibleTopLeft"/>).
+    /// </remarks>
+    private void ScrollToLineOf(int local)
     {
         try
         {
-            int local = Math.Clamp(position - page.Start, 0, page.Length);
-            editor.Document.GetRange(local, local).ScrollIntoView(PointOptions.Start);
-            QueueGutterUpdate();
+            editor.Document.GetRange(local, local).GetPoint(
+                HorizontalCharacterAlignment.Left, VerticalCharacterAlignment.Top, PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out var point);
+            scroller?.ChangeView(0, Math.Max(0, point.Y), null, disableAnimation: true);
         }
         catch (Exception ex)
         {
+            // A position RichEdit cannot report leaves the view at its top: the text is shown, only not where it was.
             AppLog.Warn($"Scrolling the text viewer back to its place failed: {ex.Message}");
+            scroller?.ChangeView(0, 0, null, disableAnimation: true);
         }
     }
 
@@ -394,7 +463,28 @@ internal sealed class TextPreviewPresenter
         editor.IsReadOnly = false;
         editor.Document.SetText(TextSetOptions.None, string.Empty);
         editor.IsReadOnly = true;
+        ApplyGutterWidth();
         HideNumbers(0);
+    }
+
+    /// <summary>
+    /// Gives the gutter the width the view shown needs (room for the text's last line number), or none: a Markdown
+    /// document, a view without numbers wanted, no text.
+    /// </summary>
+    /// <remarks>
+    /// Called with the text (<see cref="Show"/>) and with the switch (<see cref="SetLineNumbers"/>), never from the
+    /// queued placement of the numbers: the gutter's width is the text's, and a change of it lays the whole text out again.
+    /// </remarks>
+    private void ApplyGutterWidth()
+    {
+        double width = 0;
+        if (rendering is { IsDocument: false } view && lineNumbersWanted && view.LineStarts.Count > 0)
+        {
+            int digits = view.LineStarts.Count.ToString(System.Globalization.CultureInfo.InvariantCulture).Length;
+            width = Math.Ceiling((Math.Max(2, digits) * numberSize * 0.6) + GutterGapDip);
+        }
+
+        gutter.Width = width;
     }
 
     /// <summary>Finds the RichEditBox's own scroller once its template is applied, to follow its scrolling.</summary>
@@ -413,7 +503,7 @@ internal sealed class TextPreviewPresenter
         // A view given before the box was loaded (see Show's remarks).
         if (pendingShow is { } pending)
         {
-            Show(pending.View, pending.Page, pending.Rtf, pending.Style, pending.Palette, pending.Wrap, pending.LineNumbers);
+            Show(pending.View, pending.Page, pending.Rtf, pending.Style, pending.Palette, pending.Wrap, pending.LineNumbers, pending.ScrollTo);
         }
 
         QueueGutterUpdate();
@@ -453,13 +543,13 @@ internal sealed class TextPreviewPresenter
 
     /// <summary>
     /// Places a number at the top of every line in view (RichEdit's own positions, so wrapped lines and any font fallback are
-    /// followed), or hides the gutter for a Markdown document, plain views without numbers wanted, and no text.
+    /// followed), or hides the numbers for a Markdown document, plain views without numbers wanted, and no text.
     /// </summary>
     private void UpdateGutter()
     {
-        if (rendering is not { IsDocument: false } view || !lineNumbersWanted || view.LineStarts.Count == 0 || !editor.IsLoaded)
+        ApplyGutterWidth();
+        if (gutter.Width <= 0 || rendering is not { } view || !editor.IsLoaded)
         {
-            gutter.Width = 0;
             HideNumbers(0);
             return;
         }
@@ -467,14 +557,12 @@ internal sealed class TextPreviewPresenter
         try
         {
             var starts = view.LineStarts;
-            int digits = starts.Count.ToString(System.Globalization.CultureInfo.InvariantCulture).Length;
-            double digitWidth = numberSize * 0.6;
-            gutter.Width = Math.Ceiling((Math.Max(2, digits) * digitWidth) + GutterGapDip);
 
             // The first line in view: the one holding the character at the view's top-left corner. RichEdit counts in the
             // page, the line starts in the whole text. A line that began on an earlier page (a page cut inside a very long
             // line) has its number there.
-            int top = page.Start + editor.Document.GetRangeFromPoint(new global::Windows.Foundation.Point(EditorPadding.Left + 1, EditorPadding.Top + 1), PointOptions.ClientCoordinates).StartPosition;
+            var corner = VisibleTopLeft();
+            int top = page.Start + editor.Document.GetRangeFromPoint(corner, PointOptions.ClientCoordinates).StartPosition;
             int line = TextViewRendering.LineOf(starts, top);
             if (starts[line] < page.Start)
             {
@@ -492,8 +580,9 @@ internal sealed class TextPreviewPresenter
                 editor.Document.GetRange(local, local).GetPoint(
                     HorizontalCharacterAlignment.Left, VerticalCharacterAlignment.Top, PointOptions.ClientCoordinates | PointOptions.AllowOffClient, out var point);
 
-                // RichEdit's client coordinates start inside the box's padding; the gutter starts at the box's top.
-                double y = point.Y + EditorPadding.Top;
+                // RichEdit's client coordinates are the document's, starting inside the box's padding; the gutter does not
+                // scroll and starts at the box's top. The corner is a DIP inside the view's top.
+                double y = point.Y - (corner.Y - 1) + EditorPadding.Top;
                 if (y > viewport + EditorPadding.Top)
                 {
                     break;
@@ -578,7 +667,8 @@ internal sealed class TextPreviewPresenter
     /// <param name="Palette">The theme's colors.</param>
     /// <param name="Wrap">Whether long lines wrap.</param>
     /// <param name="LineNumbers">Whether the gutter shows.</param>
-    private sealed record PendingShow(TextViewRendering View, TextViewPage Page, string? Rtf, TextViewStyle Style, SyntaxPalette Palette, bool Wrap, bool LineNumbers);
+    /// <param name="ScrollTo">The position whose line goes to the top, or <see langword="null"/> for the page's start.</param>
+    private sealed record PendingShow(TextViewRendering View, TextViewPage Page, string? Rtf, TextViewStyle Style, SyntaxPalette Palette, bool Wrap, bool LineNumbers, int? ScrollTo);
 
     /// <summary>An <c>0xRRGGBB</c> color as an opaque WinUI color.</summary>
     /// <param name="rgb">The color.</param>
