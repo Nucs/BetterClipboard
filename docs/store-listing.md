@@ -104,9 +104,9 @@ How to test:
 
 Consent and Windows settings (policy 10.2.8, 10.5.5): Win+V is answered only after the user left "Open with Win+V" switched on in the welcome window, only through a low-level keyboard hook, and only while the app runs. No Windows setting is changed. "Start with Windows" uses the package's startup task and is enabled only from the welcome window or the app's Settings; the user can overrule it in Windows' Startup apps list.
 
-Other copies of the same product: BetterClipboard is also distributed outside the Store (GitHub). If such a copy is installed for the same user, the Store edition says so at its first start and offers to take its place. Only after the user presses "Move to this edition" does it copy that copy's history into its own folder, check it, and run that copy's uninstaller (the PowerShell script that product ships; a copy of it is inside this package). Nothing is downloaded.
+Other copies of the same product: BetterClipboard is also distributed outside the Store (GitHub). All copies share one history folder, %LOCALAPPDATA%\BetterClipboard (created with cmd.exe if missing; if the app's writes do not reach it, its package folder is used). If another copy is installed for the same user, the Store edition says so at its first start and offers to take its place. Only after "Move to this edition" does it run that copy's uninstaller (its PowerShell script; a copy is inside this package), which keeps the history. Nothing is downloaded.
 
-Uninstall: the history is in the package's own data folder, which Windows removes with the app.
+Uninstall: Windows removes the package and its folders. The history folder stays, as for every other kind of install; Settings > Data folder says so and opens it, Settings > Clear history empties it.
 ```
 
 ## 2. Screenshots and logos

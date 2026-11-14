@@ -291,6 +291,7 @@ public sealed partial class AppController
         // Program.Main took the lock over from an older copy before the log existed (it writes to the same file): said here.
         string tookOver = options.TookOverFrom is { } older ? $", took over from BetterClipboard {older}, which was asked to exit" : string.Empty;
         AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{restarted}{edition}{tookOver}).");
+        LogStoreDataFolder();
 
         // First, because it may undo a move that was left unfinished, which changes whether a history exists.
         bool setupDue = NeedsStoreSetup(out bool welcomed);

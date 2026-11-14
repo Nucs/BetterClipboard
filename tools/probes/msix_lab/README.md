@@ -19,6 +19,7 @@ clipboard-history check prints a status and a count.
 | `children` | Do child processes that are other programs (cmd, reg) leave the package's environment, for each way of starting them? |
 | `selfchild` | Does a child that is the package's own program keep the package identity? |
 | `files` | Which AppData writes are redirected, and which are real? |
+| `shared` | Can the package use a folder every edition shares (`%LOCALAPPDATA%\BetterClipboard`'s shape)? A folder made by cmd, then written by the package (subfolders, a journal that comes and goes, a memory-mapped file, an atomic replace); a private copy beside the real folder (which one the package reads and writes); and a private copy moved to the real path by cmd. Added 2026-11-14 for the shared data folder (CLAUDE.md §2.47). |
 | `filewatch` | Do file change notifications arrive for real folders? |
 | `dpapi` | Does a DPAPI blob sealed outside open inside, and the reverse? |
 | `objects` | Are named mutexes and events shared with unpackaged processes? |
@@ -27,8 +28,9 @@ clipboard-history check prints a status and a count.
 | `cliphistory` | Does WinRT's clipboard history answer a packaged process without a window? |
 | `startup` | Can the package's startup task be switched on and off, and is the user asked? |
 
-The answers of 2026-11-12 (Windows 11 25H2, build 26200) are in `docs/microsoft-store.md` §2. Run the lab again after
-a Windows feature update or a Windows App SDK upgrade: the Store edition's design depends on them.
+The answers of 2026-11-12 and of the `shared` section on 2026-11-14 (Windows 11 25H2, build 26200) are in
+`docs/microsoft-store.md` §2. Run the lab again after a Windows feature update or a Windows App SDK upgrade: the Store
+edition's design depends on them (the app also proves its shared folder itself once per Windows build).
 
 ## Files
 

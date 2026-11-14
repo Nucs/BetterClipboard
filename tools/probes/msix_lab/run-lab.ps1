@@ -27,8 +27,8 @@
     The package's declared languages for this run, e.g. 'en-US' or 'en-US','ru-RU','he-IL' (the language test).
 
 .PARAMETER Only
-    Run only these sections (identity, apps, registry, children, selfchild, files, filewatch, dpapi, objects, notify,
-    languages, cliphistory, startup). Default: all of them.
+    Run only these sections (identity, apps, registry, children, selfchild, files, shared, filewatch, dpapi, objects,
+    notify, languages, cliphistory, startup). Default: all of them.
 
 .PARAMETER Unregister
     Remove the package and the fixtures, then list what stayed behind.
@@ -164,6 +164,8 @@ if ($Unregister) {
         "real BC-TEST-MSIX-new = $(Test-Path (Join-Path $local 'BC-TEST-MSIX-new'))"
         "real BC-TEST-MSIX-existing = $(Test-Path (Join-Path $local 'BC-TEST-MSIX-existing'))"
         "real BC-TEST-MSIX-files = $(Test-Path (Join-Path $local 'BC-TEST-MSIX-files'))"
+        "real BC-TEST-MSIX-shared files = $((Get-ChildItem (Join-Path $local 'BC-TEST-MSIX-shared') -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name } | Sort-Object) -join ', ')"
+        "real BC-TEST-MSIX-moved files = $((Get-ChildItem (Join-Path $local 'BC-TEST-MSIX-moved') -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.Name } | Sort-Object) -join ', ')"
         "real registry values = $(((Get-Item $testKey -ErrorAction SilentlyContinue) | ForEach-Object { $_.Property | Sort-Object }) -join ', ')"
     )
     Remove-Item $testKey, $watchKey -Recurse -Force -ErrorAction SilentlyContinue
@@ -243,6 +245,46 @@ if (Test-Section 'selfchild') {
 }
 
 if (Test-Section 'files') { Write-Section 'files in process'; Invoke-Lab files }
+if (Test-Section 'shared') {
+    # The shared data folder: made by a program the package starts, then used by the package (CLAUDE.md §2.47).
+    $privateLocal = Join-Path $local "Packages\$family\LocalCache\Local"
+    $shared = Join-Path $local 'BC-TEST-MSIX-shared'
+    Remove-Item $shared, (Join-Path $privateLocal 'BC-TEST-MSIX-shared') -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Section 'shared data folder: made by cmd, then written by the package'
+    Invoke-Lab shared
+    Write-Result @(
+        "outside.shared files = $((Get-ChildItem $shared -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($shared.Length + 1) } | Sort-Object) -join ', ')"
+        "outside.shared settings.json = $(Get-Content (Join-Path $shared 'settings.json') -ErrorAction SilentlyContinue)"
+        "outside.private copy of shared exists = $(Test-Path (Join-Path $privateLocal 'BC-TEST-MSIX-shared'))"
+    )
+
+    # The shadow rule: a real folder and a private copy of it, each with its own which.txt.
+    $shadow = Join-Path $local 'BC-TEST-MSIX-shadow'
+    $privateShadow = Join-Path $privateLocal 'BC-TEST-MSIX-shadow'
+    Remove-Item $shadow, $privateShadow -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $shadow, $privateShadow -Force | Out-Null
+    Set-Content -Path (Join-Path $shadow 'which.txt') -Value 'real' -Encoding ASCII -NoNewline
+    Set-Content -Path (Join-Path $shadow 'only-real.txt') -Value 'BC-TEST' -Encoding ASCII
+    Set-Content -Path (Join-Path $privateShadow 'which.txt') -Value 'private' -Encoding ASCII -NoNewline
+    Write-Section 'shadow: a real folder and a private copy of the same folder'
+    Invoke-Lab shadow
+    Write-Result @(
+        "outside.shadow real files = $((Get-ChildItem $shadow -File | Sort-Object Name | ForEach-Object { $_.Name }) -join ', ')"
+        "outside.shadow private files = $((Get-ChildItem $privateShadow -File | Sort-Object Name | ForEach-Object { $_.Name }) -join ', ')"
+        "outside.real which.txt = $(Get-Content (Join-Path $shadow 'which.txt'))"
+        "outside.private which.txt = $(Get-Content (Join-Path $privateShadow 'which.txt'))"
+    )
+
+    # The repair: the package makes a folder (redirected), cmd moves the private copy to the real path.
+    $moved = Join-Path $local 'BC-TEST-MSIX-moved'
+    Remove-Item $moved, (Join-Path $privateLocal 'BC-TEST-MSIX-moved') -Recurse -Force -ErrorAction SilentlyContinue
+    Write-Section 'shadow repair: the private folder moved to the real path by cmd'
+    Invoke-Lab shadowmove
+    Write-Result @(
+        "outside.moved real files = $((Get-ChildItem $moved -Recurse -File -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName.Substring($moved.Length + 1) } | Sort-Object) -join ', ')"
+        "outside.moved private copy exists = $(Test-Path (Join-Path $privateLocal 'BC-TEST-MSIX-moved'))"
+    )
+}
 if (Test-Section 'filewatch') {
     # File change notifications for folders this shell makes and writes to: one below Roaming AppData, one below Local
     # AppData, one outside AppData (the control).

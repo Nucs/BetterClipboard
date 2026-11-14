@@ -86,7 +86,8 @@ internal static class Program
 
         // Fail fast with a clear message when the user has not opted in (the pipe would not exist anyway).
         // An unreadable settings file (app mid-save) is "unknown": fall through and let the pipe decide.
-        // The package family name makes bclip from the Microsoft Store package read that edition's own data folder.
+        // The package family name makes bclip from the Microsoft Store package read the folder that edition's app recorded:
+        // the shared one once proven, else the package's own (StoreDataFolder.ResolveReadOnly; bclip never sets it up).
         var paths = AppPaths.ResolveDefault(PackageIdentity.FamilyName);
         var settings = SettingsStore.TryReadSnapshot(paths.SettingsPath);
         if (settings is { EnableCommandLine: false })

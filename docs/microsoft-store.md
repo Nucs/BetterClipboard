@@ -9,14 +9,13 @@ Legend: **[docs]** = Microsoft documentation read on 2026-11-12 · **[measured]*
 Windows 11 25H2 desktop (26200, Tiny11) with [`tools/probes/msix_lab`](../tools/probes/msix_lab) · **[policy]** =
 Microsoft Store Policies 7.20 (published 2026-09-15, effective 2026-10-22).
 
-**State (2026-11-13):** the Store edition and its package build are in the repository and were run end to end in
-test desktops. The owner registered as a developer. The name **BetterClipboard** is reserved (Store ID
-`9PHL574X9BF9`, publisher "Nucs"), and the product's first submission is a **draft** in Partner Center with every
-page filled: pricing, properties, both packages (accepted by the Store's upload check), five listings with six
-screenshots each, the submission options and the notes for certification. Not done, and the owner's: one tick
-under the age ratings (IARC's terms), the choice of the version rule, and *Submit for certification* (§8). The
-release pipeline builds the Store packages and, once the first submission is published and three secrets are set,
-submits every release by itself (§7).
+**State (2026-11-14):** the Store edition and its package build are in the repository and were run end to end in test
+desktops. The owner registered as a developer. The name **BetterClipboard** is reserved (Store ID `9PHL574X9BF9`,
+publisher "Nucs"), and the product's first submission (1.2.11, the release 0.2.11) was **sent for certification** on
+2026-11-13 (§8). Since 2026-11-14 the edition keeps its history in `%LOCALAPPDATA%\BetterClipboard`, the folder every
+other kind of install uses (§4.4); that ships with the next release, whose submission needs the updated notes for
+certification. The release pipeline builds the Store packages and, once the first submission is published and three
+secrets are set, submits every release by itself (§7).
 
 ## 1. Where: the Microsoft Store, as an MSIX package
 
@@ -52,6 +51,9 @@ AppContainer. Windows still redirects some of what it writes. Every row is **[me
 | File change notifications (`FileSystemWatcher`) for real folders: Roaming AppData, Local AppData, outside AppData | Arrive as for any program |
 | A new folder directly under `%LOCALAPPDATA%` | Redirected to `…\Packages\<family>\LocalCache\Local\…`, deleted when the package is uninstalled |
 | Anything inside a folder that already exists there for real | Real: append, new file, delete, rename, replace, delete the folder |
+| A folder directly under `%LOCALAPPDATA%` made by a program the package starts (cmd's `mkdir`), then written by the package (2026-11-14) | Real, and so is everything the package writes inside it: new subfolders, a database file, a journal made and deleted next to it, a memory-mapped file, a file moved over another. A program outside the package sees all of it; nothing lands in `LocalCache` |
+| A private copy of a folder (in `LocalCache\Local`) beside the real folder of that name (2026-11-14) | The package reads the **private** file first, lists both folders merged, and writes its new files and appends into the **private** copy; every other program sees only the real folder. Two folders under one name |
+| That private copy moved to the real path by cmd's `move` (2026-11-14) | It becomes the real folder: the package reads its files there and writes for real afterwards; no private copy is left |
 | `…\Packages\<family>\LocalState` by its real path | Written directly; deleted when the package is uninstalled |
 | `%TEMP%` | Real |
 | A child process that is **another program** (cmd, reg, PowerShell; by CreateProcess, ShellExecute, `runas`, a scheduled task, Explorer) | Runs **outside** the package's environment: its registry and file writes are real. Only `PROC_THREAD_ATTRIBUTE_DESKTOP_APP_POLICY` = 2 keeps descendants inside |
@@ -62,7 +64,7 @@ AppContainer. Windows still redirects some of what it writes. Every row is **[me
 | WinRT `Clipboard.GetHistoryItemsAsync()` with no window | `Success` |
 | `CultureInfo.CurrentUICulture` | Windows' display language, whatever the manifest declares |
 | `ApplicationLanguages.Languages` | The user's languages that the manifest declares |
-| Uninstalling the package | Removes the package's data folder (redirected files, `LocalState`, its private hive); real folders and values stay |
+| Uninstalling the package | Removes the package's data folder (redirected files, `LocalState`, its private hive); real folders and values stay, a folder made by cmd and written by the package included (2026-11-14) |
 
 Manifest rules learned the hard way:
 
@@ -86,13 +88,18 @@ Manifest rules learned the hard way:
 | 10.5.5 | "Your product must also obtain express user consent before collecting, storing or transmitting such [highly sensitive] information." | Nothing is recorded until **Start** in the welcome window |
 | 10.5.1 | A privacy policy URL; Desktop Bridge and Win32 products "must always have privacy policies" | The README's *Privacy* section, which names the Store edition |
 | 10.1.1 | "The value proposition of your product must be clear during the first run experience"; a unique name | The welcome window; the name is reserved in Partner Center |
-| 10.2.7 | The product can be uninstalled cleanly | The history lives in the package's own folder, which Windows removes with the app |
+| 10.2.7 | "Your product must clearly communicate and enable a user's ability to cleanly uninstall and remove your product from their device." | Since 2026-11-14 the history is in `%LOCALAPPDATA%\BetterClipboard`, the folder every kind of install uses, and stays after an uninstall, as it does for those editions. *Settings › Data folder* says so, names the folder and opens it; *Clear history › Everything…* empties the history (before: the package's own folder, removed with the app) |
 | 10.6 | Declared capabilities must relate to the product's functions | `runFullTrust` only, explained in the submission |
 | 10.7 | The description is localized in every declared language | The package declares its five languages, and the listing has five descriptions |
 | 10.2.2 | No dynamic inclusion of code that changes the described functionality | The self-updater is off in this edition; the Store updates it |
 
 `unvirtualizedResources` (which would make registry writes real) is "designed for certain types of desktop PC games
 that are published by Microsoft and our partners … not intended to be used for other scenarios" **[docs]**: not used.
+Its finer form, flexible virtualization (`virtualization:ExcludedDirectories` in the manifest, Windows 11 only),
+would exempt exactly `%LOCALAPPDATA%\BetterClipboard`, but needs the same capability **[docs]**, and a refused
+capability fails the whole submission. The shared data folder is made by a program the package starts instead (§4.4),
+on documented behavior: "If the file is opened from the real AppData location, then no virtualization for that file
+occurs" **[docs]**.
 
 ## 4. The Microsoft Store edition
 
@@ -103,7 +110,7 @@ The same app, built as a package. A process knows it is the Store edition by its
 
 | | Installer and Chocolatey editions | Microsoft Store edition |
 |---|---|---|
-| History, settings, logs | `%LOCALAPPDATA%\BetterClipboard` | `%LOCALAPPDATA%\Packages\<family>\LocalState\BetterClipboard`, removed by Windows with the app |
+| History, settings, logs | `%LOCALAPPDATA%\BetterClipboard` | The same folder since 2026-11-14 (§4.4), kept when the app is uninstalled. Where Windows does not let the package write it for real, the package's own folder (`…\Packages\<family>\LocalState\BetterClipboard`, removed with the app); *Settings › Data folder* says which (1.2.11 always used the package's own folder) |
 | Win+V | Released from Explorer by the installer (`DisabledHotkeys`), or the keyboard hook | Only the keyboard hook, only after the welcome's switch, only while the app runs. *Release from Explorer* is not in Settings |
 | Start with Windows | A Run value in the registry | The package's startup task (`BetterClipboardStartup`), switched on by the welcome or Settings; Windows lists it under Settings › Apps › Startup, where the user can overrule it |
 | Updates | The app asks GitHub once a day and installs with the user's approval | The Store. The app makes **no network request at all**; it asks Windows to start it again after an update (`RegisterApplicationRestart`) |
@@ -112,14 +119,16 @@ The same app, built as a package. A process knows it is the Store edition by its
 | Windows' own clipboard history switch | A switch in Settings | A button that opens Windows' own Settings page (the app's registry write would land in its private hive) |
 | Version shown by Windows | The release's (0.2.11) | The package's, (X+1).Y.Z.0 (1.2.11.0, §5.3); the app's own *About* shows the release's |
 
-Shared with every edition: the single-instance lock (so two editions never run at once), the store format, the
-catalogs, every feature of the panel.
+Shared with every edition: the single-instance lock (so two editions never run at once), the history's folder itself
+(§4.4), the store format, the catalogs, every feature of the panel.
 
 ### 4.2 The first start
 
 The owner's decisions (2026-11-12): **a welcome with consent, after the language picker**; **only one edition may be
 installed**, and the Store edition moves the user over itself: checks first, then it brings the history over, checks
-the copy, uninstalls the other copy and removes the old folder.
+the copy, uninstalls the other copy and removes the old folder. Since 2026-11-14 (the owner's "Share it", §4.4) every
+edition uses the same folder, so nothing is carried: the move is the other copy's uninstall. The old move remains for
+a PC where this edition keeps its own folder.
 
 ```text
 Start by hand
@@ -130,8 +139,12 @@ Start by hand
                     (the store, the clipboard listener, the shortcut, the tray icon)
 ```
 
-- **Nothing before Start.** Until then the data folder holds a log and, at most, the settings file. *Not now* and
-  closing the window end the app; the welcome shows again at the next start.
+- **Nothing before Start.** Until then this edition writes its log, at most the settings file, and the note that
+  records which folder it uses (`LocalState\data-folder.json`, §4.4); a history another copy left in the shared
+  folder is not opened. *Not now* and closing the window end the app; the welcome shows again at the next start.
+- **The welcome's note.** After a move it says how many items came over. When the shared folder already held an
+  earlier copy's history, it says "Your history and settings from the BetterClipboard you used before are kept: every
+  kind of install uses the same folder." (the store is not opened to count them).
 - **The switches.** *Open with Win+V* off: the panel opens with Alt+Win+V (any shortcut can be picked in Settings)
   and Win+V stays Windows'. A user who came from another copy keeps their own shortcuts; the switch only adds or
   removes Win+V. *Start with Windows* shows the startup task's real state and says so when Windows or an
@@ -155,7 +168,7 @@ tested) picks one step, and the setup asks again after each:
 | A copy this user installed with the installer | **Move** | The page below: checks, then on *Move to this edition* the move |
 | A copy for every user, or the Chocolatey copy | **Guide** | The page says how an administrator removes it (*Open Installed apps*, or the `choco uninstall` command to copy) and waits until it is gone. Such a copy belongs to the PC's administrator and every other user |
 | A copy with no install record that is running | **Close** | On the user's go-ahead it is asked to exit |
-| No copy, but a history one left behind, and this edition has none | **Import** | Copied, checked, old folder removed, without a question |
+| No copy, but a history one left behind, and this edition has none | **Import** | Copied, checked, old folder removed, without a question. Only while this edition keeps its own folder: in the shared folder that history simply is this edition's (§4.4) |
 
 **The checks before a move** (nothing is changed by them):
 
@@ -193,8 +206,82 @@ that was closed for the move again. A second launch during the setup brings the 
 session, which would end the Store edition mid-move, and scripts up to 0.2.5 can empty Explorer's settings key when
 they give Win+V back (CLAUDE.md §2.25).
 
+**In the shared folder (§4.4) the move is steps 1 and 4.** The page says "Your history, pins and settings stay as
+they are: both copies use the same folder.", check lines 1 and 4 do not show, and nothing is copied or removed: the
+uninstall keeps the folder, as every uninstall without `-RemoveData` does. The pages for a copy for every user and
+for the Chocolatey copy say the history stays as it is. Guards in the code, so that the shared folder is never
+treated as "the other copy's data": nothing is imported from it, the move's copy and the old folder's removal refuse
+it, and a marker of an unfinished move found in it is committed, never rolled back (a rollback deletes the copied
+stores, which there are the history itself).
+
 **The installer says it too.** `install.ps1` warns, before it installs, when the Store edition is installed for
-the account.
+the account, and says whether the two use one history (`%LOCALAPPDATA%\BetterClipboard`) or keep separate ones. Its
+`-Uninstall -RemoveData` of a per-user copy warns that the Store edition's history goes too when they share it.
+
+### 4.4 The shared data folder (since 2026-11-14)
+
+The owner asked (2026-11-14) whether the Store edition must stay out of the user profile, and whether it could
+"actually require access to that one folder for interopability with all kinds of install a user can have on a machine
+safely". The answer, chosen with an HTML question: **"Share it"**. The Store edition uses
+`%LOCALAPPDATA%\BetterClipboard` like every other kind of install, through Windows' documented rule, proves that rule
+on each PC, and falls back to its own folder when the proof fails. No restricted capability is asked for.
+
+**Why it is allowed.** A full-trust package's file access is redirected only for **new** files and folders that it
+creates directly in AppData; "if the file is opened from the real AppData location, then no virtualization for that
+file occurs" **[docs]**. So a folder that exists for real is written for real (§2's rows, measured twice). The
+documented way to opt a folder out of redirection, flexible virtualization, is a restricted capability (§3), and was
+not used.
+
+**What the app does** (`Core/Editions/StoreDataFolder.Establish`, called by `Windows/Packaging/StoreDataFolderSetup`
+once per process, before anything opens the history, under the mutex `Local\BetterClipboard.StoreDataFolder`, so two
+starts at the same moment never decide or move together):
+
+1. **A private copy first.** A redirected copy of the folder (`…\LocalCache\Local\BetterClipboard`) would shadow the
+   real one: the package would read its files first and write new files into it, while every other program sees the
+   real folder (§2). It is moved, by cmd, to the real path when the real folder does not exist, else into the real
+   folder as `recovered-private-copy-<time>`; nothing in it is deleted. When that fails, this start uses the
+   package's own folder.
+2. **The folder.** When `%LOCALAPPDATA%\BetterClipboard` is missing, cmd makes it (`mkdir`). cmd runs outside the
+   package (§2), so the folder is real, and so is everything written into it afterwards.
+3. **The proof, once per Windows build.** The app writes a probe file into the folder and asks cmd whether it exists;
+   it then deletes the probe. The result goes into `LocalState\data-folder.json` with the Windows build (for example
+   `10.0.26200.7171`): `"folder": "shared"`, or `"package"` with the reason. A new Windows build proves again.
+4. **A history of version 1.2.11** (which kept everything in the package's own folder) moves into the shared folder,
+   one rename by cmd for the stores and one for the settings, when the shared folder has no history. Shared settings
+   written without a history (by an installer run with `-Hotkey`, for example) are set aside as
+   `settings-set-aside-<time>.json`. When both folders hold a history, this edition keeps its own folder: two
+   histories are never merged, and nothing is set aside or deleted. That holds until the Windows build changes.
+
+**cmd, safely.** Every path reaches cmd in an environment variable (`BETTERCLIPBOARD_OUTSIDE_PATH1`, `…2`), and the
+command is a constant (`/d /e:on /v:off /c mkdir "%BETTERCLIPBOARD_OUTSIDE_PATH1%"`): cmd expands the variable once
+and never reads its value as syntax, so `%`, `&`, `^`, `!`, brackets and non-ASCII letters in a user name are just
+characters (tested with ten such names). It is started like the silent restart's process (no busy pointer, no
+window, no inherited handles), its exit code is the answer, and a move never goes to a target that exists (checked
+first: cmd's `move` would ask, or put the folder inside it).
+
+**Falling back.** Anything that fails (cmd cannot run, the folder cannot be made, the probe lands in a private copy,
+a history cannot be moved) leaves this edition on the package's own folder, as in 1.2.11. A lasting reason is
+recorded and not tried again until the Windows build changes; a passing one (a file in use) is tried again at the
+next start. If a later Windows stopped writing such folders for real, the proof would notice it, and this edition
+would start with its own, empty folder; the shared history would stay untouched for the other kinds of install.
+
+**Who reads the record.** `bclip`, the package's console alias, never proves or moves anything: it uses the shared
+folder only when the record says `"shared"` and no private copy exists (`StoreDataFolder.ResolveReadOnly`).
+An isolated instance (`BETTERCLIPBOARD_DATA_DIR`) never touches any of this.
+
+**What the user sees.** *Settings › Data folder* names the folder and says, in the Store edition, "Every kind of
+BetterClipboard install uses this folder, and it stays when the app is uninstalled. To remove your history for good,
+delete this folder." (or, in its own folder, "This edition's own folder: Windows deletes it when the app is
+uninstalled."). The log names the decision at every start ("Microsoft Store edition: the history is in the shared
+data folder, the one every kind of install uses; it stays when the app is uninstalled.").
+
+**Uninstalling.** Windows removes the package and its own folders (the record included); the shared folder stays,
+as it does after every other kind of uninstall. A Store edition installed again finds it, proves again, and uses it.
+
+**For certification.** The notes for certification of the first submission (1.2.11) said the history is in the
+package's own folder and removed with the app, which is true for that version. The kit's notes
+(`docs/store-listing.md` §1, *Additional testing information*) now describe the shared folder; they are typed into
+the next submission by hand before it is committed (the pipeline carries the notes over unchanged, §9).
 
 ## 5. The package
 
@@ -283,7 +370,8 @@ and must be decoded when unpacking; the signature, the block map and `[Content_T
 ## 6. Verified
 
 Everything below ran on 2026-11-12 and 2026-11-13 in one disposable Windows 11 25H2 desktop (26200, Tiny11,
-1600 × 900, no GPU, an administrator with UAC off), with BC-TEST data only. It was deleted afterwards.
+1600 × 900, no GPU, an administrator with UAC off), unless a row names another desktop of the same kind, with BC-TEST
+data only. Each was deleted afterwards.
 
 | What | Result |
 |---|---|
@@ -311,6 +399,9 @@ Everything below ran on 2026-11-12 and 2026-11-13 in one disposable Windows 11 2
 | **The Store's upload check** (Partner Center, the first submission's draft, 2026-11-13) | The first packages (`bclip` as a hidden second application) were refused: "specifies a headless app" (§2). The rebuilt ones (one application, `bclip` as its alias; `1.2.11.0`, x64 70.6 MB and ARM64 68.5 MB) were accepted: *Validated*, with only the expected note that `runFullTrust` needs approval |
 | **The one-application package, installed** (its test-signed twin, in two more disposable desktops, 2026-11-13) | Installed. Start lists one entry, "BetterClipboard". `where bclip` finds the alias; `bclip --version` prints to the calling console and returns 0; `bclip status` with the command line off returns 3 with its message. With the app stopped and the command line on, `bclip status` started the app by itself from the `WindowsApps` folder and answered from the Store edition's data. No `BetterClipboard.exe` alias exists |
 | First start, use and silent restart in that package (the session the listing's screenshots come from) | Language picker, welcome, *Start*; Win+V through the hook; copies from Notepad, Explorer, Edge and Snipping Tool; a pin; three groups by drag and drop; a search with a toggle; the image preview; Settings. Two silent restarts ("the shortcuts were held during the switch"). The log: 109 lines, 0 warnings |
+| **The shared data folder, measured** (2026-11-14, `msix_lab`'s `shared` section, in another disposable desktop) | A folder made by cmd, then written by the package: subfolders, a journal made and deleted, a memory-mapped file and a file moved over another were all real and seen from outside; nothing landed in `LocalCache`. A private copy beside the real folder: the package read and wrote the private one, the outside saw only the real one. That copy moved to the real path by cmd: real from then on. After the package was uninstalled, the folder made by cmd stayed with its files |
+| **The shared data folder in the app** (2026-11-14, a Store package of 0.2.12 test-signed for the Store's publisher, in a disposable desktop on this PC) | 1.2.11 installed first, with BC-TEST copies and a pin in its own folder. 1.2.12 installed over it as an update: "Made the shared data folder", "written for real on this Windows build (10.0.26200.7171)", "Moved this edition's history …", "… settings into the shared data folder"; the same store and key ("new key: False"), no language picker, no welcome; *Settings › Data folder* named the shared folder with its note. The released 0.2.11, installed with `install.ps1`, warned that the two use the same history, ran on it and added a copy. The Store edition's setup offered the move with the shared wording and two check lines; *Move to this edition* uninstalled the installer copy ("Your history was kept"), and the Store edition went on with the same store |
+| Removing the package, and installing it again (the same desktop) | The package and its own folders were gone, the record included; `%LOCALAPPDATA%\BetterClipboard` stayed with its store, key, settings and logs. Installed again over that history with the welcome not accepted (an installer copy's settings): the proof ran again, no picker, no move, and the welcome said "Your history and settings from the BetterClipboard you used before are kept…". After *Start*: the same store, the panel with all four copies (the installer copy's among them), the pin. `bclip status` started the app by itself and listed the same four |
 
 The other editions share the changed start-up code, so the unpackaged build was run once more after the change, as
 an isolated instance on the owner's PC while nobody used it: it started in the tray and ended on `--exit` with 0
@@ -325,7 +416,11 @@ short for four lines and an error.
 
 Unit tests: `EditionTests` (Core, 36) and `EditionUninstallerTests` (Windows, 13: the check and the uninstall run
 through the real Windows PowerShell against a stand-in script and scratch folders; the real `install.ps1`'s
-parameter sets are read with `Get-Command`, which runs nothing). The whole suite: 2,151 tests, 0 failed.
+parameter sets are read with `Get-Command`, which runs nothing). The whole suite: 2,151 tests, 0 failed. For the
+shared data folder (2026-11-14): `StoreDataFolderTests` (Core, 24: the decision over a stand-in for cmd, every branch
+of §4.4) and `StoreDataFolderSetupTests` (Windows, 13: the real cmd with ten folder names that would break a command
+line, and a 1.2.11 history moved in under a folder named `Local App%Data%`); the whole suite then: 2,402 tests, 0
+failed.
 
 **Not verified:** the guided pages for a copy for every user and a Chocolatey copy (the plan is unit-tested; the
 pages were not seen); the Windows App Certification Kit; ARM64 on a device (the package builds); a standard user
@@ -477,7 +572,16 @@ BetterClipboard", the name chosen for code signing (CLAUDE.md §3.3).
 
 - **A copy for every user and a Chocolatey copy are not removed by the Store edition**; it waits for an
   administrator. Its two pages were not seen on screen.
-- **Two histories are never merged.** An edition that has a history leaves another copy's history where it is.
+- **Two histories are never merged.** An edition that has a history leaves another copy's history where it is. With
+  the shared folder (§4.4) this comes up only when version 1.2.11's own history meets a history in the shared folder:
+  this edition then keeps its own folder until the Windows build changes, and *Settings › Data folder* says so.
+- **The shared folder rests on a documented rule** (a folder that exists for real is not virtualized), proven once
+  per Windows build. A Windows that changed it would put this edition back on its own, empty folder; the shared
+  history would stay untouched for the other kinds of install.
+- **Two processes write one log during the move.** While the setup waits for the other copy to close, both write
+  `logs\betterclipboard-<date>.log` in the shared folder, and the app's appends from two processes can overwrite each
+  other's lines: the live run lost the Store edition's "starting" line. The same can happen whenever two
+  BetterClipboard processes run at once (CLAUDE.md §6).
 - **The move needs Windows PowerShell and script files that run.** On a PC whose policy blocks scripts, the check
   says so, and the other copy has to be uninstalled in Windows' Installed apps.
 - **The package version differs from the release version** by one in its first number (§5.3).

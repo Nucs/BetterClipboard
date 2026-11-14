@@ -1181,13 +1181,18 @@ function Get-ChocolateyCopy {
 function Get-StoreEditionData {
     <#
     .SYNOPSIS
-        The data folder of BetterClipboard's Microsoft Store edition for this account, or $null when that edition is not
-        installed here or was never opened.
+        What BetterClipboard's Microsoft Store edition keeps for this account: its package's LocalState folder and whether
+        it shares this installer's history folder, or $null when that edition is not installed here or was never opened.
     .DESCRIPTION
         Windows keeps a Store app's data in %LOCALAPPDATA%\Packages\<package family name> and removes that folder with
         the app, so the folder tells whether the edition is installed. The family name begins with the publisher's
-        prefix, which this script does not know; the folder is recognized by "BetterClipboard" in its name and by the
-        BetterClipboard folder the edition creates in LocalState at its first start (docs/microsoft-store.md).
+        prefix, which this script does not know; the folder is recognized by "BetterClipboard" in its name and by what
+        the edition writes into LocalState at its first start (docs/microsoft-store.md): data-folder.json, the record of
+        where it keeps its history (since 2026-11-14), or the BetterClipboard folder of version 1.2.11.
+
+        The record's "folder": "shared" means the edition uses %LOCALAPPDATA%\BetterClipboard, this installer's history
+        folder (CLAUDE.md §2.47, "Share it"): both copies then show the same history, and deleting that folder with
+        -Uninstall -RemoveData empties the Store edition's history too.
 
         No Appx cmdlet is used: loading that module takes seconds, Windows PowerShell and PowerShell 7 load it in
         different ways, and a look at one folder answers the question.
@@ -1196,15 +1201,30 @@ function Get-StoreEditionData {
         installer's copy is installed it does not start with Windows, and opened by hand it offers to take the copy's
         place. This function only lets the installer say so beforehand.
     .OUTPUTS
-        System.String, or $null.
+        PSCustomObject with LocalState (System.String) and SharesHistory (System.Boolean), or $null.
     #>
     # An account without a profile of its own (SYSTEM in some contexts) has no such folder; Join-Path refuses ''.
     if (-not $env:LOCALAPPDATA) { return $null }
     $packages = Join-Path $env:LOCALAPPDATA 'Packages'
     if (-not (Test-Path -LiteralPath $packages)) { return $null }
     foreach ($folder in @(Get-ChildItem -LiteralPath $packages -Directory -Filter '*BetterClipboard*' -ErrorAction SilentlyContinue)) {
-        $data = Join-Path $folder.FullName 'LocalState\BetterClipboard'
-        if (Test-Path -LiteralPath $data) { return $data }
+        $state = Join-Path $folder.FullName 'LocalState'
+        $record = Join-Path $state 'data-folder.json'
+        $shares = $false
+        if (Test-Path -LiteralPath $record) {
+            try {
+                $shares = ((Get-Content -LiteralPath $record -Raw -ErrorAction Stop | ConvertFrom-Json).folder -eq 'shared')
+            }
+            catch {
+                # An unreadable record is a record all the same: the edition is installed; whether it shares is unknown.
+                $shares = $false
+            }
+        }
+        elseif (-not (Test-Path -LiteralPath (Join-Path $state 'BetterClipboard'))) {
+            continue
+        }
+
+        return [pscustomobject]@{ LocalState = $state; SharesHistory = $shares }
     }
 
     return $null
@@ -1975,10 +1995,12 @@ function Install-BetterClipboard {
         Write-Warning "BetterClipboard is also installed for every user of this PC ($allUsersCopy). This installs a second copy, just for you, which starts instead of that one when you sign in; both use your history. To update the copy for every user, run the installer in PowerShell as administrator."
     }
 
-    # The Microsoft Store edition keeps its own history and wants to be the only BetterClipboard: said before anything
-    # is installed, so nobody is surprised by its offer later. Not on an update, which installs nothing new.
-    if (-not $Update -and (Get-StoreEditionData)) {
-        Write-Warning "BetterClipboard's Microsoft Store edition is also installed for this account, and only one BetterClipboard is meant to be installed. While this copy is installed, the Store edition does not start with Windows, and the next time it is opened it offers to take this copy's place (it then uninstalls this copy). To keep this copy, uninstall the Store edition in Settings > Apps > Installed apps; to keep the Store edition, just open it. The two keep separate histories."
+    # The Microsoft Store edition wants to be the only BetterClipboard: said before anything is installed, so nobody is
+    # surprised by its offer later. Not on an update, which installs nothing new.
+    $storeEdition = if ($Update) { $null } else { Get-StoreEditionData }
+    if ($storeEdition) {
+        $histories = if ($storeEdition.SharesHistory) { 'Both use the same history, in %LOCALAPPDATA%\BetterClipboard.' } else { 'The two keep separate histories.' }
+        Write-Warning "BetterClipboard's Microsoft Store edition is also installed for this account, and only one BetterClipboard is meant to be installed. While this copy is installed, the Store edition does not start with Windows, and the next time it is opened it offers to take this copy's place (it then uninstalls this copy). To keep this copy, uninstall the Store edition in Settings > Apps > Installed apps; to keep the Store edition, just open it. $histories"
     }
 
     $arch = Get-OsArchitecture
@@ -2546,6 +2568,13 @@ function Uninstall-BetterClipboard {
     Remove-StaleLeftovers
 
     if ($RemoveData) {
+        # The Microsoft Store edition may keep its history in this very folder (CLAUDE.md §2.47): -RemoveData was asked
+        # for, so it goes, but nobody should learn afterwards that the other app's history went with it.
+        $storeEdition = Get-StoreEditionData
+        if ($storeEdition -and $storeEdition.SharesHistory -and $DataDir -eq (Join-Path $env:LOCALAPPDATA $AppName)) {
+            Write-Warning "BetterClipboard's Microsoft Store edition uses this history too; deleting it empties that edition's history as well."
+        }
+
         Write-Step "Deleting history, settings and logs in $DataDir"
         if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
         Remove-TemporaryPictures

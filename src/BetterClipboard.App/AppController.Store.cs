@@ -122,6 +122,35 @@ public sealed partial class AppController
     public void OpenPrivacyPage() => OpenWebLink(PrivacyPage);
 
     /// <summary>
+    /// Whether this Store edition keeps its data in the folder every kind of install uses (CLAUDE.md §2.47, "Share it"):
+    /// then another copy's history is this edition's own, and nothing of it is copied, moved or removed by the setup.
+    /// <see langword="false"/> for every other kind of install, and for this edition while it runs from its own folder
+    /// (the fallback, <see cref="StoreDataFolder"/>).
+    /// </summary>
+    public bool SharesDataWithOtherEditions => IsStoreEdition && paths.InstanceScope is null && paths.UsesSharedDataDirectory;
+
+    /// <summary>
+    /// Writes what the Store edition's data folder setup found and did at this start (<see cref="StoreDataFolderSetup"/>)
+    /// to the log, once the log exists: the setup ran before it. Content-free lines; nothing for other kinds of install.
+    /// </summary>
+    private void LogStoreDataFolder()
+    {
+        if (StoreDataFolderSetup.Current is not { } decision)
+        {
+            return;
+        }
+
+        foreach (string note in decision.Notes)
+        {
+            AppLog.Info($"Microsoft Store edition data folder: {note}");
+        }
+
+        AppLog.Info(decision.Mode == StoreDataMode.Shared
+            ? "Microsoft Store edition: the history is in the shared data folder, the one every kind of install uses; it stays when the app is uninstalled."
+            : "Microsoft Store edition: the history is in this edition's own folder, which Windows removes with the app.");
+    }
+
+    /// <summary>
     /// Another launch asked this instance to quit (<c>--exit</c>). Ignored while a move runs: that request then comes from
     /// the uninstaller of the copy being replaced, and is meant for that copy.
     /// </summary>
@@ -155,9 +184,19 @@ public sealed partial class AppController
 
         if (EditionDataMigrator.HasPendingMove(paths.DataDirectory))
         {
-            // A crash or a power cut in the middle of a move. Its original still exists; the copy goes.
-            AppLog.Warn("Microsoft Store edition: a move from another copy was left unfinished; what it copied is removed, and the move starts over from the original.");
-            EditionDataMigrator.Rollback(paths.DataDirectory);
+            if (SharesDataWithOtherEditions)
+            {
+                // No move ever targets the shared folder (it is every edition's own): a marker there is stale, and undoing
+                // it would delete the shared history. Only the marker goes.
+                AppLog.Warn("Microsoft Store edition: a stale marker of an unfinished move was found in the shared data folder; only the marker was removed.");
+                EditionDataMigrator.Commit(paths.DataDirectory);
+            }
+            else
+            {
+                // A crash or a power cut in the middle of a move. Its original still exists; the copy goes.
+                AppLog.Warn("Microsoft Store edition: a move from another copy was left unfinished; what it copied is removed, and the move starts over from the original.");
+                EditionDataMigrator.Rollback(paths.DataDirectory);
+            }
         }
 
         welcomed = SettingsStore.TryReadSnapshot(paths.SettingsPath)?.StoreWelcomeAccepted == true;
@@ -169,10 +208,14 @@ public sealed partial class AppController
     /// Lists what the other editions' data folder holds, treating a folder that cannot be read as empty (the log says so):
     /// a history that cannot be read cannot be brought over either.
     /// </summary>
-    /// <returns>The data; empty when there is none, or after the user chose to go on without it.</returns>
+    /// <returns>
+    /// The data; empty when there is none, after the user chose to go on without it, and always while this edition shares
+    /// that folder (<see cref="SharesDataWithOtherEditions"/>): the "other" data is then its own, and treating it as
+    /// another copy's would copy the folder onto itself and remove it afterwards.
+    /// </returns>
     private EditionData InspectOtherData()
     {
-        if (skipImport)
+        if (skipImport || SharesDataWithOtherEditions)
         {
             return new EditionData(AppPaths.DefaultDataDirectory, [], 0);
         }
@@ -349,7 +392,8 @@ public sealed partial class AppController
     /// <returns>A task completing when the copy is gone or could not be removed.</returns>
     private async Task DiscardUnfinishedMoveAsync()
     {
-        if (!EditionDataMigrator.HasPendingMove(paths.DataDirectory))
+        // Never in the shared folder: no move targets it, and undoing one there would delete the shared history.
+        if (SharesDataWithOtherEditions || !EditionDataMigrator.HasPendingMove(paths.DataDirectory))
         {
             return;
         }
@@ -434,13 +478,16 @@ public sealed partial class AppController
         await DiscardUnfinishedMoveAsync();
         bool bringsData = EditionSetupPlan.BringsDataOver(!data.IsEmpty, paths.HasHistory());
         string version = edition.Version ?? UiText.Translate("not known");
-        // The paragraph says what will really happen to the history: brought over, nothing there to bring, or left
-        // where it is because this edition already has one (two histories are never merged).
-        string lead = bringsData
-            ? UiText.Format($"A copy from the installer is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed, so the Microsoft Store edition takes its place: it brings your history over, checks it, and then uninstalls the other copy.")
-            : data.IsEmpty
-                ? UiText.Format($"A copy from the installer is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed, so the Microsoft Store edition takes its place and uninstalls the other copy.")
-                : UiText.Format($"A copy from the installer is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed, so the Microsoft Store edition takes its place and uninstalls the other copy. This edition already has a history of its own, so the other copy's history is not brought over: it stays in {data.Directory}.");
+        // The paragraph says what will really happen to the history: nothing at all when both use the shared folder,
+        // brought over, nothing there to bring, or left where it is because this edition already has one (two histories
+        // are never merged).
+        string lead = SharesDataWithOtherEditions
+            ? UiText.Format($"A copy from the installer is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed, so the Microsoft Store edition takes its place and uninstalls the other copy. Your history, pins and settings stay as they are: both copies use the same folder.")
+            : bringsData
+                ? UiText.Format($"A copy from the installer is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed, so the Microsoft Store edition takes its place: it brings your history over, checks it, and then uninstalls the other copy.")
+                : data.IsEmpty
+                    ? UiText.Format($"A copy from the installer is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed, so the Microsoft Store edition takes its place and uninstalls the other copy.")
+                    : UiText.Format($"A copy from the installer is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed, so the Microsoft Store edition takes its place and uninstalls the other copy. This edition already has a history of its own, so the other copy's history is not brought over: it stays in {data.Directory}.");
         model.ShowPage(UiText.Translate("BetterClipboard is already installed on this PC"), lead);
         model.QuitText = UiText.Translate("Quit");
         model.PrimaryText = UiText.Translate("Move to this edition");
@@ -482,8 +529,14 @@ public sealed partial class AppController
             }
         }
 
-        // 2. This edition's own folder.
-        ready &= CheckFolder(targetRow, paths.DataDirectory, create: true, UiText.Translate("Windows removes this folder with the app when it is uninstalled."));
+        // 2. This edition's folder: the shared one stays after an uninstall, its own one goes with the app.
+        ready &= CheckFolder(
+            targetRow,
+            paths.DataDirectory,
+            create: true,
+            SharesDataWithOtherEditions
+                ? UiText.Translate("Every kind of BetterClipboard install uses this folder; it stays when the app is uninstalled.")
+                : UiText.Translate("Windows removes this folder with the app when it is uninstalled."));
 
         // 3. The uninstaller: the script is in the package, PowerShell exists, a script file really runs here, and this
         // account may change the other copy's folder, shortcut and registry entries.
@@ -656,8 +709,18 @@ public sealed partial class AppController
     /// <param name="copyRow">The copy's line.</param>
     /// <param name="checkRow">The check's line.</param>
     /// <returns><see langword="null"/> on success, else the failure in the user's language.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// This edition shares the folder the data would come from (<see cref="SharesDataWithOtherEditions"/>); never reached by
+    /// the setup's plan, refused here so the shared folder can never be copied onto itself.
+    /// </exception>
     private async Task<string?> BringDataOverAsync(StoreSetupViewModel model, SetupRowViewModel copyRow, SetupRowViewModel checkRow)
     {
+        if (SharesDataWithOtherEditions)
+        {
+            // Unreachable by design (nothing is "other data" then), and never allowed: the folder would be copied onto itself.
+            throw new InvalidOperationException("The shared data folder is never brought over: it is this edition's own.");
+        }
+
         copyRow.State = SetupRowState.Running;
         model.IsProgressIndeterminate = false;
         var data = new EditionData(AppPaths.DefaultDataDirectory, [], 0);
@@ -753,8 +816,18 @@ public sealed partial class AppController
     /// <returns>A task completing when the folder is gone or its leftovers are named.</returns>
     /// <exception cref="IOException">The move's marker could not be removed; the old folder then stays untouched, and the caller quits.</exception>
     /// <exception cref="UnauthorizedAccessException">Removing the marker was refused; see above.</exception>
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="directory"/> is this edition's own data folder (the shared one while it shares it): refused before
+    /// anything is touched.
+    /// </exception>
     private async Task RemoveOldDataAsync(SetupRowViewModel row, string directory)
     {
+        // The last line of defense for "Share it": the folder this edition reads its history from is never deleted here.
+        if (string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(directory)), Path.TrimEndingDirectorySeparator(paths.DataDirectory), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("The folder to remove is this edition's own data folder.");
+        }
+
         row.State = SetupRowState.Running;
 
         // First, and never after the old folder began to go: a marker left behind would make the next start undo a copy
@@ -784,11 +857,18 @@ public sealed partial class AppController
     {
         bool chocolatey = edition.Kind == OtherEditionKind.Chocolatey;
         string version = edition.Version ?? UiText.Translate("not known");
+        // The last sentence says what happens to the history: nothing while both copies use the shared folder, else it is
+        // brought over once the other copy is gone.
+        bool shared = SharesDataWithOtherEditions;
         model.ShowPage(
             UiText.Translate("BetterClipboard is already installed on this PC"),
-            chocolatey
-                ? UiText.Format($"A copy installed with Chocolatey is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed. Chocolatey removes its own packages: run the command below in a terminal as administrator. Your history stays on this PC and is brought over afterwards.")
-                : UiText.Format($"A copy for every user of this PC is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed. An administrator removes that copy in Windows' Installed apps. Your history stays on this PC and is brought over afterwards."));
+            (chocolatey, shared) switch
+            {
+                (true, true) => UiText.Format($"A copy installed with Chocolatey is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed. Chocolatey removes its own packages: run the command below in a terminal as administrator. Your history stays as it is: both copies use the same folder."),
+                (true, false) => UiText.Format($"A copy installed with Chocolatey is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed. Chocolatey removes its own packages: run the command below in a terminal as administrator. Your history stays on this PC and is brought over afterwards."),
+                (false, true) => UiText.Format($"A copy for every user of this PC is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed. An administrator removes that copy in Windows' Installed apps. Your history stays as it is: both copies use the same folder."),
+                (false, false) => UiText.Format($"A copy for every user of this PC is in {edition.Directory} (version {version}). Only one BetterClipboard can be installed. An administrator removes that copy in Windows' Installed apps. Your history stays on this PC and is brought over afterwards."),
+            });
         model.QuitText = UiText.Translate("Quit");
         model.PrimaryText = chocolatey ? UiText.Translate("Copy command") : UiText.Translate("Open Installed apps");
         model.FooterNote = UiText.Translate("Waiting for the other copy to be removed…");
@@ -946,7 +1026,14 @@ public sealed partial class AppController
             PackagedStartupState.Unavailable => UiText.Translate("Not available in this copy."),
             _ => UiText.Translate("So your copies are kept from the moment you sign in."),
         };
-        model.WelcomeNote = movedNote;
+        // In the folder every edition shares (§2.47) an earlier copy's history is simply there: nothing was moved, so the
+        // move's "Brought over …" has nothing to say, and without a line the welcome would read as a fresh start while
+        // the panel then opens with the old history. The store is not opened to count it: before Start nothing of the
+        // history is touched. (It can also be this edition's own history, when an older version saved the settings
+        // file without StoreWelcomeAccepted; the sentence stays true then.)
+        model.WelcomeNote = movedNote.Length > 0 || !SharesDataWithOtherEditions || !StoreDataFolder.HasHistory(paths.DataDirectory)
+            ? movedNote
+            : UiText.Translate("Your history and settings from the BetterClipboard you used before are kept: every kind of install uses the same folder.");
         model.PrimaryText = UiText.Translate("Start");
         model.QuitText = UiText.Translate("Not now");
         model.FooterNote = UiText.Translate("Nothing is recorded until you press Start.");

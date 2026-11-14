@@ -17,6 +17,15 @@ internal static partial class NativeMethods
     /// <summary><c>CREATE_NO_WINDOW</c>: a console program gets no console window (tests and helpers only).</summary>
     internal const uint CREATE_NO_WINDOW = 0x08000000;
 
+    /// <summary>
+    /// <c>CREATE_UNICODE_ENVIRONMENT</c>: the environment block passed to <see cref="CreateProcess"/> is UTF-16. Required
+    /// whenever a block is passed from this (Unicode) process.
+    /// </summary>
+    internal const uint CREATE_UNICODE_ENVIRONMENT = 0x00000400;
+
+    /// <summary><c>STILL_ACTIVE</c>: what <see cref="GetExitCodeProcess"/> reports for a process that has not ended.</summary>
+    internal const uint STILL_ACTIVE = 259;
+
     /// <summary><c>WAIT_OBJECT_0</c>: the waited-on object is signaled.</summary>
     internal const uint WAIT_OBJECT_0 = 0;
 
@@ -144,6 +153,14 @@ internal static partial class NativeMethods
         string lpCurrentDirectory,
         ref STARTUPINFOW lpStartupInfo,
         out PROCESS_INFORMATION lpProcessInformation);
+
+    /// <summary>Reads a process's exit code.</summary>
+    /// <param name="hProcess">The process (needs query access; a handle from <see cref="CreateProcess"/> has it).</param>
+    /// <param name="lpExitCode">Receives the code, or <see cref="STILL_ACTIVE"/> while the process runs.</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool GetExitCodeProcess(nint hProcess, out uint lpExitCode);
 
     /// <summary>Waits for a kernel object (here: a process ending).</summary>
     /// <param name="hHandle">The object.</param>

@@ -96,8 +96,9 @@ public static class Program
 
         // Where this process keeps its data decides the instance's name: an isolated dev/test run
         // (BETTERCLIPBOARD_DATA_DIR) and the regular instance never share a lock or command events. Resolved once,
-        // before anything waits on a named object; the Microsoft Store edition's folder comes from its package
-        // (a kernel32 call, so it needs neither COM nor XAML).
+        // before anything waits on a named object and before anything opens the history: for the Microsoft Store edition
+        // this sets the shared folder up (a kernel32 call and, when something is to be made or moved, cmd.exe for a
+        // moment; neither needs COM nor XAML).
         var paths = ResolvePaths();
 
         // A silent restart (CLAUDE.md §2.46) first takes the shortcuts and the tray icon over from the old process, so nothing
@@ -225,14 +226,22 @@ public static class Program
     }
 
     /// <summary>
-    /// The data locations of this process: the folder in <c>BETTERCLIPBOARD_DATA_DIR</c> when set, the Microsoft Store
-    /// package's own folder when the process runs from that package (CLAUDE.md §2.47), otherwise
-    /// <c>%LOCALAPPDATA%\BetterClipboard</c>. One place, so the app, its setup commands and its sign-in check can never
-    /// disagree about it.
+    /// The data locations of this process: the folder in <c>BETTERCLIPBOARD_DATA_DIR</c> when set, otherwise
+    /// <c>%LOCALAPPDATA%\BetterClipboard</c>, also for the Microsoft Store edition once that folder is proven safe on the
+    /// PC, with the package's own folder as that edition's fallback (CLAUDE.md §2.47). One place, so the app, its setup
+    /// commands and its sign-in check can never disagree about it.
     /// </summary>
     /// <returns>The paths.</returns>
+    /// <remarks>
+    /// For the Store edition the first call sets the folder up (<see cref="BetterClipboard.Windows.Packaging.StoreDataFolderSetup"/>):
+    /// it may start cmd.exe for a moment, and it moves that edition's earlier history into the shared folder. It is the
+    /// first thing <see cref="Main"/> does after the helper modes, so nothing has opened the history yet; later calls
+    /// return the same answer at no cost.
+    /// </remarks>
     internal static Core.AppPaths ResolvePaths() =>
-        Core.AppPaths.ResolveDefault(BetterClipboard.Windows.Packaging.PackageIdentity.FamilyName);
+        Core.AppPaths.ResolveDefault(
+            BetterClipboard.Windows.Packaging.PackageIdentity.FamilyName,
+            BetterClipboard.Windows.Packaging.StoreDataFolderSetup.Current?.Directory);
 
     /// <summary>How long a newer copy waits for the older one it asked to exit (which saves its queued copies first).</summary>
     private static readonly TimeSpan TakeOverWait = TimeSpan.FromMinutes(2);

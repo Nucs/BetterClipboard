@@ -55,7 +55,7 @@
   - **私密复制不会被记录：** 应用标记为私密的复制永远不会被记录，46 款密码管理器和身份验证器应用默认被忽略。*暂停采集* 和 *忽略的应用* 可以处理其余情况。
   - **永久忘记** 会删除一个项目，并且以后无论哪个应用再复制相同内容，都不再记录（[永久忘记](#forget-forever)）。
 - **面向脚本和 AI 代理的命令行。** `bclip` 可以列出、搜索和 grep 你的历史，逐字节输出任意项目，把文本放到剪贴板，等待你的下一次复制，并搜索你归档的提示词，支持 JSON 输出。它默认关闭（[命令行](#command-line-for-scripts-and-ai-agents)）。
-- **一行命令安装。** 按用户安装，无需管理员权限，校验 SHA-256，支持 Windows 10（2004 或更新）和 Windows 11、x64 和 ARM64，无需另装任何东西；此后随 Windows 启动。以管理员身份运行，或通过 Intune、RMM 工具运行时，它会改为为这台电脑的每位用户安装，每位用户仍可以自行关闭登录时启动。卸载时会保留你的历史，除非你要求删除（[安装](#install)）。Microsoft Store 版已经构建完成，正在等待上架（[Microsoft Store 版](#microsoft-store-edition)）。
+- **一行命令安装。** 按用户安装，无需管理员权限，校验 SHA-256，支持 Windows 10（2004 或更新）和 Windows 11、x64 和 ARM64，无需另装任何东西；此后随 Windows 启动。以管理员身份运行，或通过 Intune、RMM 工具运行时，它会改为为这台电脑的每位用户安装，每位用户仍可以自行关闭登录时启动。卸载时会保留你的历史，除非你要求删除（[安装](#install)）。Microsoft Store 版已经构建完成，正在接受 Microsoft 的认证，并使用同一份历史（[Microsoft Store 版](#microsoft-store-edition)）。
 - **经你同意才更新。** 有更新的版本发布到 GitHub 时，面板标题栏中“暂停”左侧的更新按钮会高亮显示，并且每周一次，它的工具提示会自动显示几秒钟来提醒你。单击后会显示选择——*更新并重启* 或 *稍后*——下方是更新说明。只有这时才会下载更新，按版本的 SHA-256 校验后原地安装，从发布 zip 解压出来的文件夹也一样：BetterClipboard 会自行重启，你的历史保持不变（[更新](#updates)）。
 - **使用你的语言。** 每个下载包都包含英文、简体中文、俄语（Русский）、西班牙语（Español）和希伯来语（עברית）。首次启动时会列出带国旗的语言，并已选中 Windows 的语言：点一下绿色对勾，整个应用就会使用这种语言。从尚未询问过语言的版本更新后，也会询问一次。以后可以在 *设置 › 应用 › 语言* 中更改：选好语言后按 *立即重启*。希伯来语在常规布局中从右向左阅读。你复制的内容、文件名以及你给分组起的名字都不会被翻译。
 - **可搜索的设置。** 在设置顶部的搜索框中输入（`Ctrl+F`），页面只保留匹配的设置，它们留在原来的位置，匹配的字母会高亮显示。设置上的任何文字都算数——标题、说明、所在部分、按钮和选项——首字母（"rfe" 对应 *Release from Explorer*，即 *从资源管理器释放*）和拼写错误（"pasword"）也能找到。`Esc` 让整个页面回到原来的位置。
@@ -118,14 +118,15 @@ irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | ie
 <a id="microsoft-store-edition"></a>
 ### Microsoft Store 版
 
-**尚未在 Store 上架。** 这个版本已经构建并测试（[docs/microsoft-store.md](../microsoft-store.md)，英文），商品页面正在准备中。它是这样的：
+**尚未在 Store 上架。** 这个版本已经构建并测试（[docs/microsoft-store.md](../microsoft-store.md)，英文），Microsoft 正在认证它的首次提交。它是这样的：
 
 - **由 Store 安装和更新。** 安装包由 Microsoft 签名，因此 Windows 不会显示“未知发布者”警告。应用本身不发出任何网络请求，因为更新由 Store 负责。
 - **先征求你的同意。** 首次启动时先询问语言，然后显示欢迎页面，其中有两个开关：*用 Win+V 打开* 和 *随 Windows 启动*。在你按下 *开始* 之前，不会记录任何内容，也不会接管任何快捷键。
 - **不改动系统就能使用 Win+V。** 它运行时用键盘钩子响应 Win+V；退出后，Win+V 立即回到 Windows 手中。这个版本没有 *从资源管理器释放*。
-- **历史会一起迁移。** 只应安装一个 BetterClipboard。Store 版发现你用安装程序安装的副本时，会说明它要做什么，并先检查能否完成。按下 *迁移到此版本* 后，它会关闭那个副本，复制你的历史和设置，检查复制结果，卸载另一个副本（Win+V 随之还给 Windows），并删除旧文件夹。任何一步失败，你的历史都保持原样。为每位用户安装的副本或 Chocolatey 副本需要由管理员删除：Store 版会说明做法并等待。反过来，安装程序在检测到已安装 Store 版时也会提示你。
+- **所有安装方式共用一份历史。** Store 版把你的历史保存在 `%LOCALAPPDATA%\BetterClipboard` 中，也就是安装程序、Chocolatey 和便携副本使用的文件夹，因此在它们之间切换时，你的历史、固定项目和设置都会保留。它会在每个 Windows 版本上检查一次，确认它写入的内容真的落在那个文件夹中；如果不是，它就使用自己的文件夹，并在 *设置 › 数据文件夹* 中说明。
+- **一次只装一个副本。** 只应安装一个 BetterClipboard。Store 版发现你用安装程序安装的副本时，会说明它要做什么，并先检查能否完成。*迁移到此版本* 会关闭并卸载那个副本（Win+V 随之还给 Windows）；你的历史保持原样。（如果它使用自己的文件夹，它会先复制你的历史和设置，检查复制结果，最后删除旧文件夹；任何一步失败，你的历史都保持原样。）为每位用户安装的副本或 Chocolatey 副本需要由管理员删除：Store 版会说明做法并等待。反过来，安装程序在检测到已安装 Store 版时也会提示你。
 - **`bclip` 在每个终端中都能运行**，无需 PATH 条目，只要你开启命令行。
-- **卸载时会连同历史一起删除**：它把历史保存在自己的应用数据中，Windows 会随应用一起删除。
+- **卸载它会保留你的历史**，和其他所有卸载一样：要彻底删除，请删除 `%LOCALAPPDATA%\BetterClipboard`（*设置 › 数据文件夹 › 打开* 会显示它）。只有保存在这个版本自己文件夹中的历史才会随应用一起删除。
 
 <a id="updates"></a>
 ## 更新
@@ -513,7 +514,7 @@ bclip prompts migration -a claude         # 我问过 Claude Code 哪些关于�
 - **更新。** 检查会读取 GitHub 的版本列表，并连同其实体标签保存一份副本，因此列表不变时每天只需一次“未修改”的回应。失败的检查会在 1、2、4……小时后重试，并且绝不早于速率限制结束的时间。经你同意的更新只会从本仓库的发布下载中获取，其 SHA-256 必须同时与该版本的 `SHA256SUMS.txt` 和 GitHub 上传时计算的摘要一致。正在运行的程序无法替换它自己的文件夹，因此应用会从已校验的包中取出 `install.ps1`，并用 Windows PowerShell 在无窗口状态下运行它：它会再次校验包，请求 BetterClipboard 关闭（排队中的复制会先保存），通过重命名交换文件夹——交换失败会把旧文件夹放回原处——然后再次启动应用。它会把结果写入一个文件，应用在下次启动时读取该文件，告诉你更新结果。只有安装文件夹会被改动。从 zip 解压的副本则由新版本自己的程序更新，该程序从解压后的包中启动：它请求 BetterClipboard 关闭，把该版本的每个文件改名移到一旁，再把新文件复制到原处（某个文件无法替换时，所有文件都会恢复原样），写入同样的结果文件，然后从同一文件夹再次启动应用。
 - **语言。** 每种界面语言都是一个嵌入在程序中的目录文件（附带它的国旗），因此一个构建就包含所有语言，任何副本都不会缺少语言文件。文字按英文原文查找，数量按每种语言所需的形式表达（CLDR 复数规则），译文缺少的文字显示为英文；一种语言几乎全部译完后才会出现在语言列表中。每条英文文字都附有供译者参考的说明。从右向左书写的语言保留从左向右的布局，其文字以从右向左的方式嵌入，因此每个句子都按其自身的顺序阅读。日志和 `bclip` 的输出始终是英文。参见 [docs/localization.md](../localization.md)。
 
-数据保存在 `%LOCALAPPDATA%\BetterClipboard` 中（`stores\<id>\history.db` + `history.key`、`settings.json`、`logs\`、`updates\`）；Microsoft Store 版把同样的文件保存在它自己的应用数据中（`%LOCALAPPDATA%\Packages\<它的包>\LocalState\BetterClipboard`）。日志从不包含剪贴板内容。
+数据保存在 `%LOCALAPPDATA%\BetterClipboard` 中（`stores\<id>\history.db` + `history.key`、`settings.json`、`logs\`、`updates\`），所有安装方式都一样，Microsoft Store 版也不例外（如果 Windows 不让它真正写入那个文件夹，它就使用 `%LOCALAPPDATA%\Packages\<它的包>\LocalState\BetterClipboard`）。日志从不包含剪贴板内容。
 
 这一切背后的研究——Win+V 是如何构建的（`cbdhsvc` 服务、`TextInputHost` 面板、资源管理器的快捷键）、它为什么会遗忘、它保存固定项目的磁盘格式，以及上文引用的各项测量——都在 [CLAUDE.md](../../CLAUDE.md) 中（英文）。
 
@@ -552,7 +553,7 @@ bclip prompts migration -a claude         # 我问过 Claude Code 哪些关于�
 - **临时图片是普通文件：** *保存到临时文件夹后* 会把图片作为普通 PNG 写入 `%TEMP%\BetterClipboard\Images`，它不在加密的历史中，因此其他应用可以打开它。BetterClipboard 会在启动时删除 30 天未使用的此类图片（*设置 › 历史*）。
 - **命令行默认关闭。** *命令行（bclip）* 开启期间，任何以你的身份运行的程序都可以通过它读取历史（参见[命令行](#command-line-for-scripts-and-ai-agents)）。
 - **Windows 自己的功能：** 你粘贴的项目会像任何复制一样进入剪贴板，因此 Windows 的剪贴板历史及其跨设备同步（*跨设备的剪贴板历史记录*）会按你在 Windows 中的设置来处理它（相关内容见 Microsoft 的[隐私声明](https://privacy.microsoft.com/privacystatement)）。
-- **删除：** 使用 `-RemoveData` 卸载会删除 BetterClipboard 保存的所有内容，包括临时图片；卸载 Microsoft Store 版总是会删除历史，而它的临时图片会留在 `%TEMP%\BetterClipboard` 中，直到你或 Windows 的临时文件清理删除它们。*设置 › 清空历史*，以及 *设置 › 集成* 中每个来源卡片上的 *删除已存储的内容…*，会删除其中一部分；两者都不会改动其他应用自己的文件。
+- **删除：** 使用 `-RemoveData` 卸载会删除 BetterClipboard 保存的所有内容，包括临时图片。卸载 Microsoft Store 版会保留历史文件夹，和任何不带 `-RemoveData` 的卸载一样：删除 `%LOCALAPPDATA%\BetterClipboard` 即可删除它（保存在这个版本自己文件夹中的历史会随应用一起删除）。它的临时图片会留在 `%TEMP%\BetterClipboard` 中，直到你或 Windows 的临时文件清理删除它们。*设置 › 清空历史*，以及 *设置 › 集成* 中每个来源卡片上的 *删除已存储的内容…*，会删除其中一部分；两者都不会改动其他应用自己的文件。
 
 <a id="uninstall"></a>
 ## 卸载
@@ -563,7 +564,7 @@ bclip prompts migration -a claude         # 我问过 Claude Code 哪些关于�
 powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\BetterClipboard\install.ps1" -Uninstall
 ```
 
-除非你加上 `-RemoveData`，否则你的历史会保留在 `%LOCALAPPDATA%\BetterClipboard` 中；`-RemoveData` 也会删除 *保存到临时文件夹后* 留在 `%TEMP%\BetterClipboard` 中的图片。Win+V 以及 BetterClipboard 从资源管理器释放的其他每个 Win+ 快捷键都会还给 Windows（加上 `-KeepWinVReleased` 可保持它们的释放状态）。
+除非你加上 `-RemoveData`，否则你的历史会保留在 `%LOCALAPPDATA%\BetterClipboard` 中；`-RemoveData` 也会删除 *保存到临时文件夹后* 留在 `%TEMP%\BetterClipboard` 中的图片；Microsoft Store 版也使用这份历史，卸载程序会在 `-RemoveData` 清空它之前提醒你。Win+V 以及 BetterClipboard 从资源管理器释放的其他每个 Win+ 快捷键都会还给 Windows（加上 `-KeepWinVReleased` 可保持它们的释放状态）。
 
 为每位用户安装的副本：在 *已安装的应用* 中使用同一个条目（它会请求管理员权限），或者在以管理员身份运行的 PowerShell 中：
 
@@ -573,7 +574,7 @@ powershell -ExecutionPolicy Bypass -File "$env:ProgramFiles\BetterClipboard\inst
 
 每位用户的历史都保留在其各自的用户配置文件中。
 
-Microsoft Store 版：*设置 › 应用 › 已安装的应用 › BetterClipboard › 卸载*。它的历史会随之删除。
+Microsoft Store 版：*设置 › 应用 › 已安装的应用 › BetterClipboard › 卸载*。它的历史会保留在 `%LOCALAPPDATA%\BetterClipboard` 中，和其他安装方式一样；删除那个文件夹即可删除历史。保存在这个版本自己文件夹中的历史（*设置 › 数据文件夹* 会说明是哪一种）会随之删除。
 
 <a id="build-from-source"></a>
 ## 从源代码构建

@@ -987,7 +987,7 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{x:Bind ViewModel.DataFolder}"
+                    Description="{x:Bind ViewModel.DataFolderDescription}"
                     Glyph="&#xE8B7;"
                     Header="{loc:Tr Text='Data folder'}"
                     Keywords="{loc:Tr Text='storage location, files, backup, path'}">

@@ -96,8 +96,8 @@ you send to Claude Code and Codex.
 - **One line to install.** Per user, no admin rights, SHA-256 checked, Windows 10 (2004 or newer) and Windows 11, x64
   and ARM64, nothing else to install; it starts with Windows from then on. As administrator, or from Intune or an RMM
   tool, it installs for every user of a PC instead, and each user can still turn the start at sign-in off for
-  themselves. Uninstalling keeps your history unless you ask ([Install](#install)). A Microsoft Store edition is
-  built and waits for its listing ([Microsoft Store edition](#microsoft-store-edition)).
+  themselves. Uninstalling keeps your history unless you ask ([Install](#install)). A Microsoft Store edition, built
+  and in Microsoft's certification, uses the same history ([Microsoft Store edition](#microsoft-store-edition)).
 - **Updates when you approve them.** The update button in the panel's header, left of Pause, is highlighted when a
   newer release is on GitHub, and once a week its tooltip says so by itself for a few seconds. A click shows the
   decision — *Update and restart* or *Later* — with the release notes below it. Only then is the update downloaded,
@@ -199,8 +199,8 @@ every user.
 
 ### Microsoft Store edition
 
-**Not in the Store yet.** The edition is built and tested ([docs/microsoft-store.md](docs/microsoft-store.md)); its
-listing is being prepared. This is what it is:
+**Not in the Store yet.** The edition is built and tested ([docs/microsoft-store.md](docs/microsoft-store.md)), and
+Microsoft is certifying its first submission. This is what it is:
 
 - **Installed and updated by the Store.** Microsoft signs the package, so Windows shows no "unknown publisher"
   warning. The app itself makes no network request at all, because the Store updates it.
@@ -208,14 +208,19 @@ listing is being prepared. This is what it is:
   Win+V* and *Start with Windows*. Nothing is recorded and no shortcut is taken until you press *Start*.
 - **Win+V without a system change.** It answers Win+V with the keyboard hook while it runs; quit it and Win+V is
   Windows' again at once. *Release from Explorer* is not part of this edition.
-- **Your history comes along.** Only one BetterClipboard is meant to be installed. When the Store edition finds a
-  copy you installed with the installer, it says what it will do and checks that it can. On *Move to this edition* it
-  closes that copy, copies your history and settings, checks the copy, uninstalls the other copy (which gives Win+V
-  back to Windows) and removes the old folder. If a step fails, your history stays where it was. A copy for every
-  user, or the Chocolatey copy, is for an administrator to remove: the Store edition says how and waits. The
-  installer, in turn, tells you when the Store edition is installed.
+- **One history for every kind of install.** The Store edition keeps your history in
+  `%LOCALAPPDATA%\BetterClipboard`, the folder the installer, Chocolatey and a portable copy use, so switching
+  between them keeps your history, pins and settings. It checks once per Windows version that what it writes really
+  lands in that folder; where it doesn't, it keeps its own folder and says so in *Settings › Data folder*.
+- **One copy at a time.** Only one BetterClipboard is meant to be installed. When the Store edition finds a copy you
+  installed with the installer, it says what it will do and checks that it can. *Move to this edition* closes that
+  copy and uninstalls it (which gives Win+V back to Windows); your history stays where it is. (In its own folder, it
+  copies your history and settings first, checks the copy, and removes the old folder last; if a step fails, your
+  history stays where it was.) A copy for every user, or the Chocolatey copy, is for an administrator to remove: the
+  Store edition says how and waits. The installer, in turn, tells you when the Store edition is installed.
 - **`bclip` runs in every terminal** without a PATH entry, once you turn the command line on.
-- **Removing it** removes its history too: it keeps the history in its own app data, which Windows deletes with the
+- **Removing it** keeps your history, like every other uninstall: delete `%LOCALAPPDATA%\BetterClipboard` to remove
+  it for good (*Settings › Data folder › Open* shows it). Only a history in the edition's own folder goes with the
   app.
 
 ## Updates
@@ -859,8 +864,9 @@ bclip prompts migration -a claude         # what did I ask Claude Code about the
   order. Logs and `bclip`'s output stay English. See [docs/localization.md](docs/localization.md).
 
 Data lives in `%LOCALAPPDATA%\BetterClipboard` (`stores\<id>\history.db` + `history.key`, `settings.json`,
-`logs\`, `updates\`); the Microsoft Store edition keeps the same files in its own app data
-(`%LOCALAPPDATA%\Packages\<its package>\LocalState\BetterClipboard`). Logs never contain clipboard content.
+`logs\`, `updates\`), for every kind of install, the Microsoft Store edition included (where Windows does not let it
+write that folder for real, it uses `%LOCALAPPDATA%\Packages\<its package>\LocalState\BetterClipboard`). Logs never
+contain clipboard content.
 
 The research behind all this — how Win+V is built (service `cbdhsvc`, the `TextInputHost` panel,
 Explorer's hotkey), why it forgets, its on-disk format for pins, and the measurements quoted above — is
@@ -926,10 +932,11 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
   and its sync between devices (*Clipboard history across your devices*) treat it the way you set them up in
   Windows (Microsoft's [privacy statement](https://privacy.microsoft.com/privacystatement) covers those).
 - **Removing it:** uninstalling with `-RemoveData` deletes everything BetterClipboard stored, the temporary pictures
-  included; uninstalling the Microsoft Store edition always deletes the history, while its temporary pictures stay in
-  `%TEMP%\BetterClipboard` until you or Windows' clean-up of temporary files delete them. *Settings › Clear history*,
-  and *Delete stored…* on each source's card in *Settings › Integrations*, delete parts of it; neither touches the
-  other apps' own files.
+  included. Uninstalling the Microsoft Store edition keeps the history folder, like any uninstall without
+  `-RemoveData`: delete `%LOCALAPPDATA%\BetterClipboard` to remove it (a history in that edition's own folder goes
+  with the app). Its temporary pictures stay in `%TEMP%\BetterClipboard` until you or Windows' clean-up of temporary
+  files delete them. *Settings › Clear history*, and *Delete stored…* on each source's card in
+  *Settings › Integrations*, delete parts of it; neither touches the other apps' own files.
 
 ## Uninstall
 
@@ -940,7 +947,8 @@ powershell -ExecutionPolicy Bypass -File "$env:LOCALAPPDATA\Programs\BetterClipb
 ```
 
 Your history stays in `%LOCALAPPDATA%\BetterClipboard` unless you add `-RemoveData`, which also deletes the pictures
-*Save to temp and* left in `%TEMP%\BetterClipboard`. Win+V, and every other
+*Save to temp and* left in `%TEMP%\BetterClipboard`; the Microsoft Store edition uses that history too, and the
+uninstall warns you before `-RemoveData` empties it. Win+V, and every other
 Win+ shortcut that BetterClipboard released from Explorer, goes back to Windows (add `-KeepWinVReleased` to keep them
 released).
 
@@ -953,8 +961,9 @@ powershell -ExecutionPolicy Bypass -File "$env:ProgramFiles\BetterClipboard\inst
 
 Each user's history stays in their own profile.
 
-The Microsoft Store edition: *Settings › Apps › Installed apps › BetterClipboard › Uninstall*. Its history is removed
-with it.
+The Microsoft Store edition: *Settings › Apps › Installed apps › BetterClipboard › Uninstall*. Its history stays in
+`%LOCALAPPDATA%\BetterClipboard`, like any other kind of install's; delete that folder to remove it. A history in the
+edition's own folder (*Settings › Data folder* says which) is removed with it.
 
 ## Build from source
 

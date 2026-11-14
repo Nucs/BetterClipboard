@@ -1,10 +1,10 @@
 namespace BetterClipboard.Core;
 
 /// <summary>
-/// Resolves where BetterClipboard keeps its data: <c>%LOCALAPPDATA%\BetterClipboard</c> by default, the Microsoft
-/// Store package's own folder for a copy that runs from that package, or the directory in the
-/// <c>BETTERCLIPBOARD_DATA_DIR</c> environment variable (used by tests and dev runs so they never touch the real
-/// history).
+/// Resolves where BetterClipboard keeps its data: <c>%LOCALAPPDATA%\BetterClipboard</c> for every kind of install (the
+/// Microsoft Store edition too, once it proved that folder safe on the PC), the Store package's own folder as that
+/// edition's fallback, or the directory in the <c>BETTERCLIPBOARD_DATA_DIR</c> environment variable (used by tests and
+/// dev runs so they never touch the real history).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -12,11 +12,13 @@ namespace BetterClipboard.Core;
 /// profiles, and it is per-machine by nature (file paths, local apps).
 /// </para>
 /// <para>
-/// <b>The Microsoft Store edition</b> (CLAUDE.md §2.47) keeps its data in <see cref="PackagedDataDirectory"/>, named by
-/// its real path. Left at <c>%LOCALAPPDATA%\BetterClipboard</c>, Windows would decide where it lands: redirected into
-/// the package's private folder when that folder does not exist yet, but written for real, next to another edition's
-/// data, when it does (measured). A fixed folder of the package's own is the same on every PC, and Windows deletes it
-/// with the app.
+/// <b>The Microsoft Store edition</b> (CLAUDE.md §2.47) shares <see cref="DefaultDataDirectory"/> with every other kind
+/// of install since 2026-11-14 (the owner's "Share it"), so a user can switch between them and keep one history. Left to
+/// itself, Windows would decide where such a package's writes land: into a private copy, deleted with the app, when the
+/// package creates the folder, but for real when the folder already exists (measured). So the app makes the folder
+/// with a program outside the package and proves its writes real before it uses it
+/// (<see cref="Editions.StoreDataFolder"/>); <see cref="PackagedDataDirectory"/>, the package's own folder, is the
+/// fallback and where version 1.2.11 kept its data.
 /// </para>
 /// </remarks>
 public sealed class AppPaths
@@ -28,8 +30,9 @@ public sealed class AppPaths
     public const string DefaultInstanceName = "BetterClipboard";
 
     /// <summary>
-    /// The data directory of every copy that is not the Microsoft Store edition, when
-    /// <see cref="DataDirectoryVariable"/> is not set: <c>%LOCALAPPDATA%\BetterClipboard</c>. The Store edition reads it
+    /// The data directory of every kind of install when <see cref="DataDirectoryVariable"/> is not set:
+    /// <c>%LOCALAPPDATA%\BetterClipboard</c>. The Microsoft Store edition uses it too once it is proven safe on the PC
+    /// (<see cref="Editions.StoreDataFolder"/>); while that edition runs from its own folder instead, it reads this one
     /// only to move another edition's history over (<c>Editions.EditionDataMigrator</c>).
     /// </summary>
     public static string DefaultDataDirectory =>
@@ -72,8 +75,10 @@ public sealed class AppPaths
     public static AppPaths ResolveDefault() => ResolveDefault(packageFamilyName: null);
 
     /// <summary>
-    /// The paths for this process: the environment override when set; otherwise the Store package's own folder for a
-    /// process that runs from that package, or <c>%LOCALAPPDATA%\BetterClipboard</c>.
+    /// The paths for this process: the environment override when set; otherwise, for a process that runs from the Store
+    /// package, the folder that edition's app recorded (<see cref="Editions.StoreDataFolder.ResolveReadOnly"/>: the shared
+    /// folder once proven, else the package's own); otherwise <c>%LOCALAPPDATA%\BetterClipboard</c>. Changes nothing on
+    /// disk: <c>bclip</c> resolves its folder this way.
     /// </summary>
     /// <param name="packageFamilyName">
     /// The package family name of the running process (<c>Windows.Packaging.PackageIdentity.FamilyName</c>), or
@@ -81,26 +86,50 @@ public sealed class AppPaths
     /// so the program's entry point passes it.
     /// </param>
     /// <returns>The resolved paths.</returns>
-    public static AppPaths ResolveDefault(string? packageFamilyName)
+    public static AppPaths ResolveDefault(string? packageFamilyName) => ResolveDefault(packageFamilyName, storeDataDirectory: null);
+
+    /// <summary>
+    /// The paths for this process, with the folder the Store edition's app decided on at this start
+    /// (<see cref="Editions.StoreDataFolder.Establish"/>): the environment override when set; otherwise
+    /// <paramref name="storeDataDirectory"/> for a process of the package, or what <see cref="ResolveDefault(string?)"/>
+    /// resolves.
+    /// </summary>
+    /// <param name="packageFamilyName">The running process's package family name, or <see langword="null"/> or blank without one.</param>
+    /// <param name="storeDataDirectory">
+    /// The Store edition's established data folder for this process, or <see langword="null"/> when nothing was established
+    /// (every other kind of install, an isolated instance, a process that only reads).
+    /// </param>
+    /// <returns>The resolved paths.</returns>
+    public static AppPaths ResolveDefault(string? packageFamilyName, string? storeDataDirectory)
     {
-        string home = string.IsNullOrWhiteSpace(packageFamilyName) ? DefaultDataDirectory : PackagedDataDirectory(packageFamilyName);
+        string home = string.IsNullOrWhiteSpace(packageFamilyName)
+            ? DefaultDataDirectory
+            : !string.IsNullOrWhiteSpace(storeDataDirectory)
+                ? storeDataDirectory
+                : Editions.StoreDataFolder.ResolveReadOnly(Editions.StoreDataPlaces.For(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), packageFamilyName));
         var overridden = Environment.GetEnvironmentVariable(DataDirectoryVariable);
         return new AppPaths(!string.IsNullOrWhiteSpace(overridden) ? overridden : home, home);
     }
 
     /// <summary>
-    /// Where the Microsoft Store edition keeps its data: the package's <c>LocalState</c> folder, by its real path
-    /// (<c>%LOCALAPPDATA%\Packages\{family}\LocalState\BetterClipboard</c>). Windows creates <c>LocalState</c> with the
-    /// package and deletes it when the app is uninstalled.
+    /// The Microsoft Store package's own data folder: its <c>LocalState</c> folder, by its real path
+    /// (<c>%LOCALAPPDATA%\Packages\{family}\LocalState\BetterClipboard</c>), which Windows deletes when the app is
+    /// uninstalled. The edition's fallback when the shared folder cannot be used, and where version 1.2.11 kept its data
+    /// (<see cref="Editions.StoreDataFolder"/>).
     /// </summary>
     /// <param name="packageFamilyName">The package family name, e.g. <c>Publisher.BetterClipboard_1a2b3c4d5e6f7</c>.</param>
     /// <returns>The folder.</returns>
     /// <exception cref="ArgumentException"><paramref name="packageFamilyName"/> is null or blank.</exception>
-    public static string PackagedDataDirectory(string packageFamilyName)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(packageFamilyName);
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", packageFamilyName.Trim(), "LocalState", "BetterClipboard");
-    }
+    public static string PackagedDataDirectory(string packageFamilyName) =>
+        Editions.StoreDataPlaces.For(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), packageFamilyName).PackageDirectory;
+
+    /// <summary>
+    /// Whether this copy keeps its data in the folder every kind of install uses (<see cref="DefaultDataDirectory"/>):
+    /// every copy but an isolated instance, and the Microsoft Store edition once it proved that folder on the PC. When
+    /// true, there is no "other editions' data" to bring over or remove: it is this copy's own.
+    /// </summary>
+    public bool UsesSharedDataDirectory =>
+        string.Equals(Path.TrimEndingDirectorySeparator(DataDirectory), Path.TrimEndingDirectorySeparator(Path.GetFullPath(DefaultDataDirectory)), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Root data directory.</summary>
     public string DataDirectory { get; }

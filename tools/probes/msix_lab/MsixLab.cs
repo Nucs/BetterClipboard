@@ -60,7 +60,7 @@ public static unsafe class Program
 
         if (list.Count == 0)
         {
-            Log("usage", "msixlab <identity|regwrite|regread|regdelete|child|selfchild|files|filewatch|dpapi|dpapi-make|mutex|mutex-open|lang|cliphistory|regnotify|regnotify-users|regpoll|startup|apps> [args] [--out FILE]");
+            Log("usage", "msixlab <identity|regwrite|regread|regdelete|child|selfchild|files|shared|shadow|shadowmove|filewatch|dpapi|dpapi-make|mutex|mutex-open|lang|cliphistory|regnotify|regnotify-users|regpoll|startup|apps> [args] [--out FILE]");
             return 2;
         }
 
@@ -76,6 +76,9 @@ public static unsafe class Program
                 case "selfchild": SelfChild(Arg(list, 1, "plain"), Arg(list, 2, Path.GetTempPath())); break;
                 case "filewatch": FileWatch(Arg(list, 1, string.Empty), int.Parse(Arg(list, 2, "12"), CultureInfo.InvariantCulture)); break;
                 case "files": Files(); break;
+                case "shared": SharedFolder(); break;
+                case "shadow": Shadow(); break;
+                case "shadowmove": ShadowMove(); break;
                 case "dpapi": DpapiRead(Arg(list, 1, string.Empty)); break;
                 case "dpapi-make": DpapiMake(Arg(list, 1, string.Empty)); break;
                 case "mutex": HoldMutex(Arg(list, 1, "BC-TEST-MSIX-Mutex"), int.Parse(Arg(list, 2, "20"), CultureInfo.InvariantCulture)); break;
@@ -525,6 +528,138 @@ public static unsafe class Program
         {
             Log(key, $"{ex.GetType().Name}: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// The shared data folder (CLAUDE.md §2.47, "Share it"): a folder directly under Local AppData that does not exist
+    /// yet is made by a program this process starts (cmd's <c>mkdir</c>, which runs outside the package), then this
+    /// process makes subfolders and files in it the way BetterClipboard's store does (a database, a journal that comes
+    /// and goes, a memory-mapped index). Two outside looks tell whether all of it is real: a cmd child asked whether
+    /// the files exist, and the package's redirect folder (<c>LocalCache\Local</c>), which must stay empty.
+    /// </summary>
+    private static void SharedFolder()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string shared = Path.Combine(local, "BC-TEST-MSIX-shared");
+        Log("shared.visibleBefore", Directory.Exists(shared));
+
+        // cmd is another program, so it runs outside the package and its mkdir lands in the real AppData.
+        var (mkdirExit, _) = RunOutside($"/d /c mkdir \"{shared}\"");
+        Log("shared.mkdirExit", mkdirExit);
+        Log("shared.visibleAfterMkdir", Directory.Exists(shared));
+
+        string inner = Path.Combine(shared, "stores", "inner");
+        Try("shared.newSubfolders", () => { Directory.CreateDirectory(inner); return "created"; });
+        Try("shared.newFile", () => { File.WriteAllText(Path.Combine(inner, "data.db"), "BC-TEST"); return "created"; });
+        Try("shared.journalComesAndGoes", () =>
+        {
+            // SQLite's rollback journal and WAL files are made and deleted next to the database.
+            string journal = Path.Combine(inner, "data.db-journal");
+            File.WriteAllText(journal, "BC-TEST");
+            File.Delete(journal);
+            return File.Exists(journal) ? "still visible" : "gone";
+        });
+        Try("shared.mappedFile", () =>
+        {
+            // SQLite's -shm index is a memory-mapped file shared between connections.
+            using var map = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(Path.Combine(inner, "data.db-shm"), FileMode.Create, null, 32768);
+            using var view = map.CreateViewAccessor();
+            view.Write(0, (byte)0x42);
+            return "mapped";
+        });
+        Try("shared.replaceFile", () =>
+        {
+            // The way settings.json is saved: a new file beside it, moved over the old one.
+            string target = Path.Combine(shared, "settings.json");
+            File.WriteAllText(target, "{}");
+            File.WriteAllText(target + ".tmp", "{\"BC-TEST\":1}");
+            File.Move(target + ".tmp", target, overwrite: true);
+            return "replaced";
+        });
+
+        foreach (string name in new[] { @"stores\inner\data.db", @"stores\inner\data.db-shm", "settings.json" })
+        {
+            var (exit, _) = RunOutside($"/d /c if exist \"{Path.Combine(shared, name)}\" (exit 0) else (exit 1)");
+            Log($"shared.outsideSees[{name}]", exit == 0);
+        }
+
+        if (PackageString(full: false) is { } family)
+        {
+            string redirected = Path.Combine(local, "Packages", family, "LocalCache", "Local", "BC-TEST-MSIX-shared");
+            Log("shared.redirectCopyExists", Directory.Exists(redirected));
+        }
+    }
+
+    /// <summary>
+    /// The shadow rule: a real folder and a private copy of the same folder in the package's redirect location (the
+    /// outside shell makes both, with a different <c>which.txt</c> in each). Which one does this process read, where
+    /// does its new file go, and what does a program outside the package read?
+    /// </summary>
+    private static void Shadow()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string folder = Path.Combine(local, "BC-TEST-MSIX-shadow");
+        Try("shadow.readsWhich", () => File.ReadAllText(Path.Combine(folder, "which.txt")).Trim());
+        Try("shadow.listing", () => string.Join(", ", Directory.GetFiles(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal)));
+        Try("shadow.newFile", () => { File.WriteAllText(Path.Combine(folder, "written-by-package.txt"), "BC-TEST"); return "created"; });
+        Try("shadow.appendWhich", () => { File.AppendAllText(Path.Combine(folder, "which.txt"), " +packaged"); return "appended"; });
+        var (_, outside) = RunOutside($"/d /c type \"{Path.Combine(folder, "which.txt")}\"");
+        Log("shadow.outsideReadsWhich", outside.Trim());
+    }
+
+    /// <summary>
+    /// The repair of a shadow: this process makes a new folder directly under Local AppData (redirected into the
+    /// package's private location), then a program outside the package moves that private folder to the real path.
+    /// Afterwards, does this process see its files at the real path, and are its next writes real?
+    /// </summary>
+    private static void ShadowMove()
+    {
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string folder = Path.Combine(local, "BC-TEST-MSIX-moved");
+        Try("shadowmove.createInProcess", () =>
+        {
+            Directory.CreateDirectory(Path.Combine(folder, "stores"));
+            File.WriteAllText(Path.Combine(folder, "stores", "before.txt"), "BC-TEST");
+            return "created";
+        });
+
+        if (PackageString(full: false) is not { } family)
+        {
+            Log("shadowmove", "(not packaged: nothing is redirected)");
+            return;
+        }
+
+        string redirected = Path.Combine(local, "Packages", family, "LocalCache", "Local", "BC-TEST-MSIX-moved");
+        Log("shadowmove.landedInRedirect", Directory.Exists(redirected));
+        var (moveExit, moveOutput) = RunOutside($"/d /c move \"{redirected}\" \"{folder}\"");
+        Log("shadowmove.moveExit", $"{moveExit} {moveOutput.Trim()}");
+        Log("shadowmove.redirectAfter", Directory.Exists(redirected));
+        Try("shadowmove.readBefore", () => File.ReadAllText(Path.Combine(folder, "stores", "before.txt")));
+        Try("shadowmove.writeAfter", () => { File.WriteAllText(Path.Combine(folder, "stores", "after.txt"), "BC-TEST"); return "created"; });
+        var (exit, _) = RunOutside($"/d /c if exist \"{Path.Combine(folder, "stores", "after.txt")}\" (exit 0) else (exit 1)");
+        Log("shadowmove.outsideSeesAfter", exit == 0);
+        Log("shadowmove.redirectAfterWrite", Directory.Exists(redirected));
+    }
+
+    /// <summary>
+    /// Runs cmd.exe with the given arguments and waits: a program that is not the package's own runs outside the
+    /// package's environment (measured), so it sees and changes the real file system.
+    /// </summary>
+    /// <param name="arguments">cmd's arguments, e.g. <c>/d /c mkdir "…"</c>.</param>
+    /// <returns>cmd's exit code (-1 when it did not end within 20 s) and what it printed.</returns>
+    /// <exception cref="InvalidOperationException">cmd.exe could not be started; the step then has no answer.</exception>
+    private static (int ExitCode, string Output) RunOutside(string arguments)
+    {
+        string cmd = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe");
+        using var process = Process.Start(new ProcessStartInfo(cmd, arguments)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        }) ?? throw new InvalidOperationException("cmd.exe did not start.");
+        string output = process.StandardOutput.ReadToEnd() + process.StandardError.ReadToEnd();
+        return process.WaitForExit(20000) ? (process.ExitCode, output) : (-1, output);
     }
 
     /// <summary>

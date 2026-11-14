@@ -106,6 +106,17 @@ public sealed partial class SettingsViewModel : ObservableObject
     public string DataFolder => controller.Paths.DataDirectory;
 
     /// <summary>
+    /// The Data folder card's description: the path, and for the Microsoft Store edition whether the folder stays when the
+    /// app is uninstalled. The Store asks an app to say clearly how it is removed completely (policy 10.2.7), and since
+    /// 2026-11-14 that edition's history outlives it when it shares the folder with the other kinds of install.
+    /// </summary>
+    public string DataFolderDescription => !IsStoreEdition
+        ? DataFolder
+        : DataFolder + "\n" + (controller.SharesDataWithOtherEditions
+            ? UiText.Translate("Every kind of BetterClipboard install uses this folder, and it stays when the app is uninstalled. To remove your history for good, delete this folder.")
+            : UiText.Translate("This edition's own folder: Windows deletes it when the app is uninstalled."));
+
+    /// <summary>
     /// Rows of Third party › Works with: the apps BetterClipboard reads from (Everything, PowerShell, ShareX) and their
     /// official sites. Listed whether or not they are installed, since the card is also where to get them from their
     /// makers.
