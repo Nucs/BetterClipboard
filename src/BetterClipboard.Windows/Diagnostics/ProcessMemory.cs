@@ -19,7 +19,8 @@ namespace BetterClipboard.Windows.Diagnostics;
 /// <para>
 /// <b>Trimming</b> the working set (<c>trimWorkingSet</c>) also hands every page Windows can take to its standby list: the
 /// "Memory" column of Task Manager drops to a few megabytes, and the pages come back, from RAM, the next time they are
-/// used — unless Windows gave that RAM to another program meanwhile, when they come back from the page file.
+/// used — unless Windows gave that RAM to another program meanwhile, when they come back from the page file. The app no
+/// longer asks for it (CLAUDE.md §2.53): on a PC short of memory, the next Win+V waited 0.1 to 0.5 s for its pages.
 /// </para>
 /// </remarks>
 public static class ProcessMemory
@@ -48,6 +49,22 @@ public static class ProcessMemory
         return NativeMethods.K32GetProcessMemoryInfo(NativeMethods.GetCurrentProcess(), ref basic, basic.cb)
             ? new MemoryUsage((long)basic.PrivateUsage, (long)basic.WorkingSetSize, null, managed)
             : new MemoryUsage(0, Environment.WorkingSet, null, managed);
+    }
+
+    /// <summary>
+    /// How many page faults this process has taken since it started — soft ones (a page still in RAM, mapped back in) and
+    /// hard ones (read from disk) together, as Task Manager's "Page faults" column counts them. Cheap (a few microseconds),
+    /// so a summon can read it before and after to tell a panel that waited for its memory from one that waited for
+    /// something else. Never throws: 0 when Windows does not answer.
+    /// </summary>
+    /// <returns>The count; it wraps around after 2³² faults, so take differences with unchecked arithmetic.</returns>
+    public static uint PageFaults()
+    {
+        // The plain counters (80 bytes on 64-bit Windows) hold the count on every Windows the app supports.
+        var counters = new NativeMethods.PROCESS_MEMORY_COUNTERS_EX2 { cb = 80 };
+        return NativeMethods.K32GetProcessMemoryInfo(NativeMethods.GetCurrentProcess(), ref counters, counters.cb)
+            ? counters.PageFaultCount
+            : 0;
     }
 
     /// <summary>

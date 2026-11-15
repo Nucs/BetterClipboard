@@ -38,10 +38,11 @@ namespace BetterClipboard.App.Views;
 /// peek reappears if the mouse settles again. A key or a press dismisses it too.
 /// </para>
 /// <para>
-/// <b>Resolution.</b> Both overlays show the full-resolution image (<see cref="AppController.GetImagePngAsync"/>), not the
-/// small card thumbnail, so a big screenshot is crisp and zooms in cleanly; the last-shown image is cached so a peek
-/// followed by the viewer (or repeated peeks of one card) is instant. The load is kicked off on hover, so the full image
-/// is usually ready by the time the peek's delay elapses or the eye is clicked.
+/// <b>Resolution.</b> Both overlays show the full-resolution image (<see cref="AppController.GetImageForDisplayAsync"/>: the
+/// stored PNG, or the stored bitmap as it is, never re-encoded), not the small card thumbnail, so a big screenshot is crisp
+/// and zooms in cleanly; the last-shown image is cached so a peek followed by the viewer (or repeated peeks of one card) is
+/// instant. The load is kicked off on hover, so the full image is usually ready by the time the peek's delay elapses or the
+/// eye is clicked.
 /// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout
@@ -420,13 +421,14 @@ public sealed partial class ClipboardFlyout
             return cached.Image;
         }
 
-        var png = await controller.GetImagePngAsync(card.Id, token).ConfigureAwait(true);
-        if (png is null || png.Length == 0)
+        // The stored PNG, or the stored bitmap as a .bmp file: a bitmap-only copy is no longer encoded to PNG first.
+        var encoded = await controller.GetImageForDisplayAsync(card.Id, token).ConfigureAwait(true);
+        if (encoded is null || encoded.Length == 0)
         {
             return null;
         }
 
-        var bitmap = await DecodeAsync(png, token).ConfigureAwait(true);
+        var bitmap = await DecodeAsync(encoded, token).ConfigureAwait(true);
         if (bitmap is not null)
         {
             imageCache = (card.Id, bitmap);
@@ -435,15 +437,15 @@ public sealed partial class ClipboardFlyout
         return bitmap;
     }
 
-    /// <summary>Decodes PNG bytes into a bitmap on the UI thread.</summary>
-    /// <param name="png">PNG bytes.</param>
+    /// <summary>Decodes an image file's bytes (PNG or BMP) into a bitmap on the UI thread.</summary>
+    /// <param name="encoded">The file's bytes, as <see cref="AppController.GetImageForDisplayAsync"/> returns them.</param>
     /// <param name="token">Cancellation (checked around the async steps; the decode itself is not interruptible).</param>
     /// <returns>The bitmap.</returns>
     /// <exception cref="OperationCanceledException">The token was cancelled.</exception>
-    private static async Task<BitmapImage> DecodeAsync(byte[] png, CancellationToken token)
+    private static async Task<BitmapImage> DecodeAsync(byte[] encoded, CancellationToken token)
     {
         using var stream = new InMemoryRandomAccessStream();
-        await stream.WriteAsync(png.AsBuffer());
+        await stream.WriteAsync(encoded.AsBuffer());
         stream.Seek(0);
         token.ThrowIfCancellationRequested();
         var bitmap = new BitmapImage();

@@ -30,6 +30,17 @@
     <!-- Custom Main (single instance, sync context) lives in Program.cs. -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!--
+      Published builds are precompiled (ReadyToRun): .NET runs native code from the start instead of compiling each method
+      the first time it runs. Every Settings window opens in a fresh process (the silent restart after Settings closes,
+      CLAUDE.md §2.46), so all of its code used to be compiled again at each open: 1.2 s to its first frame in a test
+      desktop, 0.58 s precompiled; the panel's warm-up 0.71 → 0.43 s, the first Win+V after a start 214 → 88 ms (§2.53).
+      The price is about 15 MB more per download. Only `dotnet publish` precompiles: builds and tests are unchanged. bclip
+      sets it too: it is published into the same folder and would otherwise overwrite the shared libraries (Core, SQLite)
+      with their plain versions.
+    -->
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>

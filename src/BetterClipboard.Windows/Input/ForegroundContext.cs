@@ -1,3 +1,4 @@
+using BetterClipboard.Windows.Diagnostics;
 using static BetterClipboard.Windows.Interop.NativeMethods;
 
 namespace BetterClipboard.Windows.Input;
@@ -44,13 +45,21 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
     /// </summary>
     public long CapturedAt { get; init; }
 
+    /// <summary>
+    /// This process's page-fault count when the context was captured (<see cref="ProcessMemory.PageFaults"/>), so the
+    /// panel can log how many pages a slow summon had to bring back (CLAUDE.md §2.53). 0 for a context built without
+    /// <see cref="Capture"/> or <see cref="CursorOnly"/>: no count is logged then.
+    /// </summary>
+    public uint PageFaultsAtCapture { get; init; }
+
     /// <summary>A context with no paste target, positioned at the mouse cursor (tray/menu invocations).</summary>
     /// <returns>The context.</returns>
     public static ForegroundContext CursorOnly()
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        uint faults = ProcessMemory.PageFaults();
         GetCursorPos(out var cursor);
-        return new ForegroundContext(0, 0, null, new ScreenPoint(cursor.X, cursor.Y)) { CapturedAt = now };
+        return new ForegroundContext(0, 0, null, new ScreenPoint(cursor.X, cursor.Y)) { CapturedAt = now, PageFaultsAtCapture = faults };
     }
 
     /// <summary>
@@ -60,6 +69,9 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
     public static ForegroundContext Capture()
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        // Read first, with the time: the faults the summon takes from here on (this thread's included) are its own.
+        uint faults = ProcessMemory.PageFaults();
         GetCursorPos(out var cursor);
         nint foreground = GetForegroundWindow();
         uint thread = foreground == 0 ? 0 : GetWindowThreadProcessId(foreground, out _);
@@ -77,6 +89,6 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
             }
         }
 
-        return new ForegroundContext(foreground, processId, caret, new ScreenPoint(cursor.X, cursor.Y)) { CapturedAt = now };
+        return new ForegroundContext(foreground, processId, caret, new ScreenPoint(cursor.X, cursor.Y)) { CapturedAt = now, PageFaultsAtCapture = faults };
     }
 }

@@ -341,8 +341,9 @@ public sealed partial class ClipboardFlyout
     /// </para>
     /// </remarks>
     /// <param name="rect">Where the panel goes, in physical screen pixels.</param>
+    /// <param name="timeline">The summon's stages for its log line ("moved", "activated", "drawn"); null when not timed.</param>
     /// <returns>A task completing once the panel is on screen, or once a dismissal during the wait made that moot.</returns>
-    private async Task PresentAsync(RectInt32 rect)
+    private async Task PresentAsync(RectInt32 rect, StageTimeline? timeline)
     {
         var sizeBefore = AppWindow.Size;
         bool wasShown = AppWindow.IsVisible;
@@ -358,6 +359,8 @@ public sealed partial class ClipboardFlyout
             MoveAndResizeExactly(rect);
         }
 
+        timeline?.Mark("moved");
+
         // Back on screen: a put-away still owed (FinishPuttingAway: queued by the last dismissal, or due after a paste's
         // Ctrl+V) would now hide the panel, and a paste's Enter guard would swallow this use's first Enter. Everything from
         // ShowAt's start to here runs in one go, so a queued rest cannot slip in between.
@@ -370,11 +373,13 @@ public sealed partial class ClipboardFlyout
             AppWindow.Show(true);
             Activate();
             ForegroundHelper.Activate(hwnd);
+            timeline?.Mark("activated");
             return;
         }
 
         Activate();
         bool active = ForegroundHelper.Activate(hwnd);
+        timeline?.Mark("activated");
         bool sizeChanged = sizeBefore.Width != rect.Width || sizeBefore.Height != rect.Height;
         if (!wasShown || sizeChanged)
         {
@@ -388,6 +393,8 @@ public sealed partial class ClipboardFlyout
             {
                 return; // dismissed while it waited (the shortcut pressed again): Conceal already ran
             }
+
+            timeline?.Mark("drawn");
         }
 
         WindowInterop.SetCloaked(hwnd, false);
@@ -470,12 +477,21 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Logs how long a summon took — the session's first one always, later ones only when slow (<see cref="SlowSummon"/>) —
-    /// so a "Win+V feels slow" report can be checked against the log. Content-free: times only.
+    /// so a "Win+V feels slow" report can be checked against the log. Content-free: times and a count only.
     /// </summary>
+    /// <remarks>
+    /// The line names each stage's own time and the page faults the process took from the key to the panel on screen
+    /// (CLAUDE.md §2.53): "Panel on screen 154 ms after the shortcut (queued 3 ms, prepared 61 ms, moved 2 ms, activated
+    /// 70 ms, shown 18 ms; 6,412 page faults), its list ready (slow)." Thousands of faults mean the panel's memory had to
+    /// come back (from RAM or from disk); a few hundred mean it waited for something else (the window being activated, the
+    /// GPU). The prefix up to "after the shortcut" is what it was before the stages were added, for scripts that read it.
+    /// </remarks>
     /// <param name="context">The summon's context (its <see cref="ForegroundContext.CapturedAt"/> is when the key arrived).</param>
     /// <param name="onScreen">Stopwatch timestamp of the moment the panel was uncloaked (or shown) and activated.</param>
+    /// <param name="faultsOnScreen">This process's page-fault count at <paramref name="onScreen"/>.</param>
+    /// <param name="timeline">The summon's stages up to <paramref name="onScreen"/>; null when not timed.</param>
     /// <param name="reloaded">Whether the list had to be reloaded after the panel appeared (it was not current).</param>
-    private void LogSummon(ForegroundContext context, long onScreen, bool reloaded)
+    private void LogSummon(ForegroundContext context, long onScreen, uint faultsOnScreen, StageTimeline? timeline, bool reloaded)
     {
         if (context.CapturedAt == 0)
         {
@@ -489,9 +505,20 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        // Part of a log line, so English whatever the interface language.
-        string list = reloaded ? $", its list reloaded after {toList.TotalMilliseconds:0} ms" : ", its list ready";
-        AppLog.Info($"Panel on screen {toScreen.TotalMilliseconds:0} ms after the shortcut{list}{(summonLogged ? " (slow)" : " (first summon)")}.");
+        // Part of a log line, so English whatever the interface language, and invariant numbers.
+        string stages = timeline?.DescribeStages() ?? string.Empty;
+        if (context.PageFaultsAtCapture != 0)
+        {
+            // The count wraps around after 2³²: the difference is right across a wrap with unchecked arithmetic.
+            uint faults = unchecked(faultsOnScreen - context.PageFaultsAtCapture);
+            stages += (stages.Length > 0 ? "; " : string.Empty)
+                + faults.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)
+                + (faults == 1 ? " page fault" : " page faults");
+        }
+
+        string details = stages.Length > 0 ? $" ({stages})" : string.Empty;
+        string list = reloaded ? $", its list reloaded after {StageTimeline.Milliseconds(toList)} ms" : ", its list ready";
+        AppLog.Info($"Panel on screen {StageTimeline.Milliseconds(toScreen)} ms after the shortcut{details}{list}{(summonLogged ? " (slow)" : " (first summon)")}.");
         summonLogged = true;
     }
 }

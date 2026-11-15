@@ -8,7 +8,8 @@ namespace BetterClipboard.App;
 /// Giving memory back (CLAUDE.md §2.45): after Settings closes, after the panel is put away, after a list refresh while it
 /// is hidden, and once the start's work is done, the controller asks for a reclaim; it runs once things have been quiet
 /// for a while (<see cref="MemoryReclaimPlanner"/>), never while the panel or Settings is on screen, on a pool thread
-/// (<see cref="ProcessMemory.Reclaim"/>), and trims the working set every time.
+/// (<see cref="ProcessMemory.Reclaim"/>). It frees what is no longer used and keeps the working set: the pages the panel
+/// uses stay in memory for the next Win+V.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -18,12 +19,14 @@ namespace BetterClipboard.App;
 /// PC the installed app held 267 MB of private memory after two days, with 9 MB of live .NET objects.
 /// </para>
 /// <para>
-/// <b>The trim</b> (the owner's choice, 2026-11-12: "After every use", over trimming only after a long idle or never): every
-/// reclaim also hands the pages the app is not using right now to Windows, so Task Manager's "Memory" shows a few megabytes
-/// while BetterClipboard waits (5 MB in the test desktop, against 25 to 35 without). The price, measured there: a summon
-/// after a trim waits for its pages to come back from RAM, 41 ms instead of 28 (median of five); after Windows gave that
-/// RAM to another program, they come back from the page file, slower — which Windows' own trimming under memory pressure
-/// costs anyway.
+/// <b>No trim of the working set</b> (the owner's choice, 2026-11-15: "Keep the panel ready", over handing pages back after
+/// 10 minutes unused or after every use; CLAUDE.md §2.53). From 2026-11-12 every reclaim also handed every page to Windows
+/// (the owner's choice then: "After every use"), so Task Manager's "Memory" read 0.2 MB while BetterClipboard waited. On the
+/// owner's PC, short of memory (138 GB committed on 64 GB), Windows reused that RAM, and a Win+V after a pause waited for
+/// its pages to come back from disk: 39 summons of 100 to 538 ms in two weeks (median 154 ms). A test desktop counted 6,000
+/// to 10,000 page faults per summon after a trim, against 75 to 570 without. Now "Memory" reads about 30 to 50 MB at rest
+/// in that desktop; Windows can still trim the app by itself when it needs the RAM, oldest pages first, and the summon's
+/// log line then shows thousands of page faults.
 /// </para>
 /// <para>
 /// <b>Cost.</b> One full, compacting collection twice (some tens of milliseconds at these heap sizes), after use, so never
@@ -157,7 +160,9 @@ public sealed partial class AppController
             var (before, after) = await Task.Run(() =>
             {
                 var measured = ProcessMemory.Read();
-                ProcessMemory.Reclaim(trimWorkingSet: true);
+
+                // The working set is kept (see the class remarks): a trim made the next Win+V wait for its pages.
+                ProcessMemory.Reclaim(trimWorkingSet: false);
                 return (measured, ProcessMemory.Read());
             }).ConfigureAwait(true);
 

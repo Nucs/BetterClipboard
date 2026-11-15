@@ -11,6 +11,7 @@ using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Services;
 using BetterClipboard.Core.Settings;
 using BetterClipboard.Core.Storage;
+using BetterClipboard.Windows.Diagnostics;
 using BetterClipboard.Windows.Input;
 using BetterClipboard.Windows.Shell;
 using Microsoft.UI.Composition;
@@ -430,6 +431,10 @@ public sealed partial class ClipboardFlyout : Window
     {
         try
         {
+            // The summon's stages, timed from the key, for the log line of a slow summon (LogSummon, CLAUDE.md §2.53).
+            var timeline = context.CapturedAt != 0 ? new StageTimeline(context.CapturedAt) : null;
+            timeline?.Mark("queued");
+
             // A drag interrupted by hiding normally ends through capture loss; never let one survive into
             // a new summon, where the next pointer move would jump the window.
             EndDrag();
@@ -477,12 +482,16 @@ public sealed partial class ClipboardFlyout : Window
             SuspendPointerSelection();
 
             // On screen in one step: no fade, no slide, no DWM animation (ClipboardFlyout.Summon.cs has the numbers).
-            await PresentAsync(rect);
+            timeline?.Mark("prepared");
+            await PresentAsync(rect, timeline);
             if (!presented)
             {
                 return; // dismissed again (the shortcut pressed twice) while it waited for a frame
             }
 
+            // The end of the summon proper, for its log line: the page faults it took and its last stage (LogSummon).
+            uint faultsOnScreen = ProcessMemory.PageFaults();
+            timeline?.Mark("shown");
             long onScreen = Stopwatch.GetTimestamp();
             SearchBox.Focus(FocusState.Programmatic);
 
@@ -500,7 +509,7 @@ public sealed partial class ClipboardFlyout : Window
             }
 
             ResetListPosition();
-            LogSummon(context, onScreen, reload);
+            LogSummon(context, onScreen, faultsOnScreen, timeline, reload);
 
             // The armed card was selected while the panel was hidden, when nothing is read ahead: read it now.
             PrefetchSelected();

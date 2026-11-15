@@ -16,6 +16,13 @@
     <WarningsAsErrors>$(WarningsAsErrors);CS1591</WarningsAsErrors>
     <!-- For the two imports of the linked PackageIdentity.cs (LibraryImport generates unsafe code). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!--
+      Precompiled when published, like the app (its project file says why): bclip is published into the app's folder after
+      the app, and the libraries both use (Core, SQLite) must stay precompiled there. Each bclip command is a new process,
+      so it starts faster too.
+    -->
+    <PublishReadyToRun>true</PublishReadyToRun>
   </PropertyGroup>
 
   <ItemGroup>

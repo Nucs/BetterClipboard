@@ -69,7 +69,7 @@ public sealed partial class AppController
     private readonly SingleInstance instance;
 
     /// <summary>
-    /// DIB → PNG encoder for <see cref="GetImagePngAsync"/> (the image overlays). Stateless, so one instance is reused.
+    /// DIB → PNG encoder for <see cref="GetImagePngAsync"/> (<em>Save to temp and</em>). Stateless, so one instance is reused.
     /// </summary>
     private readonly WicImageExporter imageExporter = new();
     private SettingsStore? settings;
@@ -652,6 +652,29 @@ public sealed partial class AppController
 
         pasteTarget = context;
 
+        // One snapshot for both halves of the placement (where, and which screen when centered).
+        var settings = Settings.Current;
+        EnsureFlyout().ShowAt(context, settings.Placement, settings.CenterOnMainScreen);
+
+        // The looks that may show or hide a tab come after the panel, never before it: the tabs follow when they land, as
+        // they always did. Before the panel, these four lookups (two of them queries of the prompt archive) cost a summon
+        // 0 to 2 ms with the app's memory in place, and 0.1 to 1.2 s in a test desktop once it had been paged out to disk
+        // (CLAUDE.md §2.53).
+        ui.TryEnqueue(DispatcherQueuePriority.Low, RefreshTabSourcesAfterSummon);
+    }
+
+    /// <summary>
+    /// The looks a summon asks for once the panel is on screen: whether Everything runs, PowerShell's history file exists,
+    /// an agent's prompts exist, and the Screenshots folder exists. Each answers on the pool and shows or hides its tab when
+    /// it lands. UI thread, queued at low priority by <see cref="ShowFlyout"/>, so the panel's own work goes first.
+    /// </summary>
+    private void RefreshTabSourcesAfterSummon()
+    {
+        if (exiting)
+        {
+            return;
+        }
+
         // Everything may have started or exited since the last look; the tab follows when the refresh lands (ms).
         _ = everything?.RefreshAsync();
 
@@ -663,10 +686,6 @@ public sealed partial class AppController
 
         // A Screenshots folder that did not exist may have been created by the first screenshot: look again (only then).
         RefreshSnippingIfWaiting();
-
-        // One snapshot for both halves of the placement (where, and which screen when centered).
-        var settings = Settings.Current;
-        EnsureFlyout().ShowAt(context, settings.Placement, settings.CenterOnMainScreen);
     }
 
     /// <summary>Opens (or focuses) the settings window.</summary>
@@ -1032,8 +1051,8 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Loads an image entry as full-resolution PNG bytes for the image overlays (hover peek, eye-icon zoom viewer),
-    /// so a large picture is shown crisp rather than by upscaling the small card thumbnail.
+    /// Loads an image entry as full-resolution PNG bytes, for what must hand a PNG file on (<em>Save to temp and</em>). The
+    /// image overlays read <see cref="GetImageForDisplayAsync"/> instead: it never encodes.
     /// </summary>
     /// <param name="id">An image entry's id.</param>
     /// <param name="cancellationToken">Cancels a load whose overlay was dismissed before it finished.</param>
@@ -1057,6 +1076,57 @@ public sealed partial class AppController
         return primary.Name is ClipFormatNames.Png or ClipFormatNames.PngMime
             ? primary.Data
             : await imageExporter.ToPngAsync([primary], cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Loads an image entry for the image overlays (hover peek, eye-icon viewer) as an encoded file an image decoder reads
+    /// directly: the stored PNG as it is, or the stored bitmap wrapped as a .bmp file — never re-encoded.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Why not <see cref="GetImagePngAsync"/>: for a copy that holds only a bitmap (a PrintScreen copy, many apps' image
+    /// copies), that encodes a PNG first. For a 3840 × 2400 picture the overlay took 1.4 s in a test desktop, 0.8 s with the
+    /// bitmap shown as it is (CLAUDE.md §2.53), and a real screenshot compresses worse than that test picture (1.7 to 2.0 s,
+    /// §6 until then). A .bmp file is the bitmap with a 14-byte header in front, so decoding it copies its pixels. The PNG
+    /// path read the same .bmp file through the same decoder (<see cref="WicImageExporter"/>), so both show the same
+    /// pixels, alpha included.
+    /// </para>
+    /// <para>
+    /// For the overlays only: <em>Save to temp and</em> and <c>bclip get</c> still make a PNG file.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">An image entry's id.</param>
+    /// <param name="cancellationToken">Cancels a load whose overlay was dismissed before it finished.</param>
+    /// <returns>
+    /// PNG or BMP bytes, or <see langword="null"/> when the entry has no image or its bitmap is malformed (the caller then
+    /// falls back to the card thumbnail).
+    /// </returns>
+    /// <exception cref="OperationCanceledException">The load was cancelled.</exception>
+    public async Task<byte[]?> GetImageForDisplayAsync(long id, CancellationToken cancellationToken = default)
+    {
+        // The one format the overlays show, read the way GetImagePngAsync reads it: never the DIB next to a PNG.
+        var primary = await History.GetFirstFormatAsync(id, ContentClassifier.PrimaryImageFormats).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (primary is null)
+        {
+            return null;
+        }
+
+        if (primary.Name is ClipFormatNames.Png or ClipFormatNames.PngMime)
+        {
+            return primary.Data;
+        }
+
+        try
+        {
+            return DibImage.ToBmpFile(primary.Data);
+        }
+        catch (FormatException ex)
+        {
+            // A producer's bitmap can be malformed: the overlay shows the card's thumbnail instead (content-free line).
+            AppLog.Warn($"The bitmap of entry {id} ({primary.Data.Length:N0} bytes) could not be shown: {ex.Message}");
+            return null;
+        }
     }
 
     /// <summary>Opens the data folder in Explorer.</summary>
