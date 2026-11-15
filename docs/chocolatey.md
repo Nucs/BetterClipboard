@@ -299,6 +299,8 @@ We are the vendor and the license is MIT, so the package embeds. The only obstac
   ahead of time per architecture. So one shared archive saves just 1.7 MiB, and the package keeps one archive per
   architecture, which a user extracts in 1.8 s.
 - The package is 82.0 MiB (86.0 MB), 57 % of the documented 150 MB.
+- Since 2026-11-15 the app ships precompiled (ReadyToRun, CLAUDE.md §2.53): the archives are 53.4 and 47.0 MiB, and the
+  package 100.4 MiB (105.3 MB), 70 % of the documented 150 MB (measured with a 0.2.12 build).
 - The archives are also release assets listed in `SHA256SUMS.txt`, so moderators verify them against official
   files, as CPMR0006 asks.
 - **Cost:** a user downloads both architectures (82 MiB, against one 70 MiB zip). Chocolatey keeps the `.nupkg`
