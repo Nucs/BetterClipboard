@@ -9,13 +9,14 @@ Legend: **[docs]** = Microsoft documentation read on 2026-11-12 · **[measured]*
 Windows 11 25H2 desktop (26200, Tiny11) with [`tools/probes/msix_lab`](../tools/probes/msix_lab) · **[policy]** =
 Microsoft Store Policies 7.20 (published 2026-09-15, effective 2026-10-22).
 
-**State (2026-11-14):** the Store edition and its package build are in the repository and were run end to end in test
+**State (2026-11-15):** the Store edition and its package build are in the repository and were run end to end in test
 desktops. The owner registered as a developer. The name **BetterClipboard** is reserved (Store ID `9PHL574X9BF9`,
 publisher "Nucs"), and the product's first submission (1.2.11, the release 0.2.11) was **sent for certification** on
 2026-11-13 (§8). Since 2026-11-14 the edition keeps its history in `%LOCALAPPDATA%\BetterClipboard`, the folder every
 other kind of install uses (§4.4); that ships with the next release, whose submission needs the updated notes for
-certification. The release pipeline builds the Store packages and, once the first submission is published and three
-secrets are set, submits every release by itself (§7).
+certification. The release pipeline builds the Store packages, and it is **connected** to the Store since 2026-11-15:
+the three secrets are set, and *Microsoft Store › check* signed in on GitHub and read the app (§7). From the first
+published submission on, every release submits itself.
 
 ## 1. Where: the Microsoft Store, as an MSIX package
 
@@ -402,6 +403,7 @@ data only. Each was deleted afterwards.
 | **The shared data folder, measured** (2026-11-14, `msix_lab`'s `shared` section, in another disposable desktop) | A folder made by cmd, then written by the package: subfolders, a journal made and deleted, a memory-mapped file and a file moved over another were all real and seen from outside; nothing landed in `LocalCache`. A private copy beside the real folder: the package read and wrote the private one, the outside saw only the real one. That copy moved to the real path by cmd: real from then on. After the package was uninstalled, the folder made by cmd stayed with its files |
 | **The shared data folder in the app** (2026-11-14, a Store package of 0.2.12 test-signed for the Store's publisher, in a disposable desktop on this PC) | 1.2.11 installed first, with BC-TEST copies and a pin in its own folder. 1.2.12 installed over it as an update: "Made the shared data folder", "written for real on this Windows build (10.0.26200.7171)", "Moved this edition's history …", "… settings into the shared data folder"; the same store and key ("new key: False"), no language picker, no welcome; *Settings › Data folder* named the shared folder with its note. The released 0.2.11, installed with `install.ps1`, warned that the two use the same history, ran on it and added a copy. The Store edition's setup offered the move with the shared wording and two check lines; *Move to this edition* uninstalled the installer copy ("Your history was kept"), and the Store edition went on with the same store |
 | Removing the package, and installing it again (the same desktop) | The package and its own folders were gone, the record included; `%LOCALAPPDATA%\BetterClipboard` stayed with its store, key, settings and logs. Installed again over that history with the welcome not accepted (an installer copy's settings): the proof ran again, no picker, no move, and the welcome said "Your history and settings from the BetterClipboard you used before are kept…". After *Start*: the same store, the panel with all four copies (the installer copy's among them), the pin. `bclip status` started the app by itself and listed the same four |
+| **The release pipeline's connection** (2026-11-15, on GitHub: *Microsoft Store › check* with the repository's three secrets) | Signed in to the Store's submission API as the application and read app `9PHL574X9BF9`: "nothing is published yet, and a submission is pending", then "The credentials and the product id work. Nothing was changed." The first run (43719040350) was red with an empty exit code: the script's Check mode ended with a `return` (§7). With `8939afe` the run (43719877269) was green. `test-submit-store.ps1`: 45 of 45; the unfixed script fails exactly its two new checks that run the script in the caller's PowerShell |
 
 The other editions share the changed start-up code, so the unpackaged build was run once more after the change, as
 an isolated instance on the owner's PC while nobody used it: it started in the tray and ended on `--exit` with 0
@@ -463,8 +465,8 @@ skipped or failed. `draft` does the same without the commit.
 the API can then no longer commit it **[docs]**. Change the listing between releases through the kit and an
 import (`store-listing.md` §4), or in Partner Center on a submission started there.
 
-**Setting it up** (once; it waits for the owner's word, and the owner has to sign in once). What Microsoft's
-pages ask, read on 2026-11-13 **[docs]**:
+**How it was set up** (2026-11-14 and 15, on the owner's word). What Microsoft's pages ask, read on 2026-11-13
+**[docs]**:
 
 - **To associate a tenant** with the developer account: "On the Microsoft Partner Center sign in page, enter the
   Microsoft Entra ID credentials for the tenant that you want to associate." A Global administrator is not needed
@@ -473,50 +475,81 @@ pages ask, read on 2026-11-13 **[docs]**:
   be a work account of the tenant.
 - **To add the application**: "You must be signed in with a Manager account that also has global administrator
   permissions for the Microsoft Entra ID tenant you're working in."
-- **Such an account needs a second factor.** Security defaults, which a directory made since October 2019 may
+- **Such an account may need a second factor.** Security defaults, which a directory made since October 2019 may
   have switched on, make every user register multi-factor authentication at the first sign-in (the 14 days of
   grace ended on 2024-07-29) and ask administrators for it at every sign-in. The second factor is the Microsoft
   Authenticator app, or "any non-Microsoft application using OATH TOTP".
 
-The developer account is the owner's personal Microsoft account, so neither step can be done with it alone. The
-tenant to use is the owner's own Azure directory: the Azure CLI on the owner's PC is signed in as its
-administrator, so the application and its key can be made there without the key ever being shown. That directory
-holds one user, the owner's personal account **[measured]**, so a work account has to be made first. The plan:
+The developer account is the owner's personal Microsoft account, so neither step could be done with it alone. The
+tenant is the owner's own Azure directory: the Azure CLI on the owner's PC is signed in as its administrator, so the
+application and its key were made there without the key ever being shown. That directory held one user, the owner's
+personal account, so a work account was made first. What was done **[measured]**:
 
-1. **Claude, with `az`**, on the owner's word: a work account in the directory for this one purpose, with the
-   Global Administrator role. Its first password goes into a file for the owner, never onto a screen or into a
-   log. And the application with its service principal (`az ad app create`, `az ad sp create`), without a key.
-2. **The owner, once**: *Partner Center › Account settings › Tenants › Associate Microsoft Entra ID*. Sign in with
-   the work account, set up its second factor when asked, and confirm the tenant.
-3. **The owner, or Claude in a browser of its own**, with Partner Center signed in *as the work account*:
-   *Account settings › User management › Microsoft Entra applications › Add Microsoft Entra application*, the
-   application of step 1, role **Manager**.
-4. **Claude**: the three secrets, the key by pipe, so that it never appears on a screen or in a log; the tenant
-   ID and the client ID with `gh secret set` too. Then *Microsoft Store › check*.
+1. **Claude, with `az`**: a work account in the directory for this one purpose, with the Global Administrator role,
+   its first password in a file for the owner (never on a screen or in a log; the owner changed it at the first
+   sign-in on 2026-11-14, and the file was deleted); and the application **BetterClipboard Store submission (GitHub
+   Actions)** with its service principal (`az ad app create --sign-in-audience AzureADMyOrg`, `az ad sp create`),
+   without a key.
+2. **The association**, in Partner Center signed in **with the developer account** (the owner's personal account):
+   *Account settings › Tenants › Associate Microsoft Entra ID*, the work account in Microsoft's account picker, then
+   the page **"Confirm new Microsoft Entra ID (formerly Azure AD) association"**, which names the tenant, and its
+   **Confirm**. Only that page completes it: "Tenant association complete. All set! … The Microsoft Entra ID
+   (formerly Azure AD) user account you signed in with, now has Account admin permissions. … For these changes to
+   take effect, sign in again". So the association makes the work account an Account admin, Partner Center's
+   Manager. A first attempt on 2026-11-14 did not get to that Confirm, and nothing was associated: the work account
+   then saw no developer account, its *Tenants* page answered "You don't have permission", and the developer
+   account's list of tenants said "No data available".
+3. **The application**, in Partner Center signed in again **as the work account**. Only after that new sign-in does
+   *Account settings › User management* show its tabs *Users*, *Groups* and *Microsoft Entra applications* (before
+   the association it had none, then only *Users*). *Microsoft Entra applications › Add Microsoft Entra application
+   › Select Azure AD applications from your organization's Microsoft Entra ID*, the application of step 1, the role
+   **Manager (Windows)** alone (also offered: Developer, Business Contributor, Finance Contributor, Marketer), *Add*.
+4. **The three secrets**, by Claude: the tenant ID and the client ID with `gh secret set`, and the key made and
+   stored in one pipe, so that it never appeared on a screen or in a log:
 
    ```bash
    az ad app credential reset --id <client id> --query password -o tsv \
      | gh secret set PARTNER_CENTER_CLIENT_SECRET --repo Nucs/BetterClipboard
    ```
 
-Not known until it is done:
+5. ***Microsoft Store › check***. The first run (43719040350) signed in and read the app, and was red all the same:
+   "The check failed (exit code )". The script's Check mode ended with a `return`, which leaves `$LASTEXITCODE`
+   unset for a workflow that runs the script in its own PowerShell. Fixed in `8939afe`: every ending is an `exit`,
+   and the tests run the script that way too. The run with the fix (43719877269) was green:
 
-- whether the association makes the work account a Manager of the developer account by itself (Microsoft's pages
-  do not say, and step 3 needs it);
-- whether security defaults are on in the owner's directory: the Azure CLI's sign-in may not read the
-  directory's sign-in policies ("required scopes are missing in the token" **[measured]**), so step 2 shows it;
-- what *check* answers while the product has no published submission;
-- whether the work account can lose its administrator role once the application is added.
+   ```text
+   ==> Signing in to the Microsoft Store submission API
+   ==> App 9PHL574X9BF9 is "BetterClipboard": nothing is published yet, and a submission is pending
+   ==> The credentials and the product id work. Nothing was changed.
+   ==> Updates through this script start once the first submission, made in Partner Center, is published.
+   ```
 
-**The key runs out.** A key made by `az ad app credential reset` lasts one year unless `--years` or `--end-date`
-says otherwise. After that the Store step fails, and the run is red. Renew it with the pipe of step 4, then run
-*check*.
+For whoever repeats this in the owner's Chrome: the developer account signs in with a passkey, and Windows' passkey
+dialog appears only for the tab in front. A reload of the passkey step fails with AADSTS900561 ("The endpoint only
+accepts POST requests"); start again from Partner Center's address instead.
 
-The script was never run against the real service: a first submission must be published first. It is tested
-against a stand-in that answers like the documented API and records every request
-([`test-submit-store.ps1`](../tools/release/test-submit-store.ps1), 39 checks, run by CI): the order of the calls,
-what is sent, the upload in blocks, every refusal, the retry of a failed block, and that neither the secret, the
-token nor the upload address is ever printed.
+**Still open** (the owner's call):
+
+- **The work account keeps its Global Administrator role.** The pipeline never signs in as the work account (it
+  signs in as the application), and a key is renewed with `az` by the directory's administrator. The role is needed
+  again only to add or change an application in Partner Center (Microsoft's rule above). Taking it away now, and
+  giving it back for such a change, is one `az` call each.
+- **Whether the work account has a second factor** was not read: the Azure CLI's token may read neither the
+  directory's security defaults ("required scopes are missing in the token") nor a user's sign-in methods ("Request
+  Authorization failed") **[measured]**. The Microsoft Entra admin center shows both (*Users*, the account,
+  *Authentication methods*).
+
+**The key runs out on 2027-11-15** (one year, the default of `az ad app credential reset`). After that the Store
+step fails, and the run is red. Renew it with the pipe of step 4, which replaces the old key, then run *check*. The
+client ID cannot be read back from its secret; `az ad app list --display-name "BetterClipboard Store submission
+(GitHub Actions)" --query "[0].appId" -o tsv` gives it.
+
+The script's Check mode ran against the real service on 2026-11-15; submitting waits for the first published
+submission. It is tested against a stand-in that answers like the documented API and records every request
+([`test-submit-store.ps1`](../tools/release/test-submit-store.ps1), 45 checks, run by CI): the order of the calls,
+what is sent, the upload in blocks, every refusal, the retry of a failed block, that neither the secret, the token
+nor the upload address is ever printed, and, since `8939afe`, that every ending reaches a caller that runs the
+script in its own PowerShell, as the workflows do.
 
 ## 8. Where the submission stands, and the owner's steps
 
@@ -560,8 +593,9 @@ Left:
    restricted capability may take longer. A failure comes with a report; fix and resubmit (a new submission made
    from this one).
 6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning.
-7. **The pipeline's connection** (§7, "Setting it up"), on the owner's word: it needs one sign-in by the owner,
-   and can be made at any time. From the first published submission on, each release then submits itself.
+7. ~~The pipeline's connection~~: made on 2026-11-14 and 15 (§7, "How it was set up"); *check* is green. From
+   the first published submission on, each release submits itself. Left of it, the owner's call: the work
+   account's Global Administrator role and its second factor (§7, "Still open").
 
 **The name.** "Better Clipboard", in two words, is the title of other products: a Store app (PAST-E Clipboard,
 `9NR75C5JPVVX`) and a Mac app (betterclipboard.com). Partner Center reserved "BetterClipboard" without objection;
@@ -585,11 +619,12 @@ BetterClipboard", the name chosen for code signing (CLAUDE.md §3.3).
 - **The move needs Windows PowerShell and script files that run.** On a PC whose policy blocks scripts, the check
   says so, and the other copy has to be uninstalled in Windows' Installed apps.
 - **The package version differs from the release version** by one in its first number (§5.3).
-- **The release's Store step was never run against the real service** (§7): that needs a published first
-  submission and the three secrets. Until then it warns and the release goes out without the Store.
-- **The pipeline signs in with a stored key**, which runs out (§7). A sign-in without one, with GitHub's OpenID
-  Connect token and a federated credential on the application, would spare the renewal. Not built: it cannot be
-  tried before the connection exists.
+- **The release's Store step has not submitted anything yet** (§7). The secrets are set and its sign-in works
+  (*check*, 2026-11-15), but Microsoft's API only updates a published app: until the first submission is
+  published, the step warns (exit code 4) and the release goes out without the Store.
+- **The pipeline signs in with a stored key**, which runs out on 2027-11-15 (§7). A sign-in without one, with
+  GitHub's OpenID Connect token and a federated credential on the application, would spare the renewal. Not built
+  yet; now that the connection exists, it can be tried with *check*.
 - **The pipeline updates packages and "What's new", nothing else.** Listing texts and pictures change by hand: the
   kit, then an import (`store-listing.md` §4).
 - **The screenshots are English in all five listings**: the app in English, with demo data from the owner's own
