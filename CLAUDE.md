@@ -5310,8 +5310,9 @@ AppxManifest file".
 **Verified:** see §5.
 
 **Limits / not built:**
-- **Submitted for certification** on 2026-11-13 (1.2.11, §3.5). The shared data folder ships with the next release; its
-  submission needs the kit's new certification notes typed in by hand.
+- **Submitted for certification** on 2026-11-13 (1.2.11, §3.5); it failed on one search term ("Win+V") and was
+  resubmitted on 2026-11-15. The shared data folder ships with the next release; its submission needs the kit's new
+  certification notes typed in by hand.
 - A copy for every user and a Chocolatey copy are not removed by the Store edition; their two pages were not seen on
   screen (the plan is unit-tested).
 - **Two processes write one log during the move** (the setup and the other copy, both in the shared folder): the live
@@ -6878,8 +6879,24 @@ texts for Partner Center are [`docs/store-listing.md`](docs/store-listing.md), a
   saved (the rating: Everyone, 3+ and All ages in every system), every section *Complete*, then *Submit for
   certification*. The overview read "Product submission: In certification" and every section *Read only*.
   It publishes itself once certified (Submission options).
+- **Certification failed on one search term; resubmitted on 2026-11-15, about 19:30 UTC.** The report (review
+  completed 2026-11-13, read 2026-11-15) under policy 10.1.3, Search Terms: "Your submission contains keywords which
+  are product titles that aren't published by you … Problematic Keyword(s): Win+V", in every language. The
+  descriptions and captions that name Win+V passed. The owner chose "copy history" in its place, in each language
+  (one HTML question), and "You resubmit" ("you, assistant doing it all"). The kit has the terms and the rule
+  (`docs/store-listing.md`); the import put them in, `--check` matched all five languages, and *Resubmit for
+  certification* brought back "In certification" (`docs/microsoft-store.md` §8).
 
 **Facts about Partner Center** **[verified 2026-11-13]**:
+- **Keywords change only through the import** (2026-11-15). The listing page's Keywords box (chips with *Remove*, a
+  box that adds one on Enter, AI-recommended keywords) changes the chips on screen, and the page's telemetry records
+  the new set, but its *Save* posts the old keywords (`commonListing.keywords`) and is answered 200: three saves, in
+  English and Chinese, read back unchanged after a reload. Enter also takes free text only while no AI suggestion
+  starts with it ("复制历史" against the suggestion "复制历史保存": the box emptied, nothing was added).
+- **The certification report opens from script** (2026-11-15). *View report* opens
+  `…/api/certweb/report/certreport/<id>?type=file` in a new window, which moves on to
+  `/products/<id>/certification/reports/<guid>`. From a tab in the background Chrome blocked that pop-up at first
+  and let a later one through. Catch `window.open` for the address and load it in your own tab.
 - **Listing languages appear only after packages are uploaded**: they are the manifest's `Resource` languages.
 - **The upload check** names what the Store refuses (the hidden application, §2.47) within about two minutes. A
   restricted capability is only a notice there.
@@ -7078,8 +7095,8 @@ kit by a scratch generator, session 66cdd808):
    2026-11-13: eight scenes, uploaded once in English, copied into every language by one import, ordered, and
    `--check --screenshots 8` passed.
 3. ~~The IARC tick and *Submit for certification*.~~ Done 2026-11-13, about 22:53 local: "In certification".
-4. **Certification** (up to a few business days; a first submission with a restricted capability may take
-   longer). A failure comes with a report in Partner Center: fix and resubmit. It publishes itself when certified.
+4. **Certification**: the first report failed one search term, "Win+V" (policy 10.1.3); fixed and resubmitted on
+   2026-11-15 ("a few hours, but in some cases can take up to 3 business days"). It publishes itself when certified.
 5. ~~The pipeline's connection~~: done 2026-11-14 and 15 (above, "Connected since 2026-11-15"); *check* is green.
    Submitting through it works once the first submission is published.
 6. After approval: the Store link in the README and in the installer's warning.
@@ -8048,6 +8065,9 @@ kit by a scratch generator, session 66cdd808):
   - **The developer account signs in with a passkey** (2026-11-15): Windows' passkey dialog appears only for the tab
     in front, and a reload of the passkey step fails with AADSTS900561 ("The endpoint only accepts POST requests").
     Bring the tab to the front and start again from Partner Center's address.
+  - **Change keywords (search terms) through the listings import, never the listing page's Keywords box**: its chips
+    change on screen and its *Save* answers 200, but the stored keywords stay the old ones (§3.5). Search terms must
+    not be another product's title, "Win+V" included (policy 10.1.3; the first certification failed on it).
 - **A submission the Store's API made must not be edited in Partner Center before it is committed**: the API can then
   no longer commit it. `submit-store.ps1` deletes a pending submission first, for the same reason.
 - **The listing kit is the source of what the Store shows.** Change `docs/store-listing.md`, run
@@ -8114,6 +8134,7 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **The failed certification fixed, and the submission resubmitted** (2026-11-15, §3.5; the owner pasted Microsoft's mail "Fix certification issues in your product, BetterClipboard"). The report, read in a tab of my own in the owner's Chrome (its pop-up caught with a `window.open` wrapper, a second late pop-up closed by its opener): one finding, policy 10.1.3, search term "Win+V" in all five languages. The owner chose "copy history" (each language) and "You resubmit". The kit changed (check 0 problems, 52 tests pass). The listing page's Keywords box did not save (three saves, English and Chinese: the request carried the old keywords; read back unchanged), so the listings went in by import: export captured in the page, the file generated from the kit, the two compared cell by cell (5 search terms and the copyright row's usual form, nothing else), imported, exported again: `--check` "is what the kit says, with 8 screenshots in the kit's order in every language". *Resubmit for certification*: "Product submission: In certification" again, about 19:30 UTC. No native dialog left open; my tab closed | chrome-devtools in a tab of my own, `make-store-listing-csv.py`, `check-store-listing.py`, `test-store-listing.py`, scratch cell diff | ✅ resubmitted. The result comes with Microsoft's next mail |
 | **The text peek's 15-pixel radius, live** (2026-11-15, §2.50; the owner: "i want a 15px radius of movement to exit the viewer after it showed"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-radius`, 1920×1080 at 100 %, no GPU; the worker was unreachable; deleted afterwards with its persist folder), a self-contained build of a private worktree (`eaf0f65` plus only this change, `0.2.12-dev.radius1`) started with pre-seeded settings, and one 30-line BC-TEST text copied through the clipboard. The peek opened with the mouse resting at (1052, 522); moved to 10 px right, (10, 10) at 14.1 px and (15, 0) at exactly 15 px, it stayed; at (12, 10), 15.6 px with each axis under 15, it closed. Again with its right-click menu: the mouse moved into the menu (about 160 px), Esc closed the menu, and the circle was centered there: 10 px kept the peek, 20 px closed it. The app's log: 18 lines, 0 WRN/ERR | claude-desktops MCP tools (`clipboard`, `move_mouse` single jumps, `click`, `press_keys`, screenshots); guest script `setup.ps1` (settings, unpack, start) | ✅ Not run: a monitor at another scale (the radius is in physical pixels), touch and pen (a touch or pen move still closes at once) |
 | **The Store pipeline connected** (2026-11-14 and 15, §3.5; the owner: "Lets do it, guide me through what to do and finish this up", then "Again lets try to publish"). In the owner's Azure directory, with `az`: a work account with Global Administrator (its first password in a file, changed by the owner at the first sign-in, then deleted) and the application *BetterClipboard Store submission (GitHub Actions)*. In the owner's Chrome, in a tab of my own (closed afterwards): the tenant associated from the developer account (the work account in the picker, then the confirmation page's *Confirm*: "Tenant association complete … now has Account admin permissions"), and, signed in again as the work account, the application added with Manager (Windows). The three secrets set, the key by pipe (it ends 2027-11-15). *Microsoft Store › check*: run 43719040350 signed in and read the app, and was red with "exit code " (the script's Check mode ended with a `return`); with `8939afe`, pushed alone onto GitHub's `main` as a temporary branch (deleted afterwards), run 43719877269 was green: "App 9PHL574X9BF9 is "BetterClipboard": nothing is published yet, and a submission is pending". `test-submit-store.ps1` 45 of 45; HEAD's unfixed script fails exactly its two new in-process checks ("LASTEXITCODE 99"). Not read: the work account's second factor and the directory's security defaults (the Azure CLI's token lacks the scopes) | `az`, `gh secret set`, chrome-devtools in a tab of my own, `gh workflow run store.yml --ref <branch> -f mode=check`, `test-submit-store.ps1` | ✅ connected. Submitting waits for the first published submission |
 | **Speed survey: what else was slow** (2026-11-15, §2.53; the owner: "What else (other functionalities) that are too slow, improve"). The owner's log (2026-10-31 to 11-15): 39 summons of 101–538 ms (median 154), first summons 53–875 ms, the warm-up 485–7,218 ms. A claude-desktops Windows 11 desktop on this PC (`bc-speed`: Tiny11 25H2, 4 cores, no GPU; the owner's demo data; deleted afterwards with its persist folder), packages `0.2.12-dev.speed1` to `speed4` with temporary stage marks and page-fault counts (never committed): summons 33–94 ms with the memory in place (130–250 faults), 33–55 ms after a trim with the pages in RAM (6,200–8,200), 5.1–11.7 s after a trim and a standby purge (4,600–15,500), 58–110 ms with no trim (75–415); Settings 1.19–1.23 s (JIT) → 0.58 s (ReadyToRun), the warm-up 713 → 428–478 ms, the first Win+V 214 → 88 ms; a 3840 × 2400 bitmap-only picture's peek 1.44–1.49 s (PNG encode) → 0.74–0.83 s (.bmp); the four tab lookups 0–2 ms in place, 0.1–1.2 s purged; tab reloads 20–140 ms, Files 257–368 ms; the prefetch prototype read 57–58 MB in 5.0–8.4 s and no summon got faster | `probe_paste.cs` (`--memory warm|trim|purge`), the builds' temporary log lines, the owner's log | ✅ |
@@ -8395,8 +8416,9 @@ kit by a scratch generator, session 66cdd808):
   (§2.48). A refused `NIM_ADD` is followed by a `NIM_MODIFY` that finds an icon Explorer added late, and a real refusal is
   retried on a timer. Copies up to 0.2.10 still have the dead icon after a slow sign-in.
 - **The Microsoft Store edition** (2026-11-13, §2.47, §3.5), next steps:
-  - **certification** (submitted 2026-11-13, §3.5): watch Partner Center for its report; a failure is fixed and
-    submitted again (a new submission made from this one). It publishes itself once certified;
+  - **certification**: the first report failed one search term ("Win+V", policy 10.1.3); fixed and resubmitted on
+    2026-11-15 (§3.5). Watch for the next report; another failure is fixed and resubmitted the same way. It
+    publishes itself once certified;
   - ~~waiting for the owner's word~~ and ~~replace the listing's screenshots~~: done 2026-11-13 (v0.2.11 released;
     eight new scenes; submitted on the owner's "You tick and submit");
   - **the next submission's notes for certification** (the shared data folder, 2026-11-14): type the kit's new text

@@ -15,6 +15,11 @@ up to 7 search terms of at most 40 characters and 21 words in all; captions up t
 to 1,500 characters and left empty for a first submission; the `runFullTrust` justification up to 500 characters;
 at least one screenshot per language.
 
+**Search terms are judged by policy 10.1.3**: at most seven, relevant, and never another product's title unless you
+publish it. Certification failed on that once (report of 2026-11-13, read 2026-11-15): "Win+V" counted as the title
+of Windows' clipboard history, in every language. The descriptions and captions may name it; the search terms may
+not.
+
 The Russian, Spanish, Hebrew and Chinese texts were written by Claude with the words the app itself uses
 (`src/BetterClipboard.Core/Localization`). A native speaker has not reviewed them.
 
@@ -185,7 +190,7 @@ Forget forever: a text you never want kept again stays out
 bclip, a command line for scripts and AI assistants (off by default)
 ```
 
-**Search terms:** clipboard, clipboard manager, clipboard history, copy paste, paste, Win+V, snippets
+**Search terms:** clipboard, clipboard manager, clipboard history, copy paste, paste, copy history, snippets
 
 **Screenshot captions**
 
@@ -247,7 +252,7 @@ Everything、Notepad++ 以及发给 Claude Code 和 Codex 的提示词的标签�
 bclip：面向脚本和 AI 助手的命令行（默认关闭）
 ```
 
-**Search terms:** 剪贴板, 剪贴板管理器, 剪贴板历史, 复制粘贴, 粘贴, Win+V, 剪贴板工具
+**Search terms:** 剪贴板, 剪贴板管理器, 剪贴板历史, 复制粘贴, 粘贴, 复制历史, 剪贴板工具
 
 **Screenshot captions**
 
@@ -307,7 +312,7 @@ BetterClipboard сначала спрашивает: ничего не запи�
 bclip — командная строка для скриптов и ИИ-помощников (по умолчанию выключена)
 ```
 
-**Search terms:** буфер обмена, менеджер буфера обмена, журнал буфера обмена, копировать вставить, вставка, Win+V, история буфера
+**Search terms:** буфер обмена, менеджер буфера обмена, журнал буфера обмена, копировать вставить, вставка, история копирования, история буфера
 
 **Screenshot captions**
 
@@ -367,7 +372,7 @@ Olvidar para siempre: un texto que no quieres guardar no vuelve a guardarse
 bclip, una línea de comandos para scripts y asistentes de IA (desactivada de forma predeterminada)
 ```
 
-**Search terms:** portapapeles, gestor de portapapeles, historial del portapapeles, copiar y pegar, pegar, Win+V, administrador de portapapeles
+**Search terms:** portapapeles, gestor de portapapeles, historial del portapapeles, copiar y pegar, pegar, historial de copias, administrador de portapapeles
 
 **Screenshot captions**
 
@@ -427,7 +432,7 @@ BetterClipboard שואל קודם: שום דבר לא נרשם עד שלוחצי
 bclip: שורת פקודה לסקריפטים ולעוזרי בינה מלאכותית (כבויה כברירת מחדל)
 ```
 
-**Search terms:** לוח, מנהל לוח, היסטוריית לוח, העתק הדבק, הדבקה, Win+V, ניהול לוח
+**Search terms:** לוח, מנהל לוח, היסטוריית לוח, העתק הדבק, הדבקה, היסטוריית העתקות, ניהול לוח
 
 **Screenshot captions**
 

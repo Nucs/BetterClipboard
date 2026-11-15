@@ -12,7 +12,8 @@ Microsoft Store Policies 7.20 (published 2026-09-15, effective 2026-10-22).
 **State (2026-11-15):** the Store edition and its package build are in the repository and were run end to end in test
 desktops. The owner registered as a developer. The name **BetterClipboard** is reserved (Store ID `9PHL574X9BF9`,
 publisher "Nucs"), and the product's first submission (1.2.11, the release 0.2.11) was **sent for certification** on
-2026-11-13 (§8). Since 2026-11-14 the edition keeps its history in `%LOCALAPPDATA%\BetterClipboard`, the folder every
+2026-11-13; it failed on one search term ("Win+V", policy 10.1.3) and was fixed and **resubmitted** on 2026-11-15
+(§8). Since 2026-11-14 the edition keeps its history in `%LOCALAPPDATA%\BetterClipboard`, the folder every
 other kind of install uses (§4.4); that ships with the next release, whose submission needs the updated notes for
 certification. The release pipeline builds the Store packages, and it is **connected** to the Store since 2026-11-15:
 the three secrets are set, and *Microsoft Store › check* signed in on GitHub and read the app (§7). From the first
@@ -553,8 +554,9 @@ script in its own PowerShell, as the workflows do.
 
 ## 8. Where the submission stands, and the owner's steps
 
-**Submitted for certification on 2026-11-13, about 22:53 local** ("Product submission: In certification"; every
-page read-only until certification ends). What was submitted:
+**Submitted for certification on 2026-11-13, about 22:53 local; failed on one search term; fixed and resubmitted
+on 2026-11-15, about 19:30 UTC** ("Product submission: In certification" again; "The certification step usually
+takes a few hours, but in some cases can take up to 3 business days"). What is submitted:
 
 | Page | State | What is there |
 |---|---|---|
@@ -563,11 +565,42 @@ page read-only until certification ends). What was submitted:
 | Properties | Complete | Utilities + tools, Productivity; the privacy policy, website and support links |
 | Age ratings | Complete | Every answer "No": ESRB Everyone, PEGI 3, IARC 3+; the IARC agreement ticked on the owner's word |
 | Packages | Complete | `1.2.11.0` for x64 and ARM64: the v0.2.11 release's own (run 43478898156's artifact), validated |
-| Store listings | Complete | Five languages: texts, search terms, eight screenshots with captions, the tile icon. Checked against the kit after the last import (`make-store-listing-csv.py --check --screenshots 8`): every text, every caption under its picture, every language in the kit's order |
+| Store listings | Complete | Five languages: texts, search terms, eight screenshots with captions, the tile icon. Checked against the kit after the last import (2026-11-15, `make-store-listing-csv.py --check --screenshots 8`): every text, every search term, every caption under its picture, every language in the kit's order |
 | Submission options | Complete | Publish when certified; the `runFullTrust` justification |
 | Additional testing information | Saved | The notes for certification |
 
 [`store-listing.md`](store-listing.md) is what was entered, word for word.
+
+**The first certification report** (review completed 2026-11-13, read 2026-11-15; status "Attention needed"). One
+finding, under the content policies:
+
+> 10.1.3 Search Terms: Your submission contains keywords which are product titles that aren't published by you.
+> Found In The Following Language Listing: All. Problematic Keyword(s): Win+V. [...] Microsoft Store policy
+> states that keywords must not exceed seven unique terms, must be relevant to your product, and must not use other
+> product titles unless the product is also published by you.
+
+So "Win+V" counts as the title of Windows' clipboard history. Everything else passed, and the descriptions and
+captions that name Win+V were not objected to. The owner chose (2026-11-15, one HTML question) to replace it with
+"copy history" in each language: copy history, 复制历史, история копирования, historial de copias, היסטוריית העתקות.
+The kit says so, with the rule next to the Store's limits (`store-listing.md`), and the owner's word for the
+resubmission was "You resubmit", with "you, assistant doing it all".
+
+How it was fixed, **[measured]**, for whoever changes keywords again:
+
+- **The listing page's Keywords box does not save.** It shows the keywords as chips with *Remove* buttons, a box that
+  adds one on Enter, and AI-recommended keywords. Removing a chip and adding one changes the chips on screen, and the
+  page's own telemetry records the new set, but *Save* posts `commonListing.keywords` unchanged (the old seven,
+  "Win+V" included), answered 200: three saves in English and Chinese, each read back after a reload, changed
+  nothing.
+- **Enter takes free text only while no AI suggestion starts with it.** "copy history" had none and became a chip;
+  "复制历史" matched the suggestion "复制历史保存", and Enter emptied the box without adding anything.
+- **The import works**: export (captured inside the page), `make-store-listing-csv.py`, a cell-by-cell comparison
+  (the five search terms and the copyright row's usual form, nothing else), *Import listings*, export again:
+  `--check` found the kit's texts, search terms and screenshot order in all five languages. This import did not
+  shuffle the screenshots.
+- ***View report*** opens the report in a new window from script (`…/api/certweb/report/certreport/<id>?type=file`,
+  which moves on to `/products/<id>/certification/reports/<guid>`). From a tab in the background Chrome blocked
+  that pop-up the first time, and let a second one through later.
 
 **Decided by the owner on 2026-11-13** (review pages made from the kit; CLAUDE.md §3.5 has their words):
 
@@ -589,9 +622,9 @@ Left:
 2. ~~Age ratings~~: ticked and saved, on the owner's word.
 3. ~~Decide the version rule~~: decided, (X+1).Y.Z.0 (above).
 4. ~~Release~~: v0.2.11; its two packages replaced the draft's.
-5. ~~Submit for certification~~: submitted. It takes up to a few business days; a first submission with a
-   restricted capability may take longer. A failure comes with a report; fix and resubmit (a new submission made
-   from this one).
+5. ~~Submit for certification~~: submitted 2026-11-13; failed on the search term "Win+V" (above); fixed and
+   resubmitted 2026-11-15. It takes "a few hours, but in some cases can take up to 3 business days". Another
+   failure comes with a report; fix and resubmit the same way.
 6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning.
 7. ~~The pipeline's connection~~: made on 2026-11-14 and 15 (§7, "How it was set up"); *check* is green. From
    the first published submission on, each release submits itself. Left of it, the owner's call: the work
