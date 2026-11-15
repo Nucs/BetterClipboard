@@ -1,4 +1,7 @@
 ---
+# The browser tab's title; docfx appends " | BetterClipboard". Without it, docfx takes the hero's <h1> and the tab reads
+# "BetterClipboard | BetterClipboard".
+title: "Clipboard history for Windows"
 description: "The Win+V clipboard history Windows should have shipped: same shortcut, same panel by your cursor, but it remembers everything, survives restarts, searches instantly and keeps it all encrypted on your PC."
 _disableToc: true
 _disableAffix: true
