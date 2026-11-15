@@ -1,0 +1,5 @@
+# Written by scripts/generate_pages.py at every build, from README.md and guides/: edit those, never these.
+/docs/
+# docfx's intermediate files.
+/obj/
+/_site/

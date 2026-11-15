@@ -1,0 +1,44 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/docfx/main/schemas/docfx.schema.json",
+  "build": {
+    "content": [
+      {
+        "files": ["index.md", "toc.yml", "docs/**/*.md", "docs/toc.yml"]
+      }
+    ],
+    "resource": [
+      {
+        "files": ["images/**", "docs/images/**"]
+      },
+      {
+        "src": "../../src/BetterClipboard.App/Assets",
+        "files": ["AppIcon.png", "AppIcon64.png"],
+        "dest": "images"
+      }
+    ],
+    "output": "../website",
+    "template": ["default", "modern", "templates/betterclipboard"],
+    "globalMetadata": {
+      "_appName": "BetterClipboard",
+      "_appTitle": "BetterClipboard",
+      "_appLogoPath": "images/AppIcon64.png",
+      "_appFaviconPath": "images/AppIcon64.png",
+      "_appFooter": "<span>Copyright &copy; 2026 Eli Belash. <a href='https://github.com/Nucs/BetterClipboard/blob/main/LICENSE'>MIT license</a>. Built with <a href='https://dotnet.github.io/docfx'>DocFX</a>.</span>",
+      "_enableSearch": true,
+      "_enableNewTab": true,
+      "_disableContribution": false,
+      "_disableNextArticle": false,
+      "_lang": "en",
+      "_gitContribute": {
+        "repo": "https://github.com/Nucs/BetterClipboard",
+        "branch": "main"
+      }
+    },
+    "sitemap": {
+      "baseUrl": "https://nucs.github.io/BetterClipboard",
+      "changefreq": "weekly",
+      "priority": 0.5
+    },
+    "postProcessors": ["ExtractSearchIndex"]
+  }
+}

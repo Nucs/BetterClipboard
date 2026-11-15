@@ -1,0 +1,81 @@
+# The documentation site (docs/website-src): the manual cut from README.md, the hand-written guides, docfx.
+#
+# Every push and pull request that touches what the site is made of builds it with docs/website-src/build.ps1 -Strict,
+# so a README change that breaks the site (a link to a heading that is gone, a missing picture, a docfx warning) fails
+# its check. A push to main also publishes the build to GitHub Pages: https://nucs.github.io/BetterClipboard/.
+#
+# Publishing needs GitHub Pages switched on once, by the repository's owner: Settings > Pages > Build and deployment >
+# Source: GitHub Actions. Until then the deploy job fails with that hint, and the build still runs as a check.
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - 'docs/website-src/**'
+      - 'docs/images/**'
+      - 'src/BetterClipboard.App/Assets/**'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    paths:
+      - 'README.md'
+      - 'docs/website-src/**'
+      - 'docs/images/**'
+      - 'src/BetterClipboard.App/Assets/**'
+      - '.config/dotnet-tools.json'
+      - '.github/workflows/docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to a pull request replaces its older check; a run for main is never cancelled, so a deployment that has
+# started always finishes.
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # docfx is a .NET tool, pinned in .config/dotnet-tools.json (build.ps1 restores it); 2.81.0 runs on .NET 10.
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      # The page generator and the llms.txt writer need Python 3.10 or newer.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Build the site
+        shell: pwsh
+        run: docs/website-src/build.ps1 -Strict
+
+      - name: Keep the site for GitHub Pages
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: docs/website
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Publish to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -313,6 +313,7 @@ use it instead of Win+V's mechanism? Findings:
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`packaging/msix`](packaging/msix) | manifest / JSON / PNG | The Microsoft Store package's template: `Package.appxmanifest` (filled in by the build), `identity.json` (the values Partner Center assigned when the name was reserved, 2026-11-13), `Assets/` (the package's logos), `Listing/` (the listing's tile icon, its eight screenshots, and a pristine listings export that the listing tools are tested with) (§3.5, [`docs/microsoft-store.md`](docs/microsoft-store.md), [`docs/store-listing.md`](docs/store-listing.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test, a test-signed Store package, the Store scripts' tests) · release on `v*` tags (+ Chocolatey push, + the Microsoft Store submission, §3.5) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2) · *Microsoft Store*, run by hand: check the Store's secrets, or submit a released version again (§3.5). |
+| [`docs/website-src`](docs/website-src) | docfx / Python / PowerShell | The documentation site (§2.51): [`build.ps1`](docs/website-src/build.ps1) cuts README.md into pages and adds the hand-written `guides/` ([`scripts/generate_pages.py`](docs/website-src/scripts/generate_pages.py)), builds them with docfx 2.81.0 (a local tool, [`.config/dotnet-tools.json`](.config/dotnet-tools.json)) into `docs/website`, and writes `llms.txt`, `llms-full.txt` and `robots.txt` ([`scripts/generate_llms_txt.py`](docs/website-src/scripts/generate_llms_txt.py)). The *Docs* workflow ([`docs.yml`](.github/workflows/docs.yml)) checks it on every change and publishes main's to GitHub Pages. |
 
 Shared build config: [`Directory.Build.props`](Directory.Build.props) (docs on,
 nullable, version; obj and bin folders of their own, under `artifacts/store-build`, for the Microsoft Store
@@ -5707,6 +5708,111 @@ claude-desktops Windows 11 desktop with diagnostic builds (never committed), and
 - Not run: a real GPU, Narrator, touch and pen, the toolbar in a right-to-left language, a monitor with another scale
   than the panel's.
 
+### 2.51 The documentation site: the README as a docfx site on GitHub Pages (built 2026-11-15)
+
+User request (2026-11-15): "Introduce docfx, copy K:/source/NumSharp docfx as starting point (not the docs themselve,
+they are irrelevant) / See what our README has". Four HTML questions (pages in session fcc0d69a's scratchpad, `q/`); the
+owner chose:
+- **Content: "From README, English (Recommended)"**, with "See if CLAUDE.md has more / Expand install to all variations,
+  powershell script, portable zip and so on / We only do one language first."
+- **API reference: "No API reference".**
+- **Publishing: "GitHub Pages (Recommended)".**
+- **Look: "BetterClipboard's own (Recommended)"**, with "Using my data, you can have all tabs. When user puts mouse over
+  the image, have it transform expand to the size of expanded with all the tabs visible, same data as we see."
+
+**What the user gets** (once Pages is on, below): https://nucs.github.io/BetterClipboard/.
+- **A home page:** the install command, the panel's photo, cards into the manual, and links to GitHub, the releases and
+  the four translated READMEs. Resting the mouse on the photo (or focusing it) widens it into the same panel with all 15
+  tabs and the same items.
+- **The manual, 38 pages** in a left menu: every `##` section of the README is a page (13), its `###` subsections are
+  child pages, and 7 guides exist only on the site. Search, light and dark, a link to the next page, and *Edit this
+  page*, which opens the README lines the page came from.
+- **For AI tools:** `llms.txt` (every page with a line on it, in menu order), `llms-full.txt` (the whole manual in one
+  file), `robots.txt`, and docfx's `sitemap.xml`.
+- English only, as the owner asked; the home page links the translated READMEs.
+
+**Pieces** (the generated ones are git-ignored):
+- `docs/website-src/`: `docfx.json`, `toc.yml` (the navbar), `index.md` (the home page, hand-written HTML), `build.ps1`,
+  `scripts/generate_pages.py`, `scripts/generate_llms_txt.py`, `guides/` (7), `images/` (the home page's two photos),
+  and `templates/betterclipboard/public/main.css` and `main.js` (an overlay on docfx's modern template).
+- `.config/dotnet-tools.json`: docfx **2.81.0** as a local .NET tool, so CI and every PC build with the same docfx. It is
+  the first docfx line that runs on .NET 10 by itself; this PC's global docfx (2.78.4) was left as it was.
+- `.github/workflows/docs.yml` (*Docs*).
+- Generated: `docs/website-src/docs/` (the pages and their menu, rewritten by every build) and `docs/website/` (the
+  built site).
+
+**Taken from NumSharp** (`K:\source\NumSharp` at `278e9862`; its docs themselves were not used, as asked): the shape of
+`docfx.json`, the modern template with an overlay template, `main.js`'s left-menu state kept for 48 hours, the footer,
+code and print rules of `main.css`, and `llms.txt` and `robots.txt`. Those two were ported from NumSharp's bash script to
+Python with nothing hard-coded: the pages, titles and descriptions come from the `pages.json` the page generator writes.
+
+**How the README becomes pages** (`generate_pages.py`; its module docstring is the full spec).
+- **Pages by heading:** each `##` is a page and each `###` under it a child page. Deeper headings stay in their page,
+  moved up so that the page's title is its only `#`. A page's file name is its heading's GitHub anchor (github-slugger's
+  rules), so the README's `#privacy` is `privacy.md`, and its links between sections become links between pages.
+- **Links:** `#anchor` goes to that page; a picture in the repository is copied next to the pages; any other file of the
+  repository is linked on GitHub (`blob/main/…` or `tree/main/…`); web addresses stay. Inline code and fenced code are
+  never rewritten.
+- **Nothing broken gets through:** a link to a heading that is gone, to a file that does not exist or outside the
+  repository is listed with its README line, and the generator exits 1. docfx with `--warningsAsErrors` catches the
+  rest. A README change that breaks the site fails its pull request.
+- **Each page's front matter:** `description` (its first paragraph, cut at 160 characters; search engines and
+  `llms.txt` show it) and `docurl`, so *Edit this page* opens `README.md?plain=1#Lstart-Lend` on GitHub.
+- **A parent page ends with "In this section"**, a list of its child pages.
+- **Guides** (`guides/<slug>.md`): Markdown pages with front matter `parent` (the slug of the page they go under) and
+  `after` (`start`, or the sibling they follow). Their links are site paths (`portable-zip.md`, `#a-heading`) and are
+  checked the same way. A guide's slug must differ from every README page's.
+
+**The guides** (the owner: "Expand install to all variations"):
+- *Ways to install* (every way side by side, which to choose, what they share), *The PowerShell installer* (every
+  option, running it again, offline, failures), *The portable zip* (download and check, how it differs, updates in its
+  own folder, moving to the installer, removing), *Intune, RMM tools and scripts* (as SYSTEM, from hosted files,
+  detection, uninstall), *Chocolatey* (not published yet: the release's `.nupkg` with `--source`), *What it changes on
+  your PC* (every file, folder and registry value, per kind of install), and *BetterClipboard.exe's own switches*.
+- Their facts come from `install.ps1`, the Chocolatey package's scripts, `Program.cs`, `StartupOptions.cs` and §2.25 to
+  §2.48 here, each checked against the code.
+- **`%ProgramW6432%` in the Intune guide's uninstall command:** Intune's agent runs a Win32 app's command lines in a
+  32-bit process, where `%ProgramFiles%` names `Program Files (x86)`. The installer itself uses the 64-bit folder
+  (`Get-ProgramFilesFolder`).
+
+**The look.**
+- The app icon's gradient (indigo `#6366F1`, violet `#8B5CF6`, fuchsia `#D946EF`: `tools/make_icon.py`'s stops) as
+  Bootstrap's primary and link colors, in light and dark. The app icon is the logo and the favicon, copied from
+  `src/BetterClipboard.App/Assets` at every build.
+- **The widening photo** (the owner's request): `panel-usual.png` (692 × 947) and `panel-wide.png` (1414 × 947) are one
+  panel at its remembered width and widened until every tab shows, with the same items.
+  - On a page at least 1200 px wide, hovering or focusing the photo reveals the wide one leftwards from the right edge
+    with `clip-path: inset(…)`, in 0.5 s. A `::before` layer behind it carries the shadow and the focus ring and widens
+    with it.
+  - The clip path also bounds hit-testing, so the part that opened keeps the hover.
+  - Narrower pages show the usual photo only. *Reduce motion* keeps the widening and drops the animation.
+- **The photos:** a claude-desktops Windows 11 desktop (on the PC: the worker did not answer), dark theme, 2560 × 1440
+  at 150 %, installed with the README's command. The owner's demo data (`tools/readme/demo-data.zip`) was loaded with
+  `seed-demo.cs` (§3.5), and ShareX and Everything were installed so that their tabs show. Captured with
+  `capture-window.ps1` and finished with `finish-shot.py` (§3.4). The desktop was deleted with its storage.
+
+**Building:** `pwsh docs/website-src/build.ps1 [-Strict] [-Serve] [-Port N]` runs `dotnet tool restore`, then
+`generate_pages.py`, then `dotnet docfx` (with `--warningsAsErrors` under `-Strict`), then `generate_llms_txt.py`, and with
+`-Serve` serves the site until Ctrl+C. It needs Python 3.10 or newer (`python`, `python3` or `py -3`) and reads nothing
+outside the repository.
+
+**Publishing** (`docs.yml`): every push to main and every pull request that touches the README, `docs/website-src`,
+`docs/images`, the app's icons, the tool manifest or the workflow runs `build.ps1 -Strict` on `ubuntu-latest` (.NET 10,
+Python 3.12). A push to main then uploads `docs/website` and deploys it to Pages. A newer push cancels an older check
+of the same pull request, never a run of main.
+- **The owner turns Pages on once:** *Settings › Pages › Build and deployment › Source: GitHub Actions*. Until then the
+  deploy job fails, and the build still checks.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- Not live: nothing is pushed, and Pages is off.
+- English only, and no API reference (both the owner's choice).
+- Renaming a README heading changes its page's address: links to the old one break (no redirects).
+- The photos show the panel of 2026-11-15: retake them like §3.4 when it changes visibly.
+- No test sees a guide drift from the code: a change to `install.ps1`'s options, the Chocolatey package or the app's
+  switches needs its guide changed too (§4).
+
 ---
 
 ## 3. Build · run · test
@@ -5731,6 +5837,8 @@ pwsh tools/release/test-submit-store.ps1                       # the Store submi
                                                                # service on this PC: no network (§3.5)
 python tools/release/test-store-listing.py                     # the listing kit fits the Store's limits, and the
                                                                # generator still fills Partner Center's export (§3.5)
+pwsh docs/website-src/build.ps1 [-Strict] [-Serve]             # the docs site: README.md cut into pages + the guides,
+                                                               # docfx into docs/website; -Strict is CI's check (§2.51)
 BETTERCLIPBOARD_CLIPBOARD_TESTS=1 dotnet test --project tests/BetterClipboard.Windows.Tests   # + real clipboard
 tests/BetterClipboard.Windows.Tests/bin/Debug/net10.0-windows10.0.26100.0/BetterClipboard.Windows.Tests.exe \
   -method BetterClipboard.Windows.Tests.ClipboardCaptureTests.CaptureRate_BySpeedOfCopying -explicit only -showliveoutput
@@ -7150,6 +7258,16 @@ kit by a scratch generator, session 66cdd808):
     `<div dir="rtl">`).
   - Checked with GitHub's own renderer (`gh api markdown`, mode `markdown`, the way README files render: the `align`
     survived and the Markdown inside was read), then drawn with github-markdown-css in a headless Chrome.
+- **The docs site is cut from README.md** (§2.51). Each `##` heading is a page and each `###` a child page, named by its
+  GitHub anchor, so renaming a heading renames its page and changes its address.
+  - A README link to a heading that is gone, or to a file that does not exist, fails `build.ps1 -Strict`, and with it the
+    *Docs* check of the pull request. Check a README change with `pwsh docs/website-src/build.ps1 -Strict` (Python 3.10
+    or newer).
+  - Content only the site has goes into `docs/website-src/guides/` (front matter `parent`, `after`). Never edit
+    `docs/website-src/docs/`: every build rewrites it.
+  - The guides repeat facts from `install.ps1`, the Chocolatey package and the app's command-line switches: a change
+    there updates the guide in the same commit.
+  - The site is English only for now (the owner: "We only do one language first"); the translated READMEs stay on GitHub.
 - **Every new piece of UI text goes through `UiText`, keyed by its English text, with an entry in `en.json`** (§2.37).
   XAML: `{loc:Tr Text='…'}` (`Text=&quot;…&quot;` when the text has an apostrophe: WinUI's XAML compiler takes no
   backslash escapes); C#: `UiText.Translate("…")`, `UiText.Format($"…")`, and for a count
@@ -7720,6 +7838,7 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **The docs site** (2026-11-15, §2.51). `build.ps1 -Strict` in a private worktree of `b89eb1c`: 0 warnings, 38 pages and the home page, `llms.txt` 9.5 KB, `llms-full.txt` 122 KB. The same in a Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`, Python 3.12.3, PowerShell 7.6.10), as on CI's runner: 0 warnings. With the other session's uncommitted README (its AI bullets and a link to `docs/ai.md`): 0 warnings. The generator on a small README with a link to a heading that is gone, a missing picture and a missing file named all three with their lines and exited 1, and left inline and fenced code as written. Pages drawn in a headless Chrome, light and dark: the menu, *Edit this page* (Privacy opens `README.md?plain=1#L876-L940`), a guide's in-page link (`#offline-or-a-pinned-version`). The widening photo: 896 px wide when open, and a hit-test probe kept the hover over the opened part (`rest@inside=IMG.bc-shot-wide`, `open@left=IMG.bc-shot-wide`). The documentation checker's language checks on the four code files: 0 gaps (its `find_gaps` skips the scratchpad, so they were called directly) | `build.ps1`, Docker, a headless Chrome with throw-away profiles, scratch probes (session fcc0d69a's scratchpad) | ✅ Not run: the *Docs* workflow on GitHub and the Pages deployment (nothing pushed) |
 | **Selecting in the text viewer and the peek, live** (2026-11-14, §2.50; the owner: "selecting text and right clicking, text selection is all clumsy slow and on rightclick or randomally the selection blinks"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-selblink`, 1920×1080, no GPU; deleted afterwards with its persist folder), self-contained builds of a private worktree (`e6d4c02` plus only this change: `0.2.12-dev.diag1` to `diag7` with temporary diagnostics, never committed, then `selfix` to `selfix5`), BC-TEST texts only, from session c073d86d's `make_qa_data.py` (the heartbeat-shaped XML prompt, 29 lines; a JSON text; a Markdown note; the 2.3 MB C# text, whose page 2 starts at line 1863). **The blink:** a sampler counting the selection's accent pixels every frame read 9,588 after a drag and 3 while the right-click menu showed (old build), and 9,588 from the drag to the end with the fix; also unchanged after *Copy* (337 characters on the clipboard, recorded in the history), with another window in front, and in a Markdown document. **Line numbers:** right after wheel scrolls (rows 50, 58, 74 where they belong), on page 2 (starting at line 1863), with Wrap off, and in wrapped long lines. **Text size:** Ctrl+= and Ctrl+− kept line 52 at the top. **Gutter:** its width set with the text (the text box 1,311 DIPs from the first layout, no second one). **Drag:** a frame every 16 ms (median). **The peek** (`selfix5`): UI Automation showed its RichEditBox focused after its menu while Windows' focus stayed on the panel's input window; before the fix Ctrl+C, Right and a letter each closed the peek and copied or typed nothing, and Down on its menu closed both. With the fix: Down moves in the menu (to *Paste*), Esc closes only the menu and then the peek, *Select all* + Ctrl+C copied the whole text (1,055 characters, 29 lines), Shift+Down ×3 + Ctrl+C the first three lines (141 characters, entry 17), Shift+F10 opened the menu with *Copy* enabled; a letter typed over a peek opened under a resting mouse still closed it and went into the search box ("heartbeatq"). **The viewer** (`selfix4`): a dragged selection stayed drawn under the right-click menu, Esc closed only the menu. The app's log since `selfix5` started: 16 lines, 0 WRN/ERR. The whole solution with this change and the other session's uncommitted AI work, `--no-incremental`: 0 errors, no warning in a changed file (165: xUnit analyzers and CS0108) | claude-desktops MCP tools (`move_mouse`, `click`, `drag`, `press_keys`, `screenshot`, `run_command`); guest scripts `sampler.ps1`, `log.ps1`, `focus.ps1` (UI Automation), `w32focus.ps1` (`GetGUIThreadInfo`), `install.ps1` | ✅ Not run: a real GPU, touch and pen, Narrator, the owner's PC |
 | **A hunt for bugs like the reviving pin** (2026-11-14, §2.3, §2.7, §2.11, §3.1, §4; the owner: "Investigate more bugs like this around and others"). **The owner's logs** (16 days, content-free): 7 warnings, all "Clipboard stayed locked … not captured". 5 came from window 0x40D96, a `CLIPBRDWNDCLASS` window of `svchost` PID 15860, the service `cbdhsvc_b0d86` (Windows' clipboard history), which was still running. Fixed: the retry now waits up to 10 s (§2.3). 220 info lines "a CodexRollout file was rewritten and read again" in three bursts are no bug: 97 session files got a status-change time of 06:45:38–39 today with an unchanged modification time, all `.jsonl.zst` (Codex compressed sessions that had turned 7 days old), and every re-read found 0 new prompts. **Code sweeps:** number parsing without a culture (one `int.TryParse` of an icon index: harmless); state values written invariantly (dates as `o`, counts and ticks with `InvariantCulture`); 24 `async void` handlers, 4 without a try/catch (Settings' allow-again and clear buttons), harmless because `App.OnUnhandledException` logs UI exceptions and marks them handled; `pinned_utc` written but never read. **Fixed:** the lock wait; an unpin restarting the retention clock (§2.11); the installer keeping Settings' choices on a re-run (§3.1, the owner's choice); the pin ledger taking back a pin whose storing failed (§2.7). **Tests:** `ACopyHeldOpenForSeconds_IsReadOnceLetGo` and `ACopyHeldPastTheWait_IsCountedAsLockedOut` (a producer re-opens the clipboard right after its copy, in the private window station; 5 of 5 repeated runs green), `Unpinning_ResetsTheRetentionClockLikeUngrouping`, `Withdraw_TakesBackOnlyAPinThisImportMetFirst`. Mutations: the old give-up rule fails the first test, no reset fails the unpin test. The whole suite on `73b3fe3` plus the other session's uncommitted AI work plus this change: 2,453 = 2,450 passed + 3 opt-in skipped, 0 failed; a solution build with only the known CS0108 | the owner's logs, `GetWindowThreadProcessId` and `Win32_Service`, `find -newerct`, scratch scripts (session 44deb2ae) | ✅ |
 | **The installer's re-run, for real** (2026-11-14, §3.1), in a claude-desktops Windows 11 desktop on this PC (deleted afterwards with its storage): the working tree's `install.ps1` with `-Package` (the v0.2.11 x64 zip, checksum checked) and `-NoLaunch`. **Fresh install:** a Run value, `DisabledHotkeys` `V`, `releasedKeys` `V`, Explorer restarted. **The Run value removed and `V` taken out** (what Settings does), then a plain re-run: "Start with Windows stays off …" and "Win+V stays with Windows … (-TakeOverWinV takes Win+V over again)", Explorer's process unchanged. **`-TakeOverWinV`:** `V` released again, Explorer restarted, startup still off. **Startup on again, then a re-run:** the value refreshed, "Win+V was already released", no restart. **`-Uninstall`:** everything given back and `installer.json` gone; a fresh install afterwards set the defaults again. The two functions: 12 checks on a scratch key in PowerShell 7.5.8 and 5.1, with the owner's `DisabledHotkeys` unchanged | guest script `reinstall-test.ps1`, scratch `test_reinstall.ps1` (session 44deb2ae) | ✅ |
@@ -7928,6 +8047,17 @@ kit by a scratch generator, session 66cdd808):
 
 ## 6. Roadmap / known gaps
 
+- **The docs site** (2026-11-15, §2.51), next steps:
+  - the owner turns GitHub Pages on (*Settings › Pages › Source: GitHub Actions*), then pushes: the *Docs* workflow
+    publishes https://nucs.github.io/BetterClipboard/;
+  - a link to the site in the README (a badge or the language line) and in the repository's *About* box;
+  - the site in other languages, from the translated READMEs (the owner: "We only do one language first");
+  - redirects for renamed README headings, so old page addresses keep working.
+- **README › Privacy still says the Store edition's history leaves with the app** (found 2026-11-15 while checking the
+  docs site's guides): "Its history is in its own app data folder, which Windows removes when you uninstall it", and
+  that a move copies the history into that folder. Since `73b3fe3` the edition keeps it in the shared
+  `%LOCALAPPDATA%\BetterClipboard`, which stays after an uninstall, as the README's own Store and Uninstall sections
+  say. The *Privacy* section is the privacy policy (§3.3): fix that paragraph and its four translations.
 - **Left from the hunt for bugs like the reviving pin** (2026-11-14, §5):
   - Windows' own clipboard history service (`cbdhsvc`) still competes for the clipboard. Copies it holds are now read late
     (logged with the wait and the holder) instead of lost. Turning Windows' history off would end the contention, but

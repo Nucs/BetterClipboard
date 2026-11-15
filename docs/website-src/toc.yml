@@ -1,0 +1,13 @@
+# The navbar. The left menu of the manual (docs/toc.yml) is generated from README.md and guides/ by
+# scripts/generate_pages.py; only these top-level entries are kept by hand.
+- name: Docs
+  href: docs/
+  homepage: docs/features.md
+- name: Install
+  href: docs/install.md
+- name: Command line
+  href: docs/command-line-for-scripts-and-ai-agents.md
+- name: Privacy
+  href: docs/privacy.md
+- name: Releases
+  href: https://github.com/Nucs/BetterClipboard/releases

@@ -1,0 +1,514 @@
+/* BetterClipboard DocFX styles (started from NumSharp's docs/website-src/templates/numsharp).
+ * https://dotnet.github.io/docfx/docs/template.html
+ *
+ * The modern template uses Bootstrap 5.3 CSS variables; the colors here are the app icon's gradient
+ * (tools/make_icon.py: indigo-500 #6366F1, violet-500 #8B5CF6, fuchsia-500 #D946EF), with darker and lighter
+ * shades for text so links keep at least 4.5:1 contrast in both themes.
+ */
+
+:root {
+  --bc-indigo: #6366f1;
+  --bc-violet: #8b5cf6;
+  --bc-fuchsia: #d946ef;
+  --bc-gradient: linear-gradient(100deg, #6366f1, #8b5cf6 55%, #d946ef);
+
+  /* Bootstrap reads links from the -rgb variables in 5.3; both forms are set so either reading works. */
+  --bs-primary: #7c3aed;
+  --bs-primary-rgb: 124, 58, 237;
+  --bs-link-color: #6d28d9;
+  --bs-link-color-rgb: 109, 40, 217;
+  --bs-link-hover-color: #5b21b6;
+  --bs-link-hover-color-rgb: 91, 33, 182;
+  /* Inline code (keys, paths, options - the README is full of them) in the icon's fuchsia, darkened to 6:1 on white,
+   * instead of Bootstrap's pink. */
+  --bs-code-color: #a21caf;
+}
+
+[data-bs-theme="dark"] {
+  --bs-primary: #a78bfa;
+  --bs-primary-rgb: 167, 139, 250;
+  --bs-link-color: #b9a2ff;
+  --bs-link-color-rgb: 185, 162, 255;
+  --bs-link-hover-color: #d4c6ff;
+  --bs-link-hover-color-rgb: 212, 198, 255;
+  --bs-code-color: #f0abfc;
+}
+
+/* Logo sizing: the app icon, drawn at 64 px, shown at 32. */
+#logo {
+  height: 32px;
+  width: auto;
+  margin-right: 4px;
+}
+
+/* Footer styling */
+.footer {
+  border-top: 1px solid var(--bs-border-color);
+  padding: 1rem 0;
+  font-size: 0.875rem;
+}
+
+.footer a {
+  color: var(--bs-link-color);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
+/* Code block enhancements */
+pre code {
+  font-size: 0.875em;
+}
+
+/* The README's photos are centered paragraphs (<p align="center">); keep them inside the article on narrow screens. */
+article img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Table of contents sticky positioning */
+@media (min-width: 992px) {
+  .sticky-top {
+    top: 80px;
+  }
+}
+
+/* Syntax highlighting: keywords a little heavier, as in NumSharp's. */
+.hljs-keyword {
+  font-weight: 600;
+}
+
+/* Print styles */
+@media print {
+  .navbar,
+  .toc,
+  .affix,
+  .footer {
+    display: none !important;
+  }
+
+  .article {
+    max-width: 100% !important;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------------------------
+ * Home page (index.md). Everything below is scoped to .bc-home, so the manual's pages keep docfx's look.
+ * ---------------------------------------------------------------------------------------------------------------- */
+
+.bc-home {
+  --bc-ink: #1c1b2e;
+  --bc-muted: #55536f;
+  --bc-border: rgba(85, 83, 111, 0.2);
+  --bc-surface: #ffffff;
+  --bc-soft: #f6f5fc;
+  --bc-accent: #6d28d9;
+  --bc-glow: rgba(139, 92, 246, 0.22);
+  color: var(--bc-ink);
+}
+
+[data-bs-theme="dark"] .bc-home {
+  --bc-ink: #eeecfb;
+  --bc-muted: #b6b2d0;
+  --bc-border: rgba(182, 178, 208, 0.22);
+  --bc-surface: #17152a;
+  --bc-soft: #120f22;
+  --bc-accent: #b9a2ff;
+  --bc-glow: rgba(139, 92, 246, 0.3);
+}
+
+.bc-home a {
+  text-decoration: none;
+}
+
+.bc-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 40px;
+  align-items: center;
+  padding: 40px 0 34px;
+  border-bottom: 1px solid var(--bc-border);
+  position: relative;
+}
+
+/* A soft glow behind the photo, in the icon's colors. */
+.bc-hero::after {
+  content: "";
+  position: absolute;
+  right: -60px;
+  top: -40px;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, var(--bc-glow), rgba(217, 70, 239, 0.06) 60%, transparent 75%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.bc-hero > * {
+  position: relative;
+  z-index: 1;
+}
+
+.bc-kicker {
+  margin: 0 0 10px;
+  color: var(--bc-accent);
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bc-home h1.bc-title {
+  margin: 0;
+  font-size: 3.4rem;
+  line-height: 1.04;
+  letter-spacing: -0.01em;
+  background: var(--bc-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bc-lede {
+  max-width: 660px;
+  margin: 16px 0 0;
+  color: var(--bc-muted);
+  font-size: 1.15rem;
+  line-height: 1.6;
+}
+
+/* The install command: a dark block in both themes, so it reads as "type this in PowerShell". */
+.bc-install {
+  max-width: 680px;
+  margin-top: 22px;
+}
+
+.bc-install pre {
+  margin: 0;
+  border-radius: 10px;
+  background: #15132a;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+}
+
+.bc-install pre code,
+.bc-install pre code.hljs {
+  background: transparent;
+  color: #e6e3ff;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* The block is dark in both themes, but highlight.js colors its words for the page's theme (dark blue in the light
+ * one): the command's words get the icon's light violet instead, whatever the theme. */
+.bc-install pre code span {
+  color: #c4b5fd !important;
+}
+
+.bc-install p {
+  margin: 8px 0 0;
+  color: var(--bc-muted);
+  font-size: 0.9rem;
+}
+
+.bc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.bc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--bc-border);
+  border-radius: 10px;
+  color: var(--bc-ink);
+  background: var(--bc-surface);
+  font-weight: 650;
+}
+
+.bc-home a.bc-button:hover,
+.bc-home a.bc-button:focus-visible {
+  border-color: var(--bc-violet);
+  color: var(--bc-accent);
+}
+
+.bc-home a.bc-button-primary {
+  border: 0;
+  color: #ffffff;
+  background: linear-gradient(100deg, #6366f1, #8b5cf6 60%, #c04bf0);
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.28);
+}
+
+.bc-home a.bc-button-primary:hover,
+.bc-home a.bc-button-primary:focus-visible {
+  color: #ffffff;
+  filter: brightness(1.07);
+}
+
+.bc-facts {
+  margin: 16px 0 0;
+  color: var(--bc-muted);
+  font-size: 0.92rem;
+}
+
+/* The panel's photo. At rest it is the panel at its usual width; while the pointer rests on it (or it has the
+ * keyboard focus, which a tap gives it), the same panel widened until every tab shows grows out of it to the left,
+ * over the text, keeping its right edge - like dragging the panel's left edge. Both photos were taken in one session
+ * with the same history, so only the width changes. The sizes come from the figure's style attribute in index.md:
+ * --bc-shot-h (display height), --bc-shot-w (the usual panel's display width) and --bc-wide-w (the wide one's). */
+.bc-shot {
+  --bc-shot-h: 600px;
+  --bc-shot-w: 438px;
+  --bc-wide-w: 438px;
+  position: relative;
+  justify-self: end;
+  width: var(--bc-shot-w);
+  height: var(--bc-shot-h);
+  margin: 0;
+  outline: none;
+}
+
+.bc-shot img {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: var(--bc-shot-h);
+  max-width: none;
+  border-radius: 12px;
+}
+
+/* The shadow (and the keyboard focus ring) live on a layer of their own behind the photos, which widens with the wide
+ * photo: the wide photo's clip-path would cut off a shadow of its own. */
+.bc-shot::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--bc-shot-w);
+  height: var(--bc-shot-h);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(52, 30, 120, 0.28), 0 0 0 1px rgba(80, 60, 160, 0.14);
+  transition: width 0.5s cubic-bezier(0.2, 0.7, 0.2, 1);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.bc-shot .bc-shot-usual {
+  width: var(--bc-shot-w);
+  transition: opacity 0.25s ease;
+  z-index: 1;
+}
+
+.bc-shot .bc-shot-wide {
+  width: var(--bc-wide-w);
+  opacity: 0;
+  /* Only the part as wide as the usual photo shows; the rest is revealed leftwards on hover. The clip also limits
+   * where the photo takes the pointer: at rest only over the usual photo (the text beside it stays clickable), and
+   * once open over all of it, so the pointer can roam the widened panel without ending the hover. */
+  clip-path: inset(0 0 0 calc(var(--bc-wide-w) - var(--bc-shot-w)) round 12px);
+  transition: clip-path 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.2s ease;
+  z-index: 2;
+}
+
+.bc-shot figcaption {
+  position: absolute;
+  top: calc(var(--bc-shot-h) + 10px);
+  right: 0;
+  width: var(--bc-shot-w);
+  color: var(--bc-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+@media (min-width: 1200px) {
+  .bc-shot:hover .bc-shot-wide,
+  .bc-shot:focus .bc-shot-wide,
+  .bc-shot:focus-within .bc-shot-wide {
+    opacity: 1;
+    clip-path: inset(0 0 0 0 round 12px);
+  }
+
+  .bc-shot:hover .bc-shot-usual,
+  .bc-shot:focus .bc-shot-usual,
+  .bc-shot:focus-within .bc-shot-usual {
+    opacity: 0;
+  }
+
+  .bc-shot:hover::before,
+  .bc-shot:focus::before,
+  .bc-shot:focus-within::before {
+    width: var(--bc-wide-w);
+  }
+}
+
+/* A keyboard user sees where the focus is: a ring around the shadow layer, whatever width it has. */
+.bc-shot:focus-visible::before {
+  box-shadow: 0 18px 50px rgba(52, 30, 120, 0.28), 0 0 0 3px rgba(139, 92, 246, 0.7);
+}
+
+/* Below 1200 px the wide photo would not fit beside the text: the usual one stays, and the caption says so. */
+@media (max-width: 1199.98px) {
+  .bc-shot .bc-shot-wide,
+  .bc-shot figcaption .bc-shot-hint {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bc-shot img,
+  .bc-shot::before {
+    transition: none !important;
+  }
+}
+
+.bc-section {
+  padding: 34px 0;
+  border-bottom: 1px solid var(--bc-border);
+}
+
+.bc-section-head {
+  max-width: 820px;
+  margin-bottom: 18px;
+}
+
+.bc-home h2 {
+  margin: 0;
+  font-size: 1.55rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.bc-section-head p {
+  margin: 8px 0 0;
+  color: var(--bc-muted);
+}
+
+.bc-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.bc-card {
+  min-width: 0;
+  min-height: 150px;
+  padding: 18px;
+  border: 1px solid var(--bc-border);
+  border-radius: 12px;
+  color: var(--bc-ink);
+  background: var(--bc-surface);
+}
+
+.bc-home a.bc-card:hover,
+.bc-home a.bc-card:focus-visible {
+  border-color: var(--bc-violet);
+  color: var(--bc-ink);
+}
+
+.bc-card span {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: var(--bc-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bc-card strong {
+  display: block;
+  font-size: 1.08rem;
+  line-height: 1.35;
+}
+
+.bc-card p {
+  margin: 8px 0 0;
+  color: var(--bc-muted);
+  line-height: 1.5;
+  font-size: 0.95rem;
+}
+
+.bc-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 18px;
+  padding: 26px 0 10px;
+}
+
+.bc-links a {
+  color: var(--bc-accent);
+  font-weight: 650;
+}
+
+@media (max-width: 1199.98px) {
+  .bc-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 991.98px) {
+  .bc-hero {
+    grid-template-columns: 1fr;
+  }
+
+  .bc-shot {
+    justify-self: center;
+  }
+
+  .bc-home h1.bc-title {
+    font-size: 2.6rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .bc-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .bc-home h1.bc-title {
+    font-size: 2.2rem;
+  }
+
+  .bc-lede {
+    font-size: 1rem;
+  }
+
+  .bc-button {
+    width: 100%;
+  }
+
+  /* A phone shows the photo at the screen's width instead of its fixed size, with the shadow on the photo itself
+   * (the backing layer has a fixed size). */
+  .bc-shot {
+    --bc-shot-h: auto;
+    width: 100%;
+    height: auto;
+  }
+
+  .bc-shot::before {
+    display: none;
+  }
+
+  .bc-shot .bc-shot-usual {
+    position: static;
+    width: 100%;
+    height: auto;
+    box-shadow: 0 12px 32px rgba(52, 30, 120, 0.28);
+  }
+
+  .bc-shot figcaption {
+    position: static;
+    width: auto;
+    margin-top: 8px;
+  }
+}
