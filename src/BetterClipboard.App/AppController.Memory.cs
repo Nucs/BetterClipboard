@@ -60,7 +60,7 @@ public sealed partial class AppController
     private bool reclaiming;
 
     /// <summary>
-    /// The panel was put away (every way it goes, <c>ClipboardFlyout.Conceal</c>): give back what the use left behind — the
+    /// The panel was put away (every way it goes, <c>ClipboardFlyout.FinishPuttingAway</c>): give back what the use left behind — the
     /// cards of a search, decoded images, the image peek — once no summon follows for <see cref="PanelReclaimDelay"/>.
     /// UI thread only.
     /// </summary>

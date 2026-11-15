@@ -148,8 +148,18 @@ public sealed partial class ClipboardFlyout : Window
     private bool closingForExit;
     private bool reloadPending;
 
-    /// <summary>Set while an Enter waits for the search to settle (<see cref="PasteBestMatchAsync"/>): a second Enter is ignored.</summary>
+    /// <summary>
+    /// Set while an Enter's paste runs (<see cref="PasteBestMatchAsync"/>): a second Enter is ignored, so one keystroke never
+    /// pastes twice. A summon clears it (<see cref="PresentAsync"/>): the paste keeps running for a moment after its Ctrl+V
+    /// (AppController.Paste.cs), and the next use's Enter must not be taken for a repeat.
+    /// </summary>
     private bool enterPending;
+
+    /// <summary>
+    /// Counts every Enter that starts a paste and every summon (<see cref="PresentAsync"/>), so a paste clears
+    /// <see cref="enterPending"/> only while the guard is still its own: after a summon, the guard belongs to the new use.
+    /// </summary>
+    private int enterSerial;
 
     /// <summary>Whether the groups column is showing (mirrors <see cref="AppSettings.ShowGroupsPane"/>).</summary>
     private bool groupsPaneOpen;
@@ -207,6 +217,9 @@ public sealed partial class ClipboardFlyout : Window
 
         // A click on a tooltip must not cost the panel its keyboard: ClipboardFlyout.ToolTipKeyboard.cs.
         InitializeToolTipKeyboardGuard();
+
+        // The selected card's formats are read ahead, so Enter pastes without waiting for the store: ClipboardFlyout.Paste.cs.
+        InitializePaste();
         ViewModel.PropertyChanged += (_, e) =>
         {
             // Any route to another view (icon click with or without Ctrl/Shift, the icon menu, reset on show, a deleted
@@ -489,6 +502,9 @@ public sealed partial class ClipboardFlyout : Window
             ResetListPosition();
             LogSummon(context, onScreen, reload);
 
+            // The armed card was selected while the panel was hidden, when nothing is read ahead: read it now.
+            PrefetchSelected();
+
             // Second line of defence for the first summon: if no element of the panel has the keyboard yet (the box's
             // Loaded came before the window was shown, or a focus call lost a race with activation), give it to the box
             // now — never while a popup of ours is open, which owns the keys then.
@@ -514,9 +530,12 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Takes the flyout off the screen (<see cref="Conceal"/>: cloaked, its window kept ready for the next summon).
+    /// Takes the flyout off the screen (<see cref="PutAway"/>: cloaked, its window kept ready for the next summon).
     /// </summary>
-    /// <param name="restoreFocus">Re-activate the window the user came from (Esc / toggle), as opposed to a paste which handles focus itself.</param>
+    /// <param name="restoreFocus">
+    /// Re-activate the window the user came from (Esc, the shortcut again, a failed paste); <see langword="false"/> when
+    /// another window is about to take the foreground (a link, a file opened, a command run).
+    /// </param>
     public void Dismiss(bool restoreFocus)
     {
         if (!IsOpen)
@@ -530,15 +549,9 @@ public sealed partial class ClipboardFlyout : Window
         // So does the update dialog, a window of its own that would otherwise stay on screen without its panel.
         CloseUpdateDialog();
 
-        // Order matters: re-activate the target while we are still the foreground window (then
-        // SetForegroundWindow is always allowed), and only then conceal. Concealing hides the window once, which
-        // hands activation to whatever window Windows picks next, after which we may no longer steal it back.
-        if (restoreFocus)
-        {
-            ForegroundHelper.Activate(controller.PasteTargetWindow);
-        }
-
-        Conceal();
+        // Off the screen, then the foreground to the target while this process still owns it, then the rest (PutAway's
+        // remarks have why in this order).
+        PutAway(restoreFocus ? controller.PasteTargetWindow : 0, finishSoon: true);
     }
 
     /// <summary>Really closes the window during app exit (normal closes are turned into a conceal, <see cref="OnClosing"/>).</summary>
@@ -763,7 +776,7 @@ public sealed partial class ClipboardFlyout : Window
                 // down. Everywhere else, and with Ctrl or Shift, Enter pastes or runs.
                 if (!PickGroupByKey(enter: true, ctrl, shift, IsAltOrWindowsKeyDown(), repeat))
                 {
-                    _ = PasteBestMatchAsync(ctrl, shift);
+                    _ = PasteBestMatchAsync(ctrl, shift, Stopwatch.GetTimestamp());
                 }
 
                 break;
@@ -1641,8 +1654,12 @@ public sealed partial class ClipboardFlyout : Window
     /// </remarks>
     /// <param name="ctrl">Ctrl was held (run a Win+R command).</param>
     /// <param name="shift">Shift was held (paste as plain text, or run as administrator).</param>
+    /// <param name="pressedAt">
+    /// The <see cref="Stopwatch.GetTimestamp"/> at which the Enter arrived: the paste's timeline starts there (its log line
+    /// says how long the paste took from the key, AppController.Paste.cs).
+    /// </param>
     /// <returns>A task completing when the paste or run started; failures are logged, never thrown.</returns>
-    private async Task PasteBestMatchAsync(bool ctrl, bool shift)
+    private async Task PasteBestMatchAsync(bool ctrl, bool shift, long pressedAt)
     {
         if (enterPending)
         {
@@ -1650,9 +1667,12 @@ public sealed partial class ClipboardFlyout : Window
         }
 
         enterPending = true;
+        int serial = ++enterSerial;
         try
         {
+            var timeline = new PasteTimeline(pressedAt);
             await ViewModel.SettleSearchAsync();
+            timeline.Mark("search");
             if (!IsOpen)
             {
                 return; // dismissed while the search ran: nothing is pasted behind the user's back
@@ -1671,7 +1691,7 @@ public sealed partial class ClipboardFlyout : Window
                 }
                 else
                 {
-                    await PasteItemAsync(toPaste, plainText: shift);
+                    await PasteItemAsync(toPaste, plainText: shift, timeline);
                 }
             }
         }
@@ -1681,7 +1701,11 @@ public sealed partial class ClipboardFlyout : Window
         }
         finally
         {
-            enterPending = false;
+            // A summon since then cleared the guard for its own use, and may have set it again for its own Enter.
+            if (enterSerial == serial)
+            {
+                enterPending = false;
+            }
         }
     }
 
@@ -1692,13 +1716,17 @@ public sealed partial class ClipboardFlyout : Window
     /// </summary>
     /// <param name="item">The card.</param>
     /// <param name="plainText">Plain text / the path as text.</param>
+    /// <param name="timeline">
+    /// The paste's timeline, started at the key that asked for it (Enter); <see langword="null"/> starts one now (a click, a
+    /// menu, Ctrl+1..9).
+    /// </param>
     /// <param name="paste">Inject Ctrl+V (otherwise only copy).</param>
     /// <returns>A task completing when done (failures are logged by the controller).</returns>
-    private Task PasteItemAsync(ClipItemViewModel item, bool plainText, bool paste = true) =>
-        item.Pick is { } pick ? controller.PastePickAsync(pick, plainText, paste)
-        : item.Command is { } command ? controller.PasteCommandAsync(command, paste)
-        : item.Prompt is { } prompt ? controller.PastePromptAsync(prompt, paste)
-        : controller.PasteAsync(item.Entry, plainText, paste);
+    private Task PasteItemAsync(ClipItemViewModel item, bool plainText, PasteTimeline? timeline = null, bool paste = true) =>
+        item.Pick is { } pick ? controller.PastePickAsync(pick, plainText, paste, timeline)
+        : item.Command is { } command ? controller.PasteCommandAsync(command, paste, timeline)
+        : item.Prompt is { } prompt ? controller.PastePromptAsync(prompt, paste, timeline)
+        : controller.PasteAsync(item.Entry, plainText, paste, timeline);
 
     /// <summary>
     /// Ctrl+P / "Pin": toggles a stored entry's pin; a file opened in Everything, a shell tab's live command or a prompt

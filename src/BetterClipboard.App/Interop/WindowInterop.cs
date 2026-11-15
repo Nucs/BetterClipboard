@@ -48,7 +48,7 @@ internal static partial class WindowInterop
     /// This is how the panel appears instantly: it is never hidden, only cloaked, so a summon uncloaks a picture that is
     /// already drawn instead of waiting for WinUI to render a window that was hidden (PowerToys' Command Palette does the
     /// same). Hiding a window also tells Windows to pick the next foreground window; cloaking does not, so callers that
-    /// give up the foreground still hide the window once (see <c>ClipboardFlyout.Conceal</c>).
+    /// give up the foreground still hide the window once (see <c>ClipboardFlyout.PutAway</c>).
     /// </remarks>
     /// <param name="hwnd">Top-level window of this process (DWM refuses other processes' windows).</param>
     /// <param name="cloaked">Cloak (<see langword="true"/>) or uncloak.</param>

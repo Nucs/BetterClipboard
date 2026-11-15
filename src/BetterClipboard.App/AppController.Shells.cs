@@ -92,19 +92,18 @@ public sealed partial class AppController
     /// </summary>
     /// <param name="command">The command.</param>
     /// <param name="paste">Inject Ctrl+V into the target (otherwise only copy).</param>
+    /// <param name="timeline">
+    /// The paste's timeline, started at the key that asked for it; <see langword="null"/> starts one now (a click, a menu).
+    /// </param>
     /// <returns>A task completing when done; failures are logged, never thrown (fire-and-forget safe).</returns>
-    public async Task PasteCommandAsync(ShellCommand command, bool paste = true)
+    public async Task PasteCommandAsync(ShellCommand command, bool paste = true, PasteTimeline? timeline = null)
     {
-        var target = pasteTarget?.TargetWindow ?? 0;
         try
         {
-            await monitor!.WriteAsync(CommandFormats(command));
+            await DeliverAsync(CommandFormats(command), paste, timeline ?? PasteTimeline.StartNow());
+
+            // Stored after the paste (AppController.Paste.cs): nothing but the paste between the key and the Ctrl+V.
             _ = StoreCommandAsync(command, pin: false);
-            flyout?.Dismiss(restoreFocus: true);
-            if (paste && Settings.Current.PasteOnSelect && target != 0)
-            {
-                await InjectPasteAsync(target);
-            }
         }
         catch (Exception ex)
         {

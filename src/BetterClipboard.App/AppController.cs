@@ -744,66 +744,6 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Replays an entry onto the clipboard and (per settings) pastes it into the window the user came from.
-    /// </summary>
-    /// <param name="entry">The history entry.</param>
-    /// <param name="plainText">Strip formatting ("paste as plain text").</param>
-    /// <param name="paste">Inject Ctrl+V into the target (otherwise only copy).</param>
-    /// <returns>A task completing when done; failures are logged, never thrown (fire-and-forget safe).</returns>
-    public async Task PasteAsync(ClipEntry entry, bool plainText, bool paste = true)
-    {
-        var target = pasteTarget?.TargetWindow ?? 0;
-        try
-        {
-            // Put the content on the clipboard while the flyout is still up (tens of ms at most)...
-            var formats = ReplayFormats.Prepare(await History.GetFormatsAsync(entry.Id), plainText);
-            if (formats.Count == 0)
-            {
-                AppLog.Warn($"Entry {entry.Id} has nothing to paste{(plainText ? " as plain text" : string.Empty)}.");
-                flyout?.Dismiss(restoreFocus: true);
-                return;
-            }
-
-            await monitor!.WriteAsync(formats);
-            if (Settings.Current.MoveToTopOnPaste)
-            {
-                _ = History.MarkUsedAsync(entry.Id);
-            }
-
-            // ...then hand activation back to the target while we still own the foreground (see
-            // ClipboardFlyout.Dismiss), and only then inject Ctrl+V into it.
-            flyout?.Dismiss(restoreFocus: true);
-            if (paste && Settings.Current.PasteOnSelect && target != 0)
-            {
-                await InjectPasteAsync(target);
-            }
-        }
-        catch (Exception ex)
-        {
-            AppLog.Error($"Pasting entry {entry.Id} failed.", ex);
-            flyout?.Dismiss(restoreFocus: true);
-        }
-    }
-
-    /// <summary>
-    /// Injects Ctrl+V into the window the user came from (the clipboard already holds the item), and tells the user once per
-    /// window when Windows does not allow it: a window that runs as administrator drops keys from a non-elevated
-    /// BetterClipboard, which used to look like a paste that silently did nothing.
-    /// </summary>
-    /// <param name="target">The paste target's top-level window.</param>
-    /// <returns>A task completing when the paste was injected or refused; failures inside are logged by the injector.</returns>
-    private async Task InjectPasteAsync(nint target)
-    {
-        var outcome = await PasteInjector.PasteIntoWithOutcomeAsync(target);
-        if (outcome == PasteOutcome.TargetElevated && elevatedPasteNotified.Add(target))
-        {
-            tray?.ShowNotification(
-                UiText.Translate("Copied: press Ctrl+V to paste"),
-                UiText.Translate("That window runs as administrator, and Windows does not let BetterClipboard type into it. The item is on the clipboard."));
-        }
-    }
-
-    /// <summary>
     /// Pastes (or only copies) a file opened in Everything — the Everything tab's live picks, which are not history
     /// entries: the file itself (<c>CF_HDROP</c>, drop effect "copy"), or its path as text.
     /// </summary>
@@ -816,20 +756,19 @@ public sealed partial class AppController
     /// <param name="pick">The pick.</param>
     /// <param name="plainText">Paste the path as text instead of the file.</param>
     /// <param name="paste">Inject Ctrl+V into the target (otherwise only copy).</param>
+    /// <param name="timeline">
+    /// The paste's timeline, started at the key that asked for it; <see langword="null"/> starts one now (a click, a menu).
+    /// </param>
     /// <returns>A task completing when done; failures are logged, never thrown (fire-and-forget safe).</returns>
-    public async Task PastePickAsync(EverythingPick pick, bool plainText, bool paste = true)
+    public async Task PastePickAsync(EverythingPick pick, bool plainText, bool paste = true, PasteTimeline? timeline = null)
     {
-        var target = pasteTarget?.TargetWindow ?? 0;
         try
         {
             var formats = ReplayFormats.ForFiles([pick.FullPath], plainText);
-            await monitor!.WriteAsync(formats);
+            await DeliverAsync(formats, paste, timeline ?? PasteTimeline.StartNow());
+
+            // Stored after the paste (AppController.Paste.cs): nothing but the paste between the key and the Ctrl+V.
             _ = StorePickAsync(formats, pin: false);
-            flyout?.Dismiss(restoreFocus: true);
-            if (paste && Settings.Current.PasteOnSelect && target != 0)
-            {
-                await InjectPasteAsync(target);
-            }
         }
         catch (Exception ex)
         {

@@ -23,10 +23,13 @@ namespace BetterClipboard.App.Views;
 /// the list from the store again and rebuilt every card, whose add animations played after that.
 /// </para>
 /// <para>
-/// <b>Concealing</b> (<see cref="Conceal"/>, every way the panel goes away): cloak the window, then hide it and show it
-/// again without activation. Hiding makes Windows hand the foreground to the next window if the panel still had it — a
-/// cloaked foreground window would keep the keyboard, invisibly. Showing it again keeps XAML drawing into it: a cloaked
+/// <b>Concealing</b> (<see cref="PutAway"/>, every way the panel goes away): cloak the window and mark it away, hand the
+/// foreground to the window the user came from when there is one, then hide the window and show it again without activation
+/// (<see cref="FinishPuttingAway"/>). Hiding makes Windows hand the foreground to the next window if the panel still had it —
+/// a cloaked foreground window would keep the keyboard, invisibly. Showing it again keeps XAML drawing into it: a cloaked
 /// window is still shown as far as Windows and WinUI are concerned. PowerToys' Command Palette hides its window this way.
+/// The rest is queued, so none of it runs inside the hand-off of the foreground; a paste does only the cloak before its
+/// Ctrl+V and the rest after it (<see cref="PutAwayForPaste"/>, CLAUDE.md §2.52).
 /// </para>
 /// <para>
 /// <b>Preparing</b> (<see cref="PrepareForNextSummon"/>, right after concealing): reset the view a summon shows (search
@@ -80,15 +83,69 @@ public sealed partial class ClipboardFlyout
     private bool summonLogged;
 
     /// <summary>
+    /// Set while the panel is off the screen but not yet put away completely: from <see cref="PutAway"/> until
+    /// <see cref="FinishPuttingAway"/> — the next turn of the dispatcher for most ways the panel goes away, after the Ctrl+V
+    /// for a paste. A summon in between clears it (<see cref="PresentAsync"/>): the panel is back, and the late rest of the
+    /// put-away must not run.
+    /// </summary>
+    private bool finishPending;
+
+    /// <summary>
     /// Takes the panel off the screen without hiding its window (see the class remarks), then prepares it for the next
-    /// summon. Every way the panel goes away ends here: Esc, a paste, the shortcut again, a click elsewhere.
+    /// summon: the deactivation path (a click elsewhere, the update dialog closing over another window).
+    /// </summary>
+    private void Conceal() => PutAway(handTo: 0, finishSoon: true);
+
+    /// <summary>
+    /// Takes the panel off the screen for a paste and does nothing else: its overlays closed, its window cloaked (DWM drops it
+    /// at its next frame), and marked away, so its deactivation — the paste activates its target next — finds nothing more to
+    /// do. The caller hands the foreground to the target itself, sends Ctrl+V, and then calls <see cref="FinishPuttingAway"/>.
     /// </summary>
     /// <remarks>
-    /// Callers that want the foreground to go to a particular window (the paste target) activate it first, while the panel
-    /// still has the right to give the foreground away (<see cref="Dismiss"/>). <see cref="presented"/> is cleared before the
-    /// window is hidden, because hiding deactivates it and <see cref="OnActivated"/> must not conceal it a second time.
+    /// Why the split: everything else that putting the panel away does — hiding and showing the window, resetting its view for
+    /// the next summon with a layout pass of the list — took 40 to 75 ms on the UI thread in a warm process and up to 1.3 s
+    /// once the app's memory had been trimmed and paged out, and it all came before the Ctrl+V (CLAUDE.md §2.52).
     /// </remarks>
-    private void Conceal()
+    public void PutAwayForPaste()
+    {
+        if (!IsOpen)
+        {
+            return;
+        }
+
+        CloseImageOverlays();
+        CloseUpdateDialog();
+        PutAway(handTo: 0, finishSoon: false);
+    }
+
+    /// <summary>
+    /// Takes the panel off the screen: every way the panel goes away passes here (Esc, a paste, the shortcut again, a click
+    /// elsewhere). Cloaks and marks it away, hands the foreground to <paramref name="handTo"/>, and queues the rest of the
+    /// put-away or leaves it to the caller.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Order matters. The window is cloaked and <see cref="presented"/> cleared first: activating another window deactivates
+    /// the panel — synchronously, inside <c>SetForegroundWindow</c>, when called from this thread — and
+    /// <see cref="OnActivated"/> must find it away already; it used to put the whole panel away right there, before the
+    /// target even got its activation. Then the foreground goes to <paramref name="handTo"/> while the panel still owns it
+    /// (cloaking does not give it away), so <c>SetForegroundWindow</c> is always allowed. Hiding comes last
+    /// (<see cref="FinishPuttingAway"/>): it hands the foreground to whatever window Windows picks next, after which the
+    /// panel could no longer give it to the target.
+    /// </para>
+    /// <para>
+    /// The rest is queued, never run here: this runs inside the panel's deactivation (a click elsewhere: the window being
+    /// activated waits for that handler to return) or right before the window the user came from takes its activation,
+    /// which can wait on this thread too (CLAUDE.md §2.52). The view reset with its layout pass of the list must not hold
+    /// either back; the window's keyboard is gone already.
+    /// </para>
+    /// </remarks>
+    /// <param name="handTo">The window to give the foreground to (the one the user came from), or 0 for none.</param>
+    /// <param name="finishSoon">
+    /// Queue <see cref="FinishPuttingAway"/> now; <see langword="false"/> leaves it to the caller (a paste runs it after its
+    /// Ctrl+V).
+    /// </param>
+    private void PutAway(nint handTo, bool finishSoon)
     {
         if (!presented)
         {
@@ -100,13 +157,50 @@ public sealed partial class ClipboardFlyout
         CancelUpdateReminder();
 
         presented = false;
+        finishPending = true;
+
+        // Off the screen at DWM's next frame, without any animation. Where DWM refuses to cloak, the window is hidden by
+        // FinishPuttingAway instead, after the foreground went on.
         if (cloaking)
         {
-            // Off the screen at DWM's next frame, without any animation...
             WindowInterop.SetCloaked(hwnd, true);
+        }
 
-            // ...then hidden, so Windows activates the next window if the panel still had the foreground, and shown again
-            // without activation, so XAML keeps drawing into it and the next summon finds a finished picture.
+        if (handTo != 0)
+        {
+            ForegroundHelper.Activate(handTo);
+        }
+
+        if (finishSoon && !DispatcherQueue.TryEnqueue(FinishPuttingAway))
+        {
+            // The queue is shutting down (app exit): nothing would run it later.
+            FinishPuttingAway();
+        }
+    }
+
+    /// <summary>
+    /// The rest of putting the panel away, once it is off the screen (<see cref="PutAway"/>): the window hidden — so Windows
+    /// activates the next window if the panel still had the foreground — and shown again without activation; the view reset
+    /// for the next summon; the remembered tab saved; what this use read or decoded let go. A no-op when nothing is pending,
+    /// when a summon brought the panel back meanwhile, or once the app closes the window for its exit.
+    /// </summary>
+    /// <remarks>
+    /// It runs a moment after the put-away (queued, or after a paste's Ctrl+V), so the exit can have closed the window by
+    /// then: hiding a closed window throws, and the next start prepares a fresh panel anyway.
+    /// </remarks>
+    public void FinishPuttingAway()
+    {
+        if (!finishPending || presented || closingForExit)
+        {
+            return;
+        }
+
+        finishPending = false;
+        if (cloaking)
+        {
+            // Hidden, so Windows activates the next window if the panel still had the foreground (a paste or Esc gave it to
+            // the target already; from the tray there is none), and shown again without activation, so XAML keeps drawing
+            // into it and the next summon finds a finished picture.
             AppWindow.Hide();
             AppWindow.Show(false);
         }
@@ -115,15 +209,16 @@ public sealed partial class ClipboardFlyout
             AppWindow.Hide();
         }
 
-        // The tab chosen during this use reaches the settings file now (once per use, and only when it changed), after
-        // the window is gone: the write is queued, so it never sits between a paste's conceal and its Ctrl+V.
+        // The tab chosen during this use reaches the settings file now (once per use, and only when it changed): the write is
+        // queued, so it never sits between a paste's Enter and its Ctrl+V.
         SaveRememberedTab();
         PrepareForNextSummon();
 
-        // What this use left behind — the full-size picture of the image peek, the cards of a search — is given back once
-        // no summon follows for a while (AppController.Memory.cs): most of it is native memory WinUI frees only when the
-        // .NET objects holding it are collected.
+        // What this use left behind — the full-size picture of the image peek, the formats read ahead for a paste, the cards
+        // of a search — is given back once no summon follows for a while (AppController.Memory.cs): most of it is native
+        // memory WinUI frees only when the .NET objects holding it are collected.
         ReleaseImageCache();
+        controller.ForgetPrefetchedFormats();
         controller.NotePanelPutAway();
     }
 
@@ -263,6 +358,12 @@ public sealed partial class ClipboardFlyout
             MoveAndResizeExactly(rect);
         }
 
+        // Back on screen: a put-away still owed (FinishPuttingAway: queued by the last dismissal, or due after a paste's
+        // Ctrl+V) would now hide the panel, and a paste's Enter guard would swallow this use's first Enter. Everything from
+        // ShowAt's start to here runs in one go, so a queued rest cannot slip in between.
+        finishPending = false;
+        enterPending = false;
+        enterSerial++;
         presented = true;
         if (!cloaking)
         {

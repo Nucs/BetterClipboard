@@ -85,10 +85,13 @@ public sealed partial class AppController
     /// </summary>
     /// <param name="prompt">The prompt (a tab row).</param>
     /// <param name="paste">Inject Ctrl+V into the target (otherwise only copy).</param>
+    /// <param name="timeline">
+    /// The paste's timeline, started at the key that asked for it; <see langword="null"/> starts one now (a click, a menu).
+    /// </param>
     /// <returns>A task completing when done; failures are logged, never thrown (fire-and-forget safe).</returns>
-    public async Task PastePromptAsync(PromptSummary prompt, bool paste = true)
+    public async Task PastePromptAsync(PromptSummary prompt, bool paste = true, PasteTimeline? timeline = null)
     {
-        var target = pasteTarget?.TargetWindow ?? 0;
+        timeline ??= PasteTimeline.StartNow();
         try
         {
             if (await LoadPromptTextAsync(prompt) is not { } text)
@@ -97,13 +100,11 @@ public sealed partial class AppController
                 return;
             }
 
-            await monitor!.WriteAsync(PromptFormats(text));
+            timeline.Mark("text");
+            await DeliverAsync(PromptFormats(text), paste, timeline);
+
+            // Stored after the paste (AppController.Paste.cs): nothing but the paste between the key and the Ctrl+V.
             _ = StorePromptAsync(prompt.Agent, text, pin: false);
-            flyout?.Dismiss(restoreFocus: true);
-            if (paste && Settings.Current.PasteOnSelect && target != 0)
-            {
-                await InjectPasteAsync(target);
-            }
         }
         catch (Exception ex)
         {
