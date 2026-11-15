@@ -5566,8 +5566,8 @@ HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
   as before.
 - **The peek:** the mouse resting 450 ms on a cut-off card's text opens the whole text centered on the panel, at most
   900 DIPs wide and 80 % of the work area, drawn like the viewer.
-  - The mouse's first real move closes it, wherever the mouse goes, and the wheel scrolls it from anywhere without
-    closing it (the owner's follow-up, below). A right-click with the mouse still shows *Copy* and *Select all* above
+  - A move of more than 15 pixels from where it opened closes it (3 until 2026-11-15, below), wherever the mouse goes,
+    and the wheel scrolls it from anywhere without closing it (the owner's follow-up, below). A right-click with the mouse still shows *Copy* and *Select all* above
     the card's own menu (whose *View* opens the viewer), and the peek stays while that menu shows.
   - Esc and a click outside the frame close it too.
   - It shows at most one page, 64,000 characters, with "Showing the first N of M characters. F3 opens all of it."
@@ -5642,9 +5642,10 @@ to middlemouse scrolling just fine. Only keep open ignoring mouse movement when 
 dont think Markdown renders at this with a scrollbar for some reason (on the local install)", about a 3,600-character
 note of theirs (32 lines).
 - **Any real move closes the peek.** The first version kept it while the mouse moved over it or its card, so that its
-  text could be selected. Now a move past 3 pixels from where it opened closes it, wherever the mouse goes
-  (`TextPeek_PointerMoved`), as the image peek does. Only its own right-click menu keeps it while the mouse goes to the
-  menu; once that menu closes, the next move counts from where the mouse is. Selecting with the mouse is the viewer's.
+  text could be selected. Now a move past 3 pixels (15 since 2026-11-15) from where it opened closes it, wherever the
+  mouse goes (`TextPeek_PointerMoved`), as the image peek does. Only its own right-click menu keeps it while the mouse
+  goes to the menu; once that menu closes, the next move counts from where the mouse is. Selecting with the mouse is
+  the viewer's.
 - **The wheel scrolls it from anywhere** on its surface, which covers the panel's monitor, and no longer closes it. Over
   the text box RichEdit scrolls by itself (91 pixels a notch for that note in the QA desktop); anywhere else
   `TextPreviewPresenter.ScrollByWheel` scrolls it (three lines a notch at the text's size, 53 pixels there; quick
@@ -5690,6 +5691,14 @@ claude-desktops Windows 11 desktop with diagnostic builds (never committed), and
   key's source lies in its surface), and the peek's text takes the keyboard before its menu opens and when it closes
   (`FocusOpenViewer`). A key typed while the mouse merely rests on a card is still the search box's, and closes the peek.
 - Not slow in our code: a selection dragged over the viewer drew a frame every 16 ms (median) on the GPU-less desktop.
+
+**A 15-pixel radius** (2026-11-15). User request: "the textviewer that shows when mouse is hovering without moving, i
+want a 15px radius of movement to exit the viewer after it showed". The peek now stays while the mouse is within 15
+pixels of where it opened, as a distance, not per axis (`TextPeekMoveThresholdPx`, compared squared in
+`TextPeekCursorMoved`), and closes at the first move beyond. After its right-click menu closes, the circle is centered
+where the mouse is then. Until now it used the image peek's 3 pixels (`PeekMoveThresholdPx`, §2.24), which the image
+peek keeps. Physical pixels, like the cursor position it is compared with: 12 DIPs on a monitor at 125 %. Verified: see
+§5.
 
 **Pieces.**
 - Core: `TextView/` (`TextLanguage` and `TextLanguages`, `TextLanguageDetector`, `SyntaxToken`, `SyntaxHighlighter`
@@ -8105,6 +8114,7 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **The text peek's 15-pixel radius, live** (2026-11-15, §2.50; the owner: "i want a 15px radius of movement to exit the viewer after it showed"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-radius`, 1920×1080 at 100 %, no GPU; the worker was unreachable; deleted afterwards with its persist folder), a self-contained build of a private worktree (`eaf0f65` plus only this change, `0.2.12-dev.radius1`) started with pre-seeded settings, and one 30-line BC-TEST text copied through the clipboard. The peek opened with the mouse resting at (1052, 522); moved to 10 px right, (10, 10) at 14.1 px and (15, 0) at exactly 15 px, it stayed; at (12, 10), 15.6 px with each axis under 15, it closed. Again with its right-click menu: the mouse moved into the menu (about 160 px), Esc closed the menu, and the circle was centered there: 10 px kept the peek, 20 px closed it. The app's log: 18 lines, 0 WRN/ERR | claude-desktops MCP tools (`clipboard`, `move_mouse` single jumps, `click`, `press_keys`, screenshots); guest script `setup.ps1` (settings, unpack, start) | ✅ Not run: a monitor at another scale (the radius is in physical pixels), touch and pen (a touch or pen move still closes at once) |
 | **The Store pipeline connected** (2026-11-14 and 15, §3.5; the owner: "Lets do it, guide me through what to do and finish this up", then "Again lets try to publish"). In the owner's Azure directory, with `az`: a work account with Global Administrator (its first password in a file, changed by the owner at the first sign-in, then deleted) and the application *BetterClipboard Store submission (GitHub Actions)*. In the owner's Chrome, in a tab of my own (closed afterwards): the tenant associated from the developer account (the work account in the picker, then the confirmation page's *Confirm*: "Tenant association complete … now has Account admin permissions"), and, signed in again as the work account, the application added with Manager (Windows). The three secrets set, the key by pipe (it ends 2027-11-15). *Microsoft Store › check*: run 43719040350 signed in and read the app, and was red with "exit code " (the script's Check mode ended with a `return`); with `8939afe`, pushed alone onto GitHub's `main` as a temporary branch (deleted afterwards), run 43719877269 was green: "App 9PHL574X9BF9 is "BetterClipboard": nothing is published yet, and a submission is pending". `test-submit-store.ps1` 45 of 45; HEAD's unfixed script fails exactly its two new in-process checks ("LASTEXITCODE 99"). Not read: the work account's second factor and the directory's security defaults (the Azure CLI's token lacks the scopes) | `az`, `gh secret set`, chrome-devtools in a tab of my own, `gh workflow run store.yml --ref <branch> -f mode=check`, `test-submit-store.ps1` | ✅ connected. Submitting waits for the first published submission |
 | **Speed survey: what else was slow** (2026-11-15, §2.53; the owner: "What else (other functionalities) that are too slow, improve"). The owner's log (2026-10-31 to 11-15): 39 summons of 101–538 ms (median 154), first summons 53–875 ms, the warm-up 485–7,218 ms. A claude-desktops Windows 11 desktop on this PC (`bc-speed`: Tiny11 25H2, 4 cores, no GPU; the owner's demo data; deleted afterwards with its persist folder), packages `0.2.12-dev.speed1` to `speed4` with temporary stage marks and page-fault counts (never committed): summons 33–94 ms with the memory in place (130–250 faults), 33–55 ms after a trim with the pages in RAM (6,200–8,200), 5.1–11.7 s after a trim and a standby purge (4,600–15,500), 58–110 ms with no trim (75–415); Settings 1.19–1.23 s (JIT) → 0.58 s (ReadyToRun), the warm-up 713 → 428–478 ms, the first Win+V 214 → 88 ms; a 3840 × 2400 bitmap-only picture's peek 1.44–1.49 s (PNG encode) → 0.74–0.83 s (.bmp); the four tab lookups 0–2 ms in place, 0.1–1.2 s purged; tab reloads 20–140 ms, Files 257–368 ms; the prefetch prototype read 57–58 MB in 5.0–8.4 s and no summon got faster | `probe_paste.cs` (`--memory warm|trim|purge`), the builds' temporary log lines, the owner's log | ✅ |
 | **The final build in the test desktop** (2026-11-15, §2.53; `0.2.12-dev.speed5`, this change before its docs), installed over the earlier build with `install.ps1 -Package`. The summon's new log line: "(queued 6 ms, prepared 20 ms, moved 9 ms, activated 37 ms, shown 3 ms; 243 page faults)" for the first summon after the install, "(…, activated 105 ms, …; 84 page faults)" for a slow one that waited for the window's activation, "(queued 1158 ms, prepared 463 ms, moved 178 ms, activated 980 ms, shown 6 ms; 12,508 page faults)" after a purge; warm summons a median of 32.8 ms (the probe). The 4K picture's peek drawn from its bitmap. Settings opened and drew its page; closing it restarted the app silently ("Silent restart: the shortcuts were held during the switch"); the warm-up 427–513 ms after a restart; `bclip --version`, and `status` refused with the command line off (exit 3). Task Manager's "Memory" 32 MB after the start and 50–52 MB after using the panel; private 53 and 84 MB. Found: a paste of the 37 MB bitmap-only picture reads it at the paste ("formats 488–794 ms", §6). The app's log: 0 WRN/ERR | claude-desktops MCP tools; `probe_paste.cs`; performance counters; the app's log | ✅ |

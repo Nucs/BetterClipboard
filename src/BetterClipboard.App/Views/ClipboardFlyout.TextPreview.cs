@@ -27,12 +27,14 @@ namespace BetterClipboard.App.Views;
 /// eye, a thin "⋯" line under its text and the hover peek; any card with text can be opened from its menu's View (F3).
 /// </para>
 /// <para>
-/// <b>The peek is a quick look.</b> It opens centered on the panel after the mouse rests on a cut-off card, and closes at
-/// the mouse's first real move, wherever the mouse goes, like the image peek (ClipboardFlyout.ImagePreview.cs). The wheel
-/// scrolls its text from anywhere on the panel's monitor and never closes it. That is the owner's rule (2026-11-13), which
-/// replaced the first version's peek that stayed while the mouse moved over it or its card: "it close immediately if i
-/// move the mouse BUT it should react to middlemouse scrolling just fine. Only keep open ignoring mouse movement when
-/// clicking the eye at the corner". A right-click with the mouse still opens the card's own menu with Copy and Select all,
+/// <b>The peek is a quick look.</b> It opens centered on the panel after the mouse rests on a cut-off card, and closes once
+/// the mouse is more than 15 pixels from where it opened (<see cref="TextPeekMoveThresholdPx"/>, the owner's rule of
+/// 2026-11-15; the image peek's 3 pixels before), wherever the mouse goes, like the image peek
+/// (ClipboardFlyout.ImagePreview.cs). The wheel scrolls its text from anywhere on the panel's monitor and never closes
+/// it. Closing on a move and the wheel are the owner's rule of 2026-11-13, which replaced the first version's peek that
+/// stayed while the mouse moved over it or its card: "it close immediately if i move the mouse BUT it should react to
+/// middlemouse scrolling just fine. Only keep open ignoring mouse movement when clicking the eye at the corner". A
+/// right-click with the mouse still opens the card's own menu with Copy and Select all,
 /// and the peek stays while that menu shows; Esc and a click outside the frame close it too. The menu's keys are its own
 /// (the arrows, Enter, and Esc, which closes only the menu), and once it has closed the keyboard is in the peek's text:
 /// Ctrl+C copies its selection and the arrow keys move it (<see cref="IsTextPeekKey"/>; until 2026-11-14 any key closed the
@@ -72,6 +74,18 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>The share of the work area the peek may use at most, in each direction.</summary>
     private const double TextPeekMaxFraction = 0.8;
+
+    /// <summary>
+    /// How far the mouse may move from where the text peek opened (or from where its menu closed) and the peek still
+    /// stays, in physical pixels, measured as a radius: a move past it closes the peek.
+    /// </summary>
+    /// <remarks>
+    /// The owner's rule (2026-11-15): "a 15px radius of movement to exit the viewer after it showed". It was the image
+    /// peek's 3 pixels (<see cref="PeekMoveThresholdPx"/>, which stays), and a hand resting on the mouse while reading a
+    /// long text drifts more than that. Physical pixels like the cursor position it is compared with (GetCursorPos): on a
+    /// monitor at 125 % the radius is 12 DIPs. The wheel never closes the peek, whatever the radius.
+    /// </remarks>
+    private const int TextPeekMoveThresholdPx = 15;
 
     /// <summary>The viewer's widest, in DIPs.</summary>
     private const double TextViewerMaxWidthDip = 1400;
@@ -864,15 +878,17 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// The mouse moved over the peek's surface (it covers the panel's monitor): a real move closes the peek, wherever the
-    /// mouse goes, over the text and over the card included (the owner's rule, 2026-11-13). Only the peek's own menu keeps
-    /// it while the mouse moves to that menu.
+    /// The mouse moved over the peek's surface (it covers the panel's monitor): a move of more than
+    /// <see cref="TextPeekMoveThresholdPx"/> from where the peek opened closes it, wherever the mouse goes, over the text
+    /// and over the card included (the owner's rules, 2026-11-13 and 2026-11-15). Only the peek's own menu keeps it while
+    /// the mouse moves to that menu.
     /// </summary>
     /// <param name="sender">The surface.</param>
     /// <param name="e">Pointer data.</param>
     /// <remarks>
-    /// A move is real once the cursor has left the spot where the peek opened (<see cref="TextPeekCursorMoved"/>): WinUI
-    /// also raises moves at a still mouse, when the surface appears under it and when the wheel scrolls the text under it.
+    /// Decided by the cursor's position (<see cref="TextPeekCursorMoved"/>), not by the event: a resting hand drifts a few
+    /// pixels, and WinUI also raises moves at a still mouse, when the surface appears under it and when the wheel scrolls
+    /// the text under it.
     /// </remarks>
     private void TextPeek_PointerMoved(object sender, PointerRoutedEventArgs e)
     {
@@ -1063,7 +1079,7 @@ public sealed partial class ClipboardFlyout
                 return;
             }
 
-            // The mouse went to the menu and came back: the peek now closes at the next real move from where it is.
+            // The mouse went to the menu and came back: the radius now counts from where it is.
             if (textPeekPopup is not null)
             {
                 textPeekAnchor = ScreenPointer.Cursor();
@@ -1081,8 +1097,11 @@ public sealed partial class ClipboardFlyout
         };
     }
 
-    /// <summary>Whether the cursor has left the spot where the peek opened (past the image peek's threshold).</summary>
-    /// <returns><see langword="true"/> when it has, or when its position cannot be read.</returns>
+    /// <summary>
+    /// Whether the cursor is more than <see cref="TextPeekMoveThresholdPx"/> from where the peek opened (or from where its
+    /// menu closed): a circle around that spot, so the distance counts, not each axis on its own.
+    /// </summary>
+    /// <returns><see langword="true"/> when it is, or when its position cannot be read.</returns>
     private bool TextPeekCursorMoved()
     {
         if (textPeekAnchor is not { } anchor || ScreenPointer.Cursor() is not { } now)
@@ -1092,7 +1111,7 @@ public sealed partial class ClipboardFlyout
 
         long dx = now.X - anchor.X;
         long dy = now.Y - anchor.Y;
-        return ((dx * dx) + (dy * dy)) > (long)PeekMoveThresholdPx * PeekMoveThresholdPx;
+        return ((dx * dx) + (dy * dy)) > (long)TextPeekMoveThresholdPx * TextPeekMoveThresholdPx;
     }
 
     /// <summary>Closes the text peek, if any (safe to call when none is open).</summary>
