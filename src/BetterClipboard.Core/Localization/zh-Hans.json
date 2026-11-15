@@ -524,7 +524,7 @@
   "Pin (keep in history)": "固定（保留在历史中）",
   "Pin items (Ctrl+P) to keep them at hand forever.": "固定项目（Ctrl+P），方便随时使用并永久保留。",
   "Pinned": "已固定",
-  "Pinned items are listed before everything else. The panel still selects your newest copy, just below them.": "固定项目显示在其他项目之前。面板仍会选中紧接在它们下方的最新复制内容。",
+  "Pinned items are listed before everything else. The panel opens on your newest copy, with the pinned items just above it: scroll up or press ↑ to see them.": "固定项目显示在其他项目之前。面板打开时停在你最新的复制内容上，固定项目就在它的上方：向上滚动或按 ↑ 即可看到它们。",
   "Pinned or in a group": "已固定或在分组中",
   "Places": "地点",
   "Plain text": "纯文本",

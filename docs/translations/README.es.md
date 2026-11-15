@@ -153,7 +153,7 @@ BetterClipboard se actualiza desde sus [versiones en GitHub](https://github.com/
 <a id="use"></a>
 ## Uso
 
-Presiona **Win+V**. El panel aparece al instante junto a tu cursor de texto, en la pestaña que usaste por última vez, con el foco en el cuadro de búsqueda: solo escribe. Tu copia más reciente está seleccionada, así que `Enter` la pega. Los elementos anclados aparecen encima de ella (*Configuración › Pegado* puede ordenarlos por fecha en su lugar), y `↑` llega a ellos.
+Presiona **Win+V**. El panel aparece al instante junto a tu cursor de texto, en la pestaña que usaste por última vez, con el foco en el cuadro de búsqueda: solo escribe. Se abre en tu copia más reciente, arriba y seleccionada, así que `Enter` la pega. Tus elementos anclados están encima de ella, fuera de la vista: desplázate hacia arriba o presiona `↑` para verlos (*Configuración › Pegado* puede ordenarlos por fecha en su lugar). Una búsqueda o un grupo empiezan arriba, con sus elementos anclados a la vista.
 
 *Configuración › Atajo de teclado › Posición del panel* lo abre junto al mouse en su lugar, o en el centro de una pantalla: la principal o aquella en la que escribes (con varios monitores, la pantalla de la ventana en la que estabas; después de un clic en el escritorio, la pantalla del mouse).
 

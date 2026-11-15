@@ -267,8 +267,9 @@ when you say so.
 ## Use
 
 Press **Win+V**. The panel appears at once by your text cursor, in the tab you used last, with the search box focused
-— just type. Your newest copy is selected, so <kbd>Enter</kbd> pastes it. Pinned items are listed above it (*Settings › Pasting*
-can list them in time order instead), and <kbd>↑</kbd> reaches them.
+— just type. It opens on your newest copy, at the top and selected, so <kbd>Enter</kbd> pastes it. Your pinned items are
+listed above it, out of view: scroll up or press <kbd>↑</kbd> to see them (*Settings › Pasting* can list them in time order
+instead). A search or a group starts at the top, its pinned items in view.
 
 *Settings › Shortcut › Panel position* opens it next to the mouse instead, or in the middle of a screen: the main one,
 or the one you are typing on (with several monitors, the screen with the window you were in; after a click on the

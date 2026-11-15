@@ -270,8 +270,9 @@ public sealed partial class ClipboardFlyout : Window
         // while they are listed first (ArmCard; Up from it reaches the pins). Unconditionally: a reload patches the list
         // (FlyoutViewModel.ApplyEntries) instead of clearing it, so a card that is still listed keeps its selection, which
         // may no longer be the armed one (it used to be lost with the clear), and the list keeps its scroll position (the
-        // clear used to reset it): ArmCard also brings the list back to its top. Callers that keep a card selected across
-        // their reload (a history change, a prompt tab) select it again after awaiting the reload.
+        // clear used to reset it): ArmCard also puts the list back where a load starts — the armed card at the top with the
+        // pins out of view in the plain history, the list's top in a search or a group view. Callers that keep a card
+        // selected across their reload (a history change, a prompt tab) select it again after awaiting the reload.
         ViewModel.Reloaded += (_, _) =>
         {
             // The rows changed under a mouse that may lie on the list: until it really moves, it must not take the
@@ -691,9 +692,10 @@ public sealed partial class ClipboardFlyout : Window
                 {
                     ItemsList.SelectedItem = again;
 
-                    // The reload brought the list to its own armed card (ArmCard), which below many pins lies a screenful
-                    // away from the card selected again here — the copy just pinned with Ctrl+P sits up among the pins.
-                    // Brought back into view, so the user's card stays on screen (the list only moves when it is not).
+                    // The reload brought the list to its own armed card (ArmCard): in the plain history that card stands
+                    // at the top with every pin above it out of view, and below many pins it lies a screenful away anyway
+                    // from the card selected again here — the copy just pinned with Ctrl+P sits up among the pins. Brought
+                    // back into view, so the user's card stays on screen (the list only moves when it is not).
                     ItemsList.ScrollIntoView(again);
                 }
             }

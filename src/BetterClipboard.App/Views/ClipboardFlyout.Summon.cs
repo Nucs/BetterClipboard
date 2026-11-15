@@ -225,8 +225,9 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Sets the concealed panel to what the next summon shows — the regular view with an empty search, the tab the user
     /// last chose (<see cref="ResetViewForShow"/>), the tab strip showing that tab, the groups column as remembered, the
-    /// newest copy selected with the list at its top (<see cref="ResetListPosition"/>) — and reloads the list if it is not
-    /// current. <see cref="ShowAt"/> repeats the resets, which are then no-ops, so nothing changes on screen.
+    /// newest copy selected at the top of the list, the pins above it (<see cref="ResetListPosition"/>) — and reloads the
+    /// list if it is not current. <see cref="ShowAt"/> repeats the resets, which are then no-ops, so nothing changes on
+    /// screen.
     /// </summary>
     private void PrepareForNextSummon()
     {
@@ -285,7 +286,7 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Reloads the list while the panel is concealed, unless it is current already or a summon came first (which reloads by
-    /// itself), then selects the newest copy with the list at its top (<see cref="ResetListPosition"/>).
+    /// itself), then selects the newest copy at the top of the list, the pins above it (<see cref="ResetListPosition"/>).
     /// </summary>
     /// <returns>A task completing when the list is current; it never throws (<c>ReloadAsync</c> logs its own failures).</returns>
     private async Task RefreshConcealedListAsync()
@@ -308,12 +309,14 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Selects the armed card — the newest copy, below the pinned cards while they are listed first — and scrolls the list
-    /// to its top, without animation: the concealed list, for the next summon, and the summon itself once its list is in.
+    /// to where a summon starts, without animation: the concealed list, for the next summon, and the summon itself once its
+    /// list is in.
     /// </summary>
     /// <remarks>
-    /// Below pinned cards, <see cref="ArmCard"/> scrolls by itself: to the top, or just low enough to show the armed card
-    /// whole when the pins fill the top's view. A plain scroll to the top afterwards would undo the latter, so it follows only
-    /// when the armed card is the top card (or the list is empty).
+    /// Below pinned cards, <see cref="ArmCard"/> scrolls by itself: a summon shows the plain history (no search text, no
+    /// group), so the armed card goes to the top and the pins above it out of view (<see cref="ScrollPinsOutOfView"/>). A
+    /// plain scroll to the top afterwards would undo that, so it follows only when the armed card is the top card (or the
+    /// list is empty).
     /// </remarks>
     private void ResetListPosition()
     {

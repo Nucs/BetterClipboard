@@ -563,7 +563,7 @@
   "Pin (keep in history)": "Закрепить (сохранить в журнале)",
   "Pin items (Ctrl+P) to keep them at hand forever.": "Закрепляйте элементы (Ctrl+P), чтобы они всегда были под рукой.",
   "Pinned": "Закреплённые",
-  "Pinned items are listed before everything else. The panel still selects your newest copy, just below them.": "Закреплённые элементы показываются перед всеми остальными. Панель всё равно выделяет вашу последнюю копию — сразу под ними.",
+  "Pinned items are listed before everything else. The panel opens on your newest copy, with the pinned items just above it: scroll up or press ↑ to see them.": "Закреплённые элементы показываются перед всеми остальными. Панель открывается на вашей последней копии, а закреплённые элементы — прямо над ней: прокрутите вверх или нажмите ↑, чтобы их увидеть.",
   "Pinned or in a group": "Закреплённые или в группах",
   "Places": "Места",
   "Plain text": "Обычный текст",

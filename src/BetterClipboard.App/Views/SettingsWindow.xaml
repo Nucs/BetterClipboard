@@ -462,7 +462,7 @@
                     <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.MoveToTopOnPaste, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
-                    Description="{loc:Tr Text='Pinned items are listed before everything else. The panel still selects your newest copy, just below them.'}"
+                    Description="{loc:Tr Text='Pinned items are listed before everything else. The panel opens on your newest copy, with the pinned items just above it: scroll up or press ↑ to see them.'}"
                     Glyph="&#xE840;"
                     Header="{loc:Tr Text='Show pinned items first'}"
                     Keywords="{loc:Tr Text='pins, order, sort, top'}">

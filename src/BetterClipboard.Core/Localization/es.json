@@ -549,7 +549,7 @@
   "Pin (keep in history)": "Anclar (guardar en el historial)",
   "Pin items (Ctrl+P) to keep them at hand forever.": "Ancla elementos (Ctrl+P) para tenerlos siempre a mano.",
   "Pinned": "Anclados",
-  "Pinned items are listed before everything else. The panel still selects your newest copy, just below them.": "Los elementos anclados aparecen antes que todo lo demás. El panel sigue seleccionando tu copia más reciente, justo debajo de ellos.",
+  "Pinned items are listed before everything else. The panel opens on your newest copy, with the pinned items just above it: scroll up or press ↑ to see them.": "Los elementos anclados aparecen antes que todo lo demás. El panel se abre en tu copia más reciente, con los elementos anclados justo encima: desplázate hacia arriba o presiona ↑ para verlos.",
   "Pinned or in a group": "Anclados o en un grupo",
   "Places": "Lugares",
   "Plain text": "Texto sin formato",
