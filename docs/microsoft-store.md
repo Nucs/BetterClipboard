@@ -529,16 +529,16 @@ For whoever repeats this in the owner's Chrome: the developer account signs in w
 dialog appears only for the tab in front. A reload of the passkey step fails with AADSTS900561 ("The endpoint only
 accepts POST requests"); start again from Partner Center's address instead.
 
-**Still open** (the owner's call):
+**Decided by the owner** (2026-11-15):
 
-- **The work account keeps its Global Administrator role.** The pipeline never signs in as the work account (it
-  signs in as the application), and a key is renewed with `az` by the directory's administrator. The role is needed
-  again only to add or change an application in Partner Center (Microsoft's rule above). Taking it away now, and
-  giving it back for such a change, is one `az` call each.
-- **Whether the work account has a second factor** was not read: the Azure CLI's token may read neither the
-  directory's security defaults ("required scopes are missing in the token") nor a user's sign-in methods ("Request
-  Authorization failed") **[measured]**. The Microsoft Entra admin center shows both (*Users*, the account,
-  *Authentication methods*).
+- **The work account keeps its Global Administrator role** ("Keep it", offered next to removing it). The pipeline
+  never signs in as the work account (it signs in as the application), and a key is renewed with `az` by the
+  directory's administrator. The role is needed again only to add or change an application in Partner Center
+  (Microsoft's rule above).
+- **The work account has a second factor**, in the owner's words ("it has"). It could not be read from here: the
+  Azure CLI's token may read neither the directory's security defaults ("required scopes are missing in the token")
+  nor a user's sign-in methods ("Request Authorization failed") **[measured]**. The Microsoft Entra admin center
+  shows both (*Users*, the account, *Authentication methods*).
 
 **The key runs out on 2027-11-15** (one year, the default of `az ad app credential reset`). After that the Store
 step fails, and the run is red. Renew it with the pipe of step 4, which replaces the old key, then run *check*. The
@@ -627,8 +627,8 @@ Left:
    failure comes with a report; fix and resubmit the same way.
 6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning.
 7. ~~The pipeline's connection~~: made on 2026-11-14 and 15 (§7, "How it was set up"); *check* is green. From
-   the first published submission on, each release submits itself. Left of it, the owner's call: the work
-   account's Global Administrator role and its second factor (§7, "Still open").
+   the first published submission on, each release submits itself. The work account keeps its Global
+   Administrator role and has a second factor (the owner, 2026-11-15; §7).
 
 **The name.** "Better Clipboard", in two words, is the title of other products: a Store app (PAST-E Clipboard,
 `9NR75C5JPVVX`) and a Mac app (betterclipboard.com). Partner Center reserved "BetterClipboard" without objection;

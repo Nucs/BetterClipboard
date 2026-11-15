@@ -7047,9 +7047,9 @@ change visibly. The README photos' way (§3.4), with these differences:
     (Windows)**, *Add*.
   - **The key ends 2027-11-15.** Renew it with the pipe in `docs/microsoft-store.md` §7 (it replaces the old key),
     then run *check*. The client ID: `az ad app list --display-name "<the application's name>"`.
-  - **The owner's call, still open:** the work account keeps Global Administrator, which only adding or changing an
-    application in Partner Center needs (the pipeline signs in as the application); whether that account has a
-    second factor could not be read with the Azure CLI's token.
+  - **The owner's answers (2026-11-15):** the work account keeps Global Administrator ("Keep it"; only adding or
+    changing an application in Partner Center needs it, the pipeline signs in as the application), and it has a
+    second factor ("it has"; the Azure CLI's token cannot read it).
 - **Why a script of our own and not Microsoft's `msstore` CLI:** its `publish` takes one package file, and this
   edition ships one per architecture without a bundle.
 - **Tested without the service** (`test-submit-store.ps1`, 45 checks, in CI): a stand-in on this PC answers like the
@@ -8435,10 +8435,8 @@ kit by a scratch generator, session 66cdd808):
     catalogs and into the kit, then one import;
   - ~~connect the pipeline~~: connected 2026-11-15 (§3.5), *check* green. `submit-store.ps1`'s Submit mode has not
     met the real service yet; its first real run is the release after the first published submission;
-  - **the work account's Global Administrator role and second factor**, the owner's call (`docs/microsoft-store.md`
-    §7, "Still open"): the pipeline never signs in as that account, so the role can go until an application has to
-    be added or changed in Partner Center; whether the account has a second factor shows in the Entra admin center
-    (the Azure CLI's token cannot read it);
+  - ~~the work account's Global Administrator role and second factor~~: the owner's answers (2026-11-15): the role
+    stays, and the account has a second factor (`docs/microsoft-store.md` §7);
   - **a sign-in without a stored key**: GitHub's OpenID Connect token and a federated credential on the
     application would replace `PARTNER_CENTER_CLIENT_SECRET`, which runs out on 2027-11-15 and then fails the Store
     step. It can be tried with *check* now that the connection exists;
