@@ -81,6 +81,9 @@
     Progress lines on the host. Exit code 0: done (Submit: the Store accepted the commit; Draft: the draft is there;
     Check: the app was read). 1: the Store refused or something failed. 2: wrong arguments or packages. 3: the
     credentials are not set. 4: the app has no published submission yet, so the API cannot be used for it.
+    The code arrives both ways the script can be run: as the process's exit code (pwsh -File), and as $LASTEXITCODE
+    when another script runs this one in its own PowerShell, as the workflows do. So every ending is an exit, never a
+    return at script level (a return leaves $LASTEXITCODE as it was).
 
 .EXAMPLE
     pwsh tools/release/submit-store.ps1 -Mode Check
@@ -582,7 +585,11 @@ try {
     if ($Mode -eq 'Check') {
         Write-Step 'The credentials and the product id work. Nothing was changed.'
         if (-not $published) { Write-Step 'Updates through this script start once the first submission, made in Partner Center, is published.' }
-        return
+        # exit, never return: a return here skips the "exit $exitCode" at the end, and a caller that runs this script
+        # in its own PowerShell, as the workflows do, then reads no exit code at all ($LASTEXITCODE stays what it was:
+        # unset in a fresh step, so store.yml's first check with real credentials failed with "exit code " although
+        # the check had passed). exit still runs the finally below, and catch does not catch it.
+        exit 0
     }
 
     if (-not $published) {
@@ -664,7 +671,8 @@ try {
 
     if ($Mode -eq 'Draft') {
         Write-Step "Submission $submissionId is a draft in Partner Center; it was not committed. Look at it there without changing it, or delete it; the next run deletes it."
-        return
+        # exit, never return, for the reason given at the Check mode's ending above.
+        exit 0
     }
 
     Write-Step 'Committing the submission'

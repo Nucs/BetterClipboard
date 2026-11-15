@@ -355,28 +355,72 @@ function Reset-StandIn {
     [void] $state.Statuses.Add('{"status":"PreProcessing","statusDetails":{"errors":[],"warnings":[],"certificationReports":[]}}')
 }
 
+function ConvertTo-NamedArguments {
+    <#
+    .SYNOPSIS
+        Turns a script's arguments as a command line lists them ("-Mode", "Check", "-KeepPending") into a hashtable
+        that binds them by name.
+    .DESCRIPTION
+        Needed to run the script in this PowerShell: splatting an array onto a script hands "-Mode" over as a
+        positional value ("A positional parameter cannot be found that accepts argument '-Version'"), where a new
+        pwsh reads it from its command line as a name. A name followed by another name, or by nothing, is a switch.
+        Values never start with a dash in these tests.
+    .PARAMETER Arguments
+        The arguments, names with their leading dash.
+    .OUTPUTS
+        System.Collections.Hashtable. Parameter name (without the dash) to value; $true for a switch.
+    #>
+    param([string[]] $Arguments)
+    $named = @{}
+    for ($i = 0; $i -lt $Arguments.Count; $i++) {
+        if ($Arguments[$i] -notmatch '^-([A-Za-z]\w*)$') { throw "Not a parameter name: $($Arguments[$i])" }
+        $name = $Matches[1]
+        if ($i + 1 -lt $Arguments.Count -and $Arguments[$i + 1] -notmatch '^-[A-Za-z]') {
+            $named[$name] = $Arguments[$i + 1]
+            $i++
+        }
+        else { $named[$name] = $true }
+    }
+    return $named
+}
+
 function Invoke-Submit {
     <#
     .SYNOPSIS
-        Runs the script under test in its own PowerShell, with or without the three credentials.
+        Runs the script under test, in its own PowerShell or in this one, with or without the three credentials.
     .PARAMETER Arguments
         The script's arguments; the stand-in's addresses and the test identity are added.
     .PARAMETER NoCredentials
         Leave the three environment variables unset.
+    .PARAMETER InProcess
+        Run it in this PowerShell, by path, the way the workflows run it (store.yml, release.yml), instead of in a new
+        pwsh. Its exit code then reaches this caller only through an exit statement: a return at script level ends the
+        script and leaves $LASTEXITCODE as it was. In a new pwsh the same return reads as exit code 0, which is how the
+        Check mode's return passed every test here and still failed the first real check on GitHub (2026-11-15:
+        "The check failed (exit code )"). $LASTEXITCODE is set to 99 before the call, so an ending without an exit
+        shows up as 99.
     .OUTPUTS
         An object: ExitCode and Output (everything the script printed, as one string).
     #>
-    param([string[]] $Arguments, [switch] $NoCredentials)
+    param([string[]] $Arguments, [switch] $NoCredentials, [switch] $InProcess)
     $saved = @{}
     foreach ($name in 'PARTNER_CENTER_TENANT_ID', 'PARTNER_CENTER_CLIENT_ID', 'PARTNER_CENTER_CLIENT_SECRET') { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
     try {
         $env:PARTNER_CENTER_TENANT_ID = if ($NoCredentials) { $null } else { '11111111-2222-3333-4444-555555555555' }
         $env:PARTNER_CENTER_CLIENT_ID = if ($NoCredentials) { $null } else { 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' }
         $env:PARTNER_CENTER_CLIENT_SECRET = if ($NoCredentials) { $null } else { $Secret }
-        $all = @('-NoProfile', '-File', $Script) + $Arguments
-        if ($Arguments -notcontains '-ApiBaseUri') { $all += @('-ApiBaseUri', $base) }
-        $all += @('-LoginBaseUri', $base, '-IdentityFile', $identityFile)
-        $output = (& pwsh @all 2>&1 | Out-String)
+        $scriptArguments = @($Arguments)
+        if ($Arguments -notcontains '-ApiBaseUri') { $scriptArguments += @('-ApiBaseUri', $base) }
+        $scriptArguments += @('-LoginBaseUri', $base, '-IdentityFile', $identityFile)
+        if ($InProcess) {
+            $named = ConvertTo-NamedArguments $scriptArguments
+            $global:LASTEXITCODE = 99
+            # *>&1: in this PowerShell, Write-Host and Write-Warning are streams of their own, not the console.
+            $output = (& $Script @named *>&1 | Out-String)
+        }
+        else {
+            $output = (& pwsh -NoProfile -File $Script @scriptArguments 2>&1 | Out-String)
+        }
         return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
     }
     finally {
@@ -524,6 +568,28 @@ try {
     $run = Invoke-Submit -Arguments ($submit + @('-Mode', 'Draft'))
     $calls = Get-Calls
     Assert-That 'uploads and does not commit' ($run.ExitCode -eq 0 -and ($calls -contains 'PUT blob list') -and -not ($calls -match 'commit$')) "exit $($run.ExitCode): $($calls -join '; ')"
+
+    # The workflows run the script in their own PowerShell and read $LASTEXITCODE; every ending must reach them.
+    Write-Host 'In the caller''s PowerShell, as the workflows run it'
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check') -InProcess
+    Assert-That 'Check ends with $LASTEXITCODE 0' ($run.ExitCode -eq 0 -and ((Get-Calls) -join '; ') -eq "POST token; GET app; GET app/submissions/$PublishedId") "LASTEXITCODE $($run.ExitCode): $((Get-Calls) -join '; ')"
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-Mode', 'Draft')) -InProcess
+    $calls = Get-Calls
+    Assert-That 'Draft ends with $LASTEXITCODE 0, uploaded and not committed' ($run.ExitCode -eq 0 -and ($calls -contains 'PUT blob list') -and -not ($calls -match 'commit$')) "LASTEXITCODE $($run.ExitCode): $($calls -join '; ')"
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments $submit -InProcess
+    Assert-That 'Submit ends with $LASTEXITCODE 0, committed' ($run.ExitCode -eq 0 -and ((Get-Calls) -match 'commit$')) "LASTEXITCODE $($run.ExitCode): $((Get-Calls) -join '; ')"
+    # Write-Host and warnings take other streams here than in a new pwsh; none may carry a secret or the upload key.
+    Assert-That 'prints no credential and no upload address in the caller''s PowerShell either' ($run.Output -match '==> ' -and -not (Test-Leak $run.Output)) ($run.Output -replace [regex]::Escape($Secret), '<secret>')
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments $submit -NoCredentials -InProcess
+    Assert-That 'no credentials end with $LASTEXITCODE 3, without a request' ($run.ExitCode -eq 3 -and $state.Requests.Count -eq 0) "LASTEXITCODE $($run.ExitCode): $($run.Output)"
+    Reset-StandIn
+    $state.Published = $false
+    $run = Invoke-Submit -Arguments $submit -InProcess
+    Assert-That 'an app without a published submission ends with $LASTEXITCODE 4' ($run.ExitCode -eq 4) "LASTEXITCODE $($run.ExitCode): $($run.Output)"
 
     Write-Host 'An address that is not the Store''s'
     Reset-StandIn
