@@ -2934,7 +2934,7 @@ he needs to scroll up with cursor or press up."
     a whole DIP past a thousandth (a need of exactly 244 that the sums put at 244.00000000000006 is 244), and measured
     with the room in place, so asking again gives it back and a list that grew gives its room back. It is taken back by
     every load the rule does not cover, and by a load that leaves the list empty (`ViewModel_ReloadedEmpty`: no card
-    is armed then, and the uncommitted AI work's footer empty state could scroll on a stale room);
+    is armed then, and the AI work's footer empty state (§2.35, stashed since 2026-11-16) could scroll on a stale room);
   - **up to three passes:** rows below the viewport at offset 0 may not be realized, and the list estimates their
     heights; once the list stands at the row, every row of a short list's end is in view and measured, so the room is
     worked out again there. It stops when the room holds (within a DIP: layout rounding) and the offset is reached;
@@ -2950,8 +2950,8 @@ he needs to scroll up with cursor or press up."
   rule); a copy arriving while the panel shows keeps the card the user had selected selected (`OnHistoryChanged`);
   Ctrl+P on the armed copy keeps that card selected and scrolls up to it among the pins.
 - **Limits:** the room is worked out when a load or a summon positions the list, not when the panel is resized: a
-  panel made taller while open may show the lowest pin until the next load or Win+V. In the uncommitted AI chat mode
-  (§2.35) the list is not armed at all, so neither rule applies there.
+  panel made taller while open may show the lowest pin until the next load or Win+V. In the AI chat mode (§2.35,
+  stashed since 2026-11-16) the list is not armed at all, so neither rule applies there.
 
 **Verified:** see §5.
 
@@ -3725,7 +3725,10 @@ keys (35 checks, PowerShell 5.1 and 7); `test-update.ps1`; and on a disposable W
 User request (2026-11-08), on the README's Tabs table, whose "Shown" column read "Always" for both: "Run — Commands you
 ran with Win+R — Always - we should now always show but only if there is Run history" and "Snipping — Screenshots that
 Snipping Tool and Win+PrtScn saved — Always - only when there are images from snipping tool." (§2.35 is left to the
-uncommitted AI conversation in the working tree.)
+in-memory AI conversation. It stayed uncommitted in the shared working tree from 2026-10-21 to 2026-11-16, then was
+left out of 0.2.12 and stashed on the owner's word ("Leave it out and stash"): `git stash list` shows "AI conversation
+(CLAUDE.md 2.35), uncommitted since 2026-10-22 …" on base `683ed40`, and its own §2.35 text is in the stash's
+CLAUDE.md. `git stash apply` brings it back; its labels still need catalog entries (§6).)
 
 **What the user gets.**
 - **Run** shows while *Win+R history* is on and the history holds at least one entry with a Win+R run time: imported from
@@ -5357,9 +5360,9 @@ AppxManifest file".
 **Verified:** see §5.
 
 **Limits / not built:**
-- **Submitted for certification** on 2026-11-13 (1.2.11, §3.5); it failed on one search term ("Win+V") and was
-  resubmitted on 2026-11-15. The shared data folder ships with the next release; its submission needs the kit's new
-  certification notes typed in by hand.
+- **In the Microsoft Store since 2026-11-15, 19:51 UTC** (1.2.11.0, x64 and ARM64; §3.5): submitted on 2026-11-13,
+  failed on one search term ("Win+V"), resubmitted and certified on 2026-11-15. The shared data folder ships with
+  0.2.12, whose submission needs the kit's new certification notes; the release run copies the published ones (§3.5).
 - A copy for every user and a Chocolatey copy are not removed by the Store edition; their two pages were not seen on
   screen (the plan is unit-tested).
 - **Two processes write one log during the move** (the setup and the other copy, both in the shared folder): the live
@@ -6933,6 +6936,11 @@ texts for Partner Center are [`docs/store-listing.md`](docs/store-listing.md), a
   (one HTML question), and "You resubmit" ("you, assistant doing it all"). The kit has the terms and the rule
   (`docs/store-listing.md`); the import put them in, `--check` matched all five languages, and *Resubmit for
   certification* brought back "In certification" (`docs/microsoft-store.md` §8).
+- **Certified and published on 2026-11-15 at 19:51 UTC** (found 2026-11-16 in Microsoft's public catalog,
+  `https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=9PHL574X9BF9&market=US&languages=en-US`: one product,
+  publisher Nucs, packages `Nucs.BetterClipboard_1.2.11.0_x64__mgez7y7xa0my4` and `…_arm64__…`,
+  `OriginalReleaseDate` 2026-11-15T19:51:52Z). The page: https://apps.microsoft.com/detail/9PHL574X9BF9. The README
+  and its four translations link it since `release/0.2.12` (2026-11-16).
 
 **Facts about Partner Center** **[verified 2026-11-13]**:
 - **Keywords change only through the import** (2026-11-15). The listing page's Keywords box (chips with *Remove*, a
@@ -7142,11 +7150,22 @@ kit by a scratch generator, session 66cdd808):
    2026-11-13: eight scenes, uploaded once in English, copied into every language by one import, ordered, and
    `--check --screenshots 8` passed.
 3. ~~The IARC tick and *Submit for certification*.~~ Done 2026-11-13, about 22:53 local: "In certification".
-4. **Certification**: the first report failed one search term, "Win+V" (policy 10.1.3); fixed and resubmitted on
-   2026-11-15 ("a few hours, but in some cases can take up to 3 business days"). It publishes itself when certified.
+4. ~~**Certification**~~: the first report failed one search term, "Win+V" (policy 10.1.3); fixed and resubmitted
+   on 2026-11-15, certified and published the same day at 19:51 UTC (above).
 5. ~~The pipeline's connection~~: done 2026-11-14 and 15 (above, "Connected since 2026-11-15"); *check* is green.
-   Submitting through it works once the first submission is published.
-6. After approval: the Store link in the README and in the installer's warning.
+   Since the first submission is published, every stable tag's release run submits by itself.
+6. The Store link: in the README and its four translations since `release/0.2.12` (2026-11-16). Not in the
+   installer's warning, which only shows to someone who has the Store edition installed already.
+7. **Before the 0.2.12 tag: the notes for certification.** The release run's Store step makes the new submission a
+   copy of the published one, notes for certification included (`submit-store.ps1` sets only the packages and
+   "What's new"). The published notes say "Uninstall: the history is in the package's own data folder, which
+   Windows removes with the app." (the kit at v0.2.11; true for 1.2.11). 1.2.12 keeps the history in
+   `%LOCALAPPDATA%\BetterClipboard`, which stays after an uninstall (policy 10.2.7). The kit
+   (`docs/store-listing.md`, "Notes for certification") has the new text since `73b3fe3`. Either `submit-store.ps1`
+   learns to set `notesForCertification` from the kit (a field of the submission resource **[docs]**; the stand-in
+   service and its tests would follow), or that release's Store step is kept from submitting and the submission is
+   made by hand in Partner Center from the run's `store-packages` artifact, with the kit's text. Never edit a
+   submission the API made before it is committed (§4).
 
 ---
 
@@ -7581,11 +7600,12 @@ kit by a scratch generator, session 66cdd808):
     - keys as `<kbd>` from *Use* to *Command line* (`<kbd>Win</kbd>+<kbd>V</kbd>`); a key written there gets them too;
     - long side matters folded into `<details>` whose `<summary>` says what is inside: the installer's options, and
       the other kinds of copies under *Updates*;
-    - warnings and hints as GitHub alerts: `> [!NOTE]` (unsigned releases; the Store edition not published yet),
-      `> [!TIP]` (every way to install, on the docs site; `BETTERCLIPBOARD_DATA_DIR`), `> [!IMPORTANT]` (`bclip` is
-      off by default). GitHub's `/markdown` API draws alerts only in mode `gfm`, which also turns every line break
-      into `<br>`; in mode `markdown`, the way README files render, they come back as plain quotes, while the README
-      page on github.com draws them. So preview in mode `markdown` and expect the alerts as quotes there;
+    - warnings and hints as GitHub alerts: `> [!NOTE]` (unsigned releases), `> [!TIP]` (every way to install, on
+      the docs site; the Store edition's Store page, since 2026-11-16; `BETTERCLIPBOARD_DATA_DIR`),
+      `> [!IMPORTANT]` (`bclip` is off by default). GitHub's `/markdown` API draws alerts only in mode `gfm`, which
+      also turns every line break into `<br>`; in mode `markdown`, the way README files render, they come back as
+      plain quotes, while the README page on github.com draws them. So preview in mode `markdown` and expect the
+      alerts as quotes there;
     - no heading changed, so every anchor and every page of the docs site stayed.
 - **The docs site is cut from README.md** (§2.51). Each `##` heading is a page and each `###` a child page, named by its
   GitHub anchor, so renaming a heading renames its page and changes its address.
@@ -8181,6 +8201,7 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **0.2.12 prepared on `release/0.2.12`** (2026-11-16; the owner: "gather all the work in all the branches and everything we have done and haven't merged into a single branch … then I want you to read how we do release notes and prepare our own release notes", and "The goal is to create a single branch, which we will be creating a merge request for, with a version bump, and eventually doing a release"). **Branches:** `feat/localization`, `feat/localization-choices` and `pr/1-simplified-chinese` are ancestors of `main`; `feat/settings-search-delete-stored` (`2620733`) is not, but its tree equals `9324621`'s (the same change landed four minutes later on the same parent, `2bb0a56`), so nothing was missing. GitHub has no branch but `main`. Local `main` was 2 commits ahead of GitHub's (`20d61ad`, `683ed40`). **The AI conversation** (§2.35), uncommitted in the shared tree since 2026-10-22: asked in one question, the owner chose "Leave it out and stash". Every uncommitted hunk was checked to be that work (`aiChatMode`, `FocusComposer`, `AiOptions`, the §2.35 text; nothing changed that day), then stashed with its 16 new files (`tools/__pycache__/` left alone): `stash@{0}` "AI conversation (CLAUDE.md 2.35), uncommitted since 2026-10-22: left out of release 0.2.12 and stashed on the owner's word, 2026-11-16 (base 683ed40)". All 25 files equal, blob for blob, a backup taken first (session d5cc75cc's scratchpad, `ai-work-backup/`). **The Store edition** was found published (2026-11-15 19:51 UTC, 1.2.11.0 for x64 and ARM64, in Microsoft's public catalog) while the README still said "Not in the Store yet": the five READMEs now link its Store page; `check-translations.py --offline` prints the same before and after. **The branch:** made from local `main` in a private worktree; local `main` left at `683ed40`, where the shared tree sits. This record, then "Version 0.2.12" (`Directory.Build.props` only) with the notes draft in its message. **The notes:** 67 lines, none over 117 columns outside the table, nothing wrapped inside a link, a code span or an emphasis, no other version named, the three README anchors present; GitHub's Markdown API: 4 lists with 14 items, one table of 7 rows, one code block, 5 links, no Markdown left as text; the Store's "What's new" through `submit-store.ps1`'s own `ConvertTo-StoreNotes`: 758 of 1,500 characters, each lead-in's first sentence readable alone. Then pushed for a pull request (the owner: "Push and open it"). | `git merge-base --is-ancestor`, tree comparison, `git stash` and `git hash-object --path` against the backup, the Store's public catalog, `check-translations.py`, `gh api markdown`, a scratch `whatsnew.ps1` (the function from the script's syntax tree) | ✅ prepared; CI runs on the pull request |
 | **The list opens below the pins** (2026-11-15, §2.28; the owner: "When Win+V is pressed … the scroll should be at the first item that is not pinned"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-pins`, Tiny11 25H2, 1600×900; the worker had no golden template; deleted afterwards with its persist folder), packages of a private worktree at `dbaddb7` plus the change (`0.2.12-dev.pins1`, then `pins2` with the empty-list reset) installed with `install.ps1 -Package`; BC-TEST items through `bclip` (5 pins: 3 texts and 2 links; 32 copies), read through UI Automation after each step (each realized row's offset from the list's top, the scroll position). **Win+V:** `copy 30` at offset 0 and selected, the 5 pins off screen above; **Up:** the lowest pin selected at the top edge; **the wheel up:** every pin in view (the selection follows the pointer, §2.28's rule); **Esc, Win+V:** below the pins again. **Tabs:** Pinned (nothing but pins) at its top with no room; Text below its 3 pinned texts; **Links** (2 pinned, 2 links: a short list) with `link-2` at the top, the scroll at its end (100 %) and empty room below the last card. **A search** ("link"): every match from the top, the pinned ones in view, the selection on `link-2`, the room gone; **Esc** (search cleared): below the pins again, the room back. **A copy arriving** while the panel shows (`bclip put`): the new copy at the top, the pins out of view, the user's selected card kept. **A group** (made with +, a pin and a copy added through the card menu): its pin in view at the top, the copy selected, no room; **the group left:** below the pins again. **Ctrl+P** on the armed copy: it heads the pins, selected and in view; the next Win+V: the next copy at the top. **A cold start** (`--exit`, `--background`), then Win+V with the screen copied every 16–31 ms: no frame shows a pin (78–143 ms after the key: the known first-summon frame of unbound defaults, §6; from 174 ms: the list below the pins). **Settings:** the card's new description; "Show pinned items first" off: the list at its top in time order, row 0 selected; on again (after the silent restart): below the pins. **Enter** pasted `BC-TEST r1 copy 30` into Notepad. **14 pins** (more than a screen): `copy 30` at the top, every pin above. `pins2`: the same for Win+V, Links, the empty Images tab and Links again. The app's log over both builds: 168 lines, 0 WRN/ERR; first summons 27–45 ms. Locally: `PanelNavigationTests` 147 (15 new: the rule, 13 room cases, 2,000 random lists), three mutations (no room term; no rounding tolerance, caught by its own case once the random lists missed it; groups ignored) each caught; the whole suite 2,430 = 2,427 passed + 3 opt-in skipped, 0 failed (Core 1,970, Windows 460); a `--no-incremental` build with only the known CS0108 and xUnit analyzer warnings; the documentation checker 0 gaps on changed lines; `catalog.py check` 0 missing and 0 to review; `check-translations.py --offline` only the 12 known differences per translation, none in *Use* | claude-desktops MCP tools (`press_keys`, `scroll`, `click`, `element_action`, screenshots, `run_command`); guest scripts `state.ps1`, `seed.ps1`, `setup.ps1`, `restart.ps1`, `frames.ps1` (session 9472c5dc's scratchpad, `qa/`) | ✅ Not run: a real GPU, a panel resized while open, the Everything, shell and prompt tabs with pinned entries (the same code path) |
 | **The failed certification fixed, and the submission resubmitted** (2026-11-15, §3.5; the owner pasted Microsoft's mail "Fix certification issues in your product, BetterClipboard"). The report, read in a tab of my own in the owner's Chrome (its pop-up caught with a `window.open` wrapper, a second late pop-up closed by its opener): one finding, policy 10.1.3, search term "Win+V" in all five languages. The owner chose "copy history" (each language) and "You resubmit". The kit changed (check 0 problems, 52 tests pass). The listing page's Keywords box did not save (three saves, English and Chinese: the request carried the old keywords; read back unchanged), so the listings went in by import: export captured in the page, the file generated from the kit, the two compared cell by cell (5 search terms and the copyright row's usual form, nothing else), imported, exported again: `--check` "is what the kit says, with 8 screenshots in the kit's order in every language". *Resubmit for certification*: "Product submission: In certification" again, about 19:30 UTC. No native dialog left open; my tab closed | chrome-devtools in a tab of my own, `make-store-listing-csv.py`, `check-store-listing.py`, `test-store-listing.py`, scratch cell diff | ✅ resubmitted. The result comes with Microsoft's next mail |
 | **The text peek's 15-pixel radius, live** (2026-11-15, §2.50; the owner: "i want a 15px radius of movement to exit the viewer after it showed"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-radius`, 1920×1080 at 100 %, no GPU; the worker was unreachable; deleted afterwards with its persist folder), a self-contained build of a private worktree (`eaf0f65` plus only this change, `0.2.12-dev.radius1`) started with pre-seeded settings, and one 30-line BC-TEST text copied through the clipboard. The peek opened with the mouse resting at (1052, 522); moved to 10 px right, (10, 10) at 14.1 px and (15, 0) at exactly 15 px, it stayed; at (12, 10), 15.6 px with each axis under 15, it closed. Again with its right-click menu: the mouse moved into the menu (about 160 px), Esc closed the menu, and the circle was centered there: 10 px kept the peek, 20 px closed it. The app's log: 18 lines, 0 WRN/ERR | claude-desktops MCP tools (`clipboard`, `move_mouse` single jumps, `click`, `press_keys`, screenshots); guest script `setup.ps1` (settings, unpack, start) | ✅ Not run: a monitor at another scale (the radius is in physical pixels), touch and pen (a touch or pen move still closes at once) |
@@ -8464,14 +8485,14 @@ kit by a scratch generator, session 66cdd808):
   (§2.48). A refused `NIM_ADD` is followed by a `NIM_MODIFY` that finds an icon Explorer added late, and a real refusal is
   retried on a timer. Copies up to 0.2.10 still have the dead icon after a slow sign-in.
 - **The Microsoft Store edition** (2026-11-13, §2.47, §3.5), next steps:
-  - **certification**: the first report failed one search term ("Win+V", policy 10.1.3); fixed and resubmitted on
-    2026-11-15 (§3.5). Watch for the next report; another failure is fixed and resubmitted the same way. It
-    publishes itself once certified;
+  - ~~**certification**~~: the first report failed one search term ("Win+V", policy 10.1.3); fixed, resubmitted,
+    certified and published on 2026-11-15 at 19:51 UTC (§3.5). A later failure is fixed and resubmitted the same way;
   - ~~waiting for the owner's word~~ and ~~replace the listing's screenshots~~: done 2026-11-13 (v0.2.11 released;
     eight new scenes; submitted on the owner's "You tick and submit");
-  - **the next submission's notes for certification** (the shared data folder, 2026-11-14): type the kit's new text
-    (`docs/store-listing.md` §1) into that submission by hand before it is committed; the pipeline carries the notes
-    over unchanged, and the old text says the history is removed with the app;
+  - **the next submission's notes for certification** (the shared data folder, 2026-11-14), **a blocker for the 0.2.12
+    tag**: the release run now submits by itself and carries the published notes over unchanged, and they say the
+    history is removed with the app. §3.5's open item 7 has the two ways (teach `submit-store.ps1` the field, or
+    submit that version by hand with the kit's text);
   - **the shared folder after Windows feature updates**: each new build is proven once ("The shared data folder is
     written for real on this Windows build (…)" in the log); run `msix_lab -Only shared` on a new Windows release;
   - **one log for two processes**: the app's appends from two processes overwrite each other's lines (`AppLog`,
@@ -8578,9 +8599,9 @@ kit by a scratch generator, session 66cdd808):
   - optional, not asked for: "where I last left it", and a fixed monitor.
 - **Interface languages** (§2.37; the deferred gaps were closed on 2026-11-08, "Complete the gaps", and the owner's
   choices built the same day), next steps:
-  - the uncommitted AI conversation's strings (§2.35 in the shared tree) need catalog entries when it lands: the guards
-    fail until they have them (`catalog.py add -d "…"`, or `add-file` for many), each with its description, and with
-    Russian, Spanish and Hebrew too;
+  - the AI conversation's strings (§2.35, stashed since 2026-11-16) need catalog entries when it is restored and
+    lands: the guards fail until they have them (`catalog.py add -d "…"`, or `add-file` for many), each with its
+    description, and with Russian, Spanish and Hebrew too;
   - a native speaker's review of Russian, Spanish and Hebrew (translated by Claude on 2026-11-09, §2.37);
   - right-aligned right-to-left paragraphs, if the owner wants Hebrew's lines to start flush at the right
     (`TextAlignment="DetectFromContent"` on the text blocks): today they are aligned left with the rest of the

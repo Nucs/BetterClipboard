@@ -118,7 +118,7 @@ El [paquete de Chocolatey](../../packaging/chocolatey) sigue la misma regla para
 <a id="microsoft-store-edition"></a>
 ### Edición de Microsoft Store
 
-**Todavía no está en la tienda.** La edición está compilada y probada ([docs/microsoft-store.md](../microsoft-store.md)), y Microsoft está certificando su primer envío. Esto es lo que es:
+**Consíguela en [Microsoft Store](https://apps.microsoft.com/detail/9PHL574X9BF9).** Cómo se compila, se prueba y se envía la edición: [docs/microsoft-store.md](../microsoft-store.md). Esto es lo que es:
 
 - **La instala y la actualiza la tienda.** Microsoft firma el paquete, así que Windows no muestra ninguna advertencia de «editor desconocido». La aplicación en sí no hace ninguna solicitud de red, porque la actualiza la tienda.
 - **Pregunta primero.** El primer inicio pregunta tu idioma y luego muestra una bienvenida con dos interruptores, *Abrir con Win+V* e *Iniciar con Windows*. No se registra nada ni se toma ningún atajo hasta que presionas *Empezar*.

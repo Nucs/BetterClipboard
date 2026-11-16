@@ -118,7 +118,7 @@ irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | ie
 <a id="microsoft-store-edition"></a>
 ### Microsoft Store 版
 
-**尚未在 Store 上架。** 这个版本已经构建并测试（[docs/microsoft-store.md](../microsoft-store.md)，英文），Microsoft 正在认证它的首次提交。它是这样的：
+**可在 [Microsoft Store](https://apps.microsoft.com/detail/9PHL574X9BF9) 获取。** 这个版本如何构建、测试和提交，见 [docs/microsoft-store.md](../microsoft-store.md)（英文）。它是这样的：
 
 - **由 Store 安装和更新。** 安装包由 Microsoft 签名，因此 Windows 不会显示“未知发布者”警告。应用本身不发出任何网络请求，因为更新由 Store 负责。
 - **先征求你的同意。** 首次启动时先询问语言，然后显示欢迎页面，其中有两个开关：*用 Win+V 打开* 和 *随 Windows 启动*。在你按下 *开始* 之前，不会记录任何内容，也不会接管任何快捷键。

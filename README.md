@@ -179,9 +179,9 @@ every user.
 
 ### Microsoft Store edition
 
-> [!NOTE]
-> **Not in the Store yet.** The edition is built and tested ([docs/microsoft-store.md](docs/microsoft-store.md)), and
-> Microsoft is certifying its first submission.
+> [!TIP]
+> **Get it from the [Microsoft Store](https://apps.microsoft.com/detail/9PHL574X9BF9).** How the edition is built,
+> tested and submitted: [docs/microsoft-store.md](docs/microsoft-store.md).
 
 - **Installed and updated by the Store.** Microsoft signs the package, so Windows shows no "unknown publisher"
   warning. The app itself makes no network request at all, because the Store updates it.

@@ -120,7 +120,7 @@ irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | ie
 <a id="microsoft-store-edition"></a>
 ### מהדורת Microsoft Store
 
-**עדיין לא בחנות.** המהדורה בנויה ונבדקה ([docs/microsoft-store.md](../microsoft-store.md)), ו-Microsoft בודקת לאישור את ההגשה הראשונה שלה. זה מה שהיא:
+**התקינו אותה מ-[Microsoft Store](https://apps.microsoft.com/detail/9PHL574X9BF9).** איך המהדורה נבנית, נבדקת ומוגשת: [docs/microsoft-store.md](../microsoft-store.md). זה מה שהיא:
 
 - **מותקנת ומתעדכנת דרך החנות.** Microsoft חותמת על החבילה, ולכן Windows לא מציג אזהרת "מפרסם לא ידוע". האפליקציה עצמה לא שולחת שום בקשת רשת, כי החנות מעדכנת אותה.
 - **היא שואלת קודם.** ההפעלה הראשונה שואלת מה השפה שלכם ואז מציגה מסך פתיחה עם שני מתגים, *פתיחה עם Win+V* ו-*הפעלה עם Windows*. שום דבר לא נרשם ושום קיצור לא נתפס עד שלוחצים *התחל*.
