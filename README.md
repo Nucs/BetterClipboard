@@ -351,8 +351,8 @@ and group, except the Everything tab, where Everything itself does the searching
 
 ### Text previews
 
-A card shows the first four lines of a text. When the text is longer, a thin dotted line under them and a small eye
-at the card's corner say so.
+A card shows the first four lines of a text, in a monospace font so that tables line up. When the text is longer, a
+thin dotted line under them and a small eye at the card's corner say so.
 
 - **Peek:** rest the mouse on the card's text. After a moment the whole text appears in the middle of the panel,
   colored the way the viewer shows it, and the wheel scrolls it. Moving the mouse closes it, and so does <kbd>Esc</kbd>. A

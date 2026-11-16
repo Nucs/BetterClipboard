@@ -259,7 +259,7 @@ Los interruptores se quedan como los dejas, y el texto de búsqueda se borra cad
 <a id="text-previews"></a>
 ### Vista previa de texto
 
-Una tarjeta muestra las primeras cuatro líneas de un texto. Cuando el texto es más largo, lo indican una fina línea de puntos debajo de ellas y un pequeño ojo en la esquina de la tarjeta.
+Una tarjeta muestra las primeras cuatro líneas de un texto, en una fuente monoespaciada para que las tablas queden alineadas. Cuando el texto es más largo, lo indican una fina línea de puntos debajo de ellas y un pequeño ojo en la esquina de la tarjeta.
 
 - **Vistazo:** deja el mouse sobre el texto de la tarjeta. Tras un momento todo el texto aparece en el centro del panel, coloreado como lo muestra el visor, y la rueda lo desplaza. Mover el mouse lo cierra, y también `Esc`. Un clic derecho con el mouse quieto ofrece *Copiar* y *Seleccionar todo* encima del propio menú del elemento. Un texto de más de 64.000 caracteres muestra su comienzo y lo indica.
 - **Visor:** haz clic en el ojo, presiona `F3` o elige *Ver* en el menú del elemento. La pantalla se oscurece y el texto se abre encima en una tarjeta grande:

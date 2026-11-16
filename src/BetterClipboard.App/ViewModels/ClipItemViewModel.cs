@@ -211,10 +211,19 @@ public sealed partial class ClipItemViewModel : ObservableObject
     public Brush? ColorBrush { get; }
 
     /// <summary>
-    /// Monospace for code-looking text and for text that is nothing but paths; the UI font otherwise — also for a
-    /// pick, whose preview is a file name over its folder, not code. A shell command is always monospace: it is code.
+    /// The card text's font. Every text card is monospace — plain and formatted text, archived prompts, Notepad++ tabs,
+    /// shell commands — so a table's columns line up in its four lines as they do in the text viewer. A link stays in the
+    /// UI font, and so does a pick, whose preview is a file name over its folder; any other kind (a file list) is
+    /// monospace only when it looks like code or is nothing but paths, as before.
     /// </summary>
-    public FontFamily BodyFontFamily => Pick is null && (IsShellCommandCard || (Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)))) ? MonoFont : UiFont;
+    /// <remarks>
+    /// The owner's choice (2026-11-16, one HTML question with the panel drawn three ways: "All text cards mono", over
+    /// "Mono for tables" and "Leave the cards"), after the viewer's Formatted view moved to the code font: until then a
+    /// text card was monospace only when <see cref="CodeHeuristics.LooksLikeCode"/> said so, which a box-drawn, PowerShell
+    /// or kubectl table never passes, so its card showed it misaligned. Prose cards now read like a terminal too, and fit
+    /// fewer characters on a line.
+    /// </remarks>
+    public FontFamily BodyFontFamily => Pick is null && (IsShellCommandCard || Kind is ClipKind.Text or ClipKind.RichText || (Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)))) ? MonoFont : UiFont;
 
     /// <summary>
     /// Accessible name for screen readers: the kind, then the preview, joined the interface language's way (a
