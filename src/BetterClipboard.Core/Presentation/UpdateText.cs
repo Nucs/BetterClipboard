@@ -338,18 +338,43 @@ public static class UpdateText
     /// <summary>
     /// The line over one release's notes: its version and when it was published.
     /// </summary>
+    /// <remarks>
+    /// The date is worded like every other date the app shows (<see cref="RelativeTimeFormatter"/>): the pattern is the
+    /// catalog's <c>d MMM yyyy</c> entry (Chinese writes <c>yyyy年M月d日</c>), and the day and month names come from
+    /// <see cref="UiText.DateCulture(CultureInfo)"/>, Windows' culture only while it belongs to the interface language. Until
+    /// 2026-11-16 this line used English's pattern in Windows' culture, so an English Windows showed "13 Nov 2026" in
+    /// every interface language.
+    /// </remarks>
     /// <param name="release">The release.</param>
     /// <param name="zone">Time zone for the date (defaults to local).</param>
-    /// <param name="culture">Culture for the date (defaults to the current UI culture).</param>
+    /// <param name="culture">Windows' culture, for its day and month names while it belongs to the interface language (defaults to the current UI culture).</param>
     /// <returns>E.g. "0.2.7 · 12 Oct 2026", or the version alone when the date is unknown.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="release"/> is <see langword="null"/>.</exception>
     public static string ReleaseHeading(ReleaseInfo release, TimeZoneInfo? zone = null, CultureInfo? culture = null)
     {
         ArgumentNullException.ThrowIfNull(release);
         culture ??= CultureInfo.CurrentUICulture;
-        return release.PublishedAt is { } at
-            ? $"{release.Version} · {TimeZoneInfo.ConvertTime(at, zone ?? TimeZoneInfo.Local).ToString("d MMM yyyy", culture)}"
-            : release.Version.ToString();
+        if (release.PublishedAt is not { } at)
+        {
+            return release.Version.ToString();
+        }
+
+        var dates = UiText.DateCulture(culture);
+        var local = TimeZoneInfo.ConvertTime(at, zone ?? TimeZoneInfo.Local);
+        string date;
+        try
+        {
+            date = local.ToString(UiText.Translate("d MMM yyyy"), dates);
+        }
+        catch (FormatException)
+        {
+            // A catalog's pattern that .NET refuses (a translator's slip the tests catch) must not take the dialog down:
+            // English's pattern stands in, as in RelativeTimeFormatter.
+            date = local.ToString("d MMM yyyy", dates);
+        }
+
+        // One line of pieces: in a right-to-left language it reads from the version, at the right.
+        return UiText.JoinLine(" · ", [release.Version.ToString(), date]);
     }
 
     /// <summary>
@@ -358,7 +383,10 @@ public static class UpdateText
     /// <param name="downloaded">Bytes received.</param>
     /// <param name="total">The package's size in bytes; 0 when unknown.</param>
     /// <param name="culture">Culture for the numbers (defaults to the current UI culture).</param>
-    /// <returns>E.g. "23.4 of 70.8 MB", or "23.4 MB" when the size is unknown.</returns>
+    /// <returns>
+    /// E.g. "23.4 of 70.8 MB", or "23.4 MB" when the size is unknown; both are catalog entries, so the unit follows the
+    /// interface language ("23,4 МБ" in Russian; until 2026-11-16 the second one stayed English).
+    /// </returns>
     public static string Progress(long downloaded, long total, CultureInfo? culture = null)
     {
         culture ??= CultureInfo.CurrentUICulture;
@@ -366,7 +394,7 @@ public static class UpdateText
         double done = Math.Max(0, downloaded) / Megabyte;
         return total > 0
             ? UiText.Format(culture, $"{done:0.0} of {total / Megabyte:0.0} MB")
-            : string.Format(culture, "{0:0.0} MB", done);
+            : UiText.Format(culture, $"{done:0.0} MB");
     }
 
     /// <summary>Why this copy does not check by itself, and what does instead.</summary>

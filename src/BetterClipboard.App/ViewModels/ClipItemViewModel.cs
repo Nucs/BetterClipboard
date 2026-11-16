@@ -111,8 +111,16 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <summary>Entry kind.</summary>
     public ClipKind Kind => Entry.Kind;
 
-    /// <summary>Display text (already truncated by Core).</summary>
-    public string Preview => Entry.Preview;
+    /// <summary>
+    /// Display text (already truncated by Core): what the user copied as it is, and the few previews the app words
+    /// itself ("Formatted content", a file list's "+3 more", a white-space-only text's placeholder, a picture's "Image ·
+    /// W × H") in the interface language (<see cref="PreviewText"/>).
+    /// </summary>
+    /// <remarks>
+    /// Shown text only: logic that reads the stored words (the caption's file count looks for " more") reads
+    /// <see cref="ClipEntry.Preview"/> on <see cref="Entry"/>, which stays English whatever the language.
+    /// </remarks>
+    public string Preview => PreviewText.Display(Entry);
 
     /// <summary>Whether the entry is pinned; changes in place when the user toggles it.</summary>
     [ObservableProperty]
@@ -210,7 +218,8 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     /// <summary>
     /// Accessible name for screen readers: the kind, then the preview, joined the interface language's way (a
-    /// full-width colon in Chinese). The preview is the user's content and goes in as a value, never translated.
+    /// full-width colon in Chinese). The preview goes in as a value: the user's content as it is, the app's own few
+    /// preview words already in the interface language (<see cref="Preview"/>).
     /// </summary>
     public string AutomationName => UiText.Format($"{KindLabel}: {Preview}");
 
@@ -333,9 +342,12 @@ public sealed partial class ClipItemViewModel : ObservableObject
         {
             // When it was last opened, and how often: Everything keeps one row per file, not one per opening.
             var times = UiText.Plural(pick.RunCount, $"opened once", $"opened {pick.RunCount:N0} times");
+
+            // One line of pieces, joined like every other caption: in a right-to-left language it reads from
+            // "Everything", at the right (a plain interpolation laid it out from the left; fixed 2026-11-16).
             return pick.LastOpened is { } opened
-                ? $"Everything · {RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow)} · {times}"
-                : $"Everything · {times}";
+                ? UiText.JoinLine(" · ", ["Everything", RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow), times])
+                : UiText.JoinLine(" · ", ["Everything", times]);
         }
 
         var parts = new List<string>(4);

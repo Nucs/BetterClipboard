@@ -1052,6 +1052,29 @@ public sealed class UpdateTextTests
         Assert.Equal("1.5 MB", UpdateText.Progress(1_572_864, 0, Culture));
         Assert.Equal("0.0 of 1.0 MB", UpdateText.Progress(-5, 1_048_576, Culture));
     }
+
+    /// <summary>
+    /// A release's heading words its date like every other date (the catalog's pattern, the interface language's month
+    /// names), and the progress without a known size takes the language's unit (2026-11-16: English's pattern in Windows'
+    /// culture, and "MB", in every language before).
+    /// </summary>
+    [Fact]
+    public void HeadingsAndProgress_FollowTheInterfaceLanguage()
+    {
+        string previous = Localization.UiText.Language;
+        try
+        {
+            Localization.UiText.Language = "zh-Hans";
+            Assert.Equal("0.2.7 · 2026年10月1日", UpdateText.ReleaseHeading(UpdateTestData.Release("0.2.7"), TimeZoneInfo.Utc, Culture));
+
+            Localization.UiText.Language = "ru";
+            Assert.Equal("1.5 МБ", UpdateText.Progress(1_572_864, 0, Culture));
+            string heading = UpdateText.ReleaseHeading(UpdateTestData.Release("0.2.7"), TimeZoneInfo.Utc, Culture);
+            Assert.StartsWith("0.2.7 · 1 ", heading, StringComparison.Ordinal);
+            Assert.DoesNotContain("Oct", heading, StringComparison.Ordinal);
+        }
+        finally { Localization.UiText.Language = previous; }
+    }
 }
 
 /// <summary>

@@ -438,6 +438,38 @@ public sealed class SourceFileTests : IAsyncLifetime
         }
     }
 
+    /// <summary>
+    /// The units follow the interface language as Windows words them there (2026-11-16): Russian's Cyrillic letters and
+    /// "байт", Chinese 字节 and Spanish "bytes" for bytes with the Latin KB, MB and GB; the number keeps the culture's own
+    /// decimal mark.
+    /// </summary>
+    [Fact]
+    public void ByteSize_UnitsFollowTheInterfaceLanguage()
+    {
+        var previousCulture = CultureInfo.CurrentCulture;
+        string previousLanguage = Localization.UiText.Language;
+        CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+        try
+        {
+            Localization.UiText.Language = "ru";
+            Assert.Equal(["812 байт", "120.6 КБ", "5 МБ", "3.75 ГБ"], Sizes());
+
+            Localization.UiText.Language = "zh-Hans";
+            Assert.Equal(["812 字节", "120.6 KB", "5 MB", "3.75 GB"], Sizes());
+
+            Localization.UiText.Language = "es";
+            Assert.Equal(["812 bytes", "120.6 KB", "5 MB", "3.75 GB"], Sizes());
+        }
+        finally
+        {
+            Localization.UiText.Language = previousLanguage;
+            CultureInfo.CurrentCulture = previousCulture;
+        }
+
+        static string[] Sizes() =>
+            [ByteSizeText.Format(812), ByteSizeText.Format(123_456), ByteSizeText.Format(5L * 1024 * 1024), ByteSizeText.Format(3L * 1024 * 1024 * 1024 + (768L * 1024 * 1024))];
+    }
+
     /// <summary>A picture capture (fake PNG bytes; Core tests hash bytes, not pixels).</summary>
     /// <param name="seed">Varies the picture.</param>
     /// <param name="origin">Where it came from.</param>

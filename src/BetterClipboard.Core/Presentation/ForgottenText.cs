@@ -35,8 +35,10 @@ public static class ForgottenText
 
             // Rich text without plain text (HTML/RTF only) has no characters to count.
             ClipKind.RichText when item.TextLength is null => UiText.Translate("Formatted content"),
+            // The kind and the count as one line of pieces: in a right-to-left language it reads from the kind, at the
+            // right (a plain interpolation laid it out from the left; fixed 2026-11-16, like Details below).
             _ => item.TextLength is { } length
-                ? $"{KindName(item.Kind)} · {UiText.Plural(culture, length, $"{length:N0} character", $"{length:N0} characters")}"
+                ? UiText.JoinLine(" · ", [KindName(item.Kind), UiText.Plural(culture, length, $"{length:N0} character", $"{length:N0} characters")])
                 : KindName(item.Kind),
         };
     }

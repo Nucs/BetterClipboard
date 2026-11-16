@@ -56,6 +56,25 @@ public static class ContentClassifier
     public const int SearchMaxChars = 32 * 1024;
 
     /// <summary>
+    /// The preview of formatted content without plain text (HTML or RTF alone): there is no text to show, so the card
+    /// says what it is.
+    /// </summary>
+    /// <remarks>
+    /// Stored in English, like every preview: <c>bclip</c> prints it as it is, and the card shows it in the interface
+    /// language through <see cref="Presentation.PreviewText"/>, which recognizes it by this exact text. Changing it changes
+    /// what entries stored from now on say, while older entries keep the old words: change it only together with
+    /// <see cref="Presentation.PreviewText"/> and its tests.
+    /// </remarks>
+    public const string RichOnlyPreview = "Formatted content";
+
+    /// <summary>
+    /// The preview of a picture whose size is not known: "Image" (with a size it is "Image · W × H", see
+    /// <see cref="DescribeImage(int?, int?)"/>).
+    /// </summary>
+    /// <remarks>Stored in English and shown translated, like <see cref="RichOnlyPreview"/>; the same footgun applies.</remarks>
+    public const string ImagePreview = "Image";
+
+    /// <summary>
     /// Classifies a capture.
     /// </summary>
     /// <param name="capture">The raw capture from the listener or an importer.</param>
@@ -113,7 +132,7 @@ public static class ContentClassifier
         var rich = capture.Find(ClipFormatNames.Html) ?? capture.Find(ClipFormatNames.Rtf);
         if (rich is not null && rich.Data.Length > 0)
         {
-            return new ClassifiedClip(ClipKind.RichText, "Formatted content", string.Empty, ContentHasher.ForRichOnly(rich.Data), null, []);
+            return new ClassifiedClip(ClipKind.RichText, RichOnlyPreview, string.Empty, ContentHasher.ForRichOnly(rich.Data), null, []);
         }
 
         return null;
@@ -133,6 +152,7 @@ public static class ContentClassifier
     /// </summary>
     /// <param name="capture">The capture to inspect.</param>
     /// <returns>The chosen format, or <see langword="null"/> when no image format is present.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="capture"/> is <see langword="null"/>.</exception>
     public static ClipFormatData? FindPrimaryImage(ClipCapture capture)
     {
         ArgumentNullException.ThrowIfNull(capture);
@@ -145,15 +165,23 @@ public static class ContentClassifier
     /// <summary>
     /// Builds the caption shown for image clips.
     /// </summary>
+    /// <remarks>
+    /// The preview is stored in English and shown translated: <see cref="Presentation.PreviewText"/> recognizes
+    /// both shapes. Change them only together with it (its tests run this method's output through it).
+    /// </remarks>
     /// <param name="width">Pixel width when known.</param>
     /// <param name="height">Pixel height when known.</param>
     /// <returns>"Image" or "Image · W × H".</returns>
     public static string DescribeImage(int? width, int? height) =>
-        width is > 0 && height is > 0 ? $"Image · {width} × {height}" : "Image";
+        width is > 0 && height is > 0 ? $"{ImagePreview} · {width} × {height}" : ImagePreview;
 
     /// <summary>
     /// Builds the preview for a file list: up to five file names, one per line, plus a "+N more" tail.
     /// </summary>
+    /// <remarks>
+    /// The "+N more" line is stored in English and shown translated: <see cref="Presentation.PreviewText"/> recognizes it
+    /// as the sixth line of a file list's preview. Change the number of names or the tail only together with it.
+    /// </remarks>
     /// <param name="paths">Decoded paths (non-empty).</param>
     /// <returns>The preview text.</returns>
     public static string DescribeFiles(IReadOnlyList<string> paths)
@@ -186,8 +214,13 @@ public static class ContentClassifier
     /// whitespace removed, truncated with an ellipsis. Whitespace-only text gets a visible placeholder
     /// so the card is never blank.
     /// </summary>
+    /// <remarks>
+    /// That placeholder, "(whitespace · N chars)", is stored in English and shown translated:
+    /// <see cref="Presentation.PreviewText"/> recognizes its exact shape. Change it only together with it.
+    /// </remarks>
     /// <param name="text">Full clip text.</param>
     /// <returns>The preview string.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="text"/> is <see langword="null"/>.</exception>
     public static string BuildTextPreview(string text)
     {
         ArgumentNullException.ThrowIfNull(text);

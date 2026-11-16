@@ -1077,7 +1077,10 @@ public sealed partial class AppController
 
     /// <summary>Words why an uninstall, or the check before one, did not work.</summary>
     /// <param name="result">The outcome.</param>
-    /// <returns>A sentence in the user's language, with the uninstaller's own words (in English) after it when there are any.</returns>
+    /// <returns>
+    /// A sentence in the user's language, with the detail after it when there is one: translated when the app worded it
+    /// (<see cref="EditionUninstaller.DetailTemplates"/>), else the uninstaller's or Windows' own words as they came.
+    /// </returns>
     private static string DescribeUninstallFailure(EditionUninstallResult result)
     {
         // The check's own finding is a list of fixed names, worded here; everything else may carry the uninstaller's
@@ -1098,7 +1101,11 @@ public sealed partial class AppController
             EditionUninstallFailure.AccessDenied => UiText.Translate("This account is not allowed to change something the uninstall has to change (the other copy's folder, its shortcut or its entries in the registry)."),
             _ => UiText.Translate("The uninstaller reported a failure."),
         };
-        return result.Detail is { Length: > 0 } detail ? UiText.JoinLine(" ", [text, detail]) : text;
+        // A detail this app worded itself (an exit code, PowerShell not answering) is translated through the uninstaller's
+        // template list; outside text (Windows' error message, the uninstaller's own report) matches none and stays as it came.
+        return result.Detail is { Length: > 0 } detail
+            ? UiText.JoinLine(" ", [text, UiText.TranslateFormatted(detail, EditionUninstaller.DetailTemplates)])
+            : text;
     }
 
     /// <summary>

@@ -1,6 +1,7 @@
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Everything;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Prompts;
 using BetterClipboard.Core.Shells;
 using BetterClipboard.Core.Storage;
@@ -230,6 +231,11 @@ public sealed partial class ClipHistoryService
     /// How an entry shows as an example: its thumbnail when it has one, else the first line of its preview — monospace for
     /// commands and paths, as their cards show them.
     /// </summary>
+    /// <remarks>
+    /// The preview is taken as the card shows it (<see cref="PreviewText.Display(ClipEntry)"/>): the dialog's example of
+    /// formatted content without text, or of a picture without a thumbnail, is the app's own words, in the interface
+    /// language; the user's content stays as it is.
+    /// </remarks>
     /// <param name="entry">The entry.</param>
     /// <returns>The example.</returns>
     private static StoredExample ExampleOf(ClipEntry entry)
@@ -242,7 +248,7 @@ public sealed partial class ClipHistoryService
         bool code = entry.Kind == ClipKind.Files || entry.PathCount > 0 || entry.LastRunUtc is not null
                     || entry.Origin is ClipOrigin.PowerShell or ClipOrigin.Cmd
                     || entry.SourceAppName is ShellSources.PowerShellName or ShellSources.CmdName;
-        return new StoredExample(FirstLine(entry.Preview), null, code);
+        return new StoredExample(FirstLine(PreviewText.Display(entry)), null, code);
     }
 
     /// <summary>The first non-blank line of a text, trimmed and cut to <see cref="MaxExampleLength"/> characters.</summary>
