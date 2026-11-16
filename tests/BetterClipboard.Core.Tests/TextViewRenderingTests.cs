@@ -435,9 +435,128 @@ public sealed class TextViewRenderingTests
     [Fact]
     public void Style_ScalesWithinBounds()
     {
-        Assert.Equal(28, Style.Scaled(2).ProseSize);
+        Assert.Equal(26, Style.Scaled(2).ProseSize);
+        Assert.Equal(26, Style.Scaled(2).CodeSize);
         Assert.Equal(Style.ProseSize * TextViewStyle.MaxScale, Style.Scaled(10).ProseSize);
         Assert.Equal(Style.ProseSize * TextViewStyle.MinScale, Style.Scaled(0.01).ProseSize);
         Assert.Equal(Style.ProseSize, Style.Scaled(double.NaN).ProseSize);
+    }
+
+    /// <summary>
+    /// A Markdown document is drawn in the code font at the code size, as copied's (the owner's request, 2026-11-16): the
+    /// default style's two fonts and sizes are one, its RTF names no other face but the task boxes' symbol font, and its
+    /// body text has the size of a code document's.
+    /// </summary>
+    [Fact]
+    public void Markdown_IsDrawnInTheCodeFont()
+    {
+        Assert.Equal(Style.CodeFont, Style.ProseFont);
+        Assert.Equal(Style.CodeSize, Style.ProseSize);
+        Assert.Equal(TextViewStyle.DefaultSize, Style.CodeSize);
+
+        var token = TestContext.Current.CancellationToken;
+        var source = TextViewSource.Create("# BC-TEST\n\nShip **Friday**.\n\n- one\n- [ ] two\n\n> quoted", cancellationToken: token);
+        var document = TextViewRendering.Create(source, TextLanguage.Markdown, formatted: true, token).ToRtf(SyntaxPalette.Dark, Style, token);
+        var asCopied = TextViewRendering.Create(source, TextLanguage.Markdown, formatted: false, token).ToRtf(SyntaxPalette.Dark, Style, token);
+        Assert.Equal(["Cascadia Mono", "Cascadia Mono", "Segoe UI Symbol"], FontTable(document));
+        Assert.Equal(["Cascadia Mono", "Cascadia Mono", "Segoe UI Symbol"], FontTable(asCopied));
+
+        // 13 DIPs are 19.5 half-points, written as 20: the paragraph's size and the plain source's.
+        Assert.Contains(@"\f0\fs20\cf", document, StringComparison.Ordinal);
+        Assert.Contains(@"\f1\fs20\cf", asCopied, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Tables as terminals and programs print them come out of the Formatted view exactly as copied, and as copied: their
+    /// indentation, tabs, dashed rules and borders, and box drawing (<see cref="MarkdownParseOptions.KeepLayout"/>). Each
+    /// is detected as Markdown, the fallback for text in no language, so Formatted is what opens.
+    /// </summary>
+    /// <param name="name">What printed the table (the case's name).</param>
+    /// <param name="table">The table, as copied.</param>
+    [Theory]
+    [MemberData(nameof(AsciiTables))]
+    public void Formatted_ShowsAsciiTablesAsCopied(string name, string table)
+    {
+        var token = TestContext.Current.CancellationToken;
+        var source = TextViewSource.Create(table, cancellationToken: token);
+        Assert.Equal(TextLanguage.Markdown, source.DetectedLanguage);
+        var formatted = TextViewRendering.Create(source, source.DetectedLanguage, formatted: true, token);
+        Assert.True(formatted.IsDocument, name);
+        Assert.Equal(table, RtfText(formatted.ToRtf(SyntaxPalette.Dark, Style, token)));
+        var asCopied = TextViewRendering.Create(source, source.DetectedLanguage, formatted: false, token);
+        Assert.Equal(table, RtfText(asCopied.ToRtf(SyntaxPalette.Dark, Style, token)));
+    }
+
+    /// <summary>
+    /// Random tables without Markdown in them — words, numbers, runs of blanks and tabs, bars, plus signs, box drawing,
+    /// and dashed lines under their text — come out of the Formatted view exactly as typed, but for the blanks that end a
+    /// line, which nothing draws (500 tables, a fixed seed).
+    /// </summary>
+    [Fact]
+    public void Formatted_ShowsRandomTablesAsTyped()
+    {
+        string[] starts = ["BC", "test", "42", "│", "=", "└──", "Ω"];
+        string[] pieces = ["BC", "test", "42", "7", " ", "  ", "    ", "\t", "|", "+", "-", "--", "──", "│", "┼", ":", "/", "%", "=", "Ω"];
+        string[] dashed = ["---", "----  ---", " ------    -----", "-----------------", "--- --- ---"];
+        var random = new Random(20261116);
+        for (int round = 0; round < 500; round++)
+        {
+            var lines = new List<string>();
+            int count = random.Next(1, 12);
+            for (int l = 0; l < count; l++)
+            {
+                // A dashed line only under a line of text, never two in a row: a dashed line is text where it touches text.
+                if (l > 0 && !dashed.Contains(lines[^1]) && random.Next(4) == 0)
+                {
+                    lines.Add(dashed[random.Next(dashed.Length)]);
+                    continue;
+                }
+
+                var line = new StringBuilder(new string(' ', random.Next(0, 6)));
+                line.Append(starts[random.Next(starts.Length)]);
+                int pieceCount = random.Next(0, 10);
+                for (int p = 0; p < pieceCount; p++)
+                {
+                    line.Append(pieces[random.Next(pieces.Length)]);
+                }
+
+                lines.Add(line.ToString());
+            }
+
+            var typed = string.Join('\n', lines);
+            var token = TestContext.Current.CancellationToken;
+            var view = TextViewRendering.Create(TextViewSource.Create(typed, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+            Assert.True(view.IsDocument);
+            var expected = string.Join('\n', lines.Select(line => line.TrimEnd()));
+            Assert.Equal(expected, RtfText(view.ToRtf(SyntaxPalette.Light, Style, token)));
+        }
+    }
+
+    /// <summary>
+    /// What terminals and programs print as tables (BC-TEST data): the cases of <see cref="Formatted_ShowsAsciiTablesAsCopied"/>.
+    /// </summary>
+    public static TheoryData<string, string> AsciiTables => new()
+    {
+        { "psql", " id | name  | price\n----+-------+-------\n  1 | apple |  1.50\n  2 | pear  |  0.75\n(2 rows)" },
+        { "PowerShell Format-Table", "Name                           Value\n----                           -----\nPSVersion                      7.5.8\nPSEdition                      Core" },
+        { "PowerShell Get-Process", " NPM(K)    PM(M)      WS(M)     CPU(s)      Id  SI ProcessName\n ------    -----      -----     ------      --  -- -----------\n     29    12.34      45.67       1.23    1234   1 BC-TEST" },
+        { "box drawing", "┌────┬───────┐\n│ id │ name  │\n├────┼───────┤\n│ 1  │ apple │\n└────┴───────┘" },
+        { "MySQL", "+----+---------+\n| id | name    |\n+----+---------+\n|  1 | BC-TEST |\n+----+---------+" },
+        { "dashed border", "-----------------\n| id | name     |\n-----------------\n| 1  | BC-TEST  |\n-----------------" },
+        { "tab-separated", "Name\tAge\tCity\nBC-TEST\t30\tHaifa\nAlice\t24\tOslo" },
+        { "sqlite column mode", "id  name\n--  -------\n1   BC-TEST" },
+        { "pandas", "   id     name  price\n0   1  BC-TEST   1.50\n1   2     pear   0.75" },
+        { "kubectl", "NAME      READY   STATUS    RESTARTS   AGE\nweb-1     1/1     Running   0          5d" },
+        { "paths ending in a backslash", "Copied to:\nC:\\BC-TEST\\out\\\nD:\\BC-TEST\\backup\\" },
+    };
+
+    /// <summary>The faces of an RTF document's font table, in table order.</summary>
+    /// <param name="rtf">The document.</param>
+    /// <returns>The font names (<c>\f0</c> first).</returns>
+    private static string[] FontTable(string rtf)
+    {
+        int start = rtf.IndexOf(@"{\fonttbl", StringComparison.Ordinal);
+        int end = rtf.IndexOf(@"{\colortbl", start, StringComparison.Ordinal);
+        return System.Text.RegularExpressions.Regex.Matches(rtf[start..end], @"\\fcharset\d+ ([^;]*);").Select(match => match.Groups[1].Value).ToArray();
     }
 }

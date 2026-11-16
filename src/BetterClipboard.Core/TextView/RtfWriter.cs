@@ -8,19 +8,36 @@ namespace BetterClipboard.Core.TextView;
 /// The fonts and sizes the text viewer draws with. Sizes are in DIPs, like the rest of the app's text; the RTF writer turns
 /// them into points.
 /// </summary>
-/// <param name="ProseFont">The font of Markdown text.</param>
-/// <param name="CodeFont">The font of code and plain text (a monospace font the PC has).</param>
-/// <param name="ProseSize">Markdown body text, in DIPs.</param>
+/// <param name="ProseFont">
+/// The font of a Markdown document's text: its paragraphs, headings, lists, quotes and rules. The code font in
+/// <see cref="Default"/>, which says why.
+/// </param>
+/// <param name="CodeFont">The font of code and plain text, and of a document's code blocks, inline code and tables (a monospace font the PC has).</param>
+/// <param name="ProseSize">A Markdown document's body text, in DIPs (headings are larger by their level).</param>
 /// <param name="CodeSize">Code, in DIPs.</param>
 public sealed record TextViewStyle(string ProseFont, string CodeFont, double ProseSize, double CodeSize)
 {
     /// <summary>The smallest and largest text-size factors the viewer allows (50 % to 300 %).</summary>
     public const double MinScale = 0.5, MaxScale = 3.0;
 
-    /// <summary>The style at 100 %: Segoe UI at 14 DIPs (the panel's body size) and the given code font at 13.</summary>
+    /// <summary>The size of the text, Markdown documents' body text included, at 100 %, in DIPs.</summary>
+    public const double DefaultSize = 13;
+
+    /// <summary>
+    /// The style at 100 %: everything in the given code font at <see cref="DefaultSize"/>, Markdown documents included, so
+    /// Formatted reads in the same font and size as As copied, and columns of blanks line up in both.
+    /// </summary>
     /// <param name="codeFont">The monospace font to use (Cascadia Mono where Windows has it, else Consolas).</param>
     /// <returns>The style.</returns>
-    public static TextViewStyle Default(string codeFont) => new("Segoe UI", codeFont, 14, 13);
+    /// <remarks>
+    /// The owner's request (2026-11-16): "Can the format of "Formatted" tab be same as of "As copied"? we need mono font so
+    /// we will see ascii tables formatted by default just because of the font". A text no language is recognized in is
+    /// drawn as Markdown (the detector's fallback), so a table copied from a terminal opens Formatted, and in Segoe UI at
+    /// 14 DIPs, the panel's body size and the documents' font until then, its columns did not line up. The parser keeps each
+    /// line's layout for the same reason (<see cref="MarkdownParseOptions.KeepLayout"/>). The writer still takes
+    /// a separate prose font, so a proportional one is a change of this line.
+    /// </remarks>
+    public static TextViewStyle Default(string codeFont) => new(codeFont, codeFont, DefaultSize, DefaultSize);
 
     /// <summary>The style with every size multiplied by <paramref name="scale"/>, clamped to <see cref="MinScale"/>–<see cref="MaxScale"/>.</summary>
     /// <param name="scale">The factor (1 = 100 %); NaN counts as 1.</param>

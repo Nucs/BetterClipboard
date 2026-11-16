@@ -174,6 +174,14 @@ public sealed class TextViewSource
 /// so the switch can hide.
 /// </para>
 /// <para>
+/// <b>A document reads like its source</b> (the owner's request, 2026-11-16: "we need mono font so we will see ascii tables
+/// formatted by default just because of the font"). Since a text no language is recognized in is Markdown, a table copied
+/// from a terminal opens as a document. So it is drawn in the code font, the font as copied uses
+/// (<see cref="TextViewStyle.Default"/>), and its lines keep their layout (<see cref="MarkdownParseOptions.KeepLayout"/>):
+/// indentation, tabs, and dashed lines that touch text. A table that holds no Markdown then shows exactly as copied, while
+/// headings, lists, emphasis, links, code blocks and tables are still drawn.
+/// </para>
+/// <para>
 /// <b>Size limits.</b> Markdown is drawn up to <see cref="MarkdownMaxChars"/>; a longer text is shown as plain text. Code is
 /// colored up to <see cref="SyntaxHighlighter.DefaultMaxChars"/>; past that, in the default color.
 /// <see cref="IsLimited"/> tells the viewer to say so.
@@ -217,7 +225,7 @@ public sealed class TextViewRendering
     /// <summary>Whether the view is the formatted one (the switch's state), as opposed to as copied.</summary>
     public bool Formatted { get; private init; }
 
-    /// <summary>Whether the view is a drawn Markdown document (no line numbers, prose font); otherwise a code document.</summary>
+    /// <summary>Whether the view is a drawn Markdown document (no line numbers; headings, lists and links drawn); otherwise a code document.</summary>
     public bool IsDocument { get; private init; }
 
     /// <summary>Whether the text is shown re-indented (XML or JSON, formatted).</summary>
@@ -269,7 +277,9 @@ public sealed class TextViewRendering
             bool drawable = text.Length <= MarkdownMaxChars;
             if (formatted && drawable)
             {
-                var blocks = MarkdownParser.Parse(text, new MarkdownParseOptions(KeepLineBreaks: true, MaxLength: MarkdownMaxChars));
+                // Every line as it was laid out: the document is drawn in the code font (TextViewStyle.Default), where an
+                // ASCII table's columns of blanks line up only if its lines keep their indentation, tabs and dashed rules.
+                var blocks = MarkdownParser.Parse(text, new MarkdownParseOptions(KeepLineBreaks: true, MaxLength: MarkdownMaxChars, KeepLayout: true));
                 var view = new TextViewRendering
                 {
                     Language = language,

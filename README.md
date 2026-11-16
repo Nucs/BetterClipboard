@@ -361,7 +361,8 @@ at the card's corner say so.
 - **Viewer:** click the eye, press <kbd>F3</kbd>, or choose *View* in the item's menu. The screen dims and the text opens in a
   large card over it:
   - **Markdown** is drawn as a document: headings, lists, tables, quotes, links and code blocks, each code block
-    colored in its own language. Markdown is also what a text is shown as when no language is recognized.
+    colored in its own language. Markdown is also what a text is shown as when no language is recognized. It is
+    drawn in the same monospace font as *As copied*, and every line keeps its own spaces, so ASCII tables line up.
   - **Code** is colored, in C#, Java, Kotlin, JavaScript, TypeScript, Python, Ruby, PHP, Go, Rust, C and C++,
     PowerShell, shell scripts, batch files, SQL, CSS, HTML, XML, JSON, YAML, INI and TOML, and diffs. The language is
     recognized by itself; the language button picks another (the recognized one is marked *(detected)*).

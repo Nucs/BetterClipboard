@@ -6,10 +6,14 @@ namespace BetterClipboard.Core.Tests;
 
 /// <summary>
 /// Tests for <see cref="MarkdownParser"/>: the release notes' Markdown becomes the blocks and runs the update dialog
-/// draws, and no input makes it throw or hang.
+/// draws, the text viewer's kept layout keeps every line as typed (<see cref="MarkdownParseOptions.KeepLayout"/>), and no
+/// input makes it throw or hang.
 /// </summary>
 public sealed class MarkdownTests
 {
+    /// <summary>The options of the text viewer's Formatted view: line breaks and each line's layout kept.</summary>
+    private static readonly MarkdownParseOptions Laid = new(KeepLayout: true);
+
     /// <summary>
     /// Writes blocks as one compact line each, so a test compares a whole document with a few readable strings:
     /// <c>P:</c> paragraph, <c>Q:</c> quote, <c>H2:</c> heading, <c>L1(•):</c> list item at depth 1, <c>C:</c> code,
@@ -228,6 +232,75 @@ public sealed class MarkdownTests
         Assert.Equal(["L0(•):top", "L1(•):nested"], Describe(MarkdownParser.Parse("- top\n\t- nested")));
     }
 
+    /// <summary>
+    /// A kept layout keeps a paragraph's indentation and tabs as typed and implies kept line breaks; without it they go, as
+    /// CommonMark has it (release notes), and kept line breaks alone keep the breaks only.
+    /// </summary>
+    [Fact]
+    public void Parse_KeepLayout_KeepsIndentationAndTabs()
+    {
+        const string Typed = "  a\n\tb  c\n    d\te   ";
+        Assert.Equal(["P:  a⏎\tb  c⏎    d\te"], Describe(MarkdownParser.Parse(Typed, Laid)));
+        Assert.Equal(["P:a b  c d   e"], Describe(MarkdownParser.Parse(Typed)));
+        Assert.Equal(["P:a⏎b  c⏎d   e"], Describe(MarkdownParser.Parse(Typed, new MarkdownParseOptions(KeepLineBreaks: true))));
+    }
+
+    /// <summary>
+    /// A list item's lines keep what lies right of the item's text, not the item's own indentation; a line left of the
+    /// text, or a further paragraph indented to it, adds nothing; the item's first line is read as Markdown reads it.
+    /// </summary>
+    [Fact]
+    public void Parse_KeepLayout_MeasuresAnItemsLinesFromItsText()
+    {
+        Assert.Equal(["L0(•):item⏎same column⏎    deeper⏎lazy"], Describe(MarkdownParser.Parse("-   item\n    same column\n        deeper\nlazy", Laid)));
+        Assert.Equal(["L0(•):item", "P1:more", "P1:  further"], Describe(MarkdownParser.Parse("- item\n\n  more\n\n    further", Laid)));
+        Assert.Equal(["L0(•):outer", "L1(•):inner⏎  aside"], Describe(MarkdownParser.Parse("- outer\n  - inner\n      aside", Laid)));
+    }
+
+    /// <summary>
+    /// A dashed line that touches text is a line of that text with a kept layout — a table's header rule, a border above
+    /// or below text, a spaced one that would otherwise be a list item — while one standing on its own, or next to a
+    /// heading, a list item or a quote, is still a rule. Without a kept layout every dashed line is a rule.
+    /// </summary>
+    /// <param name="markdown">The text.</param>
+    /// <param name="laidOut">The blocks with a kept layout.</param>
+    /// <param name="commonMark">The blocks without it.</param>
+    [Theory]
+    [MemberData(nameof(DashedLines))]
+    public void Parse_KeepLayout_DashedLinesThatTouchTextAreText(string markdown, string[] laidOut, string[] commonMark)
+    {
+        Assert.Equal(laidOut, Describe(MarkdownParser.Parse(markdown, Laid)));
+        Assert.Equal(commonMark, Describe(MarkdownParser.Parse(markdown)));
+    }
+
+    /// <summary>The cases of <see cref="Parse_KeepLayout_DashedLinesThatTouchTextAreText"/>: text, with a kept layout, without one.</summary>
+    public static TheoryData<string, string[], string[]> DashedLines => new()
+    {
+        { "Name  Value\n----  -----\nBC    1", ["P:Name  Value⏎----  -----⏎BC    1"], ["P:Name  Value", "R", "P:BC    1"] },
+        { "-----\n| a |\n-----", ["P:-----⏎| a |⏎-----"], ["R", "P:| a |", "R"] },
+        { "a\n- - -\nb", ["P:a⏎- - -⏎b"], ["P:a", "R", "P:b"] },
+        { "a\n\n---\n\nb", ["P:a", "R", "P:b"], ["P:a", "R", "P:b"] },
+        { "---\n# Title", ["R", "H1:Title"], ["R", "H1:Title"] },
+        { "---\n- item", ["R", "L0(•):item"], ["R", "L0(•):item"] },
+        { "- item\n---\ntext", ["L0(•):item", "R", "P:text"], ["L0(•):item", "R", "P:text"] },
+        { "> quote\n***\ntext", ["Q:quote", "R", "P:text"], ["Q:quote", "R", "P:text"] },
+        { "# Title\n___\ntext", ["H1:Title", "P:___⏎text"], ["H1:Title", "R", "P:text"] },
+        { "---\n---\ntext", ["R", "P:---⏎text"], ["R", "R", "P:text"] },
+    };
+
+    /// <summary>
+    /// A kept layout keeps a quote's indentation past the blank after its mark, and a backslash that ends a line (a path,
+    /// not a break mark: every break is kept anyway); kept line breaks alone take the backslash as CommonMark's break mark.
+    /// </summary>
+    [Fact]
+    public void Parse_KeepLayout_KeepsQuoteIndentationAndBackslashes()
+    {
+        Assert.Equal(["Q:a⏎  b⏎\tc"], Describe(MarkdownParser.Parse("> a\n>   b\n>\t\tc", Laid)));
+        Assert.Equal(["Q:a b c"], Describe(MarkdownParser.Parse("> a\n>   b\n>\t\tc")));
+        Assert.Equal(["P:C:\\x\\⏎D:\\y\\"], Describe(MarkdownParser.Parse("C:\\x\\\nD:\\y\\", Laid)));
+        Assert.Equal(["P:C:\\x⏎D:\\y\\"], Describe(MarkdownParser.Parse("C:\\x\\\nD:\\y\\", new MarkdownParseOptions(KeepLineBreaks: true))));
+    }
+
     /// <summary>Bold, italic, both, strikethrough and code, in both spellings.</summary>
     /// <param name="markdown">The inline Markdown.</param>
     /// <param name="expected">The runs it must become.</param>
@@ -383,13 +456,13 @@ public sealed class MarkdownTests
     }
 
     /// <summary>
-    /// Random text built from Markdown's own marks never throws and never loses the letters between the marks (2,000
-    /// documents, a fixed seed).
+    /// Random text built from Markdown's own marks never throws, read as release notes or with the text viewer's kept
+    /// layout (2,000 documents, a fixed seed).
     /// </summary>
     [Fact]
     public void Parse_NeverThrowsOnRandomMarkup()
     {
-        string[] pieces = ["*", "**", "_", "__", "`", "```", "~~", "[", "]", "(", ")", "<", ">", "!", "\\", "|", "-", "#", ">", " ", "  ", "\n", "\n\n", "\t", "1.", "&amp;", "https://e.org/x", "word", "W"];
+        string[] pieces = ["*", "**", "_", "__", "`", "```", "~~", "[", "]", "(", ")", "<", ">", "!", "\\", "|", "-", "#", ">", " ", "  ", "\n", "\n\n", "\t", "1.", "&amp;", "https://e.org/x", "word", "W", "---", "- - -", "***"];
         var random = new Random(20261009);
         for (int round = 0; round < 2000; round++)
         {
@@ -401,12 +474,14 @@ public sealed class MarkdownTests
             }
 
             var source = text.ToString();
-            var blocks = MarkdownParser.Parse(source);
-            Assert.NotNull(blocks);
-            foreach (var block in blocks)
+            foreach (var blocks in new[] { MarkdownParser.Parse(source), MarkdownParser.Parse(source, Laid) })
             {
-                // Every block kind must describe without failing (its lists are complete).
-                Assert.NotNull(Describe([block]));
+                Assert.NotNull(blocks);
+                foreach (var block in blocks)
+                {
+                    // Every block kind must describe without failing (its lists are complete).
+                    Assert.NotNull(Describe([block]));
+                }
             }
         }
     }
