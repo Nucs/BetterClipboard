@@ -227,6 +227,65 @@ public sealed class ContentTests
         Assert.Equal("(whitespace · 3 chars)", ContentClassifier.BuildTextPreview(" \t\n"));
     }
 
+    /// <summary>
+    /// The texts the history leaves out (CLAUDE.md §2.3): blank text in every whitespace .NET knows, plain or formatted;
+    /// not text with anything visible in it, not invisible characters that are not whitespace, and not blank text that
+    /// carries a picture.
+    /// </summary>
+    /// <param name="text">The copy's text.</param>
+    /// <param name="withHtml">Whether the copy also carries HTML (a formatted copy).</param>
+    /// <param name="withPicture">Whether the copy also carries a PNG (Office and browsers attach one to some copies).</param>
+    /// <param name="expected">Whether the copy is only whitespace.</param>
+    [Theory]
+    [MemberData(nameof(WhitespaceCases))]
+    public void IsWhitespaceOnly_BlankTextWithoutAPicture(string text, bool withHtml, bool withPicture, bool expected)
+    {
+        var formats = new List<ClipFormatData> { new(ClipFormatNames.UnicodeText, UnicodeTextCodec.Encode(text)) };
+        if (withHtml)
+        {
+            formats.Add(new ClipFormatData(ClipFormatNames.Html, Encoding.UTF8.GetBytes("<p> </p>")));
+        }
+
+        if (withPicture)
+        {
+            formats.Add(new ClipFormatData(ClipFormatNames.Png, [1, 2, 3, 4]));
+        }
+
+        var capture = new ClipCapture { Formats = formats, CapturedAtUtc = TestData.Now };
+        Assert.Equal(expected, ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(capture)!, capture));
+    }
+
+    /// <summary>The cases of <see cref="IsWhitespaceOnly_BlankTextWithoutAPicture"/>: text, HTML, PNG, expected.</summary>
+    public static TheoryData<string, bool, bool, bool> WhitespaceCases => new()
+    {
+        { " ", false, false, true },
+        { "\t", false, false, true },
+        { "\r\n", false, false, true },
+        { "  \r\n\t \n", false, false, true },
+        { "\u00A0", false, false, true },          // no-break space
+        { "\u3000\u2003", false, false, true },    // ideographic space, em space
+        { " ", true, false, true },                 // a formatted copy of a blank paragraph
+        { " x ", false, false, false },
+        { "\u200B", false, false, false },          // zero-width space: a format character, not whitespace
+        { "a", false, false, false },
+        { " ", false, true, false },                // blank text with a picture: the picture is kept
+        { "\r\n", true, true, false },
+    };
+
+    /// <summary>A classification of a picture, files, or rich content without text is never "only whitespace".</summary>
+    [Fact]
+    public void IsWhitespaceOnly_NotForOtherKinds()
+    {
+        var picture = TestData.Image(3);
+        Assert.False(ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(picture)!, picture));
+        var files = TestData.Files(@"C:\a b\c.txt");
+        Assert.False(ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(files)!, files));
+        var richOnly = new ClipCapture { Formats = [new ClipFormatData(ClipFormatNames.Html, Encoding.UTF8.GetBytes("<p> </p>"))] };
+        Assert.False(ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(richOnly)!, richOnly));
+        Assert.Throws<ArgumentNullException>(() => ContentClassifier.IsWhitespaceOnly(null!, picture));
+        Assert.Throws<ArgumentNullException>(() => ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(picture)!, null!));
+    }
+
     /// <summary>Truncation never splits a surrogate pair (which SQLite would store as U+FFFD).</summary>
     [Fact]
     public void Preview_DoesNotSplitSurrogates()

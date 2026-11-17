@@ -536,7 +536,7 @@ Lo que guarda se queda en tu PC, en el historial cifrado que se describe en [Có
 
 | Origen | Lo que BetterClipboard hace con él | Predeterminado | Opción |
 |---|---|---|---|
-| El portapapeles | Guarda cada copia, salvo las que las aplicaciones marcan como privadas y las copias hechas por *Aplicaciones ignoradas* (los administradores de contraseñas, desde el principio) | Activado | *Pausar la captura*, *Aplicaciones ignoradas* |
+| El portapapeles | Guarda cada copia, salvo las que las aplicaciones marcan como privadas, las copias hechas por *Aplicaciones ignoradas* (los administradores de contraseñas, desde el principio) y las copias que solo tienen espacios, tabulaciones o líneas vacías | Activado | *Pausar la captura*, *Aplicaciones ignoradas* |
 | El historial del portapapeles propio de Windows | Importa en cada inicio lo que Win+V todavía recuerda, incluidos sus elementos anclados | Activado | *Importar desde Windows › Importar automáticamente cada vez que se inicie BetterClipboard* |
 | Las carpetas de capturas de ShareX | Guarda cada captura que guarda ShareX | Activado, mientras ShareX está instalado | *Capturas de ShareX* |
 | La carpeta Capturas de pantalla de Windows | Guarda cada captura que Recortes o Win+PrtScn guardan allí | Activado | *Recortes y Win+PrtScn* |

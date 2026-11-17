@@ -844,7 +844,7 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 
 | Source | What BetterClipboard does with it | Default | Setting |
 |---|---|---|---|
-| The clipboard | Keeps every copy, except copies apps mark as private and copies made by *Ignored apps* (password managers, out of the box) | On | *Pause capturing*, *Ignored apps* |
+| The clipboard | Keeps every copy, except copies apps mark as private, copies made by *Ignored apps* (password managers, out of the box), and copies that are only spaces, tabs or empty lines | On | *Pause capturing*, *Ignored apps* |
 | Windows' own clipboard history | Imports what Win+V still remembers, its pinned items included, at each start | On | *Import from Windows › Import automatically every time BetterClipboard starts* |
 | ShareX's screenshot folders | Keeps each screenshot ShareX saves | On, while ShareX is installed | *ShareX screenshots* |
 | Windows' Screenshots folder | Keeps each screenshot Snipping Tool or Win+PrtScn saves there | On | *Snipping Tool and Win+PrtScn* |

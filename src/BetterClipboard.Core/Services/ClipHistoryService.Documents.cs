@@ -158,9 +158,11 @@ public sealed partial class ClipHistoryService
         }
 
         var classified = ContentClassifier.Classify(capture);
-        if (classified?.PlainText is null)
+        if (classified?.PlainText is null || ContentClassifier.IsWhitespaceOnly(classified, capture))
         {
-            // Empty or not text: a document's version is only ever recorded as text.
+            // Empty, not text, or only whitespace (a tab emptied down to a space): a document's version is only ever
+            // recorded as text, and blank text is no more kept from a tab than from a copy (ContentClassifier.IsWhitespaceOnly).
+            // The document keeps its last recorded version; its next real text is compared with that one.
             return TrackedDocumentOutcome.Skipped;
         }
 

@@ -139,6 +139,31 @@ public static class ContentClassifier
     }
 
     /// <summary>
+    /// Whether a classified copy is text made only of whitespace (spaces, tabs, line breaks: <see cref="char.IsWhiteSpace(char)"/>)
+    /// with no picture next to it — a copy the history does not keep (<c>ClipHistoryService</c>; CLAUDE.md §2.3).
+    /// </summary>
+    /// <remarks>
+    /// Why such a copy is left out: its card can only read "(whitespace · 1 char)", which is easy to miss in a quick Win+V,
+    /// ↓, Enter, and once used it moves up to sit right under the newest copy, where ↓ lands. On 2026-11-17 a single space
+    /// copied by accident in Notepad++ was pasted four times that way by someone who believed they had picked text. The copy
+    /// itself still reaches the clipboard: only the history skips it. A copy whose text is blank but which carries a picture
+    /// (Office and browsers attach a rendering to some copies) is a picture worth keeping, so it does not count.
+    /// </remarks>
+    /// <param name="classified">The copy's classification (<see cref="Classify"/>).</param>
+    /// <param name="capture">The copy itself, asked for a picture format.</param>
+    /// <returns><see langword="true"/> for blank text without a picture; <see langword="false"/> for anything else.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="classified"/> or <paramref name="capture"/> is <see langword="null"/>.</exception>
+    public static bool IsWhitespaceOnly(ClassifiedClip classified, ClipCapture capture)
+    {
+        ArgumentNullException.ThrowIfNull(classified);
+        ArgumentNullException.ThrowIfNull(capture);
+        return classified.Kind is ClipKind.Text or ClipKind.RichText
+            && classified.PlainText is { Length: > 0 } text
+            && string.IsNullOrWhiteSpace(text)
+            && FindPrimaryImage(capture) is null;
+    }
+
+    /// <summary>
     /// The image formats <see cref="FindPrimaryImage"/> looks for, most wanted first: what a reader that needs only the
     /// picture asks the store for (<c>ClipStore.GetFirstFormat</c>), so it never reads the DIB next to a PNG.
     /// </summary>

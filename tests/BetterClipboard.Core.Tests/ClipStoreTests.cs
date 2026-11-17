@@ -1,5 +1,6 @@
 using BetterClipboard.Core.Content;
 using BetterClipboard.Core.Model;
+using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Storage;
 
 namespace BetterClipboard.Core.Tests;
@@ -340,6 +341,60 @@ public sealed class ClipStoreTests : IDisposable
         var later = Add(TestData.Text("later import", origin: ClipOrigin.WindowsHistory, source: legacy))!.Entry;
         new ClipStore(temp.DatabasePath).Initialize();
         Assert.Equal("Windows clipboard history", store.GetEntry(later.Id)!.SourceAppName);
+    }
+
+    /// <summary>
+    /// The whitespace-only copies earlier builds kept are deleted exactly once (CLAUDE.md §2.3): plain and formatted ones go;
+    /// a pinned one, a grouped one, one carrying a picture, one whose text was cut at the search cap, a "Formatted content"
+    /// row without text, and text with something visible in it stay.
+    /// </summary>
+    [Fact]
+    public void Initialize_DeletesWhitespaceOnlyCopiesOnce()
+    {
+        var space = Add(TestData.Text(" ", TestData.Now.AddMinutes(-9)))!.Entry;
+        var blankLines = Add(TestData.Text("\r\n\t\r\n", TestData.Now.AddMinutes(-8)))!.Entry;
+        var formatted = Add(TestData.Rich("\u00A0", "<p>&nbsp;</p>"))!.Entry;
+        var pinned = Add(TestData.Text("\t", TestData.Now.AddMinutes(-7)))!.Entry;
+        store.SetPinned(pinned.Id, true, TestData.Now);
+        var grouped = Add(TestData.Text("  ", TestData.Now.AddMinutes(-6)))!.Entry;
+        var group = store.CreateGroup("Keep", GroupIconCatalog.Default.Glyph, TestData.Now);
+        store.AddToGroup(grouped.Id, group.Id, TestData.Now);
+        var picture = Add(new ClipCapture
+        {
+            Formats =
+            [
+                new ClipFormatData(ClipFormatNames.UnicodeText, UnicodeTextCodec.Encode("\r\n")),
+                new ClipFormatData(ClipFormatNames.Png, [7, 7, 7, 7]),
+            ],
+            CapturedAtUtc = TestData.Now.AddMinutes(-5),
+            Source = TestData.Notepad,
+        })!.Entry;
+        var cut = Add(TestData.Text(new string(' ', ContentClassifier.SearchMaxChars) + "x", TestData.Now.AddMinutes(-4)))!.Entry;
+        var richOnly = Add(new ClipCapture
+        {
+            Formats = [new ClipFormatData(ClipFormatNames.Html, System.Text.Encoding.UTF8.GetBytes("<p>table</p>"))],
+            CapturedAtUtc = TestData.Now.AddMinutes(-3),
+            Source = TestData.Notepad,
+        })!.Entry;
+        var visible = Add(TestData.Text(" a ", TestData.Now.AddMinutes(-2)))!.Entry;
+
+        // The fix-up already ran when the fixture created this (then empty) database; forget that to replay an old file.
+        ExecuteRaw("DELETE FROM meta WHERE key = 'fixup.whitespace_only.v1';");
+        new ClipStore(temp.DatabasePath).Initialize();
+        Assert.Null(store.GetEntry(space.Id));
+        Assert.Null(store.GetEntry(blankLines.Id));
+        Assert.Null(store.GetEntry(formatted.Id));
+        Assert.Empty(store.GetFormats(space.Id));
+        foreach (var kept in new[] { pinned, grouped, picture, cut, richOnly, visible })
+        {
+            Assert.NotNull(store.GetEntry(kept.Id));
+        }
+
+        // Once applied it never runs again: a blank row written afterwards (only a store-level write can make one now)
+        // stays.
+        var later = Add(TestData.Text(" ", TestData.Now))!.Entry;
+        new ClipStore(temp.DatabasePath).Initialize();
+        Assert.NotNull(store.GetEntry(later.Id));
     }
 
     /// <summary>The grep scan returns search text newest first, per filter, skipping text-less images.</summary>

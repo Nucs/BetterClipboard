@@ -2195,6 +2195,14 @@ public sealed partial class ClipStore
     /// copied before the resolver skipped such descriptions is labeled "SnippingTool.exe". This renames those rows; it
     /// touches only rows whose path is Snipping Tool's executable.
     /// </para>
+    /// <para>
+    /// <c>fixup.whitespace_only.v1</c>: copies that are only whitespace are no longer kept (2026-11-17,
+    /// <see cref="ContentClassifier.IsWhitespaceOnly"/>); the ones earlier builds kept are deleted once, so the stray space
+    /// that caused the report stops sitting under the newest copy. Left alone: a pinned or grouped one (the user chose to
+    /// keep it), one whose text was cut at the search cap (its search text says nothing of the rest), and one that carries
+    /// a picture (the same exception the capture rule makes). No tombstone: the capture rule keeps the same content out of
+    /// every later copy and import.
+    /// </para>
     /// </remarks>
     /// <param name="connection">Open connection (outside any transaction).</param>
     private static void ApplyDataFixups(SqliteConnection connection)
@@ -2212,7 +2220,36 @@ public sealed partial class ClipStore
             WHERE source_app_name = '{WindowsScreenshots.SnippingToolExecutableName}'
               AND source_app_path LIKE '%\{WindowsScreenshots.SnippingToolExecutableName}';
             """);
+
+        // A text kept whole has its search text equal to it (shorter than the cap); the empty search text of a
+        // "Formatted content" row (HTML or RTF without text) is not whitespace. foreign_keys is on for this connection, so
+        // the formats, group memberships and tracked-document links go with each row; the full-text triggers update the index.
+        ApplyDataFixup(connection, "fixup.whitespace_only.v1",
+            $"""
+            DELETE FROM clips
+            WHERE kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText})
+              AND is_pinned = 0
+              AND length(search_text) BETWEEN 1 AND {ContentClassifier.SearchMaxChars - 1}
+              AND trim(search_text, {WhitespaceSqlCharacters}) = ''
+              AND NOT EXISTS (SELECT 1 FROM clip_groups g WHERE g.clip_id = clips.id)
+              AND NOT EXISTS (SELECT 1 FROM clip_formats f WHERE f.clip_id = clips.id AND f.name IN ({PictureFormatSqlList}));
+            """);
     }
+
+    /// <summary>
+    /// SQLite's <c>char(…)</c> of every character .NET counts as whitespace (<see cref="ForgetFingerprint.WhitespaceCharacters"/>):
+    /// the set <c>trim</c> strips in <c>fixup.whitespace_only.v1</c>, so the store and <see cref="string.IsNullOrWhiteSpace"/>
+    /// agree on what is blank. Built from constants (code points), never from content.
+    /// </summary>
+    private static readonly string WhitespaceSqlCharacters =
+        $"char({string.Join(", ", ForgetFingerprint.WhitespaceCharacters.Select(c => (int)c))})";
+
+    /// <summary>
+    /// The picture formats (<see cref="ContentClassifier.PrimaryImageFormats"/>) as a quoted SQL list, for the fix-up's
+    /// "carries a picture" exception. Constants only.
+    /// </summary>
+    private static readonly string PictureFormatSqlList =
+        string.Join(", ", ContentClassifier.PrimaryImageFormats.Select(name => $"'{name}'"));
 
     /// <summary>
     /// Runs one fix-up unless its flag says it already ran: flag and change commit together, so a crash in between

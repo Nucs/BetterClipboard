@@ -457,7 +457,7 @@ public sealed class CliCommandProcessor
         }).ConfigureAwait(false);
 
         return stored is null
-            ? new CliResponse { Ok = true, Message = "Copied to the clipboard (not saved to history: capture is paused, the text exceeds the size limit, or it was forgotten forever)." }
+            ? new CliResponse { Ok = true, Message = "Copied to the clipboard (not saved to history: capture is paused, the text exceeds the size limit, it is only whitespace, or it was forgotten forever)." }
             : new CliResponse { Ok = true, Item = ToItem(stored), Message = $"Copied to the clipboard and saved as item {stored.Id}." };
     }
 

@@ -279,8 +279,8 @@ public sealed class TrackedDocumentStoreTests : IAsyncLifetime
     }
 
     /// <summary>
-    /// Through the service: pause skips live versions but not the first activation's import; ignored apps, the size limit
-    /// and "Forget forever" always apply.
+    /// Through the service: pause skips live versions but not the first activation's import; ignored apps, the size limit,
+    /// "Forget forever" and the whitespace rule always apply.
     /// </summary>
     /// <returns>A task completing after the checks.</returns>
     [Fact]
@@ -303,6 +303,14 @@ public sealed class TrackedDocumentStoreTests : IAsyncLifetime
         var stored = await history.AddAsync(copy);
         await history.ForgetAsync(stored!.Id);
         Assert.Equal(TrackedDocumentOutcomeKind.Skipped, (await history.RecordDocumentAsync(Document("BC-TEST forgotten text", TestData.Now, key: Key + "f"))).Kind);
+
+        // A tab emptied down to whitespace is no more kept than a whitespace copy (CLAUDE.md §2.3), in a live look and in the
+        // first activation's import alike; the tab keeps its last real version.
+        var tab = await history.RecordDocumentAsync(Document("BC-TEST a real note", TestData.Now, key: Key + "w"));
+        Assert.Equal(TrackedDocumentOutcomeKind.Created, tab.Kind);
+        Assert.Equal(TrackedDocumentOutcomeKind.Skipped, (await history.RecordDocumentAsync(Document(" \r\n", TestData.Now.AddMinutes(1), key: Key + "w"))).Kind);
+        Assert.Equal(TrackedDocumentOutcomeKind.Skipped, (await history.RecordDocumentsAsync([Document("\t", TestData.Now, key: Key + "x")], isImport: true)).Single().Kind);
+        Assert.Equal("BC-TEST a real note", (await history.QueryAsync(new ClipQuery { SearchText = "real note" }, TestContext.Current.CancellationToken)).Single().Preview);
     }
 
     /// <summary>

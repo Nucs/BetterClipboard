@@ -104,6 +104,36 @@ public sealed class ClipHistoryServiceTests : IAsyncLifetime
         Assert.NotNull(await service.AddAsync(TestData.Text("fine")));
     }
 
+    /// <summary>
+    /// Copies that are only whitespace are not kept from any channel (a live copy, Windows' history, a formatted copy), while
+    /// text with something visible in it, and blank text that carries a picture, are kept as before (CLAUDE.md §2.3). The
+    /// report behind it: a single space copied by accident sat right under the newest copy and was pasted four times.
+    /// </summary>
+    [Fact]
+    public async Task WhitespaceOnlyCopies_AreNotKept()
+    {
+        Assert.Null(await service.AddAsync(TestData.Text(" ")));
+        Assert.Null(await service.AddAsync(TestData.Text("\r\n\t ")));
+        Assert.Null(await service.AddAsync(TestData.Text(" ", origin: ClipOrigin.WindowsHistory)));
+        Assert.Null(await service.AddAsync(TestData.Text("\u00A0", origin: ClipOrigin.WindowsPinned, pin: true)));
+        Assert.Null(await service.AddAsync(TestData.Rich("\n", "<p></p>")));
+        Assert.Empty(Kinds());
+
+        Assert.NotNull(await service.AddAsync(TestData.Text(" kept ")));
+        var picture = new ClipCapture
+        {
+            Formats =
+            [
+                new ClipFormatData(ClipFormatNames.UnicodeText, UnicodeTextCodec.Encode(" ")),
+                new ClipFormatData(ClipFormatNames.Png, [9, 9, 9, 9]),
+            ],
+            CapturedAtUtc = TestData.Now,
+            Source = TestData.Notepad,
+        };
+        Assert.NotNull(await service.AddAsync(picture));
+        Assert.Equal(2, (await service.QueryAsync(new ClipQuery(), TestContext.Current.CancellationToken)).Count);
+    }
+
     /// <summary>Oversized copies are skipped.</summary>
     [Fact]
     public async Task SizeLimit_IsEnforced()

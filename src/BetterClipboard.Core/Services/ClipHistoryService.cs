@@ -776,8 +776,8 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// an import of Windows' history.
     /// </param>
     /// <returns>
-    /// The upsert result, or <see langword="null"/> when rejected (rules, classification, forgotten, a suppressed import, or
-    /// content of a Windows pin that the ledger leaves as the user keeps it).
+    /// The upsert result, or <see langword="null"/> when rejected (rules, classification, text that is only whitespace,
+    /// forgotten, a suppressed import, or content of a Windows pin that the ledger leaves as the user keeps it).
     /// </returns>
     private async Task<UpsertResult?> StoreAsync(ClipCapture capture, bool raiseEvents, WindowsPinLedger? windowsPins = null)
     {
@@ -815,6 +815,20 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
             (classified.Kind == ClipKind.Image && !rules.CaptureImages) ||
             (classified.Kind == ClipKind.Files && !rules.CaptureFiles))
         {
+            return null;
+        }
+
+        // A copy that is only whitespace (a stray space, a tab, an empty line) is not kept, from any channel: shown as
+        // "(whitespace · 1 char)" it is easy to miss, and once used it sits right under the newest copy, where ↓ lands
+        // (ContentClassifier.IsWhitespaceOnly). It stays on the clipboard. Logged for new events only, content-free:
+        // Windows' history offers the same blank item again at every start.
+        if (ContentClassifier.IsWhitespaceOnly(classified, capture))
+        {
+            if (isNewEvent)
+            {
+                AppLog.Info("Skipped a copy that is only whitespace.");
+            }
+
             return null;
         }
 
