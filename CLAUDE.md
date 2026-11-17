@@ -6184,6 +6184,8 @@ full design):
      (`MaximumEngagement`), at most 512 events. The newest low-level hook is called first, so it sees each key before other
      programs' hooks and before any window.
    - A Win+V typed meanwhile still opens the panel: the replay marker is not the one BetterClipboard's own hook skips.
+   - No guard for a target that runs as administrator: the paste into it is refused (§2.5), and Windows would drop the
+     held keys typed into it again (UIPI), where the user's own keys reach it.
 4. **The log line** adds the hold: "… ready 461 ms, sent 4 ms); Ctrl held 106 ms (slow).", "; 2 key events typed meanwhile
    went in after it" (such a paste is always logged), and "(released before the window took the keys)" when the cap
    released Ctrl (always logged: the one case left in which a paste may type "v"). Counts only, never which keys.

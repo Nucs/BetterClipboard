@@ -130,8 +130,9 @@ public static class PasteInjector
         // (CLAUDE.md §2.54): typed during the waits they would land before the pasted text — or, in a window that takes them
         // late, as Ctrl+key, since the paste holds Ctrl down — and typed during the hold as Ctrl+key. A caller that engaged
         // the guard earlier (AppController, from the Enter on) is joined. Without a guard (it could not start), the paste
-        // goes on as before.
-        var guard = PasteKeyGuard.TryGetShared();
+        // goes on as before. None for a window that runs as administrator: the paste into it is refused below, and
+        // Windows would drop the held keys typed into it again (UIPI), where the user's own keys reach it.
+        var guard = ProcessIntegrity.IsAboveCurrent(target) ? null : PasteKeyGuard.TryGetShared();
         bool guarding = guard is not null && await guard.EngageAsync().ConfigureAwait(false);
         try
         {

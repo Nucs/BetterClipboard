@@ -200,8 +200,9 @@ public sealed partial class AppController
                 // From the Enter until the paste's Ctrl is up again, keys the user types are held back and typed after the
                 // pasted text, in their order (CLAUDE.md §2.54): typed now, they would go to the panel on its way out (it
                 // still has the keyboard until the target is activated), or reach the target before the paste. The
-                // injector joins this engagement.
-                var guard = inject ? PasteKeyGuard.TryGetShared() : null;
+                // injector joins this engagement. Not for a window that runs as administrator: the paste into it is
+                // refused, and Windows would drop the held keys typed into it again (UIPI), where the user's own reach it.
+                var guard = inject && !ProcessIntegrity.IsAboveCurrent(target) ? PasteKeyGuard.TryGetShared() : null;
                 bool guarding = guard is not null && await guard.EngageAsync().ConfigureAwait(false);
                 try
                 {
