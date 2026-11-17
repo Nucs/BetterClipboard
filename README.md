@@ -858,6 +858,9 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 
 - **Nothing private in the logs:** they record what happened (counts, versions, errors), never what you copied,
   ran, typed or sent. They are always in English.
+- **Keys you type while it pastes:** from your Enter until its Ctrl+V is done (a fraction of a second),
+  BetterClipboard holds them back and types them right after the pasted text, so none arrives as Ctrl+key. They are
+  not stored; the log only counts them.
 - **Temporary pictures are plain files:** *Save to temp and* writes a picture as an ordinary PNG into
   `%TEMP%\BetterClipboard\Images`, outside the encrypted history, so that other apps can open it. BetterClipboard
   deletes such pictures when it starts, once they were not used for 30 days (*Settings › History*).

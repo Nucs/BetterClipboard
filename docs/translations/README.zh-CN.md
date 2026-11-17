@@ -551,6 +551,7 @@ bclip prompts migration -a claude         # 我问过 Claude Code 哪些关于�
 | Claude Code 和 Codex | 保留你发送给它们的提示词，从它们自己的历史文件中读取 | 开启 | *Claude Code 提示词*、*Codex 提示词* |
 
 - **日志中没有隐私内容：** 日志记录发生了什么（数量、版本、错误），从不记录你复制、运行、输入或发送的内容。日志始终是英文。
+- **粘贴时你按下的按键：** 从你按下 Enter 到它的 Ctrl+V 完成（不到一秒），BetterClipboard 会先扣住这些按键，再在粘贴的文本之后立即替你输入，因此没有一个会变成 Ctrl+按键。它们不会被保存；日志只记录数量。
 - **临时图片是普通文件：** *保存到临时文件夹后* 会把图片作为普通 PNG 写入 `%TEMP%\BetterClipboard\Images`，它不在加密的历史中，因此其他应用可以打开它。BetterClipboard 会在启动时删除 30 天未使用的此类图片（*设置 › 历史*）。
 - **命令行默认关闭。** *命令行（bclip）* 开启期间，任何以你的身份运行的程序都可以通过它读取历史（参见[命令行](#command-line-for-scripts-and-ai-agents)）。
 - **Windows 自己的功能：** 你粘贴的项目会像任何复制一样进入剪贴板，因此 Windows 的剪贴板历史及其跨设备同步（*跨设备的剪贴板历史记录*）会按你在 Windows 中的设置来处理它（相关内容见 Microsoft 的[隐私声明](https://privacy.microsoft.com/privacystatement)）。

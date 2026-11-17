@@ -586,6 +586,21 @@ internal static partial class NativeMethods
     /// <summary><c>KEYEVENTF_KEYUP</c>.</summary>
     internal const uint KEYEVENTF_KEYUP = 0x0002;
 
+    /// <summary><c>KEYEVENTF_EXTENDEDKEY</c>: the key is an extended key (right Ctrl, the arrows, the numpad's Enter, …).</summary>
+    internal const uint KEYEVENTF_EXTENDEDKEY = 0x0001;
+
+    /// <summary><c>KEYEVENTF_UNICODE</c>: <c>wScan</c> is a UTF-16 code unit, sent as <c>VK_PACKET</c>.</summary>
+    internal const uint KEYEVENTF_UNICODE = 0x0004;
+
+    /// <summary><c>VK_PACKET</c>: the virtual key of a character typed with <see cref="KEYEVENTF_UNICODE"/>.</summary>
+    internal const uint VK_PACKET = 0xE7;
+
+    /// <summary><c>LLKHF_EXTENDED</c>: a low-level keyboard event of an extended key.</summary>
+    internal const uint LLKHF_EXTENDED = 0x01;
+
+    /// <summary><c>LLKHF_UP</c>: a low-level keyboard event of a key-up.</summary>
+    internal const uint LLKHF_UP = 0x80;
+
     /// <summary>Synthetic input event (<c>INPUT</c>); the union is laid out at the platform's natural alignment.</summary>
     [StructLayout(LayoutKind.Sequential)]
     internal struct INPUT

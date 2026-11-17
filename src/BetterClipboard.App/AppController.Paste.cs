@@ -161,9 +161,14 @@ public sealed partial class AppController
     /// deactivation does nothing more. Then off the UI thread, which handles that deactivation (WinUI's own work, page faults
     /// included) in parallel: the clipboard is written first, while nothing else competes with it; then the target is
     /// activated (this process still owns the foreground, so any of its threads may hand it on) and gets
-    /// <see cref="PasteInjector.SettleTime"/> before the Ctrl+V. The UI thread then stays free for
-    /// <see cref="FinishAfterPaste"/> before the panel's put-away finishes (<see cref="Views.ClipboardFlyout.FinishPuttingAway"/>)
-    /// — at once when nothing was pasted.
+    /// <see cref="PasteInjector.SettleTime"/> before the Ctrl+V — longer when its input thread is busy, and Ctrl stays down
+    /// until that thread took the V (CLAUDE.md §2.54). The UI thread then stays free for <see cref="FinishAfterPaste"/> before
+    /// the panel's put-away finishes (<see cref="Views.ClipboardFlyout.FinishPuttingAway"/>) — at once when nothing was pasted.
+    /// </para>
+    /// <para>
+    /// For a paste, keys the user types from the start until Ctrl is up again are held back and typed after the pasted text
+    /// (<see cref="PasteKeyGuard"/>): a fast "Enter, Enter" submits what was pasted, and nothing lands in the panel on its way
+    /// out or as Ctrl+key.
     /// </para>
     /// <para>
     /// When a step fails, the target still gets the foreground back (from here, if the delivery failed before activating it),
@@ -192,20 +197,38 @@ public sealed partial class AppController
         {
             outcome = await Task.Run(async () =>
             {
-                await writer.WriteAsync(formats).ConfigureAwait(false);
-                timeline.Mark("clipboard");
-                long activatedAt = 0;
-                if (target != 0)
+                // From the Enter until the paste's Ctrl is up again, keys the user types are held back and typed after the
+                // pasted text, in their order (CLAUDE.md §2.54): typed now, they would go to the panel on its way out (it
+                // still has the keyboard until the target is activated), or reach the target before the paste. The
+                // injector joins this engagement.
+                var guard = inject ? PasteKeyGuard.TryGetShared() : null;
+                bool guarding = guard is not null && await guard.EngageAsync().ConfigureAwait(false);
+                try
                 {
-                    ForegroundHelper.Activate(target);
-                    activatedAt = Stopwatch.GetTimestamp();
-                    activated = true;
-                    timeline.Mark("target");
-                }
+                    await writer.WriteAsync(formats).ConfigureAwait(false);
+                    timeline.Mark("clipboard");
+                    long activatedAt = 0;
+                    if (target != 0)
+                    {
+                        ForegroundHelper.Activate(target);
+                        activatedAt = Stopwatch.GetTimestamp();
+                        activated = true;
+                        timeline.Mark("target");
+                    }
 
-                return inject
-                    ? await PasteInjector.PasteIntoWithOutcomeAsync(target, activatedAt, timeline).ConfigureAwait(false)
-                    : (PasteOutcome?)null;
+                    return inject
+                        ? await PasteInjector.PasteIntoWithOutcomeAsync(target, activatedAt, timeline).ConfigureAwait(false)
+                        : (PasteOutcome?)null;
+                }
+                finally
+                {
+                    // The injector released Ctrl before it returned: the held keys follow the paste (or, when nothing was
+                    // pasted, go to whatever window has the keyboard).
+                    if (guarding)
+                    {
+                        timeline.KeysHeldBack += (await guard!.ReleaseAsync().ConfigureAwait(false)).Held;
+                    }
+                }
             });
         }
         finally
@@ -240,21 +263,25 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Logs how long a paste took from the key to the Ctrl+V, stage by stage — the session's first one always, later ones
-    /// only when slow (<see cref="PasteTimeline.SlowPaste"/>) — so a "pasting takes a moment" report can be checked against
-    /// the log. Content-free: stage names and times.
+    /// Logs how long a paste took from the key to the Ctrl+V, stage by stage, and how long Ctrl stayed down after it — the
+    /// session's first one always, later ones only when slow (<see cref="PasteTimeline.SlowPaste"/>), when Ctrl was released
+    /// before the window answered that it took the keys (CLAUDE.md §2.54: the one case left in which a paste may type "v"), or
+    /// when keys the user typed meanwhile were held back — so a report about pasting can be checked against the log.
+    /// Content-free: stage names, times and counts.
     /// </summary>
     /// <param name="timeline">The finished paste's timeline.</param>
     private void LogPaste(PasteTimeline timeline)
     {
         var total = timeline.Total;
-        if (!PasteTimeline.ShouldLog(total, firstOfSession: !pasteLogged))
+        bool releasedEarly = timeline.ControlHeld is not null && !timeline.ControlHeldUntilTaken;
+        if (!PasteTimeline.ShouldLog(total, firstOfSession: !pasteLogged) && !releasedEarly && timeline.KeysHeldBack == 0)
         {
             return;
         }
 
         // Part of a log line, so English whatever the interface language.
-        AppLog.Info($"Pasted: Ctrl+V sent {PasteTimeline.Milliseconds(total)} ms after the key ({timeline.DescribeStages()}){(pasteLogged ? " (slow)" : " (first paste)")}.");
+        string kind = !pasteLogged ? " (first paste)" : total >= PasteTimeline.SlowPaste ? " (slow)" : string.Empty;
+        AppLog.Info($"Pasted: Ctrl+V sent {PasteTimeline.Milliseconds(total)} ms after the key ({timeline.DescribeStages()}){timeline.DescribeHold()}{kind}.");
         pasteLogged = true;
     }
 }
