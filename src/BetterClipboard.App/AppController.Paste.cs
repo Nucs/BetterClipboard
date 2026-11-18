@@ -56,6 +56,12 @@ public sealed partial class AppController
     private bool pasteLogged;
 
     /// <summary>
+    /// Whether this session has logged that a choice only copied because "Paste after choosing an item" is off
+    /// (<see cref="LogWhyNotPasted"/>): said once, since with the setting off every choice copies by design.
+    /// </summary>
+    private bool pasteOffLogged;
+
+    /// <summary>
     /// Starts reading the formats of the card the panel just selected, so a paste of it finds them in memory: the read (a
     /// query of the encrypted store, tens to hundreds of milliseconds once the app's memory was trimmed) happens while the
     /// user looks at the card, not after the Enter. One card at a time: selecting another replaces it.
@@ -174,6 +180,11 @@ public sealed partial class AppController
     /// When a step fails, the target still gets the foreground back (from here, if the delivery failed before activating it),
     /// and the exception reaches the caller, which logs it.
     /// </para>
+    /// <para>
+    /// A paste that only copies says why in the log (<see cref="LogWhyNotPasted"/>: the setting is off, or no window was
+    /// captured), and so does one whose window closed meanwhile (<see cref="PasteOutcome.NoTarget"/>); the injector logs its
+    /// own refusals. Content-free.
+    /// </para>
     /// </remarks>
     /// <param name="formats">The formats to put on the clipboard (already prepared for a paste).</param>
     /// <param name="paste">Inject Ctrl+V (otherwise only copy, and give the target its focus back).</param>
@@ -186,7 +197,16 @@ public sealed partial class AppController
     private async Task DeliverAsync(IReadOnlyList<ClipFormatData> formats, bool paste, PasteTimeline timeline)
     {
         nint target = pasteTarget?.TargetWindow ?? 0;
-        bool inject = paste && Settings.Current.PasteOnSelect && target != 0;
+        bool pasteOnSelect = Settings.Current.PasteOnSelect;
+        bool inject = paste && pasteOnSelect && target != 0;
+
+        // A choice that was meant to paste and only copies says why (content-free): until 2026-11-18 these ended without a
+        // line, and one lost paste in the 0.2.12 QA could not be explained afterwards (CLAUDE.md §6).
+        if (paste && !inject)
+        {
+            LogWhyNotPasted(pasteOnSelect);
+        }
+
         var panel = flyout;
         var writer = monitor ?? throw new InvalidOperationException("The clipboard monitor is not running.");
         panel?.PutAwayForPaste();
@@ -250,6 +270,12 @@ public sealed partial class AppController
             panel?.FinishPuttingAway();
         }
 
+        // The injector says nothing when the window the panel came from is gone (closed while the panel showed).
+        if (outcome == PasteOutcome.NoTarget)
+        {
+            AppLog.Info("Not pasted: the window the panel was opened from is gone. The item is on the clipboard.");
+        }
+
         if (outcome == PasteOutcome.TargetElevated && elevatedPasteNotified.Add(target))
         {
             tray?.ShowNotification(
@@ -261,6 +287,33 @@ public sealed partial class AppController
         {
             LogPaste(timeline);
         }
+    }
+
+    /// <summary>
+    /// Logs why a choice that was meant to paste only copies: "Paste after choosing an item" is off (once per session, since
+    /// then every choice copies by design), or no window was captured to paste into (the panel was opened from the tray, or
+    /// nothing had the foreground when the shortcut came). Content-free.
+    /// </summary>
+    /// <param name="pasteOnSelect">The "Paste after choosing an item" setting at the time of the choice.</param>
+    /// <remarks>
+    /// Without these lines a paste that delivered nothing left no trace: a report like "Enter did nothing" could not be told
+    /// apart from a key that never arrived (the paste QA of 0.2.12, 2026-11-18, CLAUDE.md §6). Info, not a warning: both are
+    /// everyday outcomes, and warnings stay a health signal.
+    /// </remarks>
+    private void LogWhyNotPasted(bool pasteOnSelect)
+    {
+        if (!pasteOnSelect)
+        {
+            if (!pasteOffLogged)
+            {
+                pasteOffLogged = true;
+                AppLog.Info("Copied only: \"Paste after choosing an item\" is off in Settings (said once per session).");
+            }
+
+            return;
+        }
+
+        AppLog.Info("Copied only: no window to paste into was captured when the panel opened (it was opened from the tray, or no window had the foreground at the shortcut).");
     }
 
     /// <summary>

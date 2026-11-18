@@ -162,6 +162,12 @@ public sealed partial class ClipboardFlyout : Window
     /// </summary>
     private int enterSerial;
 
+    /// <summary>
+    /// Whether the Enter being waited on (<see cref="enterPending"/>) has had an ignored repeat logged: one line per paste, so
+    /// an Enter held down (dozens of key repeats) does not fill the log. Cleared whenever an Enter starts a paste.
+    /// </summary>
+    private bool enterIgnoredLogged;
+
     /// <summary>Whether the groups column is showing (mirrors <see cref="AppSettings.ShowGroupsPane"/>).</summary>
     private bool groupsPaneOpen;
 
@@ -1662,6 +1668,11 @@ public sealed partial class ClipboardFlyout : Window
     /// After the wait the armed match is selected — the first one, or the first below the pinned matches while pins are
     /// listed first (<see cref="ArmCard"/>) — unless the user moved the selection meanwhile. A second Enter while this
     /// waits is ignored, so one keystroke never pastes twice.
+    /// <para>
+    /// Every way it ends without pasting is logged, content-free: an Enter ignored as a repeat (once per paste), the panel
+    /// put away while the search settled, no card to paste. Since 2026-11-18: one lost paste in the 0.2.12 QA left no line
+    /// and could not be explained (CLAUDE.md §6).
+    /// </para>
     /// </remarks>
     /// <param name="ctrl">Ctrl was held (run a Win+R command).</param>
     /// <param name="shift">Shift was held (paste as plain text, or run as administrator).</param>
@@ -1672,12 +1683,21 @@ public sealed partial class ClipboardFlyout : Window
     /// <returns>A task completing when the paste or run started; failures are logged, never thrown.</returns>
     private async Task PasteBestMatchAsync(bool ctrl, bool shift, long pressedAt)
     {
+        // Each way an Enter ends without pasting says so in the log, content-free (CLAUDE.md §6: one lost paste in the 0.2.12
+        // QA left no line, so it could not be explained afterwards).
         if (enterPending)
         {
+            if (!enterIgnoredLogged)
+            {
+                enterIgnoredLogged = true;
+                AppLog.Info("Enter ignored: the previous Enter's paste is still under way.");
+            }
+
             return;
         }
 
         enterPending = true;
+        enterIgnoredLogged = false;
         int serial = ++enterSerial;
         try
         {
@@ -1686,13 +1706,19 @@ public sealed partial class ClipboardFlyout : Window
             timeline.Mark("search");
             if (!IsOpen)
             {
-                return; // dismissed while the search ran: nothing is pasted behind the user's back
+                // Dismissed while the search ran: nothing is pasted behind the user's back.
+                AppLog.Info("Not pasted: the panel was put away while its search was settling.");
+                return;
             }
 
             // Fall back to the card a load arms if the selection was lost (e.g. mid-reload): the same card the list would
             // show selected, never a pin above the newest copy.
             int armed = ArmedIndex();
-            if ((Selected ?? (armed >= 0 ? ViewModel.Items[armed] : null)) is { } toPaste)
+            if ((Selected ?? (armed >= 0 ? ViewModel.Items[armed] : null)) is not { } toPaste)
+            {
+                AppLog.Info("Not pasted: no card was selected and the list armed none (it was empty).");
+            }
+            else
             {
                 // Ctrl+Enter on a Win+R command runs it like the Run dialog (Ctrl+Shift+Enter as administrator);
                 // on any other card it pastes, as it always did.
