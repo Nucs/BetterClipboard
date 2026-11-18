@@ -864,9 +864,10 @@ public sealed partial class ClipboardFlyout
             Child = surface,
         };
 
-        // Counted before it opens (a deactivation as it appears must not conceal the panel); Popup_Closed balances the
-        // count and gives the keyboard back to the panel.
-        popup.Closed += Popup_Closed;
+        // Counted before it opens (a deactivation as it appears must not conceal the panel). HideTextPeek gives the count
+        // back the moment it closes the peek, as HidePeek does for the image peek; TextPeekPopup_Closed then gives the
+        // keyboard back to the panel.
+        popup.Closed += TextPeekPopup_Closed;
         textPeekPopup = popup;
         textPeekCard = card;
         textPeekFrame = frame;
@@ -1124,9 +1125,9 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        // Cleared first: closing raises Closed (the count, the keyboard), and a late pointer event must find no peek. The
-        // text surface leaves this peek's layout now (not when Closed comes): the next peek may want it at once, and an
-        // element has one parent.
+        // Cleared first: closing raises Closed (the keyboard), and a late pointer event must find no peek. The text surface
+        // leaves this peek's layout now (not when Closed comes): the next peek may want it at once, and an element has one
+        // parent.
         if (textPeekPresenter is not null)
         {
             textPeekLayout?.Children.Remove(textPeekPresenter.View);
@@ -1140,6 +1141,33 @@ public sealed partial class ClipboardFlyout
         textPeekMenuOpen = false;
         textHoverCard = null;
         popup.IsOpen = false;
+
+        // The count goes back now, not when Closed comes: WinUI raises Closed later, and Root_PreviewKeyDown asks
+        // IsPopupKey right after this closed a peek for a key. With the count still held, that key counted as the peek's
+        // and was dropped: with the mouse resting on a long card's text, Enter, the arrows, Del and Esc did nothing, and
+        // the peek opened again under the resting mouse half a second later, so every Enter was lost until the mouse moved
+        // (paste QA on 0.2.12, 2026-11-18). The image peek has always given its count back this way (HidePeek).
+        openPopups = Math.Max(0, openPopups - 1);
+    }
+
+    /// <summary>
+    /// The text peek's popup closed (<see cref="HideTextPeek"/> closes it, and gave its count back already): does what
+    /// <see cref="Popup_Closed"/> does for the panel's other popups, without touching the count.
+    /// </summary>
+    /// <param name="sender">The closed popup.</param>
+    /// <param name="e">Unused.</param>
+    /// <remarks>
+    /// A popup going away is not a move of the mouse, but WinUI reports "pointer entered" to the card it uncovers: the mouse
+    /// must not take the selection from the keyboard for it. The keyboard goes to a viewer that is still open (the text
+    /// viewer F3 opened from this peek), else back to the search box.
+    /// </remarks>
+    private void TextPeekPopup_Closed(object? sender, object e)
+    {
+        SuspendPointerSelection();
+        if (!FocusOpenViewer())
+        {
+            SearchBox.Focus(FocusState.Programmatic);
+        }
     }
 
     /// <summary>
