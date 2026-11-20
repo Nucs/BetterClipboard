@@ -276,7 +276,7 @@ BetterClipboard 从它的 [GitHub 发布版本](https://github.com/Nucs/BetterCl
   - **Markdown** 会渲染成文档：标题、列表、表格、引用、链接和代码块，每个代码块按自己的语言着色。无法识别语言的文本也会按 Markdown 显示。文档使用与 *原样* 相同的等宽字体，每一行保留自己的空格，因此 ASCII 表格会对齐。
   - **代码**会着色，支持 C#、Java、Kotlin、JavaScript、TypeScript、Python、Ruby、PHP、Go、Rust、C 和 C++、PowerShell、Shell 脚本、批处理文件、SQL、CSS、HTML、XML、JSON、YAML、INI 和 TOML，以及差异（diff）。语言会自动识别；语言按钮可以改选其他语言（识别出的语言标有 *（检测到）*）。
   - **XML 和 JSON** 会重新缩进，每个元素或值占一行；*原样* 按复制时的样子显示它们。
-  - **自动换行**在窗口边缘折行（关闭时可横向滚动），**行号**为代码的每一行编号，**A−** / **A+**（<kbd>Ctrl</kbd>+<kbd>Minus</kbd>、<kbd>Ctrl</kbd>+<kbd>Plus</kbd>、<kbd>Ctrl</kbd>+<kbd>0</kbd>，或按住 <kbd>Ctrl</kbd> 转动滚轮）调整文字大小。三者都会被记住。
+  - **自动换行**在窗口边缘折行，并把每个表格排进窗口，过长的单元格在本列内换行（关闭时行和表格都可横向滚动），**行号**为代码的每一行编号，**A−** / **A+**（<kbd>Ctrl</kbd>+<kbd>Minus</kbd>、<kbd>Ctrl</kbd>+<kbd>Plus</kbd>、<kbd>Ctrl</kbd>+<kbd>0</kbd>，或按住 <kbd>Ctrl</kbd> 转动滚轮）调整文字大小。三者都会被记住。
   - **几兆字节的复制内容**每次打开约 64,000 个字符的一页，用 ‹ › 翻页（<kbd>Ctrl</kbd>+<kbd>PageUp</kbd>、<kbd>Ctrl</kbd>+<kbd>PageDown</kbd>）；行号跨页连续计数。
   - 像在别处一样选择和复制。移动鼠标不会关闭它：按 <kbd>Esc</kbd>、单击它的 X 按钮或单击文本外部才会关闭。
 

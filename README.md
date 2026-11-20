@@ -367,9 +367,9 @@ thin dotted line under them and a small eye at the card's corner say so.
     PowerShell, shell scripts, batch files, SQL, CSS, HTML, XML, JSON, YAML, INI and TOML, and diffs. The language is
     recognized by itself; the language button picks another (the recognized one is marked *(detected)*).
   - **XML and JSON** are re-indented, one element or value per line; *As copied* shows them as they were copied.
-  - **Wrap** breaks long lines at the window's edge (off: they scroll sideways), **Line numbers** numbers the lines
-    of code, and **A−** / **A+** (<kbd>Ctrl</kbd>+<kbd>Minus</kbd>, <kbd>Ctrl</kbd>+<kbd>Plus</kbd>, <kbd>Ctrl</kbd>+<kbd>0</kbd>, or <kbd>Ctrl</kbd> with the wheel) change the text
-    size. All three are remembered.
+  - **Wrap** breaks long lines at the window's edge and fits each table to it, a long cell wrapping inside its own
+    column (off: lines and tables scroll sideways), **Line numbers** numbers the lines of code, and **A−** / **A+**
+    (<kbd>Ctrl</kbd>+<kbd>Minus</kbd>, <kbd>Ctrl</kbd>+<kbd>Plus</kbd>, <kbd>Ctrl</kbd>+<kbd>0</kbd>, or <kbd>Ctrl</kbd> with the wheel) change the text size. All three are remembered.
   - **Megabyte copies** open a page of about 64,000 characters at a time, with ‹ › to turn the pages
     (<kbd>Ctrl</kbd>+<kbd>PageUp</kbd>, <kbd>Ctrl</kbd>+<kbd>PageDown</kbd>); line numbers count on across pages.
   - Select and copy as anywhere. Moving the mouse does not close it: <kbd>Esc</kbd>, its X button, or a click outside the
