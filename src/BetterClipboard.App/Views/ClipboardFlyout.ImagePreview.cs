@@ -73,6 +73,12 @@ public sealed partial class ClipboardFlyout
     /// <summary>The card whose image the pointer is currently resting on (drives the peek), or <see langword="null"/>.</summary>
     private ClipItemViewModel? hoverCard;
 
+    /// <summary>
+    /// The picture border of <see cref="hoverCard"/> the countdown started on, or <see langword="null"/>: the peek opens only
+    /// while Windows' cursor is still over it (<see cref="StillOverHoveredCard"/>). Set and forgotten with the card.
+    /// </summary>
+    private FrameworkElement? hoverElement;
+
     /// <summary>Rest timer for the hover peek (created lazily, reused).</summary>
     private DispatcherTimer? hoverTimer;
 
@@ -125,6 +131,7 @@ public sealed partial class ClipboardFlyout
         }
 
         hoverCard = card;
+        hoverElement = sender as FrameworkElement;
 
         // Preload so the peek (and a viewer opened from the eye) shows the crisp full image without a wait.
         _ = PreloadImageAsync(card);
@@ -161,6 +168,7 @@ public sealed partial class ClipboardFlyout
         {
             StopHoverTimer();
             hoverCard = null;
+            hoverElement = null;
         }
     }
 
@@ -246,6 +254,16 @@ public sealed partial class ClipboardFlyout
     /// <summary>Stops the rest timer (the pointer left, or a peek is up).</summary>
     private void StopHoverTimer() => hoverTimer?.Stop();
 
+    /// <summary>
+    /// Forgets the picture the mouse rested on once its countdown ended with the mouse elsewhere: no peek of it opens until
+    /// the mouse comes back over a card, whose "pointer entered" starts a countdown again.
+    /// </summary>
+    private void ForgetHover()
+    {
+        hoverCard = null;
+        hoverElement = null;
+    }
+
     /// <summary>Creates the one-shot rest timer that opens the peek.</summary>
     /// <returns>The timer.</returns>
     private DispatcherTimer CreateHoverTimer()
@@ -261,6 +279,12 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>Opens the hover peek for the card the mouse is resting on, if it still is by the time its image is ready.</summary>
     /// <returns>A task completing when the peek is shown or abandoned (failures are logged, never thrown).</returns>
+    /// <remarks>
+    /// "Still is" is asked of Windows' cursor (<see cref="StillOverHoveredCard"/>) when the countdown ends and again right
+    /// before the peek opens, after the image decoded, so a peek never stands where the mouse no longer is. The text peek
+    /// did, after a jump of the mouse out of the panel's window; this one opened none in the same test (its card stops
+    /// waiting on any exit, ImageCard_PointerExited) and asks the same question as a guard (CLAUDE.md §2.56).
+    /// </remarks>
     private async Task ShowPeekAsync()
     {
         try
@@ -270,11 +294,26 @@ public sealed partial class ClipboardFlyout
                 return;
             }
 
+            if (!StillOverHoveredCard(hoverElement))
+            {
+                // The mouse went elsewhere without an exit that stopped the countdown: forget the card, open nothing.
+                ForgetHover();
+                return;
+            }
+
             var bitmap = await GetFullBitmapAsync(card, CancellationToken.None).ConfigureAwait(true) ?? card.Thumbnail as BitmapImage;
 
             // The pointer may have moved to another card (or off the list) while the image decoded.
             if (bitmap is null || hoverCard?.Id != card.Id || !CanShowPeek() || Root.XamlRoot is null)
             {
+                return;
+            }
+
+            // Or left the panel while it decoded: the peek's anchor is where the cursor is when it opens, so a peek opened
+            // now would stay where the mouse went, until the next move.
+            if (!StillOverHoveredCard(hoverElement))
+            {
+                ForgetHover();
                 return;
             }
 

@@ -128,6 +128,12 @@ public sealed partial class ClipboardFlyout
     /// <summary>The card whose text the mouse rests on (drives the peek), or <see langword="null"/>.</summary>
     private ClipItemViewModel? textHoverCard;
 
+    /// <summary>
+    /// The text area of <see cref="textHoverCard"/> the countdown started on, or <see langword="null"/>: the peek opens only
+    /// while Windows' cursor is still over it (<see cref="StillOverHoveredCard"/>). Set and forgotten with the card.
+    /// </summary>
+    private FrameworkElement? textHoverElement;
+
     /// <summary>Rest timer for the text peek (created on first use, reused).</summary>
     private DispatcherTimer? textHoverTimer;
 
@@ -312,6 +318,7 @@ public sealed partial class ClipboardFlyout
         }
 
         textHoverCard = card;
+        textHoverElement = sender as FrameworkElement;
         _ = PreloadCardTextAsync(card);
         RestartTextHoverTimer(e.IsGenerated);
     }
@@ -356,6 +363,7 @@ public sealed partial class ClipboardFlyout
         {
             textHoverTimer?.Stop();
             textHoverCard = null;
+            textHoverElement = null;
         }
     }
 
@@ -658,6 +666,16 @@ public sealed partial class ClipboardFlyout
         IsOpen && textPeekPopup is null && textViewer is null && peekPopup is null && viewerPopup is null && drag is null &&
         draggedClipIds is null && openPopups == 0 && textHoverCard is { IsCutOff: true };
 
+    /// <summary>
+    /// Forgets the card the mouse rested on once its countdown ended with the mouse elsewhere: no peek of it opens until
+    /// the mouse comes back over a card, whose "pointer entered" starts a countdown again.
+    /// </summary>
+    private void ForgetTextHover()
+    {
+        textHoverCard = null;
+        textHoverElement = null;
+    }
+
     /// <summary>The key a card's text is cached under: its content (a prompt tab's ids change between loads; its content does not).</summary>
     /// <param name="card">The card.</param>
     /// <returns>The key.</returns>
@@ -870,12 +888,25 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>Opens the peek for the card the mouse rests on, once its text is read and prepared, if the mouse is still there.</summary>
     /// <returns>A task completing when the peek shows or was abandoned (failures are logged, never thrown).</returns>
+    /// <remarks>
+    /// "Still there" is asked of Windows' cursor (<see cref="StillOverHoveredCard"/>) when the countdown ends and again
+    /// right before the peek opens, after the text was read and prepared: after a jump of the mouse from a card's text
+    /// straight out of the panel's window, no exit stopped the countdown (an event at the jump even started it again), and
+    /// the peek opened about half a second later where the mouse no longer was (CLAUDE.md §2.56).
+    /// </remarks>
     private async Task ShowTextPeekAsync()
     {
         try
         {
             if (textHoverCard is not { } card || !CanShowTextPeek() || Root.XamlRoot is null)
             {
+                return;
+            }
+
+            if (!StillOverHoveredCard(textHoverElement))
+            {
+                // The mouse went elsewhere without an exit that stopped the countdown: forget the card, open nothing.
+                ForgetTextHover();
                 return;
             }
 
@@ -899,6 +930,14 @@ public sealed partial class ClipboardFlyout
             // The mouse may have moved to another card, or the panel gone, while the text was prepared.
             if (load.IsCancellationRequested || textHoverCard != card || !CanShowTextPeek() || Root.XamlRoot is null)
             {
+                return;
+            }
+
+            // Or left the panel while the text was read and prepared: the peek's anchor is where the cursor is when it
+            // opens, so a peek opened now would stay where the mouse went, until the next 15-px move.
+            if (!StillOverHoveredCard(textHoverElement))
+            {
+                ForgetTextHover();
                 return;
             }
 
@@ -1299,6 +1338,7 @@ public sealed partial class ClipboardFlyout
         textPeekAnchor = null;
         textPeekMenuOpen = false;
         textHoverCard = null;
+        textHoverElement = null;
         popup.IsOpen = false;
 
         // The count goes back now, not when Closed comes: WinUI raises Closed later, and Root_PreviewKeyDown asks

@@ -10,7 +10,8 @@ namespace BetterClipboard.App.Views;
 
 /// <summary>
 /// The panel goes away when the user goes to another window, also while one of its own popups shows (a viewer, a peek, a
-/// menu, a flyout); and a hover peek never opens by itself over a mouse that did not move.
+/// menu, a flyout); and a hover peek never opens by itself over a mouse that did not move, nor after the mouse left its
+/// card.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -58,6 +59,16 @@ namespace BetterClipboard.App.Views;
 /// cursor is still over the card or the peek is ignored, and a replayed event never postpones a countdown that runs: the
 /// replays came 493 to 514 ms apart, and restarting the 450-ms countdown at each would leave it a race of a few dozen
 /// milliseconds to end in.
+/// </para>
+/// <para>
+/// <b>A peek where the mouse no longer is</b> (<see cref="StillOverHoveredCard"/>). The opposite case: after a move that
+/// jumped from a card's text straight out of the panel's window, the text peek still opened, 496 to 613 ms after the jump
+/// whatever the wait before it, and stayed until the mouse moved 15 px (12 of 12 in the Lines per card QA, 2026-11-20). No
+/// exit stopped its countdown (most likely because the text area ignores an exit whose position lies inside it: crossing
+/// onto the card's eye raises one), and an event at the jump even started it again. When a countdown ends, and again right
+/// before its peek opens, Windows' cursor must still be over the card and over the list's visible area; otherwise the card
+/// is forgotten and nothing opens. The image peek follows the same rule as a guard: its card stops waiting on any exit,
+/// and it opened none after a jump in the same test (0 of 12).
 /// </para>
 /// <para>UI thread only.</para>
 /// </remarks>
@@ -270,6 +281,38 @@ public sealed partial class ClipboardFlyout
             return false;
         }
     }
+
+    /// <summary>
+    /// Whether Windows' cursor still lies over the card a hover peek's countdown started on, and over the list's visible
+    /// area: asked when the countdown ends and again right before the peek opens, so a peek never opens where the mouse no
+    /// longer is.
+    /// </summary>
+    /// <param name="element">
+    /// The card's text area or picture border the countdown started on (the sender of its "pointer entered"), or
+    /// <see langword="null"/> when no countdown started on one.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> while the cursor is within both the element's and the list's rectangles;
+    /// <see langword="false"/> otherwise, for <see langword="null"/>, and when the cursor cannot be read (a secure desktop):
+    /// a peek that cannot tell where the mouse is does not open.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The countdown alone was not enough. After a move that jumped from a card's text straight out of the panel's window,
+    /// the text peek opened 496 to 613 ms after the jump, whatever the wait before it, with the mouse elsewhere, and stayed
+    /// until the mouse moved 15 px, since its anchor is where the cursor was when it opened (12 of 12 in the Lines per card
+    /// QA, 2026-11-20, CLAUDE.md §2.56): no exit had stopped its countdown, and an event at the jump had started it again.
+    /// Most likely also the "130 px" case of the pin's QA. The image peek opened none in the same test (its card stops
+    /// waiting on any exit) and asks the same question as a guard, so both peeks follow one rule.
+    /// </para>
+    /// <para>
+    /// The list's own rectangle is asked as well, because an element's layout box covers its parts scrolled out of view:
+    /// a card of up to 40 lines (§2.57) runs past the list's visible area, under the panel's footer or past its window, and
+    /// the cursor there is not over anything the user sees of the card.
+    /// </para>
+    /// </remarks>
+    private bool StillOverHoveredCard(FrameworkElement? element) =>
+        element is not null && CursorIsOver(element) && CursorIsOver(ItemsList);
 
     /// <summary>
     /// After one of the panel's popups closed: the keyboard goes to a viewer that is still open (its text, its backdrop),
