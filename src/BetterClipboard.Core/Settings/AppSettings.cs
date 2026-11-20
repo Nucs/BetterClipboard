@@ -325,6 +325,31 @@ public sealed record AppSettings
     public bool PanelStaysOpen => KeepPanelOpen && !Presentation.PanelButtons.IsHidden(HiddenPanelButtons, Presentation.PanelButton.KeepOpen);
 
     /// <summary>
+    /// Whether the user closed the pin's tip (CLAUDE.md §2.55): the tip that points at the pin and says in a sentence and a
+    /// half how pinning works. Until then it shows whenever the pinned panel is on screen (<see cref="KeepOpenTipDue"/>);
+    /// once closed — with its close button or with Esc — never again. Off by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The owner's request (2026-11-20): "Add a tooltip shown once until dismissed when pinned enabled that in 1.5 sentences
+    /// explains how pinning works". Only a close by the user spends it: the panel going away, its window moving, unpinning
+    /// or hiding the pin take the tip off the screen and leave it due, so it comes back with the pinned panel.
+    /// </para>
+    /// <para>
+    /// Footgun: a version from before this member drops it when it saves the file, and the tip shows once more.
+    /// </para>
+    /// </remarks>
+    public bool KeepOpenTipDismissed { get; init; }
+
+    /// <summary>
+    /// Whether the pin's tip should show while the panel is on screen: the panel stays open after pasting
+    /// (<see cref="PanelStaysOpen"/>: pinned, with the pin shown) and the user never closed the tip
+    /// (<see cref="KeepOpenTipDismissed"/>). Derived, so it is never written to the file.
+    /// </summary>
+    [JsonIgnore]
+    public bool KeepOpenTipDue => PanelStaysOpen && !KeepOpenTipDismissed;
+
+    /// <summary>
     /// The panel's width the user last dragged it to, in DIPs (device-independent pixels, 1/96 inch): the outer window,
     /// frame included, without the groups column — which adds its own width on the left while it is open, so opening or
     /// closing the column never changes this.

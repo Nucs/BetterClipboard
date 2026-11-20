@@ -273,14 +273,16 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Whether the reminder may open now: the panel is on screen with nothing of ours over it, the update button shows
-    /// that an update waits, its tooltip is not open already, and the reminder is still due.
+    /// Whether the reminder may open now: the panel is on screen with nothing of ours over it — the pin's tip included, which
+    /// points at the header from above too (ClipboardFlyout.KeepOpenTip.cs) — the update button shows that an update waits,
+    /// its tooltip is not open already, and the reminder is still due.
     /// </summary>
     /// <returns><see langword="true"/> to open it.</returns>
     private bool CanShowUpdateReminder() =>
         IsOpen
         && openPopups == 0
         && drag is null
+        && !KeepOpenTip.IsOpen
         && updateButtonLook == UpdateButtonLook.Attention
         && updateToolTip is { IsOpen: false }
         && controller.IsUpdateReminderDue;

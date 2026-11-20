@@ -17,8 +17,8 @@ public sealed class PanelButtonsTests : IDisposable
     public void Dispose() => temp.Dispose();
 
     /// <summary>
-    /// A new install shows every button and does not pin the panel; so does a settings file written before either member
-    /// existed, which also loads without being set aside.
+    /// A new install shows every button, does not pin the panel and has not closed the pin's tip; so does a settings file
+    /// written before these members existed, which also loads without being set aside.
     /// </summary>
     [Fact]
     public void Defaults_EveryButtonShown_PanelNotPinned()
@@ -27,14 +27,66 @@ public sealed class PanelButtonsTests : IDisposable
         Assert.False(fresh.KeepPanelOpen);
         Assert.Empty(fresh.HiddenPanelButtons);
         Assert.False(fresh.PanelStaysOpen);
+        Assert.False(fresh.KeepOpenTipDismissed);
+        Assert.False(fresh.KeepOpenTipDue);
 
         var path = Path.Combine(temp.Path, "settings.json");
         File.WriteAllText(path, "{ \"MaxItems\": 50, \"ShowGroupsPane\": true }");
         var loaded = new SettingsStore(path).Load();
         Assert.False(loaded.KeepPanelOpen);
         Assert.Empty(loaded.HiddenPanelButtons);
+        Assert.False(loaded.KeepOpenTipDismissed);
         Assert.True(loaded.ShowGroupsPane);
         Assert.Empty(Directory.GetFiles(temp.Path, "*.corrupt*"));
+    }
+
+    /// <summary>
+    /// The pin's tip is due exactly while the panel stays open after pasting — pinned, with the pin shown — and the user has
+    /// not closed the tip: a file pinned before the tip existed gets it (the member is missing), hiding the pin puts it off
+    /// without spending it, and once closed it is never due again, whatever the pin does.
+    /// </summary>
+    [Fact]
+    public void KeepOpenTip_DueWhilePinnedUntilClosed()
+    {
+        var pinned = new AppSettings { KeepPanelOpen = true };
+        Assert.True(pinned.KeepOpenTipDue);
+        Assert.False((pinned with { KeepPanelOpen = false }).KeepOpenTipDue);
+        Assert.False((pinned with { HiddenPanelButtons = ["KeepOpen"] }).KeepOpenTipDue);
+        Assert.True((pinned with { HiddenPanelButtons = ["Pause", "Clear"] }).KeepOpenTipDue);
+
+        var closed = pinned with { KeepOpenTipDismissed = true };
+        Assert.False(closed.KeepOpenTipDue);
+        Assert.False((closed with { HiddenPanelButtons = [] }).KeepOpenTipDue);
+        Assert.False((closed with { KeepPanelOpen = false }).KeepOpenTipDue);
+
+        // Pinned by a version from before the tip: the file has no member, so the tip shows at the next pinned summon.
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, "{ \"KeepPanelOpen\": true }");
+        Assert.True(new SettingsStore(path).Load().KeepOpenTipDue);
+    }
+
+    /// <summary>
+    /// Closing the tip survives a save and a reload — it never shows again, also after a restart — and only the stored
+    /// member is written: the derived "due" is not.
+    /// </summary>
+    [Fact]
+    public void KeepOpenTip_ClosedSurvivesTheFile()
+    {
+        var path = Path.Combine(temp.Path, "settings.json");
+        var store = new SettingsStore(path);
+        store.Load();
+        store.Update(s => s with { KeepPanelOpen = true });
+        Assert.True(new SettingsStore(path).Load().KeepOpenTipDue);
+
+        store.Update(s => s with { KeepOpenTipDismissed = true });
+        var reloaded = new SettingsStore(path).Load();
+        Assert.True(reloaded.KeepOpenTipDismissed);
+        Assert.True(reloaded.KeepPanelOpen);
+        Assert.False(reloaded.KeepOpenTipDue);
+
+        var json = File.ReadAllText(path);
+        Assert.Contains("\"KeepOpenTipDismissed\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("KeepOpenTipDue", json, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -204,12 +256,16 @@ public sealed class PanelButtonsTests : IDisposable
     public void Shortcut_BringsAPinnedPanelForward(bool isOpen, bool staysOpen, bool inFront, PanelShortcutAction expected) =>
         Assert.Equal(expected, PanelShortcut.Decide(isOpen, staysOpen, inFront));
 
-    /// <summary>The stored members' names are the ones the file keeps (renaming them would silently reset both settings).</summary>
+    /// <summary>
+    /// The stored members' names are the ones the file keeps (renaming them would silently reset these settings, and a
+    /// renamed tip member would show the tip again to everyone who closed it).
+    /// </summary>
     [Fact]
     public void FileNames_AreStable()
     {
-        var json = JsonSerializer.Serialize(new AppSettings { KeepPanelOpen = true, HiddenPanelButtons = ["Pause"] });
+        var json = JsonSerializer.Serialize(new AppSettings { KeepPanelOpen = true, HiddenPanelButtons = ["Pause"], KeepOpenTipDismissed = true });
         Assert.Contains("\"KeepPanelOpen\":true", json, StringComparison.Ordinal);
         Assert.Contains("\"HiddenPanelButtons\":[\"Pause\"]", json, StringComparison.Ordinal);
+        Assert.Contains("\"KeepOpenTipDismissed\":true", json, StringComparison.Ordinal);
     }
 }

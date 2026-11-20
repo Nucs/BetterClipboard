@@ -222,6 +222,10 @@ public sealed partial class ClipboardFlyout : Window
         // The update button left of Pause, and the dialog it opens: ClipboardFlyout.Update.cs.
         InitializeUpdateButton();
 
+        // The pin's tip, which points at the pin while the pinned panel shows until the user closes it:
+        // ClipboardFlyout.KeepOpenTip.cs. Before the header is applied, which asks whether the tip is due.
+        InitializeKeepOpenTip();
+
         // The pin left of it, and the buttons Settings hides: ClipboardFlyout.KeepOpen.cs. After the update button, whose
         // visibility it applies too.
         ApplyHeaderButtons();
@@ -543,6 +547,10 @@ public sealed partial class ClipboardFlyout : Window
             // The tray menu's "Update…" summons the panel for its update dialog: open it now that the panel is on screen.
             OpenPendingUpdateDialog();
 
+            // A pinned panel whose tip the user never closed shows it again, a moment after the summon
+            // (ClipboardFlyout.KeepOpenTip.cs). Before the update reminder, which gives way to it.
+            UpdateKeepOpenTip();
+
             // Once a week, while an update waits, the update button says so by itself for a few seconds
             // (ClipboardFlyout.UpdateReminder.cs). Asked last, after everything a summon owes the user: the reminder must
             // never be on the way of the panel appearing or of its list.
@@ -586,6 +594,9 @@ public sealed partial class ClipboardFlyout : Window
     {
         closingForExit = true;
         CloseImageOverlays();
+
+        // The pin's tip is a window of its own, and its timer and window event refer to this window.
+        DisposeKeepOpenTip();
 
         // The WinEvent hook of a pinned panel goes with the window (Windows would remove it with the thread anyway).
         DisposeForegroundTracking();
@@ -843,6 +854,11 @@ public sealed partial class ClipboardFlyout : Window
                 // flyout stays open and the search is kept.
                 AppWindow.Move(new PointInt32(moving.WindowStart.X, moving.WindowStart.Y));
                 EndDrag();
+                break;
+            case VirtualKey.Escape when KeepOpenTip.IsOpen:
+                // The pin's tip takes the first Esc, as a viewer does: closed for good, like with its X; the search and the
+                // panel stay (ClipboardFlyout.KeepOpenTip.cs).
+                DismissKeepOpenTip("Esc");
                 break;
             case VirtualKey.Escape:
                 if (!string.IsNullOrEmpty(ViewModel.SearchText))

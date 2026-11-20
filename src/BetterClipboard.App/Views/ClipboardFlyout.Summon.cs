@@ -173,6 +173,10 @@ public sealed partial class ClipboardFlyout
         // (ClipboardFlyout.UpdateReminder.cs). Every way the panel goes away passes here, so this is the one place.
         CancelUpdateReminder();
 
+        // Nor the pin's tip, for the same reason; taken off the screen without spending it, so a pinned panel shows it
+        // again at its next summon until the user closes it (ClipboardFlyout.KeepOpenTip.cs).
+        CloseKeepOpenTip();
+
         presented = false;
         finishPending = true;
 

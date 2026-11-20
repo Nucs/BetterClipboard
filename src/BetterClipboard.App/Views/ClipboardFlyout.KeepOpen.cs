@@ -47,6 +47,10 @@ namespace BetterClipboard.App.Views;
 /// mode is on that the panel does not show. The minimum width follows the buttons shown (<see cref="MinWidthDip"/>): 36 DIPs
 /// a button.
 /// </para>
+/// <para>
+/// <b>The tip.</b> While the pinned panel shows, a tip points at the pin and says in a sentence and a half how pinning
+/// works, until the user closes it (ClipboardFlyout.KeepOpenTip.cs, <see cref="AppSettings.KeepOpenTipDismissed"/>).
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout
 {
@@ -118,6 +122,11 @@ public sealed partial class ClipboardFlyout
             Conceal();
         }
 
+        // The pin's tip follows the same settings: it opens a moment after the pin is turned on (the click lands here through
+        // the settings change), and goes when the panel is unpinned, the pin hidden or the tip closed for good
+        // (ClipboardFlyout.KeepOpenTip.cs).
+        UpdateKeepOpenTip();
+
         // Visibility is set only when it changes: every set asks the header for a new layout pass, and this runs after every
         // settings change, most of which have nothing to do with the header.
         static void SetShown(UIElement button, bool shown)
@@ -179,6 +188,10 @@ public sealed partial class ClipboardFlyout
 
         // The selected card's formats, for an Enter right away (reading ahead only runs while the panel shows).
         PrefetchSelected();
+
+        // The pin's tip, should it be due and not on screen (its open still waiting, or given up after an error the timer
+        // logged): asked for again. Idempotent, so a tip that shows stays as it is (ClipboardFlyout.KeepOpenTip.cs).
+        UpdateKeepOpenTip();
     }
 
     /// <summary>

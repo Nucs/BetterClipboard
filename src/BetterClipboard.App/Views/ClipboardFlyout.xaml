@@ -236,6 +236,30 @@
         </Grid>
 
         <!--
+            The pin's tip (ClipboardFlyout.KeepOpenTip.cs, CLAUDE.md §2.55): points at the pin from above the panel and says in
+            a sentence and a half how pinning works, while the pinned panel is on screen, until the user closes it with its X
+            or Esc (AppSettings.KeepOpenTipDismissed). A teaching tip, not a tooltip: it needs a close button and must not go
+            away by itself. Not light-dismiss, so a click elsewhere or a paste leaves it up, and it takes no keyboard when it
+            opens. Its own window (ShouldConstrainToRootBounds off), so it may stand over the panel, outside its bounds; the
+            placement and the target are set from code. Its name is its text: a screen reader announces a teaching tip by its
+            name (WinUI's OnPopupOpened), and with neither a name nor a title it would announce nothing. Zero-sized here: its
+            content opens in a popup, and the element must not take a pixel of the header.
+        -->
+        <TeachingTip
+            x:Name="KeepOpenTip"
+            Grid.ColumnSpan="2"
+            Width="0"
+            Height="0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            AutomationProperties.Name="{loc:Tr Text='The panel now stays open after pasting: click item after item, and each goes into the app you were last in. Click the pin again to unpin.'}"
+            Closed="KeepOpenTip_Closed"
+            IsLightDismissEnabled="False"
+            PreferredPlacement="Top"
+            ShouldConstrainToRootBounds="False"
+            Subtitle="{loc:Tr Text='The panel now stays open after pasting: click item after item, and each goes into the app you were last in. Click the pin again to unpin.'}" />
+
+        <!--
             Groups column: the user's group icons, "+" at the bottom. Cards dropped on an icon join that group. A click
             shows one group; Ctrl+click and Shift+click show several, merged into one list (code-behind: ClickGroup).
             The arrow keys reach the column too (Up from the list's top row), and while several groups are merged, Space

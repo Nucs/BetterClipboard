@@ -712,6 +712,7 @@
   "The other copy could not be uninstalled. Uninstall it in Windows' Installed apps, then try again.": "无法卸载另一个副本。请在 Windows 的“已安装的应用”中将其卸载，然后重试。",
   "The other copy has no history or settings to bring over.": "另一个副本没有可迁移的历史或设置。",
   "The panel gets a Pwsh tab with every command you typed in PowerShell, newest first and searchable — also the ones older than the 4,096 PowerShell itself loads. It reads PowerShell's own history file (shared by Windows PowerShell and PowerShell 7) when the tab opens, and never changes it. A command is kept in your history only when you paste, copy or pin it there.": "在面板中显示 Pwsh 标签页，列出你在 PowerShell 中输入的全部命令，按时间倒序排列并可搜索，包括超出 PowerShell 自身加载的 4,096 条限制的命令。打开标签页时读取 PowerShell 历史文件（Windows PowerShell 和 PowerShell 7 共用），不会修改文件。只有粘贴、复制或固定命令时，才将其保存到本软件历史。",
+  "The panel now stays open after pasting: click item after item, and each goes into the app you were last in. Click the pin again to unpin.": "现在面板在粘贴后会保持打开：逐个单击项目，每一项都会粘贴到你最后所在的应用。再次单击固定按钮即可取消固定。",
   "The release list": "发布列表",
   "The release list from the server could not be read.": "无法读取服务器返回的发布列表。",
   "The release list names a download address for {0} that is not one of this project's release downloads, so it was not used.": "发布列表中 {0} 的下载地址不属于本项目的发布下载地址，因此未使用。",
