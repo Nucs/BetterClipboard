@@ -269,7 +269,18 @@ public sealed partial class ClipboardFlyout
         public required Button NextPageButton { get; init; }
     }
 
-    /// <summary>The card's 4-line text block trimmed or stopped trimming its preview: the card's cut-off state follows.</summary>
+    /// <summary>
+    /// Makes the cards show as many lines of their text as Settings › Shortcut › Lines per card says
+    /// (<see cref="Core.Settings.AppSettings.LinesPerCard"/>, CLAUDE.md §2.57), the listed ones in place. Called by the
+    /// controller after every settings change; idempotent and cheap when the number did not change. The view model applied
+    /// the number when the panel was made.
+    /// </summary>
+    public void ApplyCardLines() => ViewModel.ApplyLinesPerCard(controller.Settings.Current.LinesPerCard);
+
+    /// <summary>
+    /// The card's text block (its <c>MaxLines</c> is the card's line count) trimmed or stopped trimming its text: the card's
+    /// cut-off state follows. A change of the line count lays the block out again, which raises this too.
+    /// </summary>
     /// <param name="sender">The text block.</param>
     /// <param name="args">Event data.</param>
     private void CardText_IsTextTrimmedChanged(TextBlock sender, IsTextTrimmedChangedEventArgs args) =>

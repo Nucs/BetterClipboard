@@ -46,7 +46,7 @@
 - **Búsqueda instantánea** en cualquier idioma, con los interruptores de VS Code: coincidir mayúsculas y minúsculas, palabra completa y expresión regular ([Búsqueda](#search)). Win+V no tiene búsqueda.
 - **Hecho para el teclado.** <kbd>Enter</kbd> pega en la aplicación de la que viniste, <kbd>Shift</kbd>+<kbd>Enter</kbd> pega texto sin formato, y las flechas recorren los elementos, las pestañas y tus grupos ([Uso](#use)).
 - **Pega un elemento tras otro.** Ancla el panel y se queda abierto: cada elemento en el que haces clic va a la aplicación en la que estuviste por última vez ([Uso](#use)).
-- **Un panel a tu medida.** Muévelo, cambia su tamaño, reordena u oculta sus pestañas y sus botones; se abre en la pestaña que usaste por última vez ([Pestañas](#tabs)).
+- **Un panel a tu medida.** Muévelo, cambia su tamaño, muestra de 1 a 40 líneas de cada texto, reordena u oculta sus pestañas y sus botones; se abre en la pestaña que usaste por última vez ([Pestañas](#tabs)).
 - **Anclados y grupos.** Ancla lo que reutilizas y reúne cosas en grupos con tus propios iconos. Los elementos anclados y agrupados sobreviven a todos los límites ([Grupos](#groups)).
 - **Poca memoria.** Después de cada uso libera la memoria que ya no necesita y mantiene listo solo lo que necesita el próximo Win+V ([Cómo funciona](#how-it-works)).
 - **Lee cada copia.** Las copias separadas por 2 ms o más se guardan todas. Las más rápidas se sobrescriben unas a otras antes de que cualquier aplicación pueda leerlas: se guarda la última y las demás se cuentan ([Cómo funciona](#how-it-works)).
@@ -204,7 +204,7 @@ Escribe y presiona <kbd>Enter</kbd> tan rápido como quieras: <kbd>Enter</kbd> e
 
 El icono de la bandeja abre el panel y la configuración. El cuadro de búsqueda de la parte superior de la configuración (<kbd>Ctrl</kbd>+<kbd>F</kbd>) filtra la página mientras escribes, erratas incluidas; <kbd>Esc</kbd> lo vacía. Sus secciones:
 
-- **Atajo de teclado:** las teclas que abren el panel (agrega todas las que quieras: haz clic en el cuadro y presiónalas, o elige una en su menú de sugerencias y atajos usados antes), dónde se abre el panel (junto al cursor de texto, junto al mouse, en el centro de la pantalla principal o en el centro de la pantalla en la que escribes), qué botones muestra su encabezado (todos menos Configuración se pueden ocultar) y la liberación de atajos Win+letra del Explorador ([Elegir atajos](#choosing-shortcuts)).
+- **Atajo de teclado:** las teclas que abren el panel (agrega todas las que quieras: haz clic en el cuadro y presiónalas, o elige una en su menú de sugerencias y atajos usados antes), dónde se abre el panel (junto al cursor de texto, junto al mouse, en el centro de la pantalla principal o en el centro de la pantalla en la que escribes), qué botones muestra su encabezado (todos menos Configuración se pueden ocultar), cuántas líneas de texto muestra cada tarjeta (de 1 a 40) y la liberación de atajos Win+letra del Explorador ([Elegir atajos](#choosing-shortcuts)).
 - **Historial:** cuántos elementos, durante cuántos días, de qué tamaño, qué registrar y cuánto tiempo se conservan las imágenes de *Guardar en carpeta temporal y*.
 - **Pegado:** pegar al elegir un elemento, mover al principio los elementos pegados, anclados primero.
 - **Privacidad:** pausa, aplicaciones ignoradas, *Olvidados para siempre*, fiabilidad de la captura, borrar historial.
@@ -273,7 +273,7 @@ Los interruptores se quedan como los dejas, y el texto de búsqueda se borra cad
 <a id="text-previews"></a>
 ### Vista previa de texto
 
-Una tarjeta muestra las primeras cuatro líneas de un texto, en una fuente monoespaciada para que las tablas queden alineadas. Cuando el texto es más largo, lo indican una fina línea de puntos debajo de ellas y un pequeño ojo en la esquina de la tarjeta.
+Una tarjeta muestra las primeras cuatro líneas de un texto (*Configuración › Atajo de teclado › Líneas por tarjeta* lo cambia de 1 a 40), en una fuente monoespaciada para que las tablas queden alineadas. Cuando el texto es más largo, lo indican una fina línea de puntos debajo de ellas y un pequeño ojo en la esquina de la tarjeta.
 
 - **Vistazo:** deja el mouse sobre el texto de la tarjeta. Tras un momento todo el texto aparece en el centro del panel, coloreado como lo muestra el visor, y la rueda lo desplaza. Mover el mouse lo cierra, y también <kbd>Esc</kbd>. Un clic derecho con el mouse quieto ofrece *Copiar* y *Seleccionar todo* encima del propio menú del elemento. Un texto de más de 64.000 caracteres muestra su comienzo y lo indica.
 - **Visor:** haz clic en el ojo, presiona <kbd>F3</kbd> o elige *Ver* en el menú del elemento. La pantalla se oscurece y el texto se abre encima en una tarjeta grande:

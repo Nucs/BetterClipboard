@@ -208,15 +208,19 @@ public sealed class ContentTests
         Assert.Equal(ClipKind.RichText, ContentClassifier.Classify(capture)!.Kind);
     }
 
-    /// <summary>Previews normalize newlines, drop leading blank lines, keep indentation and truncate with an ellipsis.</summary>
+    /// <summary>
+    /// Previews normalize newlines, drop leading blank lines, keep indentation and truncate with an ellipsis; a text the
+    /// old 1,000-character cap cut (5,000 characters) is kept whole now (CLAUDE.md §2.57).
+    /// </summary>
     [Fact]
     public void Preview_NormalizesAndTruncates()
     {
         Assert.Equal("  code\nmore", ContentClassifier.BuildTextPreview("\r\n\r\n  code\r\nmore  \r\n"));
-        var longText = new string('x', 5000);
+        var longText = new string('x', ContentClassifier.PreviewMaxChars * 3);
         var preview = ContentClassifier.BuildTextPreview(longText);
         Assert.Equal(ContentClassifier.PreviewMaxChars, preview.Length);
         Assert.EndsWith("…", preview);
+        Assert.Equal(new string('x', 5000), ContentClassifier.BuildTextPreview(new string('x', 5000)));
     }
 
     /// <summary>Whitespace-only copies get a visible placeholder so the card is never blank.</summary>
@@ -296,14 +300,18 @@ public sealed class ContentTests
         Assert.False(char.IsHighSurrogate(preview[^2]) && preview[^1] == '…');
     }
 
-    /// <summary>File previews list names and summarize the overflow.</summary>
+    /// <summary>
+    /// File previews list names and summarize the overflow past forty names (five before 2026-11-20, so seven files are
+    /// listed whole now).
+    /// </summary>
     [Fact]
     public void DescribeFiles_SummarizesLongLists()
     {
-        var paths = Enumerable.Range(1, 7).Select(i => $@"C:\dir\file{i}.txt").ToArray();
+        var paths = Enumerable.Range(1, ContentClassifier.PreviewMaxFiles + 2).Select(i => $@"C:\dir\file{i}.txt").ToArray();
         var preview = ContentClassifier.DescribeFiles(paths);
         Assert.StartsWith("file1.txt\nfile2.txt", preview);
         Assert.EndsWith("+2 more", preview);
+        Assert.Equal("file1.txt\nfile2.txt\nfile3.txt\nfile4.txt\nfile5.txt\nfile6.txt\nfile7.txt", ContentClassifier.DescribeFiles([.. paths.Take(7)]));
         Assert.Equal("folder", ContentClassifier.DescribeFiles([@"C:\folder\"]));
     }
 

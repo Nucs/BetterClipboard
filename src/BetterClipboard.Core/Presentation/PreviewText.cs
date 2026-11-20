@@ -31,21 +31,20 @@ namespace BetterClipboard.Core.Presentation;
 /// the shape alone cannot rule out, and it would only lose its English wording.</item>
 /// <item><see cref="ContentClassifier.ImagePreview"/> and "Image · W × H": every picture's preview, which is never text
 /// the user copied.</item>
-/// <item>"+N more": the sixth line of a file list's preview, after the five names
-/// (<see cref="ContentClassifier.DescribeFiles(IReadOnlyList{string})"/>); a file's name never stands there.</item>
+/// <item>"+N more": the line of a file list's preview after its names
+/// (<see cref="ContentClassifier.DescribeFiles(IReadOnlyList{string})"/>): the forty-first line
+/// (<see cref="ContentClassifier.PreviewMaxFiles"/> names), or the sixth in an entry stored before 2026-11-20
+/// (<see cref="ContentClassifier.LegacyPreviewFiles"/>); a file's name never stands there.</item>
 /// </list>
 /// <para>
 /// Footgun: changing one of those shapes in <see cref="ContentClassifier"/> must change the matching rule here, or the
 /// card shows the new English words in every language. The tests run the classifier's own output through
 /// <see cref="Display(ClipKind, string, IReadOnlyList{string})"/> to catch it. Entries stored before such a change keep
-/// the old shape, so a rule for an old shape must stay.
+/// the old shape, so a rule for an old shape must stay: the five-name list did, when the names became forty.
 /// </para>
 /// </remarks>
 public static partial class PreviewText
 {
-    /// <summary>How many file names a file list's preview shows before its "+N more" line (as the classifier words it).</summary>
-    private const int FileNamesShown = 5;
-
     /// <summary>The preview to show for a stored entry, in the interface language when the app worded it.</summary>
     /// <param name="entry">The entry.</param>
     /// <returns>The preview: the translation of the app's own words, or the user's content as it is.</returns>
@@ -106,12 +105,16 @@ public static partial class PreviewText
 
     /// <summary>A file list's preview with its "+N more" line in the interface language; the file names stay as they are.</summary>
     /// <param name="preview">The stored preview: one name per line.</param>
-    /// <returns>The preview with the last line translated, or as it is when it holds five names or fewer.</returns>
+    /// <returns>
+    /// The preview with the last line translated, or as it is when it holds no line after a full list of names (forty, or
+    /// five in an entry stored before 2026-11-20).
+    /// </returns>
     private static string FilesText(string preview)
     {
-        // Only the line after the five names can be the app's: a cheap test first, since most lists are short.
+        // Only the line after a full list of names can be the app's: a cheap test first, since most lists are short.
         int lastBreak = preview.LastIndexOf('\n');
-        if (lastBreak < 0 || preview.AsSpan().Count('\n') != FileNamesShown)
+        int breaks = preview.AsSpan().Count('\n');
+        if (lastBreak < 0 || (breaks != ContentClassifier.PreviewMaxFiles && breaks != ContentClassifier.LegacyPreviewFiles))
         {
             return preview;
         }

@@ -138,6 +138,26 @@ public sealed record AppSettings
     public const int MaxFlyoutSize = 8192;
 
     /// <summary>
+    /// How many lines of its text a card shows until the user picks another number (<see cref="LinesPerCard"/>): four, what
+    /// every card showed before the number became a setting.
+    /// </summary>
+    public const int DefaultLinesPerCard = 4;
+
+    /// <summary>The fewest lines of text a card shows (<see cref="LinesPerCard"/>): one, for a compact list.</summary>
+    public const int MinLinesPerCard = 1;
+
+    /// <summary>
+    /// The most lines of text a card shows (<see cref="LinesPerCard"/>): forty, the owner's bound (2026-11-20). A stored
+    /// preview holds enough text for that many on a wide screen (<see cref="Content.ContentClassifier.PreviewMaxChars"/>),
+    /// and a file list's preview names that many files (<see cref="Content.ContentClassifier.PreviewMaxFiles"/>).
+    /// </summary>
+    /// <remarks>
+    /// Footgun: raising it needs those two raised with it (a unit test holds them together), or the extra lines of a long
+    /// text or a long file list stay empty.
+    /// </remarks>
+    public const int MaxLinesPerCard = 40;
+
+    /// <summary>
     /// The most shortcuts that open the panel (<see cref="OpenHotkey"/> plus <see cref="ExtraOpenHotkeys"/>): a sanity bound
     /// for hand-edited files and installer arguments. Each shortcut costs one registration, and in the worst case one more
     /// key the low-level keyboard hook checks on every keystroke.
@@ -369,6 +389,25 @@ public sealed record AppSettings
     /// <see cref="FlyoutWidth"/>, kept in <see cref="MinFlyoutHeight"/>..<see cref="MaxFlyoutSize"/>.
     /// </summary>
     public int FlyoutHeight { get; init; } = DefaultFlyoutHeight;
+
+    /// <summary>
+    /// How many lines of its text each card in the panel shows before the rest is cut off with "…" (Settings › Shortcut ›
+    /// Lines per card), <see cref="MinLinesPerCard"/> to <see cref="MaxLinesPerCard"/>; <see cref="DefaultLinesPerCard"/>
+    /// until the user picks another number. A card that shows less than its whole text still gets the eye, the dotted line
+    /// under its text and the hover peek, which show all of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The owner's request (2026-11-20): "make the number of lines per card configurable 1-40". Only the text's lines change:
+    /// the caption line above them, a picture's thumbnail and a color's swatch keep their size. Applied to the panel at once,
+    /// also while it shows (<c>ClipboardFlyout.ApplyCardLines</c>); nothing is loaded again, since every card already holds
+    /// a preview long enough for the most lines (CLAUDE.md §2.57).
+    /// </para>
+    /// <para>
+    /// Footgun: a version from before this member drops it when it saves the file, and the cards show four lines again.
+    /// </para>
+    /// </remarks>
+    public int LinesPerCard { get; init; } = DefaultLinesPerCard;
 
     /// <summary>
     /// The panel's tab (All, Pinned, Text, …) the user last chose, as the name of its <see cref="Storage.ClipFilter"/>:
@@ -1021,6 +1060,9 @@ public sealed record AppSettings
             // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
             FlyoutWidth = Math.Clamp(FlyoutWidth, MinFlyoutWidth, MaxFlyoutSize),
             FlyoutHeight = Math.Clamp(FlyoutHeight, MinFlyoutHeight, MaxFlyoutSize),
+
+            // A hand-edited 0 would hide every card's text, and 1,000 lines more than any preview holds.
+            LinesPerCard = Math.Clamp(LinesPerCard, MinLinesPerCard, MaxLinesPerCard),
 
             // The viewer's text size within what its zoom allows; a hand-edited NaN or infinity is 100 %.
             TextViewerTextSize = double.IsFinite(TextViewerTextSize) ? Math.Clamp(TextViewerTextSize, TextView.TextViewStyle.MinScale, TextView.TextViewStyle.MaxScale) : 1,

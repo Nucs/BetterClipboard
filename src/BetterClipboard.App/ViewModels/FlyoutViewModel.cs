@@ -63,13 +63,15 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private (ViewKey View, int HistoryVersion)? loadedState;
 
     /// <summary>
-    /// Creates the view model, with the search toggles as the user last left them.
+    /// Creates the view model, with the search toggles as the user last left them and its cards showing the lines the
+    /// settings ask for.
     /// </summary>
     /// <param name="controller">App controller (history access, settings).</param>
     public FlyoutViewModel(AppController controller)
     {
         this.controller = controller;
         ApplySavedSearchOptions();
+        ApplyLinesPerCard(controller.Settings.Current.LinesPerCard);
     }
 
     /// <summary>
@@ -80,6 +82,30 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
     /// <summary>The visible cards.</summary>
     public ObservableCollection<ClipItemViewModel> Items { get; } = [];
+
+    /// <summary>
+    /// Makes every card show <paramref name="lines"/> lines of its text (Settings › Shortcut › Lines per card, CLAUDE.md
+    /// §2.57): the cards made from now on (<see cref="ClipItemViewModel.DefaultCardLines"/>) and the ones listed now, in
+    /// place. UI thread only. Nothing is loaded again: every card holds a preview long enough for the most lines.
+    /// </summary>
+    /// <remarks>
+    /// Idempotent: a card already showing that many lines raises nothing, so the settings change that calls this for an
+    /// unrelated setting costs one pass over the listed cards. Taller or shorter cards move the rows below them; the next
+    /// summon places the list again (<c>ClipboardFlyout.ScrollPinsOutOfView</c>).
+    /// </remarks>
+    /// <param name="lines">The lines per card (<see cref="Core.Settings.AppSettings.LinesPerCard"/>); kept within its bounds.</param>
+    public void ApplyLinesPerCard(int lines)
+    {
+        int kept = Math.Clamp(lines, Core.Settings.AppSettings.MinLinesPerCard, Core.Settings.AppSettings.MaxLinesPerCard);
+        ClipItemViewModel.DefaultCardLines = kept;
+        foreach (var item in Items)
+        {
+            if (item.CardLines != kept)
+            {
+                item.ApplyCardLines(kept);
+            }
+        }
+    }
 
     /// <summary>Search box text; changes reload (debounced).</summary>
     [ObservableProperty]

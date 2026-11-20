@@ -275,6 +275,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool ShowClearButton { get; set; } = true;
 
+    /// <summary>
+    /// Settings › Shortcut › Lines per card (<see cref="AppSettings.LinesPerCard"/>, CLAUDE.md §2.57): how many lines of its
+    /// text each card in the panel shows, 1 to 40. A double, as the number box's value is.
+    /// </summary>
+    [ObservableProperty]
+    public partial double LinesPerCard { get; set; } = AppSettings.DefaultLinesPerCard;
+
     /// <summary>Index into System / Light / Dark.</summary>
     [ObservableProperty]
     public partial int ThemeIndex { get; set; }
@@ -469,6 +476,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ShowPauseButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.Pause);
             ShowGroupsButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.Groups);
             ShowClearButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.Clear);
+            LinesPerCard = settings.LinesPerCard;
             ThemeIndex = (int)settings.Theme;
             // A saved tag this build does not ship (a newer version's language) shows as "Use Windows setting", which is
             // also what it means here (UiText.Resolve).
@@ -1330,6 +1338,20 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Shows or hides the clear-history button in the panel's header.</summary>
     /// <param name="value">Whether it shows.</param>
     partial void OnShowClearButtonChanged(bool value) => SetPanelButtonShown(PanelButton.Clear, value);
+
+    /// <summary>
+    /// Persists the lines per card; the controller then applies them to the panel, also while it shows
+    /// (<c>ClipboardFlyout.ApplyCardLines</c>). A number box cleared by hand reports NaN, which keeps the saved value; one
+    /// out of range is kept in range by the settings (<see cref="AppSettings.Normalize"/>), as the box itself does.
+    /// </summary>
+    /// <param name="value">New value.</param>
+    partial void OnLinesPerCardChanged(double value)
+    {
+        if (!double.IsNaN(value))
+        {
+            Update(s => s with { LinesPerCard = (int)Math.Round(value) });
+        }
+    }
 
     /// <summary>
     /// Persists one ticked or unticked box of Settings › Shortcut › Buttons in the panel, keeping the others as stored

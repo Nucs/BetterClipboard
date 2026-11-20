@@ -143,6 +143,11 @@ public sealed class CliCommandProcessor
     }
 
     /// <summary>Converts an entry into its wire form.</summary>
+    /// <remarks>
+    /// The preview is the short one (<see cref="ContentClassifier.ShortPreview"/>, at most 1,000 characters), as it was
+    /// before the stored preview grew for the panel's longer cards (CLAUDE.md §2.57): a script or agent listing a hundred
+    /// items reads every preview, and <c>bclip get</c> gives the whole text.
+    /// </remarks>
     /// <param name="entry">The entry.</param>
     /// <returns>The item (without full text or matches).</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entry"/> is <see langword="null"/>.</exception>
@@ -153,7 +158,7 @@ public sealed class CliCommandProcessor
         {
             Id = entry.Id,
             Kind = KindName(entry.Kind),
-            Preview = entry.Preview,
+            Preview = ContentClassifier.ShortPreview(entry.Preview),
             Pinned = entry.IsPinned,
             Source = string.IsNullOrWhiteSpace(entry.SourceAppName) ? null : entry.SourceAppName,
             SourcePath = entry.SourceAppPath,
@@ -654,6 +659,7 @@ public sealed class CliCommandProcessor
     }
 
     /// <summary>Converts an archive row into its wire form.</summary>
+    /// <remarks>The preview is the short one, as for history items (<see cref="ToItem"/>); <c>--full</c> adds the whole text.</remarks>
     /// <param name="prompt">The row.</param>
     /// <returns>The wire prompt.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="prompt"/> is <see langword="null"/>.</exception>
@@ -664,7 +670,7 @@ public sealed class CliCommandProcessor
         {
             Id = prompt.Id,
             Agent = PromptAgents.WireName(prompt.Agent),
-            Preview = prompt.Preview,
+            Preview = ContentClassifier.ShortPreview(prompt.Preview),
             Text = prompt.Text,
             LastSent = prompt.LastSentUtc,
             FirstSent = prompt.FirstSentUtc,

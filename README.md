@@ -51,8 +51,8 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
   pastes plain text, and the arrow keys walk the items, the tabs and your groups ([Use](#use)).
 - **Paste one item after another.** Pin the panel and it stays open: each item you click goes into the app you were
   last in ([Use](#use)).
-- **A panel that fits you.** Move it, resize it, reorder or hide its tabs and its buttons; it opens in the tab you used
-  last ([Tabs](#tabs)).
+- **A panel that fits you.** Move it, resize it, show 1 to 40 lines of each text, reorder or hide its tabs and its
+  buttons; it opens in the tab you used last ([Tabs](#tabs)).
 - **Pins and groups.** Pin what you reuse, and gather things in groups with your own icons. Pinned and grouped items
   outlive every limit ([Groups](#groups)).
 - **Light on memory.** After each use it frees the memory it no longer needs and keeps just what the next Win+V needs
@@ -264,8 +264,8 @@ type, typos included; <kbd>Esc</kbd> clears it. Its sections:
 - **Shortcut:** the keys that open the panel (add as many as you like: click the box and press them, or pick one from
   its menu of suggestions and shortcuts used before), where the panel opens (next to the text cursor, next to the mouse,
   in the middle of the main screen, or in the middle of the screen you are typing on), which buttons its header shows
-  (all but Settings can be hidden), and releasing Win+letter shortcuts from Explorer
-  ([Choosing shortcuts](#choosing-shortcuts)).
+  (all but Settings can be hidden), how many lines of text each card shows (1 to 40), and releasing Win+letter
+  shortcuts from Explorer ([Choosing shortcuts](#choosing-shortcuts)).
 - **History:** how many items, for how many days, how large, what to record, and how long *Save to temp and*'s
   pictures are kept.
 - **Pasting:** paste after choosing, move pasted items to the top, pinned items first.
@@ -359,8 +359,9 @@ and group, except the Everything tab, where Everything itself does the searching
 
 ### Text previews
 
-A card shows the first four lines of a text, in a monospace font so that tables line up. When the text is longer, a
-thin dotted line under them and a small eye at the card's corner say so.
+A card shows the first four lines of a text (*Settings › Shortcut › Lines per card* makes it 1 to 40), in a monospace
+font so that tables line up. When the text is longer, a thin dotted line under them and a small eye at the card's
+corner say so.
 
 - **Peek:** rest the mouse on the card's text. After a moment the whole text appears in the middle of the panel,
   colored the way the viewer shows it, and the wheel scrolls it. Moving the mouse closes it, and so does <kbd>Esc</kbd>. A

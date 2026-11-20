@@ -59,8 +59,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
             ColorBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(argb.A, argb.R, argb.G, argb.B));
         }
 
-        // A preview that is only the start of its text is cut off before any layout says so (ClipItemViewModel.TextView.cs).
-        RefreshCutOff();
+        // The text for the card's lines (Settings › Lines per card); a preview that is only the start of its text is cut off
+        // before any layout says so (ClipItemViewModel.TextView.cs).
+        RefreshCardText();
     }
 
     /// <summary>
@@ -212,7 +213,7 @@ public sealed partial class ClipItemViewModel : ObservableObject
 
     /// <summary>
     /// The card text's font. Every text card is monospace — plain and formatted text, archived prompts, Notepad++ tabs,
-    /// shell commands — so a table's columns line up in its four lines as they do in the text viewer. A link stays in the
+    /// shell commands — so a table's columns line up in its lines as they do in the text viewer. A link stays in the
     /// UI font, and so does a pick, whose preview is a file name over its folder; any other kind (a file list) is
     /// monospace only when it looks like code or is nothing but paths, as before.
     /// </summary>
@@ -230,10 +231,14 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// full-width colon in Chinese). The preview goes in as a value: the user's content as it is, the app's own few
     /// preview words already in the interface language (<see cref="Preview"/>).
     /// </summary>
-    public string AutomationName => UiText.Format($"{KindLabel}: {Preview}");
+    /// <remarks>
+    /// At most the short preview's 1,000 characters (<see cref="ContentClassifier.ShortPreview"/>), as before previews grew
+    /// for longer cards: a screen reader reads the whole name whenever the card is selected, whatever its lines show.
+    /// </remarks>
+    public string AutomationName => UiText.Format($"{KindLabel}: {ContentClassifier.ShortPreview(Preview)}");
 
     /// <summary>
-    /// Replaces the snapshot after an update (pin/recency change) without recreating the card.
+    /// Replaces the snapshot after an update (pin/recency change, or a text replaced in place) without recreating the card.
     /// </summary>
     /// <param name="entry">The fresh snapshot (same id).</param>
     public void Update(ClipEntry entry)
@@ -242,7 +247,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
         IsPinned = entry.IsPinned;
         Caption = BuildCaption();
         (GroupBadges, GroupBadgesTooltip) = BuildGroupBadges();
-        RefreshCutOff();
+
+        // The card's text follows a text replaced in place; an unchanged one is not set again (ClipItemViewModel.TextView.cs).
+        RefreshCardText();
     }
 
     /// <summary>Re-formats the relative time in the caption.</summary>

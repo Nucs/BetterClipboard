@@ -558,10 +558,14 @@
                         </Grid>
 
                         <!--
-                            The text, at most 4 lines. A card that shows less than its whole text (ClipItemViewModel.IsCutOff)
+                            The text, at most as many lines as Settings › Shortcut › Lines per card says (1 to 40, four by
+                            default; ClipItemViewModel.CardLines, CLAUDE.md §2.57), given only the part of the preview those
+                            lines can show (CardText). A card that shows less than its whole text (ClipItemViewModel.IsCutOff)
                             gets a thin dotted line under them and the eye at their bottom right, and resting the mouse on it
                             opens the text peek (ClipboardFlyout.TextPreview.cs). The pointer handlers are on the grid, with
                             a transparent background, so the space around short lines and the eye count as the card's text too.
+                            Both bindings are one way: the line count follows the setting while the panel shows, and the text
+                            follows an entry updated in place.
                         -->
                         <Grid
                             Grid.Row="1"
@@ -579,11 +583,11 @@
                                 FontFamily="{x:Bind BodyFontFamily}"
                                 FontSize="13.5"
                                 IsTextTrimmedChanged="CardText_IsTextTrimmedChanged"
-                                MaxLines="4"
-                                Text="{x:Bind Preview}"
+                                MaxLines="{x:Bind CardLines, Mode=OneWay}"
+                                Text="{x:Bind CardText, Mode=OneWay}"
                                 TextTrimming="CharacterEllipsis"
                                 TextWrapping="Wrap" />
-                            <!--  A thin fifth line of three dots: there is more than the card shows (the owner's ask, 2026-11-13).  -->
+                            <!--  A thin line of three dots under the text: there is more than the card shows (the owner's ask, 2026-11-13).  -->
                             <TextBlock
                                 Grid.Row="1"
                                 Margin="0,-3,0,-1"

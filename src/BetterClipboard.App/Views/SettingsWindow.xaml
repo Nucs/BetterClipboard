@@ -391,6 +391,26 @@
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <!--
+                  How many lines of its text each card shows (AppSettings.LinesPerCard, CLAUDE.md §2.57): the owner's request of
+                  2026-11-20, "make the number of lines per card configurable 1-40". Applied to the panel at once, also while it
+                  shows. Next to the header's buttons: both are how the panel looks. E8E4 = three lines of text (AlignLeft,
+                  checked by rendering).
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='How many lines of its text each card in the panel shows, from 1 to 40. A longer text ends with a dotted line; its eye, or F3, shows all of it.'}"
+                    Glyph="&#xE8E4;"
+                    Header="{loc:Tr Text='Lines per card'}"
+                    Keywords="{loc:Tr Text='rows, card height, preview, compact, dense, longer cards, more text, text lines'}">
+                    <NumberBox
+                        MinWidth="140"
+                        LargeChange="5"
+                        Maximum="40"
+                        Minimum="1"
+                        SmallChange="1"
+                        SpinButtonPlacementMode="Compact"
+                        Value="{x:Bind ViewModel.LinesPerCard, Mode=TwoWay}" />
+                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Win+V belongs to Windows, and other shortcuts may belong to other apps. When on, BetterClipboard intercepts exactly your shortcuts that are taken with a keyboard hook while it runs — quit BetterClipboard and their owners get them back instantly.'}"
                     Glyph="&#xEDA7;"

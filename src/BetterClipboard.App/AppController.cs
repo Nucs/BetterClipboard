@@ -1371,6 +1371,13 @@ public sealed partial class AppController
         // Ids and flags only — never the key, the binding or the identifiers they come from.
         AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
                     $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
+
+        // Once per store, at the first start of a version with the longer previews (CLAUDE.md §2.57): a count, never content.
+        if (opened.Store.RebuiltPreviews > 0)
+        {
+            AppLog.Info($"Rebuilt {opened.Store.RebuiltPreviews} preview(s) that earlier versions cut short, so cards set to show many lines fill them.");
+        }
+
         if (opened.QuarantinedDirectory is not null)
         {
             AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
@@ -1489,11 +1496,13 @@ public sealed partial class AppController
             }
 
             // Idempotent too: the header's buttons follow Settings › Buttons in the panel, the pin its state, and a pinned
-            // panel starts or stops following the window in front (ClipboardFlyout.KeepOpen.cs). A panel not built yet
-            // reads them when it is.
+            // panel starts or stops following the window in front (ClipboardFlyout.KeepOpen.cs). The cards show the lines
+            // Settings › Lines per card asks for, also while the panel shows (ClipboardFlyout.TextPreview.cs). A panel not
+            // built yet reads both when it is.
             if (!exiting)
             {
                 flyout?.ApplyHeaderButtons();
+                flyout?.ApplyCardLines();
             }
         });
     }

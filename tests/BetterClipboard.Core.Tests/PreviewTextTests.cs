@@ -27,9 +27,16 @@ public sealed class PreviewTextTests
     /// <summary>The formats of a plain text copy.</summary>
     private static readonly string[] TextFormats = [ClipFormatNames.UnicodeText];
 
-    /// <summary>Eight file paths: a file list long enough for its preview's "+3 more" line.</summary>
-    private static readonly string[] EightFiles =
-        [.. Enumerable.Range(1, 8).Select(i => $@"C:\BC-TEST\file{i}.txt")];
+    /// <summary>
+    /// Forty-three file paths: a file list long enough for its preview's "+3 more" line, after forty names (five before
+    /// 2026-11-20, CLAUDE.md §2.57).
+    /// </summary>
+    private static readonly string[] ManyFiles =
+        [.. Enumerable.Range(1, ContentClassifier.PreviewMaxFiles + 3).Select(i => $@"C:\BC-TEST\file{i}.txt")];
+
+    /// <summary>The first forty of <see cref="ManyFiles"/>' names, one per line: the names a file list's preview holds.</summary>
+    private static readonly string FortyNames =
+        string.Join('\n', Enumerable.Range(1, ContentClassifier.PreviewMaxFiles).Select(i => $"file{i}.txt"));
 
     /// <summary>
     /// Texts the user could copy that read like the app's words, with the kind and formats a copy of them is stored with:
@@ -47,6 +54,8 @@ public sealed class PreviewTextTests
         { ClipKind.Files, "a.txt\nb.txt", [ClipFormatNames.HDrop] },
         { ClipKind.Files, "a\nb\nc\nd\ne", [ClipFormatNames.HDrop] },
         { ClipKind.Files, "a\nb\nc\nd\ne\nf", [ClipFormatNames.HDrop] },
+        { ClipKind.Files, FortyNames + "\nfile41.txt", [ClipFormatNames.HDrop] },
+        { ClipKind.Files, FortyNames + "\nf\n+3 more", [ClipFormatNames.HDrop] },
         { ClipKind.Image, "Image · 1920 x 1080", [ClipFormatNames.Png] },
         { ClipKind.Color, "#3366FF", TextFormats },
     };
@@ -82,7 +91,7 @@ public sealed class PreviewTextTests
             Formats = [new ClipFormatData(ClipFormatNames.Html, Encoding.UTF8.GetBytes("<b>BC-TEST</b>"))],
         })!;
         var spaces = ContentClassifier.Classify(TestData.Text("   "))!;
-        var files = ContentClassifier.Classify(TestData.Files(EightFiles))!;
+        var files = ContentClassifier.Classify(TestData.Files(ManyFiles))!;
         string previous = UiText.Language;
         try
         {
@@ -95,9 +104,12 @@ public sealed class PreviewTextTests
             Assert.Equal($"（全是空白 · {1234.ToString("N0", CultureInfo.CurrentCulture)} 个字符）", PreviewText.Display(ClipKind.RichText, ContentClassifier.BuildTextPreview(new string(' ', 1234)), TextFormats));
             Assert.Equal("图片 · 1920 × 1080", PreviewText.Display(ClipKind.Image, ContentClassifier.DescribeImage(1920, 1080), [ClipFormatNames.Png]));
             Assert.Equal("图片", PreviewText.Display(ClipKind.Image, ContentClassifier.DescribeImage(null, null), [ClipFormatNames.Png]));
+            Assert.Equal(FortyNames + "\n还有 3 项", PreviewText.Display(files.Kind, files.Preview, [ClipFormatNames.HDrop]));
+
+            // A file list stored before 2026-11-20 keeps its five names until the store rebuilds it: still the app's words.
             Assert.Equal(
-                "file1.txt\nfile2.txt\nfile3.txt\nfile4.txt\nfile5.txt\n还有 3 项",
-                PreviewText.Display(files.Kind, files.Preview, [ClipFormatNames.HDrop]));
+                "file1.txt\nfile2.txt\nfile3.txt\nfile4.txt\nfile5.txt\n还有 38 项",
+                PreviewText.Display(ClipKind.Files, "file1.txt\nfile2.txt\nfile3.txt\nfile4.txt\nfile5.txt\n+38 more", [ClipFormatNames.HDrop]));
         }
         finally { UiText.Language = previous; }
     }
@@ -106,7 +118,7 @@ public sealed class PreviewTextTests
     [Fact]
     public void Display_InEnglish_IsTheStoredWords()
     {
-        var files = ContentClassifier.Classify(TestData.Files(EightFiles))!;
+        var files = ContentClassifier.Classify(TestData.Files(ManyFiles))!;
         string previous = UiText.Language;
         try
         {
@@ -154,7 +166,7 @@ public sealed class PreviewTextTests
             PreviewText.Display(ClipKind.Text, ContentClassifier.BuildTextPreview(new string(' ', count)), TextFormats);
 
         static string Files() =>
-            PreviewText.Display(ClipKind.Files, ContentClassifier.DescribeFiles(EightFiles), [ClipFormatNames.HDrop]);
+            PreviewText.Display(ClipKind.Files, ContentClassifier.DescribeFiles(ManyFiles), [ClipFormatNames.HDrop]);
     }
 
     /// <summary>The entry overload reads the entry's kind, preview and formats; nulls are refused.</summary>

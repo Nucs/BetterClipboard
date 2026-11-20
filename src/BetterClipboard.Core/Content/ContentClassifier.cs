@@ -46,8 +46,53 @@ public sealed record ClassifiedClip(
 /// </remarks>
 public static class ContentClassifier
 {
-    /// <summary>Maximum preview length in characters; the card shows only a few lines anyway.</summary>
-    public const int PreviewMaxChars = 1000;
+    /// <summary>
+    /// The longest preview stored, in characters: enough text for a card of <see cref="Settings.AppSettings.MaxLinesPerCard"/>
+    /// lines on a wide screen (forty lines of 400 characters, a monospace line some 3,000 DIPs wide). The card hands its text
+    /// block only what its line count can show (<see cref="Presentation.CardPreview"/>), and the text viewer reads the whole
+    /// text, never the preview (CLAUDE.md §2.57).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 1,000 until 2026-11-20, when every card showed four lines. When the number of lines became a setting, a long text ran
+    /// out of preview after some twenty lines, and the owner's answer was: "The text viewer is supposed to contain the full
+    /// text so keep as long as needed". Previews earlier versions cut short are rebuilt once (<c>ClipStore</c>'s
+    /// <c>fixup.long_previews.v1</c>); <see cref="ShortPreviewChars"/> keeps the old length where a short preview reads
+    /// better. Only a text longer than the old cap stores more than before.
+    /// </para>
+    /// <para>
+    /// Twice this must stay below <see cref="SearchMaxChars"/>, by more than one character: <see cref="BuildTextPreview"/>
+    /// looks at twice the cap, and the rebuild works from the indexed text, which holds the first
+    /// <see cref="SearchMaxChars"/> characters (or one fewer, when a surrogate pair straddles the cut). Then a preview built
+    /// from the indexed text equals the one built from the whole text (a unit test holds the two together).
+    /// </para>
+    /// </remarks>
+    public const int PreviewMaxChars = 16_000;
+
+    /// <summary>
+    /// The length of the short preview, in characters (<see cref="ShortPreview"/>): the stored preview's length until
+    /// 2026-11-20, kept where a short preview reads better than a long one — a card's name for screen readers, which read it
+    /// whole whenever the card is selected, and <c>bclip</c>'s JSON, which scripts and agents read for every item.
+    /// </summary>
+    /// <remarks>Also the shortest a cut text preview can be (<see cref="IsCutPreview"/>): earlier versions cut there.</remarks>
+    public const int ShortPreviewChars = 1000;
+
+    /// <summary>
+    /// The most file names a file list's preview holds before its "+N more" line (<see cref="DescribeFiles"/>): as many as a
+    /// card shows lines at most (<see cref="Settings.AppSettings.MaxLinesPerCard"/>).
+    /// </summary>
+    /// <remarks>
+    /// Five until 2026-11-20 (<see cref="LegacyPreviewFiles"/>). The caption counts the files from the preview's lines, so a
+    /// list of up to this many reads "12 files", and only a longer one "many files".
+    /// </remarks>
+    public const int PreviewMaxFiles = 40;
+
+    /// <summary>
+    /// The file names a file list's preview held before 2026-11-20: five. Entries an earlier version stored keep that shape
+    /// until the store rebuilds them, and a version older than the rebuild may store more after it, so
+    /// <see cref="Presentation.PreviewText"/> still recognizes it.
+    /// </summary>
+    public const int LegacyPreviewFiles = 5;
 
     /// <summary>
     /// Maximum characters indexed for search. Bounds the trigram index (≈3 index entries per char) so one
@@ -201,17 +246,21 @@ public static class ContentClassifier
         width is > 0 && height is > 0 ? $"{ImagePreview} · {width} × {height}" : ImagePreview;
 
     /// <summary>
-    /// Builds the preview for a file list: up to five file names, one per line, plus a "+N more" tail.
+    /// Builds the preview for a file list: up to <see cref="PreviewMaxFiles"/> file names, one per line, plus a "+N more"
+    /// tail when there are more.
     /// </summary>
     /// <remarks>
     /// The "+N more" line is stored in English and shown translated: <see cref="Presentation.PreviewText"/> recognizes it
-    /// as the sixth line of a file list's preview. Change the number of names or the tail only together with it.
+    /// as the line after a file list's names (after <see cref="PreviewMaxFiles"/> of them, or <see cref="LegacyPreviewFiles"/>
+    /// in an entry stored before 2026-11-20). Change the number of names or the tail only together with it.
     /// </remarks>
     /// <param name="paths">Decoded paths (non-empty).</param>
     /// <returns>The preview text.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="paths"/> is <see langword="null"/>.</exception>
     public static string DescribeFiles(IReadOnlyList<string> paths)
     {
-        const int shown = 5;
+        ArgumentNullException.ThrowIfNull(paths);
+        const int shown = PreviewMaxFiles;
         var builder = new StringBuilder();
         for (int i = 0; i < paths.Count && i < shown; i++)
         {
@@ -254,9 +303,10 @@ public static class ContentClassifier
             return $"(whitespace · {text.Length} char{(text.Length == 1 ? "" : "s")})";
         }
 
-        // Only normalize the head we will display — normalizing a 50 MB string just to show 1000 chars
-        // would burn CPU on the capture path.
-        var head = text.Length > PreviewMaxChars * 2 ? text[..(PreviewMaxChars * 2)] : text;
+        // Only normalize the head we will display — normalizing a 50 MB string just to show a preview would burn CPU on the
+        // capture path. Cut without splitting a surrogate pair: a lone high surrogate at the head's end would survive a
+        // preview that normalization shortened below the cap, and SQLite would store it as U+FFFD.
+        var head = Truncate(text, PreviewMaxChars * 2);
         head = head.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
         head = head.TrimEnd();
         int firstContent = 0;
@@ -275,6 +325,47 @@ public static class ContentClassifier
         head = head[firstContent..];
         bool truncated = head.Length > PreviewMaxChars || text.Length > PreviewMaxChars * 2;
         return truncated ? Truncate(head, PreviewMaxChars - 1) + "…" : head;
+    }
+
+    /// <summary>
+    /// A preview cut to <see cref="ShortPreviewChars"/> with "…", the way <see cref="BuildTextPreview"/> cuts: for a screen
+    /// reader's card name and <c>bclip</c>'s JSON, which read a preview whole and kept the old length when previews grew.
+    /// </summary>
+    /// <remarks>
+    /// For a text preview it gives what the preview was before 2026-11-20, apart from one edge: a text that earlier versions
+    /// cut only for its length (over 2,000 characters raw, but under 1,000 once its white space was trimmed) now comes back
+    /// whole, without "…".
+    /// </remarks>
+    /// <param name="preview">A stored preview, or one shown from it.</param>
+    /// <returns>The preview itself when it is short enough; otherwise its start and "…".</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="preview"/> is <see langword="null"/>.</exception>
+    public static string ShortPreview(string preview)
+    {
+        ArgumentNullException.ThrowIfNull(preview);
+        return preview.Length <= ShortPreviewChars ? preview : Truncate(preview, ShortPreviewChars - 1) + "…";
+    }
+
+    /// <summary>
+    /// Whether a stored preview is only the start of its content: a file list's preview that ends with its "+N more" line,
+    /// or a text preview cut with "…" (<see cref="BuildTextPreview"/>), now or by an earlier version at
+    /// <see cref="ShortPreviewChars"/>. A card whose preview is cut always gets the eye and the dotted line, also when its
+    /// text block shows every line of the preview.
+    /// </summary>
+    /// <remarks>
+    /// A text that itself ends with "…" and is at least <see cref="ShortPreviewChars"/> long counts as cut too: its card
+    /// offers the viewer for a text it already shows whole, which costs nothing. Ask with the stored preview, which is
+    /// English; the shown one translates the file list's last line.
+    /// </remarks>
+    /// <param name="kind">The entry's kind.</param>
+    /// <param name="preview">The stored preview (<c>ClipEntry.Preview</c>).</param>
+    /// <returns><see langword="true"/> when the preview leaves part of the content out.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="preview"/> is <see langword="null"/>.</exception>
+    public static bool IsCutPreview(ClipKind kind, string preview)
+    {
+        ArgumentNullException.ThrowIfNull(preview);
+        return kind == ClipKind.Files
+            ? preview.Contains("\n+", StringComparison.Ordinal) && preview.EndsWith(" more", StringComparison.Ordinal)
+            : preview.Length >= ShortPreviewChars - 1 && preview.EndsWith('…');
     }
 
     /// <summary>Cuts <paramref name="text"/> to at most <paramref name="max"/> chars without splitting a surrogate pair.</summary>

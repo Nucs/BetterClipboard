@@ -254,6 +254,13 @@ public sealed partial class ClipStore
     public bool MigratedFromPlaintext { get; private set; }
 
     /// <summary>
+    /// How many previews the last <see cref="Initialize"/> rebuilt at the longer preview length
+    /// (<see cref="RebuildShortPreviews"/>: history entries and archived prompts together, for the log); 0 on every start
+    /// after the first one that ran the rebuild.
+    /// </summary>
+    public int RebuiltPreviews { get; private set; }
+
+    /// <summary>
     /// Creates or migrates the schema, and encrypts a legacy plaintext file in place when this store has a
     /// key. Idempotent; call once at startup before any other member.
     /// </summary>
@@ -399,6 +406,7 @@ public sealed partial class ClipStore
         transaction.Commit();
         ApplyDataFixups(connection);
         BackfillPathCounts(connection);
+        RebuiltPreviews = RebuildShortPreviews(connection);
     }
 
     /// <summary>
@@ -501,6 +509,148 @@ public sealed partial class ClipStore
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// <c>meta</c> flag of the one-time rebuild of the previews earlier versions cut short (see
+    /// <see cref="RebuildShortPreviews"/>). Never reuse it: a new rebuild needs a new key.
+    /// </summary>
+    private const string LongPreviewsKey = "fixup.long_previews.v1";
+
+    /// <summary>
+    /// Rebuilds, once per store, every preview an earlier version cut at its shorter length: a text cut at 1,000 characters
+    /// and a file list cut after five names, now <see cref="ContentClassifier.PreviewMaxChars"/> characters and
+    /// <see cref="ContentClassifier.PreviewMaxFiles"/> names (CLAUDE.md §2.57), so that a card set to show many lines fills
+    /// them for entries kept before the change too.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Where each preview comes from.</b> A history entry's text from its indexed text (<c>search_text</c>, the first
+    /// <see cref="ContentClassifier.SearchMaxChars"/> characters of it), which gives exactly the preview the whole text gives
+    /// (see <see cref="ContentClassifier.PreviewMaxChars"/>), so no payload is read for it; a file list from its own
+    /// <c>CF_HDROP</c> format, the only place that has every name and their number; an archived prompt from its whole text.
+    /// Only the head the classifier looks at is read (<c>substr</c>, twice the cap plus one, which still tells a longer
+    /// text apart).
+    /// </para>
+    /// <para>
+    /// <b>Which rows.</b> Only previews that end the way a cut one does ("…" for a text, "more" for a file list); a row is
+    /// written only when its rebuilt preview differs, so a text that merely ends with "…" stays as it is. Ids are listed
+    /// first and each row is read and written on its own, so a large archive is never held in memory at once. The full-text
+    /// triggers fire on a change of the indexed text only, so no index is rebuilt.
+    /// </para>
+    /// <para>
+    /// One transaction with its flag: an interrupted start leaves every preview as it was, and the next one does the whole
+    /// job. Entries a version older than this one stores afterwards keep its short shape; their cards still recognize them
+    /// as cut (<see cref="ContentClassifier.IsCutPreview"/>) and show as much as those previews hold.
+    /// </para>
+    /// </remarks>
+    /// <param name="connection">Open connection (outside any transaction).</param>
+    /// <returns>How many previews were rewritten (0 when the rebuild had run on an earlier start).</returns>
+    /// <exception cref="SqliteException">A read or write failed (lock timeout, disk full); nothing is changed, and the next start retries.</exception>
+    private static int RebuildShortPreviews(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using (var flag = Command(connection, "INSERT OR IGNORE INTO meta (key, value) VALUES ($key, '1');"))
+        {
+            flag.Parameters.AddWithValue("$key", LongPreviewsKey);
+
+            // Zero rows inserted = already done on an earlier start.
+            if (flag.ExecuteNonQuery() == 0)
+            {
+                return 0;
+            }
+        }
+
+        // Texts, formatted texts and links: their preview is BuildTextPreview's. A whitespace-only text never ends with "…".
+        int rebuilt = RebuildPreviews(
+            connection,
+            $"SELECT id FROM clips WHERE kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText}, {(int)ClipKind.Link}) AND substr(preview, -1) = '…';",
+            "SELECT preview, substr(search_text, 1, $head) FROM clips WHERE id = $id;",
+            "UPDATE clips SET preview = $preview WHERE id = $id;",
+            reader => reader.IsDBNull(1) || reader.GetString(1) is not { Length: > 0 } text ? null : ContentClassifier.BuildTextPreview(text));
+
+        // File lists with their "+N more" line: the names come from the list itself (the indexed text may stop mid-path).
+        rebuilt += RebuildPreviews(
+            connection,
+            $"SELECT id FROM clips WHERE kind = {(int)ClipKind.Files} AND preview LIKE '%more';",
+            $"SELECT c.preview, f.data FROM clips c JOIN clip_formats f ON f.clip_id = c.id AND f.name = '{ClipFormatNames.HDrop}' WHERE c.id = $id;",
+            "UPDATE clips SET preview = $preview WHERE id = $id;",
+            reader => reader.IsDBNull(1) || DropFilesCodec.Decode(reader.GetFieldValue<byte[]>(1)) is not { Count: > 0 } paths
+                ? null
+                : ContentClassifier.DescribeFiles(paths));
+
+        // Archived prompts keep their whole text: the preview is BuildTextPreview's of it, as when it was stored.
+        rebuilt += RebuildPreviews(
+            connection,
+            "SELECT id FROM prompts WHERE substr(preview, -1) = '…';",
+            "SELECT preview, substr(text, 1, $head) FROM prompts WHERE id = $id;",
+            "UPDATE prompts SET preview = $preview WHERE id = $id;",
+            reader => reader.IsDBNull(1) || reader.GetString(1) is not { Length: > 0 } text ? null : ContentClassifier.BuildTextPreview(text));
+
+        transaction.Commit();
+        return rebuilt;
+    }
+
+    /// <summary>
+    /// One table's part of <see cref="RebuildShortPreviews"/>: lists the candidate ids, then reads, rebuilds and writes each
+    /// row on its own (inside the caller's transaction).
+    /// </summary>
+    /// <param name="connection">Open connection inside the caller's transaction.</param>
+    /// <param name="candidates">SQL listing the candidate ids (constants only).</param>
+    /// <param name="read">SQL reading one row by <c>$id</c>: column 0 the stored preview, column 1 the source to rebuild it from; may use <c>$head</c>.</param>
+    /// <param name="write">SQL writing <c>$preview</c> to the row <c>$id</c>.</param>
+    /// <param name="rebuild">The new preview from the read row, or <see langword="null"/> to leave the row alone.</param>
+    /// <returns>How many rows were rewritten.</returns>
+    /// <exception cref="SqliteException">A read or write failed; the caller's transaction rolls back.</exception>
+    private static int RebuildPreviews(SqliteConnection connection, string candidates, string read, string write, Func<SqliteDataReader, string?> rebuild)
+    {
+        var ids = new List<long>();
+        using (var list = Command(connection, candidates))
+        using (var reader = list.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                ids.Add(reader.GetInt64(0));
+            }
+        }
+
+        int rewritten = 0;
+        using var select = Command(connection, read);
+        var selectId = select.Parameters.Add("$id", SqliteType.Integer);
+
+        // Twice the cap plus one: the classifier looks at twice the cap, and the one more tells it the text goes on.
+        select.Parameters.AddWithValue("$head", (ContentClassifier.PreviewMaxChars * 2) + 1);
+        using var update = Command(connection, write);
+        var updateId = update.Parameters.Add("$id", SqliteType.Integer);
+        var updatePreview = update.Parameters.Add("$preview", SqliteType.Text);
+        foreach (long id in ids)
+        {
+            selectId.Value = id;
+            string? preview;
+            string stored;
+            using (var reader = select.ExecuteReader())
+            {
+                if (!reader.Read())
+                {
+                    continue;
+                }
+
+                stored = reader.GetString(0);
+                preview = rebuild(reader);
+            }
+
+            if (preview is null || preview == stored)
+            {
+                continue;
+            }
+
+            updateId.Value = id;
+            updatePreview.Value = preview;
+            update.ExecuteNonQuery();
+            rewritten++;
+        }
+
+        return rewritten;
     }
 
     /// <summary>
