@@ -6969,8 +6969,8 @@ the alternatives, what was verified, and the sources.
 User request (2026-10-03): "Install current on dev and orchestrate two photos plus one settings photo for the
 README.md". The README shows four photos, made on a claude-desktops Windows desktop with invented demo data, never on
 this PC (§4):
-- `docs/images/panel.png`, the hero until 2026-11-15, and still the translations': the All tab with the groups
-  column (692×947).
+- `docs/images/panel.png`, the hero until 2026-11-15 and the translations' until 2026-11-20; no README shows it
+  since: the All tab with the groups column (692×947).
 - `docs/images/prompts.png`, under *Tabs for other apps*: the Claude tab, the strip scrolled to the other apps' tabs
   (626×947).
 - `docs/images/settings.png`, after the Settings list under *Use*: the top of Settings (1388×1307).
@@ -7062,8 +7062,8 @@ chose "B · Scannable + gallery" from three rendered pages, with "The picture ab
 version expands to large, few sec and reverse and repeat"; §4 has the README's layout).
 - `docs/images/hero.gif` is README.md's hero now: the panel at its own width with the groups column open, widening
   until every tab shows, held 2.6 s, narrowing, held 1.6 s, and again; centered, so it grows to both sides (960 × 643,
-  46 frames, 6.4 s a loop, 3.8 MB). It shows 0.2.11 with the owner's screened demo data (§3.5). `panel.png` stays for
-  the four translations until they follow (§6).
+  46 frames, 6.4 s a loop, 3.8 MB). It shows 0.2.11 with the owner's screened demo data (§3.5). The four translations
+  show it too since 2026-11-20, with the gallery below (§4).
 - `docs/images/gallery/` holds the five pictures under *Features*: a regular-expression search, a group's view, the
   Claude tab, the text viewer and the image viewer. [`gallery.py`](tools/readme/gallery.py) cuts them from the Store
   listing's screenshots (§3.5) and rounds the panel crops' corners; retaken screenshots need its boxes measured again.
@@ -7830,8 +7830,8 @@ kit by a scratch generator, session 66cdd808):
   `docs/code-signing.md`) and `#readme`. README.md's pictures: the hero animation `docs/images/hero.gif` and the
   gallery under *Features* (`docs/images/gallery/`), both of 0.2.11 with the owner's screened demo data (2026-11-15,
   §3.4), and three photos of `7d7df8d` with invented demo data (2026-10-09): `prompts.png`, `settings.png` and
-  `update.png`. The translations still show `panel.png` instead of the animation (§6). All come from claude-desktops
-  Windows desktops, never the user's screen.
+  `update.png`. The translations show the same pictures (since 2026-11-20). All come from claude-desktops Windows
+  desktops, never the user's screen.
   When a change makes one of them wrong, retake it the same way (§3.4).
   The title carries the app icon, `src/BetterClipboard.App/Assets/AppIcon.png` (256 px, from `tools/make_icon.py`; the
   Chocolatey `iconUrl` loads the same file, so keep it there). At 40 px with `align="top"` it sits within 2 px of the
@@ -7851,7 +7851,7 @@ kit by a scratch generator, session 66cdd808):
   - Checked with GitHub's own renderer (`gh api markdown`, mode `markdown`, the way README files render: the `align`
     survived and the Markdown inside was read), then drawn with github-markdown-css in a headless Chrome.
   - **The restyle of 2026-11-15** (the owner: "Now make the README.md neat and attractive", then "B · Scannable +
-    gallery" from three rendered pages, and "English first": the translations follow later, §6):
+    gallery" from three rendered pages, and "English first": the translations followed on 2026-11-20, below):
     - the gallery: two tables under the *Features* list (three panel pictures, then the two viewers), each picture with
       a `<sub>` caption. Picture names stay unique among all the README's pictures: the docs site copies them into one
       folder (§2.51), and two different `prompts.png` failed its build;
@@ -7940,9 +7940,14 @@ kit by a scratch generator, session 66cdd808):
     `git rev-list --no-merges <branch point>..HEAD -- README.md`, then `git show --name-only` for each.
   - **Check them with `python tools/readme/check-translations.py`** (every translation, or the files named). Section
     by section (the translation's `<a id>` equals the English heading's anchor) it compares list items per depth,
-    table rows, paragraphs, images, link targets and the commands in code blocks (comments are translated); then
-    GitHub's rendering of each whole file (the REST API's `/markdown`, nothing published; `--offline` skips it): the
-    same tables with the same rows, list items and code blocks, nothing left as raw `**` or `](`.
+    table rows, paragraphs, images, link targets, the commands in code blocks (comments are translated), and since
+    2026-11-20 the keys written as `<kbd>`, the alert boxes in order and the `<details>` folds (a translation shows
+    Microsoft's Store badge in its own language: `get.microsoft.com/images/<language>%20dark.svg` counts as the
+    English one); then GitHub's rendering of each whole file (the REST API's `/markdown`, nothing published;
+    `--offline` skips it): the same tables with the same rows, list items and code blocks, nothing left as raw `**` or
+    `](`.
+    - Until 2026-11-20 it saw neither keys, alerts nor folds: after the restyle it reported 12 differences per
+      translation, but none for the missing *Updates* fold or the 134 keys still written as code.
     - It asks with gh's stored sign-in (`gh auth token`, with `GH_TOKEN`/`GITHUB_TOKEN` hidden), else anonymously:
       60 requests an hour per address, which a few runs used up on 2026-11-13 (HTTP 403 "rate limit exceeded").
     - A README.md that holds another session's unstaged text makes every translation differ (on 2026-11-13 the AI
@@ -7959,13 +7964,28 @@ kit by a scratch generator, session 66cdd808):
     - a block that starts with a Latin word, a code span or `&lrm;` starts with `&rlm;`; a list takes its direction
       from its first item, a nested list from its own;
     - every inline code span has `&lrm;` on both sides, or `-NoTakeOverWinV` shows as `NoTakeOverWinV-`;
+    - every key combination too (`&lrm;<kbd>Ctrl</kbd>+<kbd>P</kbd>&lrm;`): GitHub's stylesheet makes `<kbd>` an
+      inline block, which the bidirectional algorithm treats as a neutral sign, so without the marks the combination
+      shows as P+Ctrl (measured 2026-11-20 in Chrome with GitHub's HTML and stylesheet: 3 of 3 unmarked combinations
+      mirrored, 0 of 55 marked ones). A single key needs no mark; the README keeps the marks its code spans had;
     - a `+` or `#` that ends a Latin word gets `&lrm;` after it when Hebrew or the end of its block (a table cell ends
       at its `|`) comes next: `Notepad++&lrm;`, `Win+&lrm;אות`. The app marks its own texts the same way (§2.37);
     - the marks are written as the entities `&rlm;` and `&lrm;`, never as raw U+200F and U+200E, which no editor or
-      diff shows.
+      diff shows;
+    - **a loose list lays out left to right** (bullets on the left; each item's text still reads right to left). In
+      a loose list (a blank line between items, or between two blocks of one item) every item's text is a paragraph
+      with its own `dir="auto"`, which the list's `dir="auto"` skips, so the list finds no letter and falls back to
+      left to right (measured 2026-11-20 on GitHub's own HTML of the page, `gh api -H "Accept:
+      application/vnd.github.html" repos/…/contents/<file>`: 3 loose lists, all left to right). Keep a list tight where
+      the structure allows: the *Install* list has no blank lines around its code block (a fenced block may follow a
+      line of text directly). The ShareX *Where it looks* list and the *Code signing policy* list cannot be tight: a
+      paragraph follows a nested list there (§6).
 
-    `check-translations.py` checks all four (the last in every translation). The page was also drawn with
-    github-markdown-css in a headless Chrome and each character's position measured.
+    `check-translations.py` checks all of these but the loose lists (the entities rule in every translation, not only
+    the Hebrew one). The page was also drawn
+    with github-markdown-css in a headless Chrome and each character's position measured. The API's HTML lacks the
+    `dir="auto"` that github.com adds to paragraphs, headings, lists and code blocks: a preview must add it, or code
+    blocks come out scrambled right to left.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
@@ -8478,6 +8498,7 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **The four README translations synced to README.md** (2026-11-20; the owner, on merge request #7: "please go over all the READMEs in all the languages and sync it to the main eng README"). Two English-only commits had never reached the translations: the restyle `dfada01` (the hero animation, the short *Features* list with its gallery, keys as `<kbd>`, the *Updates* fold, the alert boxes, the *Privacy* paragraph on the Store edition) and the short *Install* `1d363c0`; every other README change since `8864660` had reached all four (checked: `1d363c0` touched only *Install* and its two subsections, and `dfada01`'s 23 hunks change words in 8, the rest only keys). Rewritten in each language: the top block (the Docs badge, the link row, `hero.gif` with a translated alt text, the tagline without its dropped second sentence), *Features* (15 items, 6 + 6 nested, both gallery tables with translated captions and alt texts), *Install* with *For every user of a PC* and *Microsoft Store edition* (Microsoft's badge in each language, `zh-cn`, `ru`, `es`, `he`: each answered 200 and was drawn to check its words), and the Store paragraph of *Privacy*. By a script (scratchpad `tools/sync.py`), the same in each: 134 key code spans to `<kbd>` (`Ctrl+<click word>` keeps its word outside), the *Updates* fold with a translated summary, the IMPORTANT and TIP boxes. `check-translations.py` extended (keys, alerts, folds, the localized badge, Hebrew key combinations, an alert's marker skipped for block direction): before the sync it found 39 problems in the Chinese file alone (the old checks 19, none of them the *Updates* fold); after it, all four `ok` with GitHub's rendering; six planted faults (a key back to code, an alert dropped, the fold dropped, the badge in another theme, a Hebrew combination without its marks, a Hebrew block starting with Latin) were each named by its check. Hebrew drawn in headless Chrome with GitHub's HTML and stylesheet (scratchpad `tools/render_page.py`, `tools/measure.sh`): 55 key combinations, as in English, 0 mirrored (3 of 3 unmarked ones in a sample were); screenshots of the top, *Features*, *Install* (fold open) and the *Use* table read right to left with left-to-right keys and code. The new *Install* list was loose and laid out left to right: made tight. GitHub's own HTML of the published Hebrew README (contents API): its 3 loose lists lay out left to right; 2 still do (§6) | `check-translations.py`; scratch `sync.py`, `render_page.py`, `measure.sh` (session 91bb0d99's scratchpad) | ✅ Not read by a native speaker; the new sentences are Claude's, like the rest of the translations |
 | **The 0.2.12 candidate with the text-peek fix and the no-paste log lines** (2026-11-18; asked after the QA below, the owner chose "Add to #7 now" and, for the log lines, "Yes, in 0.2.12 too"). `release/0.2.12` + `36addb9` (the text-peek fix) + `3edf9f1` (the log lines: `c8a4c05` on `main`, the same patch-id), packaged as `0.2.12+3edf9f1` and installed fresh with its own `install.ps1 -Package -NoLaunch -NoUpdateCheck` in a second worker desktop (`bc-paste-qa2`, deleted afterwards with its persist folder; 22 s, Win+V taken over); BC-TEST data through `bclip` and a Win+PrtScn picture. Basic batch 20/20; peek batch 8/8, Enter with the text peek open included. **The log lines** (§2.52): Enter on a search that matches nothing logged "Not pasted: no card was selected and the list armed none (it was empty)." and left the panel open. The window the panel was opened from ended before the Enter: "Not pasted: the window the panel was opened from is gone. The item is on the clipboard." The panel opened from the tray icon, then Enter: "Copied only: no window to paste into was captured when the panel opened (…)", and the foreground went to the tray's overflow window. "Paste after choosing an item" off, two choices: nothing pasted, and the line said once. Not provoked: the panel put away while the search settled (a typed search then Enter settled at once, "search 0 ms", so the click came after the paste), and an Enter ignored as a repeat (a second Enter 15 ms after the first was held by the paste's key guard and typed after the pasted text, §2.54). The app's log: 80 lines over two starts, 0 WRN/ERR. The suite on `3edf9f1` in a private worktree: 2,524 = 2,518 passed + 5 opt-in skipped + 1 failed, `WindowDragTests.ScreenPointer_UnknownPointerIsUnknown`: GetCursorPos failed because this PC was locked (LogonUI running, no input desktop), alone too; it passed in every earlier full run | claude-desktops MCP tools; `loglines.ps1`, `temp.ps1` and the kit of the row below (session 2d8e09a0's scratchpad, `qa-guest/`) | ✅ |
 | **Paste on `release/0.2.12`, manual QA on the worker; a text-peek fault found and fixed** (2026-11-18; the owner: "Use manual qa to cover the pasting mechanism and ui's pasting functinalities like clicking card or context menu / Prove that paste is stable with release/0.2.12"). **Setup:** a claude-desktops Windows 11 desktop on the worker (`bc-paste-qa`, Tiny11 25H2 26200, 1920×1080; deleted afterwards with its persist folder), the release package of `release/0.2.12` at `a3b4d7f` (`package.ps1 -Version 0.2.12`, x64, `0.2.12+a3b4d7f`), BC-TEST data only. **Update path:** 0.2.11 installed with the README's installer (`-Version 0.2.11 -NoLaunch`, 33 s, Win+V taken over), BC-TEST copies through `bclip`, 0.2.11's whitespace symptom reproduced, then the package's own `install.ps1 -Update` with the contract command line (13 s): the same store and key, pins kept, the whitespace entry deleted once, 0 WRN/ERR. **Rounds**, each pasted into its target and read back (SendInput keys and clicks, UI Automation): a WinForms stage that logs every WM_PASTE with the clipboard's holder took the keys (Enter on the newest copy, ↓, ↑ into the pins, a search then Enter at once, Ctrl+1…9, Shift+Enter, Enter 250 ms after Win+V, typing on at once), clicks on the selected card, a row and a pin, the card menu's *Paste* and *Copy only* (then Ctrl+V), the Pinned, Text, Links, Run, Pwsh, Cmd and Claude tabs, the menu key and Shift+F10, Esc, the Alt+C and Alt+E searches, and "Paste after choosing an item" off: 35/35 once the harness was fixed. Notepad, Windows Terminal, a cmd console, Agentmaster and Claude Code 2.1.322 in Agentmaster, 10 cases each: 50/50; Claude Code again under load (`probe_ctrlv.cs` busy-after:500 with an attacher every millisecond): 10/10. Repeats: basic ×3 59/60, the failed case ×15 30/30, basic ×5 with key and foreground logs 100/100. `probe_ctrlv.cs --mode user`: Windows Terminal under load 8/8, with slow hooks and typing on 8/8, a cmd console under load 8/8, Windows Terminal with busy processors and typing on 8/8. By hand: a formatted copy (bold, italic, a link) into a rich editor and a text area in Edge, formatted and plain, 6/6; files pasted into Explorer, Shift+Enter and the menu's *Paste paths as text*; a picture into Paint, *Copy path*, *Save to temp and › Copy path*, *Copy image as a file*; the Run box; a group's view; the whitespace rule. **Found:** with the text peek open (the mouse resting on a long card's text) the first key was dropped. Enter pasted nothing and the panel stayed up, 3/3, and each next round failed with it (the panel was still open); pressed again, Enter did nothing either, since the peek reopens under a resting mouse. Clicks, Ctrl+N and Shift+Enter worked, and every key with the image peek open (§2.50 "Keys while the text peek is open"; in 0.2.11 too). **Fixed** (`dffd388`) and installed over the candidate with `install.ps1 -Update` (`0.2.12+36addb9`: `a3b4d7f` plus the fix, branch `qa/textpeek-keys`): one Enter pasted the long card's 510 characters; the peek batch 24/24 (22 read back, 2 picture pastes shown by the stage's WM_PASTE log: a text box takes no bitmap); basic and *more* again 26/26 (23 read back, 3 picture pastes). **Totals:** 395 rounds, 380 delivered as asked; 8 lost to the first run's harness (its clicks landed in Edge: the stage was not in front), 6 to the text-peek fault, and 1 unexplained: "up x2, enter: the top pin" once pasted nothing, with the stage in front afterwards and no log line, and passed the 21 times it ran later (220 later rounds lost nothing else); the logs of that moment were overwritten. The app's log: 0 WRN/ERR. Not re-checked live after the fix: the peek's own right-click menu (its code is unchanged) | claude-desktops MCP tools; `install.ps1 -Update`; guest scripts `lib.ps1`, `stage.ps1`, `cases.ps1`, `targets.ps1`, `setup-peek.ps1`, `fgwatch.ps1`, `summary.ps1` (session 2d8e09a0's scratchpad, `qa-guest/`) | ✅ after the fix; one paste lost once, unexplained |
 | **"It only produces space": a whitespace entry under the newest copy, and the rule that keeps such copies out** (2026-11-17, §2.3; the owner: "it only produces space so i just ctrl + V / It happens only if i pick the non first item in the list"). **The owner's PC, read-only:** `bclip list --json` (kinds, sizes, first and last use; the pasted texts tested for whitespace in memory, never printed) against the app's paste log lines: the six pastes 18:20:06–18:22:17Z were entries 3158 (four times), 3160 and 3162, each last use equal to its log line to the millisecond; 3158 is a single space copied in Notepad++ at 17:40:31Z, second in the list at 18:20:13 and 18:22:17 and first at 18:20:16, after its own pastes moved it up. **A claude-desktops Windows 11 desktop on this PC** (`bc-space`, 1600×900, the owner's dev.27 installed with `install.ps1 -Package`; deleted afterwards with its persist folder): Win+V, ↓, Enter (Enter held 110–120 ms, as a person presses it) pasted the selected item into Windows Terminal with a raw-mode Node reader (what Claude Code reads), Agentmaster (the owner's Release-B layout, registered loose) with that reader, and the real Claude Code 2.1.322 (a dummy API key, its own config folder): all 12 pastes, also with two pins, a low-level hook sleeping 50 ms per key event (`sent 181–231 ms`, as on the owner's PC), the mouse resting over the panel, three ↓ in 7 ms, and a second paste 1.2 s after the first; the panel labels a lone space "(whitespace · 1 char)". **The fix,** `0.2.12-dev.28.g9bdf84d` installed over dev.27 there: the old whitespace entry gone at the start (`fixup.whitespace_only.v1`), a copied space and a copied tab and line break never listed ("Skipped a copy that is only whitespace."), `BC-TEST eight` kept, ↓ + Enter pasted the right text; the whole suite 2,503 = 2,498 passed + 5 opt-in skipped, 0 failed | `bclip`, the app's logs; claude-desktops MCP tools; guest scripts `keys.ps1` (SendInput with a person's timing), `slowhook.ps1`, `keylog.js` (session 2d8e09a0's scratchpad, gone with the desktop) | ✅ |
@@ -8737,18 +8758,12 @@ kit by a scratch generator, session 66cdd808):
     links under the tagline);
   - the site in other languages, from the translated READMEs (the owner: "We only do one language first");
   - redirects for renamed README headings, so old page addresses keep working.
-- **The translated READMEs follow the restyle of 2026-11-15** (the owner: "English first", §4): the hero animation
-  instead of `panel.png`, the shorter *Features* list with the gallery, `<kbd>` keys, the folds and the alerts,
-  and the short *Install* section of 2026-11-16 (three ways as a list, *Advanced install* folded, the Store badge;
-  English first again, as the owner chose for the restyle).
-  `check-translations.py` reports 19 differences in each of the four until then (12 from the restyle, 7 in
-  *Install*); run it after each translation.
-- **The translated READMEs' Privacy still says the Store edition's history leaves with the app** (found 2026-11-15
-  while checking the docs site's guides; README.md was fixed the same day, with its restyle): "Its history is in its
-  own app data folder, which Windows removes when you uninstall it", and that a move copies the history into that
-  folder. Since `73b3fe3` the edition keeps it in the shared `%LOCALAPPDATA%\BetterClipboard`, which stays after an
-  uninstall, as the README's own Store and Uninstall sections say. The *Privacy* section is the privacy policy
-  (§3.3): fix that paragraph in the four translations.
+- ~~**The translated READMEs follow the restyle of 2026-11-15** and the short *Install* of 2026-11-16, and their
+  *Privacy* paragraph on the Store edition~~: done 2026-11-20 on `release/0.2.12` (§5).
+- **Two loose lists in the Hebrew README lay out left to right on GitHub** (bullets on the left; their text still reads
+  right to left, §4): ShareX's *Where it looks* list and the *Code signing policy* list, whose items hold a paragraph
+  after a nested list, which Markdown writes only as a loose list. A list written as raw HTML (`<ul>` with no `dir`)
+  would follow the page's `<div dir="rtl">`, at the cost of the checker's comparison of list items; not done.
 - **Left from the hunt for bugs like the reviving pin** (2026-11-14, §5):
   - Windows' own clipboard history service (`cbdhsvc`) still competes for the clipboard. Copies it holds are now read late
     (logged with the wait and the holder) instead of lost. Turning Windows' history off would end the contention, but

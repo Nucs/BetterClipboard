@@ -11,7 +11,9 @@ cannot read its language, so this tool compares structure, not words:
    GitHub anchor of the English heading, in the same order.
 2. Each section's skeleton. The same number of list items at each depth, table rows, paragraphs and images, the same
    link targets (relative paths are compared as README.md writes them; links between the README's languages count
-   as one), and the same commands in its code blocks, line by line (comments are translated, so they are left out).
+   as one, and so does the Microsoft Store badge in any language), the same commands in its code blocks, line by
+   line (comments are translated, so they are left out), the same keys written as <kbd>, the same alert boxes
+   (> [!NOTE], > [!TIP], ...) in the same order, and the same number of <details> folds.
 3. GitHub's rendering (skipped with --offline). GitHub's own renderer (the REST API's /markdown, in the mode README
    files are rendered in; it only returns HTML, nothing is published or stored) must give the same tables with the
    same rows, the same number of list items and code blocks, and leave no more `**` or `](` unrendered than in
@@ -22,8 +24,13 @@ cannot read its language, so this tool compares structure, not words:
    own:
    a. Block direction (needs the rendering): a block that holds right-to-left text must not start with a Latin
       letter, or GitHub lays it out left to right. A list takes its direction from its first item. Put &rlm; first.
+      An alert box's marker ([!NOTE], [!TIP], ...) does not count: the API returns an alert as a plain quote that
+      starts with it, while the README page replaces it with the box's title, a paragraph of its own.
    b. Code spans: each one has &lrm; on both sides, or a span that starts or ends with a sign (`-NoTakeOverWinV`,
-      `%LOCALAPPDATA%`) shows that sign at its other end.
+      `%LOCALAPPDATA%`) shows that sign at its other end. Key combinations too: GitHub's stylesheet makes <kbd> an
+      inline block, which the bidirectional algorithm treats as a neutral sign, so <kbd>Ctrl</kbd>+<kbd>P</kbd>
+      between right-to-left words shows as P+Ctrl unless &lrm; stands right before and right after it (measured in
+      Chrome with GitHub's HTML and stylesheet, 2026-11-20).
    c. Trailing signs: a run of + or # after a Latin letter (Notepad++, C#, the "Win+" of "Win+letter") needs &lrm;
       right after it when right-to-left text or the end of its block (its line, or its table cell) comes before any
       Latin letter, digit or &lrm;: these take the signs to the word's other side ("++Notepad"). "Win+V", "Win+1" and
@@ -70,6 +77,12 @@ CODE_SPAN = re.compile(r"(?<!`)`[^`\n]+`(?!`)")
 LINK_TARGET = re.compile(r"\]\([^)\s]*\)")
 # A run of + or # after a Latin letter, with the word it ends: Notepad++, C#, and the "Win+" of "Win+V".
 TRAILING_SIGNS = re.compile(r"[A-Za-z0-9]*[A-Za-z][+#]+")
+# A key combination: two or more <kbd> elements joined by "+", as README.md writes <kbd>Ctrl</kbd>+<kbd>P</kbd>.
+KEY_COMBINATION = re.compile(r"<kbd>[^<]*</kbd>(?:\+<kbd>[^<]*</kbd>)+")
+# Microsoft's Store badge, which it serves in many languages: get.microsoft.com/images/<language> <theme>.svg.
+STORE_BADGE = re.compile(r"https://get\.microsoft\.com/images/[A-Za-z-]+%20(\w+)\.svg")
+# An alert box's marker at the start of a block's text, as GitHub's /markdown API leaves it (see check 4a).
+ALERT_MARKER = re.compile(r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*")
 # Every README's language line starts with this, and is meant to read left to right in every language.
 LANGUAGE_LINE = "ENG /"
 
@@ -198,8 +211,13 @@ def normalize_link(target):
 
     Returns:
         The target relative to the repository root. A link to any language version of the README becomes
-        "(a README)": each version links to all the others.
+        "(a README)": each version links to all the others. The Microsoft Store badge becomes "(the Microsoft Store
+        badge, THEME)" in every language: a translation shows Microsoft's badge in its own language, but never another
+        theme.
     """
+    badge = STORE_BADGE.fullmatch(target)
+    if badge:
+        return f"(the Microsoft Store badge, {badge.group(1)})"
     if target.startswith("../../"):
         target = target[len("../../"):]
     elif target.startswith("../"):
@@ -219,7 +237,9 @@ def facts(lines):
 
     Returns:
         A dict: "list items" (from depth, 0 for an outer list, to count), "table rows", "paragraphs", "images" and
-        "links" (normalized targets), and "commands" (the lines of its code blocks, without comments).
+        "links" (normalized targets), "commands" (the lines of its code blocks, without comments), "keys" (the text of
+        every <kbd>, sorted: a translation may put them in another order), "alerts" (the kind of each alert box, in
+        order) and "folds" (how many <details>).
     """
     body = "\n".join(lines)
     blocks = re.findall(r"```[^\n]*\n(.*?)```", body, re.S)
@@ -249,7 +269,9 @@ def facts(lines):
                 commands.append(line)
     return {"list items": dict(sorted(items.items())), "table rows": rows, "paragraphs": paragraphs,
             "images": sorted(normalize_link(image) for image in images),
-            "links": sorted({normalize_link(link) for link in links}), "commands": commands}
+            "links": sorted({normalize_link(link) for link in links}), "commands": commands,
+            "keys": sorted(re.findall(r"<kbd>([^<]*)</kbd>", prose)),
+            "alerts": re.findall(r"^> \[!(\w+)\]", prose, re.M), "folds": len(re.findall(r"<details>", prose))}
 
 
 def clip(value, width=150):
@@ -335,7 +357,8 @@ def first_strong(text, after_latin=False):
 
 def visible(markdown):
     """The text a reader sees of a piece of one Markdown line, close enough to find its first strong character: link
-    targets, emphasis marks, brackets and backticks removed, entities decoded. Not a renderer.
+    targets, HTML tags (a <kbd>'s name is no letter on the page), emphasis marks, brackets and backticks removed,
+    entities decoded. Not a renderer.
 
     Args:
         markdown: A piece of one line of Markdown.
@@ -343,13 +366,13 @@ def visible(markdown):
     Returns:
         Its visible text.
     """
-    text = re.sub(r"\]\([^)]*\)", "", markdown)
+    text = re.sub(r"<[^>]*>", "", re.sub(r"\]\([^)]*\)", "", markdown))
     return html.unescape(re.sub(r"[*`\[\]]", "", text))
 
 
 def check_marks(text):
     """Checks 4b and 4c of the module's description, which need no rendering: the left-to-right marks around code
-    spans and after a Latin word's trailing signs.
+    spans and key combinations, and after a Latin word's trailing signs.
 
     Args:
         text: A right-to-left translation's text.
@@ -368,6 +391,10 @@ def check_marks(text):
         for start, end in spans:
             if not (line[:start].endswith("&lrm;") and line[end:].startswith("&lrm;")):
                 findings.append(f"line {number}: {line[start:end]} needs &lrm; on both sides")
+        for combination in KEY_COMBINATION.finditer(line):
+            if not (line[:combination.start()].endswith("&lrm;") and line[combination.end():].startswith("&lrm;")):
+                keys = "+".join(re.findall(r"<kbd>([^<]*)</kbd>", combination.group(0)))
+                findings.append(f"line {number}: the key combination {keys} needs &lrm; on both sides")
         # Only lines laid out right to left reorder trailing signs: lines with right-to-left text, table rows (the
         # <div dir="rtl"> reaches tables, which get no dir="auto"), and list items (a list takes its direction from its
         # first item, which check 4a keeps right to left).
@@ -539,6 +566,11 @@ def check_rendering(english_html, translated_html, right_to_left):
         parser.close()
         for tag, text in parser.blocks:
             text = " ".join(text.split())
+            # The README page draws an alert's marker as the box's title, a paragraph of its own: the body that
+            # follows it is the block whose direction counts.
+            marker = ALERT_MARKER.match(text)
+            if marker:
+                text = text[marker.end():]
             if RIGHT_TO_LEFT.search(text) and first_strong(text) == "L" and not text.startswith(LANGUAGE_LINE):
                 # The marks are dropped from the quote: printed, they would only show as escapes.
                 shown = clip(text.replace(LRM, "").replace(RLM, ""), 100)
