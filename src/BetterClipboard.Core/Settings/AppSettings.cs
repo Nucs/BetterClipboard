@@ -365,6 +365,28 @@ public sealed record AppSettings
     public bool PanelStaysOpen => KeepPanelOpen && !Presentation.PanelButtons.IsHidden(HiddenPanelButtons, Presentation.PanelButton.KeepOpen);
 
     /// <summary>
+    /// Opens the panel without taking the keyboard from the app the user types in, the way Windows' own Win+V does: the focus
+    /// stays in that app, so a control that ends its editing when it loses the focus — a rename in File Explorer, its search
+    /// box or address bar, a note's name in Obsidian's file tree — is still there when the item is pasted into it. On by
+    /// default (the owner's choice, 2026-11-20).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// While such a panel shows, a low-level keyboard hook gives it the keys (CLAUDE.md §2.59): the arrow keys, Enter, Esc
+    /// and the panel's shortcuts act as always, and typed characters search, added at the end of the search text
+    /// (<see cref="Presentation.SearchTyping"/>). Off, the panel takes the keyboard when it opens, as before: for screen
+    /// readers, which follow the focus, and for input methods that compose text (Chinese, Japanese, Korean), whose keys a hook
+    /// cannot compose. A click on the search box, Ctrl+F, a viewer or a menu opened from the keyboard give the panel the
+    /// keyboard for that use anyway, and so does a window that runs as administrator (a hook does not see its keys).
+    /// </para>
+    /// <para>
+    /// Footgun: a version from before this member drops it when it saves the file; the next newer version then opens the
+    /// panel without the keyboard again (the default), also for a user who had turned it off.
+    /// </para>
+    /// </remarks>
+    public bool LeaveFocusInApp { get; init; } = true;
+
+    /// <summary>
     /// Whether the user closed the pin's tip (CLAUDE.md §2.55): the tip that points at the pin and says in a sentence and a
     /// half how pinning works. Until then it shows whenever the pinned panel is on screen (<see cref="KeepOpenTipDue"/>);
     /// once closed — with its close button or with Esc — never again. Off by default.

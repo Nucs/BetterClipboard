@@ -15,6 +15,7 @@ internal static partial class WindowInterop
     private const int DWMWCP_ROUND = 2;
     private const int GWL_EXSTYLE = -20;
     private const long WS_EX_TOPMOST = 0x00000008;
+    private const long WS_EX_NOACTIVATE = 0x08000000;
     private const nint HWND_TOPMOST = -1;
     private const uint SWP_NOSIZE = 0x0001;
     private const uint SWP_NOMOVE = 0x0002;
@@ -39,6 +40,33 @@ internal static partial class WindowInterop
     /// <param name="hwnd">Top-level window of this process.</param>
     /// <returns><see langword="true"/> when Windows took the change.</returns>
     public static bool MakeTopmost(nint hwnd) => SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
+    /// <summary>
+    /// Sets or clears <c>WS_EX_NOACTIVATE</c>: with it, a click on the window does not activate it, so the app the user types
+    /// in keeps the keyboard — the panel that opens without the focus (CLAUDE.md §2.59), like an on-screen keyboard.
+    /// </summary>
+    /// <remarks>
+    /// Programmatic activation (<c>SetForegroundWindow</c>, <c>Window.Activate</c>) still works with the flag, so the panel
+    /// can take the keyboard on purpose (a click into its search box). The flag must be cleared for a panel that takes the
+    /// keyboard the usual way: a pinned panel waiting behind another app is then activated by a click again, as before.
+    /// </remarks>
+    /// <param name="hwnd">Top-level window of this process.</param>
+    /// <param name="noActivate">Set the flag (<see langword="true"/>) or clear it.</param>
+    /// <returns><see langword="true"/> when the style holds what was asked (also when it already did).</returns>
+    public static bool SetNoActivate(nint hwnd, bool noActivate)
+    {
+        long style = GetWindowLongPtr(hwnd, GWL_EXSTYLE);
+        long wanted = noActivate ? style | WS_EX_NOACTIVATE : style & ~WS_EX_NOACTIVATE;
+        if (wanted == style)
+        {
+            return true;
+        }
+
+        // SetWindowLongPtr answers the previous value, which can be 0 for a window that had no extended style; the read
+        // afterwards is the reliable answer.
+        SetWindowLongPtr(hwnd, GWL_EXSTYLE, (nint)wanted);
+        return (GetWindowLongPtr(hwnd, GWL_EXSTYLE) & WS_EX_NOACTIVATE) == (noActivate ? WS_EX_NOACTIVATE : 0);
+    }
 
     /// <summary>
     /// Draws a window's title bar (the one Windows draws: caption, icon, buttons) dark or light, to match the app's theme:
@@ -173,6 +201,14 @@ internal static partial class WindowInterop
     /// <returns>The value; 0 when it cannot be read.</returns>
     [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
     private static partial nint GetWindowLongPtr(nint hwnd, int index);
+
+    /// <summary>Changes a window's long value (here its extended style), pointer-sized like <see cref="GetWindowLongPtr"/>.</summary>
+    /// <param name="hwnd">Window of this process.</param>
+    /// <param name="index">Which value (<see cref="GWL_EXSTYLE"/>).</param>
+    /// <param name="value">The new value.</param>
+    /// <returns>The previous value; 0 on failure, or when the previous value was 0.</returns>
+    [LibraryImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    private static partial nint SetWindowLongPtr(nint hwnd, int index, nint value);
 
     /// <summary>Changes a window's size, position or place in the Z order.</summary>
     /// <param name="hwnd">Window.</param>

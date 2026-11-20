@@ -1291,7 +1291,11 @@ public sealed partial class AppController
         }
 
         var window = EnsureFlyout();
-        switch (PanelShortcut.Decide(window.IsOpen, window.StaysOpen, ForegroundHelper.IsForeground(window.Handle)))
+
+        // In front: its window, or — shown without the keyboard (ClipboardFlyout.Focusless.cs) — taking the keys while the
+        // app keeps the focus. Pressed again then, the shortcut closes the panel, as it does with the keyboard.
+        bool inFront = ForegroundHelper.IsForeground(window.Handle) || window.TakesKeysWithoutFocus;
+        switch (PanelShortcut.Decide(window.IsOpen, window.StaysOpen, inFront))
         {
             case PanelShortcutAction.Close:
                 // Pressing the shortcut again while the flyout is up closes it, like Win+V does; a pinned one too (the user
@@ -1323,7 +1327,9 @@ public sealed partial class AppController
             pasteTarget = context;
         }
 
-        window.BringForward();
+        // A panel shown without the keyboard takes the keys again over the window the user types in now; from the tray (no
+        // window) it takes the keyboard the usual way.
+        window.BringForward(context);
     }
 
     /// <summary>

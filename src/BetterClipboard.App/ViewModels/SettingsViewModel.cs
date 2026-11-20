@@ -237,6 +237,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool PasteOnSelect { get; set; }
 
+    /// <summary>
+    /// Settings › Shortcut › Leave the keyboard with your app (<see cref="AppSettings.LeaveFocusInApp"/>, CLAUDE.md §2.59):
+    /// the panel opens without taking the keyboard from the app the user types in. Takes effect at the next summon.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool LeaveFocusInApp { get; set; }
+
     /// <summary>See <see cref="AppSettings.MoveToTopOnPaste"/>.</summary>
     [ObservableProperty]
     public partial bool MoveToTopOnPaste { get; set; }
@@ -477,6 +484,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             CaptureFiles = settings.CaptureFiles;
             PreserveAllFormats = settings.PreserveAllFormats;
             PasteOnSelect = settings.PasteOnSelect;
+            LeaveFocusInApp = settings.LeaveFocusInApp;
             MoveToTopOnPaste = settings.MoveToTopOnPaste;
             PinnedOnTop = settings.PinnedOnTop;
             ImportWindowsHistoryOnStartup = settings.ImportWindowsHistoryOnStartup;
@@ -1264,6 +1272,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>
     partial void OnPasteOnSelectChanged(bool value) => Update(s => s with { PasteOnSelect = value });
+
+    /// <summary>Persists the change; the next summon opens the panel the chosen way (ClipboardFlyout.Focusless.cs).</summary>
+    /// <param name="value">New value.</param>
+    partial void OnLeaveFocusInAppChanged(bool value) => Update(s => s with { LeaveFocusInApp = value });
 
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>

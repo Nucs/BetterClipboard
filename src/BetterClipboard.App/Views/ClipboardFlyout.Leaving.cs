@@ -125,7 +125,9 @@ public sealed partial class ClipboardFlyout
     /// </remarks>
     private async void ConcealIfUserLeft(string cause)
     {
-        if (leaveLookPending || closingForExit || !IsOpen)
+        // Without the keyboard the panel is never in front, and its hooks report where the user goes instead
+        // (ClipboardFlyout.Focusless.cs): a look here would take the app the user types in for "elsewhere".
+        if (leaveLookPending || closingForExit || !IsOpen || focusless)
         {
             return;
         }
@@ -145,8 +147,9 @@ public sealed partial class ClipboardFlyout
             }
 
             // Concealed meanwhile (the user pasted, pressed Esc, the shortcut again), the app is exiting, or the panel or
-            // one of its popups has the keyboard: nothing to do.
-            if (closingForExit || !IsOpen || ForegroundHelper.IsForeground(hwnd))
+            // one of its popups has the keyboard: nothing to do. Nor for a panel that shows without the keyboard by now (a
+            // pinned one brought forward that way meanwhile): its hooks decide.
+            if (closingForExit || !IsOpen || focusless || ForegroundHelper.IsForeground(hwnd))
             {
                 return;
             }

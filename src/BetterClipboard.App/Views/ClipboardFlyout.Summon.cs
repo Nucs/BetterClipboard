@@ -128,6 +128,14 @@ public sealed partial class ClipboardFlyout
         {
             // It must stay above the target the paste activates next (ClipboardFlyout.KeepOpen.cs).
             KeepOnTop();
+
+            // Without the keyboard (ClipboardFlyout.Focusless.cs), the keys go back to the app after a pinned paste, as the
+            // keyboard does for a pinned panel that had it: the user types on there, and the shortcut brings the panel forward.
+            if (focusless)
+            {
+                LeaveKeysToApp();
+            }
+
             return false;
         }
 
@@ -176,6 +184,10 @@ public sealed partial class ClipboardFlyout
         // Nor the pin's tip, for the same reason; taken off the screen without spending it, so a pinned panel shows it
         // again at its next summon until the user closes it (ClipboardFlyout.KeepOpenTip.cs).
         CloseKeepOpenTip();
+
+        // Without the keyboard, the keys go back to the app at once (a key typed now must not be taken by a panel that is
+        // gone), and the hooks go once the keys the panel took are up (ClipboardFlyout.Focusless.cs).
+        EndFocusless();
 
         presented = false;
         finishPending = true;
@@ -352,7 +364,8 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Puts the panel on screen at <paramref name="rect"/> and gives it the keyboard: moves the window (cloaked, so nobody
-    /// sees it move), activates it, uncloaks it.
+    /// sees it move), activates it, uncloaks it. Without the keyboard (ClipboardFlyout.Focusless.cs, decided by
+    /// <see cref="BeginSummonMode"/>) the window is never activated: shown and uncloaked only, the app keeps the focus.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -395,18 +408,39 @@ public sealed partial class ClipboardFlyout
         enterPending = false;
         enterSerial++;
         presented = true;
+
+        // The summon's mode, read once: a panel that takes the keyboard on the way (a hook that failed) activates itself.
+        bool takeKeyboard = !focusless;
+        if (!takeKeyboard)
+        {
+            // Activation brings a window to the front; without it the panel must be put there: on top of the topmost band,
+            // above the app the user types in. The always-on-top flag set at the window's start was found missing at the
+            // first summon in the live check (2026-11-20): the panel opened behind File Explorer. With the keyboard the
+            // activation hid that.
+            WindowInterop.MakeTopmost(hwnd);
+        }
+
         if (!cloaking)
         {
-            AppWindow.Show(true);
-            Activate();
-            ForegroundHelper.Activate(hwnd);
-            timeline?.Mark("activated");
+            AppWindow.Show(takeKeyboard);
+            if (takeKeyboard)
+            {
+                Activate();
+                ForegroundHelper.Activate(hwnd);
+                timeline?.Mark("activated");
+            }
+
             return;
         }
 
-        Activate();
-        bool active = ForegroundHelper.Activate(hwnd);
-        timeline?.Mark("activated");
+        // Without the keyboard there is nothing to activate, and nothing to repeat below.
+        bool active = true;
+        if (takeKeyboard)
+        {
+            Activate();
+            active = ForegroundHelper.Activate(hwnd);
+            timeline?.Mark("activated");
+        }
         bool sizeChanged = sizeBefore.Width != rect.Width || sizeBefore.Height != rect.Height;
         if (!wasShown || sizeChanged)
         {
@@ -430,8 +464,8 @@ public sealed partial class ClipboardFlyout
             // Still cloaked by someone else: the shell cloaks a window that belongs to another virtual desktop. Hiding and
             // showing it once moves it to the current desktop (the way every summon worked before cloaking).
             AppWindow.Hide();
-            AppWindow.Show(true);
-            active = false;
+            AppWindow.Show(takeKeyboard);
+            active = !takeKeyboard;
         }
 
         if (!active)

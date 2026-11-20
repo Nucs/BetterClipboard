@@ -539,6 +539,9 @@ public sealed partial class ClipboardFlyout
     /// <returns>A task completing when the image is shown or the load failed (failures are logged).</returns>
     private async Task ShowViewerAsync(ClipItemViewModel card)
     {
+        // Esc closes the viewer: a panel shown without the keyboard takes it now, the usual way (ClipboardFlyout.Focusless.cs).
+        TakeKeyboard("the image viewer");
+
         if (Root.XamlRoot is null)
         {
             return;

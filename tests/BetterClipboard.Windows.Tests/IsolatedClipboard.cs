@@ -207,6 +207,46 @@ internal sealed class ClipboardProducer : IDisposable
     });
 
     /// <summary>
+    /// Replaces the clipboard's <c>CF_UNICODETEXT</c> without emptying the clipboard first, so its owner stays whoever wrote
+    /// it last: what File Explorer's rename box does at every paste into it (one more sequence number, the same owner and
+    /// formats; CLAUDE.md §2.59).
+    /// </summary>
+    /// <param name="text">Text placed over the current one.</param>
+    /// <returns>A task giving whether <c>SetClipboardData</c> took the text.</returns>
+    /// <exception cref="IOException">The clipboard stayed locked for 2 s.</exception>
+    public Task<bool> ChangeWithoutEmptyingAsync(string text) => thread.InvokeAsync(() =>
+    {
+        var deadline = Environment.TickCount64 + 2000;
+        while (!OpenClipboard(thread.Handle))
+        {
+            if (Environment.TickCount64 > deadline)
+            {
+                throw new IOException("The isolated clipboard stayed locked.");
+            }
+
+            Thread.Sleep(1);
+        }
+
+        try
+        {
+            // No EmptyClipboard: that would make this producer's window the owner, a copy of its own.
+            nint memory = Allocate(text);
+            if (SetClipboardData(CF_UNICODETEXT, memory) != 0)
+            {
+                return true;
+            }
+
+            // The system did not take the block: it is still ours to free.
+            GlobalFree(memory);
+            return false;
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    });
+
+    /// <summary>
     /// Promises <c>CF_UNICODETEXT</c> without data (delayed rendering); it is rendered when a consumer asks.
     /// </summary>
     /// <param name="text">Text to render on demand.</param>

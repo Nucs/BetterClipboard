@@ -257,6 +257,9 @@ public sealed partial class ClipboardFlyout : Window
 
         // The remembered tab, the arrow keys beyond Up and Down, and the mouse selecting rows: ClipboardFlyout.Navigation.cs.
         InitializeNavigation();
+
+        // The panel that opens without taking the keyboard from the app (Settings › Shortcut): ClipboardFlyout.Focusless.cs.
+        InitializeFocusless();
         ItemsList.Loaded += (_, _) => HookScrollViewer();
 
         // The very first summon runs ShowAt and OnActivated before the XAML tree is loaded, when Focus() is a silent no-op,
@@ -265,7 +268,8 @@ public sealed partial class ClipboardFlyout : Window
         // the keyboard the moment it exists, if the panel is showing.
         SearchBox.Loaded += (_, _) =>
         {
-            if (IsOpen && openPopups == 0)
+            // Not while the panel shows without the keyboard: the app the user types in keeps it (ClipboardFlyout.Focusless.cs).
+            if (IsOpen && openPopups == 0 && !focusless)
             {
                 SearchBox.Focus(FocusState.Programmatic);
             }
@@ -371,6 +375,12 @@ public sealed partial class ClipboardFlyout : Window
                 await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromSeconds(5)));
             }
 
+            // x:Bind of a Window starts at its first activation (the generated code subscribes to Activated), and the warm-up
+            // never activates: bound now, the picture it prepares shows the panel's real state — no "Paused" chip and no
+            // "Start Everything" for a frame at the first summon (CLAUDE.md §6), and none at all while the panel leaves the
+            // keyboard with the app (ClipboardFlyout.Focusless.cs). Idempotent: the first activation finds them running.
+            Bindings?.Initialize();
+
             if (!presented)
             {
                 // The view and the list the first summon shows, loaded now (the list is otherwise empty until a summon).
@@ -438,8 +448,9 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>
     /// Shows the flyout for a summon: positions it by the placement setting (next to the caret by default;
     /// ClipboardFlyout.Placement.cs), puts it on screen at once with the list as it was prepared while concealed
-    /// (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately). The list is
-    /// reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
+    /// (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately) — or, in the mode
+    /// that leaves the keyboard with the app the user types in, takes only the keys it acts on (ClipboardFlyout.Focusless.cs).
+    /// The list is reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
     /// </summary>
     /// <param name="context">Caret/cursor snapshot.</param>
     /// <param name="placement">Placement preference (<see cref="AppSettings.Placement"/>).</param>
@@ -498,6 +509,11 @@ public sealed partial class ClipboardFlyout : Window
             // selects no row until it has really left the spot it is on now, so the armed card stays the selected one.
             SuspendPointerSelection();
 
+            // With the keyboard, or without it — the app the user types in keeps it, and the panel takes the keys it acts on
+            // (Settings › Shortcut, ClipboardFlyout.Focusless.cs). Decided before the panel shows, so a key typed right away
+            // is already taken.
+            BeginSummonMode(context);
+
             // On screen in one step: no fade, no slide, no DWM animation (ClipboardFlyout.Summon.cs has the numbers).
             timeline?.Mark("prepared");
             await PresentAsync(rect, timeline);
@@ -514,7 +530,10 @@ public sealed partial class ClipboardFlyout : Window
             uint faultsOnScreen = ProcessMemory.PageFaults();
             timeline?.Mark("shown");
             long onScreen = Stopwatch.GetTimestamp();
-            SearchBox.Focus(FocusState.Programmatic);
+            if (!focusless)
+            {
+                SearchBox.Focus(FocusState.Programmatic);
+            }
 
             // The summon "entered" the tab it starts in, although no click selected it: what entering does besides showing
             // the list (the Run tab's rescan, a prompt tab's catch-up) runs now, next to the reload below.
@@ -538,7 +557,7 @@ public sealed partial class ClipboardFlyout : Window
             // Second line of defence for the first summon: if no element of the panel has the keyboard yet (the box's
             // Loaded came before the window was shown, or a focus call lost a race with activation), give it to the box
             // now — never while a popup of ours is open, which owns the keys then.
-            if (IsOpen && openPopups == 0 && Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is null)
+            if (IsOpen && openPopups == 0 && !focusless && Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is null)
             {
                 SearchBox.Focus(FocusState.Programmatic);
             }
@@ -598,6 +617,9 @@ public sealed partial class ClipboardFlyout : Window
 
         // The pin's tip is a window of its own, and its timer and window event refer to this window.
         DisposeKeepOpenTip();
+
+        // The key and mouse hooks of a panel shown without the keyboard (ClipboardFlyout.Focusless.cs).
+        DisposeFocusless();
 
         // The WinEvent hook of a pinned panel goes with the window (Windows would remove it with the thread anyway).
         DisposeForegroundTracking();
@@ -661,6 +683,14 @@ public sealed partial class ClipboardFlyout : Window
     /// <param name="args">Activation data.</param>
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
+        // Without the keyboard (ClipboardFlyout.Focusless.cs) the panel is never the active window: its hooks report where the
+        // user goes, and a deactivation tells nothing. An activation that really put its window in front means it has the
+        // keyboard after all, the usual way: the usual handling then takes over.
+        if (focusless && !KeyboardTakenByActivation(args.WindowActivationState))
+        {
+            return;
+        }
+
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
             if (openPopups == 0 && IsOpen && !StaysOpen)
@@ -2482,6 +2512,13 @@ public sealed partial class ClipboardFlyout : Window
         flyout.Opened += (s, e) =>
         {
             Popup_Opened(s, e);
+
+            // A name is typed: a panel shown without the keyboard takes it now (ClipboardFlyout.Focusless.cs).
+            if (nameBox is not null)
+            {
+                TakeKeyboard("a group's name box");
+            }
+
             nameBox?.Focus(FocusState.Programmatic);
         };
         flyout.Closed += Popup_Closed;
@@ -2549,6 +2586,9 @@ public sealed partial class ClipboardFlyout : Window
         flyout.Opened += (s, e) =>
         {
             Popup_Opened(s, e);
+
+            // A name is typed: a panel shown without the keyboard takes it now (ClipboardFlyout.Focusless.cs).
+            TakeKeyboard("a group's name box");
             box.Focus(FocusState.Programmatic);
             box.SelectAll();
         };
@@ -2813,11 +2853,21 @@ public sealed partial class ClipboardFlyout : Window
         return null;
     }
 
-    /// <summary>Whether a key is down on the UI thread.</summary>
+    /// <summary>
+    /// Whether a key is down: as the UI thread sees it, or — while the panel shows without the keyboard — as the keyboard has
+    /// it now (ClipboardFlyout.Focusless.cs).
+    /// </summary>
     /// <param name="key">Key.</param>
     /// <returns><see langword="true"/> when down.</returns>
-    private static bool IsKeyDown(VirtualKey key) =>
-        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+    /// <remarks>
+    /// A thread's key state follows the key messages it reads. Without the keyboard the panel's thread reads none — the keys go
+    /// to the app the user types in — so Shift held for a Shift+click on a card, or Ctrl for a Ctrl+click on a group, would
+    /// read as up. The keyboard's own state is the answer then.
+    /// </remarks>
+    private bool IsKeyDown(VirtualKey key) =>
+        focusless
+            ? FocuslessPanelInput.IsPhysicallyDown((uint)key)
+            : InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     /// <summary>
     /// Whether Alt or a Windows key is down on the UI thread: a key pressed with one of them is Windows' or another
@@ -2825,7 +2875,7 @@ public sealed partial class ClipboardFlyout : Window
     /// key is never a pick of a group (<see cref="PickGroupByKey"/>).
     /// </summary>
     /// <returns><see langword="true"/> when Alt, the left or the right Windows key is down.</returns>
-    private static bool IsAltOrWindowsKeyDown() =>
+    private bool IsAltOrWindowsKeyDown() =>
         IsKeyDown(VirtualKey.Menu) || IsKeyDown(VirtualKey.LeftWindows) || IsKeyDown(VirtualKey.RightWindows);
 
     /// <summary>x:Bind helper: paused chip visibility.</summary>

@@ -291,8 +291,10 @@ public sealed partial class ClipboardFlyout
             {
                 SearchBox.Focus(FocusState.Programmatic);
             }
-            else if (!StaysOpen)
+            else if (!StaysOpen && !focusless)
             {
+                // Without the keyboard the panel is never in front, and its hooks report a leave themselves
+                // (ClipboardFlyout.Focusless.cs).
                 // A pinned panel stays up while the user is elsewhere, like after any other deactivation (OnActivated).
                 Conceal();
             }

@@ -23,7 +23,10 @@ namespace BetterClipboard.Windows.Clipboard;
 /// producer that updates one copy in stages (formats added in a second session) also lands here without
 /// losing anything, so this is an upper bound on losses, not a count of them.
 /// </param>
-/// <param name="SelfWrites">Notifications caused by our own <see cref="ClipboardMonitor.WriteAsync"/> (ignored on purpose).</param>
+/// <param name="SelfWrites">
+/// Notifications caused by our own <see cref="ClipboardMonitor.WriteAsync"/>, or by another program changing what it wrote
+/// without emptying the clipboard (ignored on purpose: the content is still ours).
+/// </param>
 /// <param name="LockedOut">
 /// Changes given up because another application kept the clipboard open for <see cref="ClipboardMonitor.MaxLockWait"/>
 /// (10 s; half a second until 2026-11-14).
@@ -77,7 +80,10 @@ public readonly record struct ClipboardMonitorStatistics(
 /// <para>
 /// <b>Echo suppression.</b> After <see cref="WriteAsync"/> the clipboard sequence number is remembered; the
 /// update notification caused by our own write carries that number and is ignored, so pasting from
-/// history does not re-capture the item with BetterClipboard as its source app.
+/// history does not re-capture the item with BetterClipboard as its source app. A later change that leaves
+/// this monitor's window the clipboard's owner is ignored too: only our own write makes it the owner, so such
+/// a change did not empty the clipboard and the content is still ours. File Explorer's rename box changes the
+/// clipboard that way at every paste into it.
 /// </para>
 /// <para>
 /// <b>Threading.</b> Runs on its own STA message-window thread. <see cref="Captured"/> is raised on that
@@ -363,7 +369,13 @@ public sealed class ClipboardMonitor : IDisposable, IClipboardWriter
             return;
         }
 
-        if (sequence == selfWriteSequence)
+        // Our own write, or a change to it that left this window the clipboard's owner. Only our own write makes this window
+        // the owner (EmptyClipboard gives the clipboard to the window that opened it), so a change that keeps it the owner
+        // did not empty the clipboard: another program touched or added to what BetterClipboard put there, and the content
+        // is still ours. File Explorer's rename box does that at every paste into it (one more sequence number, the same
+        // owner and formats; measured 2026-11-20, CLAUDE.md §2.59): read as a copy, the item just pasted came back as a
+        // copy "by BetterClipboard", counted twice. GetClipboardOwner needs no clipboard access.
+        if (sequence == selfWriteSequence || GetClipboardOwner() == hwnd)
         {
             lastHandledSequence = sequence;
             pendingSource = null;

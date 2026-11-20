@@ -156,7 +156,9 @@ public sealed partial class ClipboardFlyout
     /// </remarks>
     private void Root_PointerPressedUnderKeepOpenTip(object sender, PointerRoutedEventArgs e)
     {
-        if (!KeepOpenTip.IsOpen || !IsOpen || ForegroundHelper.IsForeground(hwnd))
+        // Without the keyboard the panel is never brought forward by a press (ClipboardFlyout.Focusless.cs): the press reaches
+        // the control under the tip, which acts without the keyboard.
+        if (!KeepOpenTip.IsOpen || !IsOpen || focusless || ForegroundHelper.IsForeground(hwnd))
         {
             return;
         }

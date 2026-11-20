@@ -1413,6 +1413,10 @@ public sealed partial class ClipboardFlyout
     /// <returns>A task completing when the text shows or the load failed (failures are logged and shown, never thrown).</returns>
     private async Task ShowTextViewerAsync(ClipItemViewModel card)
     {
+        // A viewer is read with keys (Esc, the page keys, Ctrl+wheel, a selection's Ctrl+C): a panel shown without the
+        // keyboard takes it now, the usual way (ClipboardFlyout.Focusless.cs).
+        TakeKeyboard("the text viewer");
+
         if (Root.XamlRoot is null)
         {
             return;

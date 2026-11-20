@@ -326,6 +326,21 @@
                     </ComboBox>
                 </controls:SettingsCard>
                 <!--
+                  Whether the panel takes the keyboard when it opens (AppSettings.LeaveFocusInApp, CLAUDE.md §2.59): on by
+                  default, like Windows' own Win+V, so a rename in File Explorer or a note's name in Obsidian stays open for
+                  the paste (ClipboardFlyout.Focusless.cs). Off is the way it always was: for screen readers, which follow the
+                  keyboard focus, and for input methods that compose text in the search box. Next to the panel's position:
+                  both are about how the shortcut opens it. E765 = a keyboard. The description holds an apostrophe, so it is
+                  quoted with &quot; (WinUI's XAML compiler takes no backslash escapes, CLAUDE.md §2.37).
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text=&quot;The panel opens without taking the keyboard, like Windows' own Win+V: a file you are renaming or a box you are typing in stays open for the paste. Typing searches the panel; a click into its search box gives it the keyboard. Off suits screen readers and input methods that compose text.&quot;}"
+                    Glyph="&#xE765;"
+                    Header="{loc:Tr Text='Leave the keyboard with your app'}"
+                    Keywords="{loc:Tr Text='focus, keep focus, rename, F2, File Explorer, Obsidian, text box, editing, screen reader, input method'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.LeaveFocusInApp, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <!--
                   The panel header's buttons (AppSettings.HiddenPanelButtons and PanelButtonOrder, CLAUDE.md §2.55, §2.58): one
                   row per button, top to bottom as the header runs left to right, each with its box (shown or hidden) and its up
                   and down arrows, which move it left and right in the panel. The rows are places that swap their buttons on a

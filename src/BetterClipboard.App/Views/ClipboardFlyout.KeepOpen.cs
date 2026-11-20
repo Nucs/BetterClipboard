@@ -129,7 +129,9 @@ public sealed partial class ClipboardFlyout
         // No longer staying open (its pin hidden in Settings) while it waits behind another window: it goes away, as an
         // unpinned panel does when it loses the keyboard (OnActivated), instead of staying on top with nothing to close it.
         // One that has the keyboard stays until it is used or left. Not while a popup of its own shows (it decides then).
-        if (IsOpen && !StaysOpen && openPopups == 0 && !ForegroundHelper.IsForeground(hwnd))
+        // A panel shown without the keyboard that takes the keys is the one the user deals with, as one in front is
+        // (ClipboardFlyout.Focusless.cs).
+        if (IsOpen && !StaysOpen && openPopups == 0 && !IsInFront)
         {
             Conceal();
         }
@@ -246,12 +248,26 @@ public sealed partial class ClipboardFlyout
     /// Gives the keyboard to the pinned panel where it stands, without moving it or resetting its view: the shortcut pressed
     /// while it waits behind the app the user types in (<see cref="PanelShortcutAction.BringForward"/>), and the tray's
     /// <i>Open clipboard</i> or a second launch while it shows. Enter then pastes into that app (the controller made it the
-    /// paste target before calling this).
+    /// paste target before calling this). A panel shown without the keyboard takes the keys again instead, and the app keeps
+    /// the keyboard (ClipboardFlyout.Focusless.cs).
     /// </summary>
-    public void BringForward()
+    /// <param name="context">
+    /// Where the user was when asking: the window the keys are taken over without the keyboard; <see langword="null"/> (or a
+    /// context without a window, from the tray) brings the panel forward the usual way.
+    /// </param>
+    public void BringForward(ForegroundContext? context = null)
     {
         if (!IsOpen)
         {
+            return;
+        }
+
+        if (BringForwardWithoutFocus(context))
+        {
+            // The same as below, without the activation and the focus: the app keeps the keyboard.
+            SuspendPointerSelection();
+            PrefetchSelected();
+            UpdateKeepOpenTip();
             return;
         }
 
@@ -282,6 +298,13 @@ public sealed partial class ClipboardFlyout
         CloseImageOverlays();
         CloseUpdateDialog();
         KeepOnTop();
+
+        // Without the keyboard, the keys go back to the app, as the keyboard does here for a panel that had it.
+        if (focusless)
+        {
+            LeaveKeysToApp();
+        }
+
         if (restoreFocus)
         {
             // Allowed: this process still owns the foreground (the panel had it). A target of 0 is skipped by the helper.
