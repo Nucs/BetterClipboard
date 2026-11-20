@@ -659,12 +659,13 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Whether a text peek may open now: the panel is up, nothing else is open over it (a menu, an overlay), nothing is being
-    /// dragged, and the mouse rests on a cut-off card.
+    /// dragged, the mouse rests on a cut-off card, and the panel does not stand beside Start or Search
+    /// (<see cref="besideSurface"/>: the peek is centered on the panel and up to 900 DIPs wide, so Start would hide part of it).
     /// </summary>
     /// <returns><see langword="true"/> when it may.</returns>
     private bool CanShowTextPeek() =>
-        IsOpen && textPeekPopup is null && textViewer is null && peekPopup is null && viewerPopup is null && drag is null &&
-        draggedClipIds is null && openPopups == 0 && textHoverCard is { IsCutOff: true };
+        IsOpen && !besideSurface && textPeekPopup is null && textViewer is null && peekPopup is null && viewerPopup is null &&
+        drag is null && draggedClipIds is null && openPopups == 0 && textHoverCard is { IsCutOff: true };
 
     /// <summary>
     /// Forgets the card the mouse rested on once its countdown ended with the mouse elsewhere: no peek of it opens until

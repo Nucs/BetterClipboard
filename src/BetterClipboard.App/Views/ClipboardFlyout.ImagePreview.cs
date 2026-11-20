@@ -218,11 +218,12 @@ public sealed partial class ClipboardFlyout
     /// <returns><see langword="true"/> when a peek is allowed.</returns>
     /// <remarks>
     /// <see cref="drag"/> is the window move, <see cref="draggedClipIds"/> a card being dragged onto a group; a peek during
-    /// either would be noise. <see cref="openPopups"/> being 0 rules out an open context menu or the viewer itself.
+    /// either would be noise. <see cref="openPopups"/> being 0 rules out an open context menu or the viewer itself. Beside
+    /// Start or Search (<see cref="besideSurface"/>) no peek opens: it covers the monitor, and Start would hide most of it.
     /// </remarks>
     private bool CanShowPeek() =>
-        IsOpen && peekPopup is null && viewerPopup is null && textPeekPopup is null && textViewer is null && drag is null &&
-        draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
+        IsOpen && !besideSurface && peekPopup is null && viewerPopup is null && textPeekPopup is null && textViewer is null &&
+        drag is null && draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
 
     /// <summary>(Re)starts the rest timer so the peek opens one <see cref="HoverPeekDelayMs"/> after the mouse last moved.</summary>
     /// <param name="replayed">

@@ -239,6 +239,10 @@ public sealed partial class ClipboardFlyout
             // into it and the next summon finds a finished picture.
             AppWindow.Hide();
             AppWindow.Show(false);
+
+            // Always on top for the next summon, which may come while Start is open and Windows ignores the request
+            // (ClipboardFlyout.ShellSurface.cs).
+            KeepTopmostWhileConcealed();
         }
         else
         {
@@ -418,6 +422,13 @@ public sealed partial class ClipboardFlyout
             // first summon in the live check (2026-11-20): the panel opened behind File Explorer. With the keyboard the
             // activation hid that.
             WindowInterop.MakeTopmost(hwnd);
+
+            // A window that lost the flag can refuse it for good; the presenter sets it again then
+            // (ClipboardFlyout.ShellSurface.cs). Beside Start or Search nothing can be raised, so the flag must hold.
+            if (!WindowInterop.IsTopmost(hwnd))
+            {
+                EnsureTopmost();
+            }
         }
 
         if (!cloaking)

@@ -669,6 +669,16 @@ public sealed partial class AppController
             return;
         }
 
+        // Start, Search, Quick settings, the notification center and Task View live in a layer of Windows above every app
+        // window, where the panel can never go (CLAUDE.md §2.61). Beside Start or Search, when there is room, the panel opens
+        // there and pastes into the search box; otherwise the surface is closed first, the way Esc closes it, and the panel
+        // opens over the window that has the keyboard then.
+        if (MustCloseShellSurface(context, bringForward: false))
+        {
+            CloseShellSurfaceThenSummon(context);
+            return;
+        }
+
         pasteTarget = context;
 
         // One snapshot for both halves of the placement (where, and which screen when centered).
@@ -1327,6 +1337,14 @@ public sealed partial class AppController
     /// <param name="context">Where the user was when asking.</param>
     private void BringPinnedForward(ClipboardFlyout window, ForegroundContext context)
     {
+        // Start or Search over the pinned panel, or another shell surface in front: closed first, unless the panel stands
+        // beside Start or Search already, where it takes the keys and pastes into the search box (CLAUDE.md §2.61).
+        if (MustCloseShellSurface(context, bringForward: true))
+        {
+            CloseShellSurfaceThenSummon(context);
+            return;
+        }
+
         if (context.TargetWindow != 0 && context.TargetWindow != window.Handle)
         {
             pasteTarget = context;
@@ -1335,6 +1353,106 @@ public sealed partial class AppController
         // A panel shown without the keyboard takes the keys again over the window the user types in now; from the tray (no
         // window) it takes the keyboard the usual way.
         window.BringForward(context);
+    }
+
+    /// <summary>
+    /// The longest a summon waits for a shell surface it closed with Esc to leave the foreground (<see cref="CloseShellSurfaceAsync"/>).
+    /// Measured: 17 to 45 ms for Start in a test desktop; the rest is room for a busy PC.
+    /// </summary>
+    private static readonly TimeSpan ShellSurfaceCloseTimeout = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// Whether a summon over <paramref name="context"/> must close a shell surface first (CLAUDE.md §2.61): one was in front
+    /// (Start, Search, Quick settings, the notification center, Task View), and the panel cannot open beside it — not Start or
+    /// Search, the panel would take the keyboard (the setting is off), or there is no room beside it
+    /// (<see cref="ClipboardFlyout.CanOpenBeside"/>).
+    /// </summary>
+    /// <param name="context">Where the user was when asking.</param>
+    /// <param name="bringForward">The pinned panel on screen is brought forward where it stands (not placed anew).</param>
+    /// <returns><see langword="true"/> to close the surface before the panel shows.</returns>
+    private bool MustCloseShellSurface(ForegroundContext context, bool bringForward) =>
+        context.Surface.Kind != ShellSurfaceKind.None && !EnsureFlyout().CanOpenBeside(context, bringForward);
+
+    /// <summary>
+    /// Closes the shell surface in front, then summons the panel over the window in front afterwards, as if the shortcut had
+    /// been pressed there: the pinned panel is brought forward when it shows, otherwise the panel opens (UI thread).
+    /// </summary>
+    /// <param name="context">The summon's context; its window is the surface.</param>
+    /// <remarks><c>async void</c>: started from the shortcut's handler, awaited by nobody; it catches everything itself.</remarks>
+    private async void CloseShellSurfaceThenSummon(ForegroundContext context)
+    {
+        try
+        {
+            var after = await CloseShellSurfaceAsync(context);
+            if (exiting)
+            {
+                return;
+            }
+
+            // The panel may have been closed, opened or pinned meanwhile (the wait is up to half a second): decided anew.
+            // The surface is cleared in the new context, so nothing is closed a second time.
+            if (flyout is { IsOpen: true, StaysOpen: true } pinned)
+            {
+                BringPinnedForward(pinned, after);
+            }
+            else
+            {
+                ShowFlyout(after);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Opening the panel past Start, Search or another shell surface failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Closes the shell surface <paramref name="context"/> names, the way Esc does, and logs it (content-free): Windows then
+    /// gives the foreground back to the window the user was in before opening it (<see cref="ShellSurfaces.CloseAsync"/>).
+    /// </summary>
+    /// <param name="context">The context whose window is the surface.</param>
+    /// <returns>The context of the window in front afterwards, its surface cleared.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    internal async Task<ForegroundContext> CloseShellSurfaceAsync(ForegroundContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var kind = context.Surface.Kind;
+        long started = Stopwatch.GetTimestamp();
+        var after = await ShellSurfaces.CloseAsync(context, ShellSurfaceCloseTimeout);
+        long elapsed = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        string what = kind == ShellSurfaceKind.Search ? "Start or Search" : "Quick settings, the notification center or Task View";
+        AppLog.Info(after.TargetWindow != context.TargetWindow
+            ? $"Closed {what} in {elapsed} ms (the way Esc does) to show the panel over the window in front then."
+            : $"{what} did not close within {elapsed} ms of an Esc; the panel may show under it.");
+        return after;
+    }
+
+    /// <summary>
+    /// The panel beside Start or Search takes the keyboard (a click into its search box, Ctrl+F, a viewer; CLAUDE.md §2.61):
+    /// nothing can take the keyboard from Start, so it is closed first, and the panel's next paste goes into the window in
+    /// front then instead of the search box. A no-op when the paste target is no shell surface.
+    /// </summary>
+    /// <returns>A task completing once the surface left the foreground (or the wait ended).</returns>
+    internal async Task CloseShellSurfaceForKeyboardAsync()
+    {
+        if (pasteTarget is not { Surface.Kind: not ShellSurfaceKind.None } surfaceContext)
+        {
+            return;
+        }
+
+        var after = await CloseShellSurfaceAsync(surfaceContext);
+
+        // The window Windows gave the foreground back to; never the panel itself, which stays unable to activate until the
+        // surface is gone for exactly this reason.
+        if (after.TargetWindow != 0 && after.TargetProcessId != (uint)Environment.ProcessId)
+        {
+            pasteTarget = after;
+        }
+        else if (pasteTarget == surfaceContext)
+        {
+            // No other window took the foreground: no target, as for a panel opened from the tray, rather than a hidden Start.
+            pasteTarget = ForegroundContext.CursorOnly();
+        }
     }
 
     /// <summary>

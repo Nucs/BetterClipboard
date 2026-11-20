@@ -42,6 +42,7 @@ public static class KeyboardInput
     private const ushort VK_LWIN = 0x5B;
     private const ushort VK_RWIN = 0x5C;
     private const ushort VK_V = 0x56;
+    private const ushort VK_ESCAPE = 0x1B;
 
     /// <summary>
     /// Reads which modifiers are currently down (asynchronous key state).
@@ -165,6 +166,17 @@ public static class KeyboardInput
 
         return inputs;
     }
+
+    /// <summary>
+    /// Sends Esc (down and up) to whatever window has keyboard focus: how a summon closes Start, Search, Quick settings, the
+    /// notification center or Task View before the panel opens (<see cref="ShellSurfaces.CloseAsync"/>, CLAUDE.md §2.61).
+    /// </summary>
+    /// <remarks>
+    /// Stamped <see cref="OwnInjectionMarker"/>, so BetterClipboard's own keyboard hooks let it pass. Footgun: sent to an app
+    /// instead of a shell surface, Esc cancels a dialog or a rename; the caller checks the surface is still in front first.
+    /// </remarks>
+    /// <returns><see langword="true"/> when both events were injected (UIPI can block them).</returns>
+    public static bool SendEscape() => Send([Key(VK_ESCAPE, up: false), Key(VK_ESCAPE, up: true)]) == 2;
 
     /// <summary>Releases the Ctrl that <see cref="SendCtrlVHoldingCtrl"/> left down.</summary>
     /// <remarks>Harmless when Ctrl is up already: the window gets a key-up for a key it does not see down.</remarks>

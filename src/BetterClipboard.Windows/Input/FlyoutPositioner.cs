@@ -141,6 +141,50 @@ public static class FlyoutPositioner
     }
 
     /// <summary>
+    /// The panel's bounds beside a shell surface that Windows keeps above every app window (Start, Search; CLAUDE.md §2.61):
+    /// on the side of it with more room, a gap away, its top level with the surface's top, as wide as the remembered width
+    /// allows in that room. <see langword="null"/> when neither side has room for the panel's minimum width.
+    /// </summary>
+    /// <remarks>
+    /// Beside, never over: the surface sits in a band above every window this process can make, so any part of the panel
+    /// over it would be hidden under it. Narrower than remembered when the room is (nothing is saved), never narrower than
+    /// <paramref name="minWidth"/>, which the header's buttons need. A tie goes to the right, where Start's search results
+    /// end and the panel reads next to them.
+    /// </remarks>
+    /// <param name="surface">The surface's bounds in physical pixels.</param>
+    /// <param name="workArea">The work area of the surface's monitor.</param>
+    /// <param name="width">The list's width (the panel without the groups column) in physical pixels.</param>
+    /// <param name="height">The panel's height in physical pixels (shrunk to the work area).</param>
+    /// <param name="minWidth">The narrowest the list may be, in physical pixels.</param>
+    /// <param name="gap">Distance kept from the surface, in physical pixels.</param>
+    /// <param name="columnWidth">The groups column's width in physical pixels; 0 (or less) while it is closed.</param>
+    /// <returns>The bounds, or <see langword="null"/> when the panel does not fit beside the surface.</returns>
+    public static ScreenRect? Beside(ScreenRect surface, ScreenRect workArea, int width, int height, int minWidth, int gap, int columnWidth)
+    {
+        int column = Math.Max(0, columnWidth);
+
+        // Each side's usable span, kept inside the work area: a surface partly off it (another monitor's edge) never pushes
+        // the panel outside.
+        int rightStart = Math.Max(surface.Right + gap, workArea.Left);
+        int roomRight = workArea.Right - rightStart;
+        int leftEnd = Math.Min(surface.Left - gap, workArea.Right);
+        int roomLeft = leftEnd - workArea.Left;
+        bool right = roomRight >= roomLeft;
+        int room = right ? roomRight : roomLeft;
+        int narrowest = Math.Max(1, minWidth) + column;
+        if (room < narrowest || workArea.Height <= 0)
+        {
+            return null;
+        }
+
+        int total = Math.Clamp(Math.Max(width, minWidth) + column, narrowest, room);
+        height = Math.Min(height, workArea.Height);
+        int top = Math.Clamp(surface.Top, workArea.Top, workArea.Bottom - height);
+        int left = right ? rightStart : leftEnd - total;
+        return new ScreenRect(left, top, left + total, top + height);
+    }
+
+    /// <summary>
     /// Grows the flyout to the left by <paramref name="extra"/> pixels (the groups column), so everything
     /// that was on screen stays where it was and only a new strip appears on the left.
     /// </summary>

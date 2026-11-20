@@ -398,6 +398,9 @@ public sealed partial class ClipboardFlyout : Window
                 AppWindow.Hide();
             }
 
+            // Always on top before any summon, which may come while Start is open (ClipboardFlyout.ShellSurface.cs).
+            KeepTopmostWhileConcealed();
+
             AppLog.Info($"Panel prepared for the first Win+V in {started.ElapsedMilliseconds} ms{(cloaking ? string.Empty : " (DWM does not cloak it: hidden between uses)")}.");
         }
         catch (Exception ex)
@@ -2069,8 +2072,9 @@ public sealed partial class ClipboardFlyout : Window
             var size = AppWindow.Size;
             var current = new ScreenRect(position.X, position.Y, position.X + size.Width, position.Y + size.Height);
             int extra = (int)Math.Round(GroupsPaneDip * Scale);
+            // Beside Start or Search the column grows away from it, never under it (ClipboardFlyout.ShellSurface.cs).
             var next = open
-                ? FlyoutPositioner.ExtendLeft(current, extra, MonitorLookup.FromWindow(hwnd).WorkArea)
+                ? FlyoutPositioner.ExtendLeft(current, extra, ClearOfSurface(MonitorLookup.FromWindow(hwnd).WorkArea, current))
                 : FlyoutPositioner.ShrinkLeft(current, extra);
             AppWindow.MoveAndResize(new RectInt32(next.Left, next.Top, next.Width, next.Height));
             windowShift = next.Left - current.Left;

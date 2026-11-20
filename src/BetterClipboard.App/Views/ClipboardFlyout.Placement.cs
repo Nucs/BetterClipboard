@@ -37,7 +37,8 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Where a summon puts the panel, in physical screen pixels: the chosen screen (<see cref="FlyoutPositioner.ChooseScreen"/>),
     /// the remembered size in that screen's pixels with the groups column while it is open, placed next to the caret or the
-    /// mouse or centered (<see cref="FlyoutPositioner.Place"/>), never outside that screen's work area.
+    /// mouse or centered (<see cref="FlyoutPositioner.Place"/>), never outside that screen's work area — or beside Start or
+    /// Search when the shortcut came while one of them was open (<see cref="BesideBounds"/>, CLAUDE.md §2.61).
     /// </summary>
     /// <param name="context">The caret and the mouse captured when the shortcut was pressed.</param>
     /// <param name="placement">The placement setting.</param>
@@ -49,6 +50,13 @@ public sealed partial class ClipboardFlyout
     {
         ArgumentNullException.ThrowIfNull(context);
         var settings = controller.Settings.Current;
+
+        // Beside Start or Search, which no window of this process can be raised above (CLAUDE.md §2.61): the controller asked
+        // CanOpenBeside before this summon, so there is room; the placement setting has no say there.
+        if (context.Surface.Kind == ShellSurfaceKind.Search && ShouldLeaveFocus(context) && BesideBounds(context, groupsColumnOpen) is { } beside)
+        {
+            return beside;
+        }
 
         // The screen comes from what the shortcut captured alone (the caret, the mouse): nothing about the window the user
         // was in is read any more, since the current screen is the mouse's (FlyoutPositioner.ChooseScreen).

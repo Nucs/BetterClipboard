@@ -20,6 +20,13 @@ public readonly record struct ScreenRect(int Left, int Top, int Right, int Botto
 
     /// <summary>Height in pixels.</summary>
     public int Height => Bottom - Top;
+
+    /// <summary>Whether this rectangle and <paramref name="other"/> share at least one pixel (touching edges do not).</summary>
+    /// <param name="other">The other rectangle.</param>
+    /// <returns><see langword="true"/> when they overlap; an empty rectangle overlaps nothing.</returns>
+    public bool Intersects(ScreenRect other) =>
+        Left < other.Right && other.Left < Right && Top < other.Bottom && other.Top < Bottom &&
+        Width > 0 && Height > 0 && other.Width > 0 && other.Height > 0;
 }
 
 /// <summary>
@@ -51,6 +58,17 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
     /// <see cref="Capture"/> or <see cref="CursorOnly"/>: no count is logged then.
     /// </summary>
     public uint PageFaultsAtCapture { get; init; }
+
+    /// <summary>
+    /// The shell surface that had the foreground when the context was captured — Start, Search, Quick settings, the
+    /// notification center or Task View, which Windows keeps above every app window (<see cref="ShellSurfaces"/>,
+    /// CLAUDE.md §2.61) — or <see cref="ShellSurface.None"/> for an app window. Set by <see cref="Capture"/> only.
+    /// </summary>
+    /// <remarks>
+    /// A summon reads it to open beside Start or Search, or to close the surface before it opens; a context made after the
+    /// surface was closed has it cleared, so a surface is never closed twice (<see cref="ShellSurfaces.CloseAsync"/>).
+    /// </remarks>
+    public ShellSurface Surface { get; init; }
 
     /// <summary>A context with no paste target, positioned at the mouse cursor (tray/menu invocations).</summary>
     /// <returns>The context.</returns>
@@ -86,7 +104,8 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
     }
 
     /// <summary>
-    /// Captures the current foreground window, its caret and the cursor.
+    /// Captures the current foreground window, its caret, the cursor, and whether the window is a shell surface above every
+    /// app window (<see cref="Surface"/>).
     /// </summary>
     /// <returns>The context.</returns>
     public static ForegroundContext Capture()
@@ -112,6 +131,14 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
             }
         }
 
-        return new ForegroundContext(foreground, processId, caret, new ScreenPoint(cursor.X, cursor.Y)) { CapturedAt = now, PageFaultsAtCapture = faults };
+        // Two calls into user32 (the window's band and rectangle): read here, on the shortcut's thread, while the surface is
+        // still the window in front; the panel decides on the UI thread where it may open.
+        var surface = ShellSurfaces.Describe(foreground);
+        return new ForegroundContext(foreground, processId, caret, new ScreenPoint(cursor.X, cursor.Y))
+        {
+            CapturedAt = now,
+            PageFaultsAtCapture = faults,
+            Surface = surface,
+        };
     }
 }

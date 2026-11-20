@@ -21,8 +21,10 @@ namespace BetterClipboard.Windows.Input;
 /// callback runs on the thread that called <see cref="Start"/>, from its message loop — the panel's UI thread, which can
 /// hand the window straight to the paste code without locks. Nothing polls: an idle tracker costs nothing.
 /// <c>WINEVENT_SKIPOWNPROCESS</c> leaves this process's own windows out (the panel, Settings, their popups and menus: never a
-/// paste target), and <see cref="IsShellSurface"/> the shell's own surfaces (the taskbar, the tray's overflow, Start and
-/// Search, Alt+Tab), which the user passes through on the way to another app but never pastes into.
+/// paste target), and <see cref="ShellSurfaces.IsShellWindow"/> the shell's own surfaces (the taskbar, the tray's overflow,
+/// Start and Search, Quick settings, Alt+Tab), which the user passes through on the way to another app but never pastes into:
+/// by class (<see cref="IsShellSurface"/>), or by the band of Windows they live in, above the app windows (since 2026-11-20,
+/// CLAUDE.md §2.61: Quick settings' <c>ControlCenterWindow</c> is in no class list).
 /// </para>
 /// <para>
 /// Footgun: <see cref="Start"/> needs a thread that runs a message loop, and the callback comes back on that thread only;
@@ -44,6 +46,8 @@ public sealed class ForegroundTracker : IDisposable
     /// <remarks>
     /// The desktop (<c>Progman</c>, <c>WorkerW</c>) is not among them: Win+V pastes onto it too (files, for one). An app
     /// window of the Microsoft Store is reported as its frame (<c>ApplicationFrameWindow</c>), not as a <c>CoreWindow</c>.
+    /// Windows 11's Quick settings (<c>ShellHost</c>'s <c>ControlCenterWindow</c>) is not in the list: the tracker tells it
+    /// by its band instead (<see cref="ShellSurfaces.IsShellWindow"/>).
     /// </remarks>
     private static readonly string[] ShellSurfaceClasses =
     [
@@ -152,7 +156,8 @@ public sealed class ForegroundTracker : IDisposable
                 return;
             }
 
-            if (IsShellSurface(MonitorLookup.ClassNameOf(hwnd)))
+            // By class or by band (ShellSurfaces.IsShellWindow): a surface no class list names is still never a target.
+            if (ShellSurfaces.IsShellWindow(hwnd))
             {
                 return;
             }

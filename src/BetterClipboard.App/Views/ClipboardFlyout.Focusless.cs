@@ -44,6 +44,12 @@ namespace BetterClipboard.App.Views;
 /// off (screen readers follow the keyboard focus), when there is no window to type into (the tray), over BetterClipboard's own
 /// windows, and over a window that runs as administrator: a hook of a process that is not elevated sees no keys typed there.
 /// </para>
+/// <para>
+/// <b>Over Start or Search</b> (since 2026-11-20, CLAUDE.md §2.61) the panel opens beside it in this mode, since no window
+/// can be above it and nothing can take the keyboard from it, and pastes into its search box
+/// (ClipboardFlyout.ShellSurface.cs); over Quick settings, the notification center or Task View the controller closes the
+/// surface first.
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout
 {
@@ -124,6 +130,10 @@ public sealed partial class ClipboardFlyout
         }
 
         focusless = leave;
+
+        // Over Start or Search the panel stands beside it (SummonBounds) and pastes into its search box: no peeks, and taking
+        // the keyboard closes Start first (ClipboardFlyout.ShellSurface.cs).
+        SetBesideSurface(context, leave && context.Surface.Kind == ShellSurfaceKind.Search);
         WindowInterop.SetNoActivate(hwnd, leave);
         if (!leave)
         {
@@ -199,6 +209,8 @@ public sealed partial class ClipboardFlyout
         }
 
         focusless = false;
+        besideSurface = false;
+        surfaceBounds = default;
         LeaveKeysToApp();
     }
 
@@ -210,12 +222,19 @@ public sealed partial class ClipboardFlyout
     /// <param name="reason">Why, for the log line (content-free: "a click into the search box", "Ctrl+F").</param>
     /// <remarks>
     /// Allowed: the call comes from a click on the panel or from a key this process took, and
-    /// <see cref="ForegroundHelper.Activate"/> brings the window forward the way every summon of the usual way does.
+    /// <see cref="ForegroundHelper.Activate"/> brings the window forward the way every summon of the usual way does. Beside
+    /// Start or Search, nothing can take the keyboard while it is open: it is closed first (<see cref="TakeKeyboardPastSurface"/>).
     /// </remarks>
     private void TakeKeyboard(string reason)
     {
         if (!focusless || !presented)
         {
+            return;
+        }
+
+        if (besideSurface)
+        {
+            TakeKeyboardPastSurface(reason);
             return;
         }
 
@@ -232,6 +251,8 @@ public sealed partial class ClipboardFlyout
     private void EndModeForKeyboard(string reason)
     {
         focusless = false;
+        besideSurface = false;
+        surfaceBounds = default;
         LeaveKeysToApp();
         WindowInterop.SetNoActivate(hwnd, false);
         AppLog.Info($"The panel took the keyboard: {reason}.");
@@ -594,11 +615,16 @@ public sealed partial class ClipboardFlyout
         if (context is null || !ShouldLeaveFocus(context))
         {
             focusless = false;
+            besideSurface = false;
+            surfaceBounds = default;
             LeaveKeysToApp();
             WindowInterop.SetNoActivate(hwnd, false);
             return false;
         }
 
+        // Over Start or Search that leaves the pinned panel uncovered (the controller checked), the paste goes into the search
+        // box, and taking the keyboard closes Start first (ClipboardFlyout.ShellSurface.cs).
+        SetBesideSurface(context, context.Surface.Kind == ShellSurfaceKind.Search);
         EngageFocuslessHooks(context.TargetWindow);
         return true;
     }

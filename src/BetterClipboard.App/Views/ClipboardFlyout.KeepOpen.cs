@@ -340,7 +340,8 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        bool restored = WindowInterop.MakeTopmost(hwnd);
+        // Checked, not trusted: the call reports success while the window refuses the flag (EnsureTopmost's remarks).
+        bool restored = EnsureTopmost();
         if (!onTopRestoreLogged)
         {
             onTopRestoreLogged = true;
