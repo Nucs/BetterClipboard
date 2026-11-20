@@ -93,6 +93,18 @@ public sealed partial class ClipboardFlyout
     /// <summary>The share of the work area the viewer uses, in each direction.</summary>
     private const double TextViewerFraction = 0.9;
 
+    /// <summary>The border of the peek's frame and of the viewer's document, in DIPs.</summary>
+    private const double TextFrameBorderDip = 1;
+
+    /// <summary>The peek frame's padding around its header and text, in DIPs (part of <see cref="TextWidthIn"/>).</summary>
+    private static readonly Thickness TextPeekPadding = new(14, 12, 10, 12);
+
+    /// <summary>The viewer document's padding around its header, toolbar, text and status, in DIPs (part of <see cref="TextWidthIn"/>).</summary>
+    private static readonly Thickness TextViewerPadding = new(16, 12, 12, 12);
+
+    /// <summary>Windows' UI settings, for the text size (<see cref="TextScaleFactor"/>); made on first use, on the UI thread.</summary>
+    private static global::Windows.UI.ViewManagement.UISettings? textScaleSettings;
+
     /// <summary>How much one text-size step (a wheel notch, Ctrl+= or Ctrl+-) changes the size: 10 points of percent.</summary>
     private const double TextSizeStep = 0.1;
 
@@ -106,6 +118,12 @@ public sealed partial class ClipboardFlyout
         var userFonts = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "Fonts");
         return File.Exists(Path.Combine(fonts, "CascadiaMono.ttf")) || File.Exists(Path.Combine(userFonts, "CascadiaMono.ttf")) ? "Cascadia Mono" : "Consolas";
     });
+
+    /// <summary>
+    /// The code font's advance per em as drawn here (<see cref="MeasureCodeAdvance"/>), for a table's tab stops and its fit
+    /// (<see cref="TextViewStyle.CodeAdvanceEm"/>); 0 when it could not be measured. Measured on first use, on the UI thread.
+    /// </summary>
+    private static readonly Lazy<double> CodeAdvanceEm = new(MeasureCodeAdvance);
 
     /// <summary>The card whose text the mouse rests on (drives the peek), or <see langword="null"/>.</summary>
     private ClipItemViewModel? textHoverCard;
@@ -192,6 +210,12 @@ public sealed partial class ClipboardFlyout
 
         /// <summary>Whether long lines wrap.</summary>
         public bool Wrap { get; set; } = true;
+
+        /// <summary>
+        /// The width the document's text is laid out in while lines wrap, in DIPs (<see cref="TextWidthIn"/>): its tables
+        /// are fitted into it (<see cref="ViewerTextStyle"/>). The document's size is fixed while it is open.
+        /// </summary>
+        public double TextWidth { get; init; }
 
         /// <summary>Whether line numbers show next to code.</summary>
         public bool LineNumbers { get; set; } = true;
@@ -463,10 +487,109 @@ public sealed partial class ClipboardFlyout
     /// <returns>The palette.</returns>
     private SyntaxPalette CurrentTextPalette() => Root.ActualTheme == ElementTheme.Light ? SyntaxPalette.Light : SyntaxPalette.Dark;
 
-    /// <summary>The fonts and sizes at a text size.</summary>
+    /// <summary>The fonts and sizes at a text size, and the width a document's tables are fitted into.</summary>
     /// <param name="textSize">The size factor (1 = 100 %).</param>
+    /// <param name="textWidth">
+    /// The width the text is laid out in, in DIPs (<see cref="TextWidthIn"/>), or 0 when lines do not wrap: tables then keep
+    /// their columns' natural widths (<see cref="TextViewStyle.TextWidth"/>).
+    /// </param>
     /// <returns>The style.</returns>
-    private static TextViewStyle CurrentTextStyle(double textSize) => TextViewStyle.Default(CodeFontName.Value).Scaled(textSize);
+    private static TextViewStyle CurrentTextStyle(double textSize, double textWidth = 0) =>
+        TextViewStyle.Default(CodeFontName.Value).Scaled(textSize) with { TextWidth = textWidth, CodeAdvanceEm = CodeAdvanceEm.Value };
+
+    /// <summary>
+    /// Measures the code font's advance per em: a line of 200 digits at 100 DIPs laid out by XAML's own text stack, which
+    /// RichEdit draws with too. Windows' text size is left out (the block does not scale), as the text width divides by it.
+    /// </summary>
+    /// <returns>The advance, or 0 when the measure failed or is not believable (outside 0.3–1.0 em).</returns>
+    /// <remarks>
+    /// Measured, not taken from a table of fonts: the font is whichever Windows has (Cascadia Mono, else Consolas), and a
+    /// font of another version or a substitute keeps its own advance. Logged once, without content.
+    /// </remarks>
+    private static double MeasureCodeAdvance()
+    {
+        const int Count = 200;
+        const double Size = 100;
+        try
+        {
+            var block = new TextBlock
+            {
+                FontFamily = new FontFamily(CodeFontName.Value),
+                FontSize = Size,
+                Text = new string('0', Count),
+                TextWrapping = TextWrapping.NoWrap,
+                IsTextScaleFactorEnabled = false,
+            };
+            block.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double em = block.DesiredSize.Width / (Count * Size);
+            if (double.IsFinite(em) && em is > 0.3 and < 1.0)
+            {
+                AppLog.Info($"Text viewer: {CodeFontName.Value} advances {em.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)} em a character.");
+                return em;
+            }
+
+            AppLog.Warn($"Text viewer: measuring {CodeFontName.Value} gave {em.ToString(System.Globalization.CultureInfo.InvariantCulture)} em a character; tables are laid out at 0.6.");
+        }
+        catch (Exception ex)
+        {
+            // Tables are then laid out at 0.6 em, a little wide: they fit, with some extra room between columns.
+            AppLog.Warn($"Measuring the text viewer's code font failed: {ex.Message}");
+        }
+
+        return 0;
+    }
+
+    /// <summary>The viewer's fonts and sizes at its text size, with its text width while lines wrap and none while they do not.</summary>
+    /// <param name="state">The viewer.</param>
+    /// <returns>The style.</returns>
+    private static TextViewStyle ViewerTextStyle(TextViewerState state) => CurrentTextStyle(state.TextSize, state.Wrap ? state.TextWidth : 0);
+
+    /// <summary>The peek frame's width on a monitor: <see cref="TextPeekMaxFraction"/> of its work area, at most <see cref="TextPeekMaxWidthDip"/>.</summary>
+    /// <param name="workAreaWidth">The width of the monitor's work area, in DIPs.</param>
+    /// <returns>The width, in DIPs.</returns>
+    private static double TextPeekWidth(double workAreaWidth) => Math.Min(workAreaWidth * TextPeekMaxFraction, TextPeekMaxWidthDip);
+
+    /// <summary>The viewer document's width on a monitor: <see cref="TextViewerFraction"/> of its work area, at most <see cref="TextViewerMaxWidthDip"/>.</summary>
+    /// <param name="workAreaWidth">The width of the monitor's work area, in DIPs.</param>
+    /// <returns>The width, in DIPs.</returns>
+    private static double TextViewerWidth(double workAreaWidth) => Math.Min(workAreaWidth * TextViewerFraction, TextViewerMaxWidthDip);
+
+    /// <summary>
+    /// The width a frame's text is laid out in, in DIPs, for its tables to be fitted into (<see cref="TextViewStyle.TextWidth"/>):
+    /// the frame's width less its border, its padding and the text box's own padding, over Windows' text size.
+    /// </summary>
+    /// <param name="frameWidth">The frame's width, in DIPs (its border included, as a <see cref="Border"/>'s Width is).</param>
+    /// <param name="padding">The frame's padding.</param>
+    /// <returns>The width, at least 1 DIP.</returns>
+    /// <remarks>
+    /// Every DIP is counted: a table laid out wider than the box would have its lines wrapped by RichEdit, its columns out of
+    /// line. The text box's scroll bar takes no width (it lies over the text, WinUI's ScrollViewer template). Windows' text
+    /// size (Settings › Accessibility › Text size) enlarges the box's text; dividing by it fits the table in either case,
+    /// at worst a little narrower than the box allows.
+    /// </remarks>
+    private static double TextWidthIn(double frameWidth, Thickness padding)
+    {
+        double width = frameWidth - (2 * TextFrameBorderDip) - padding.Left - padding.Right - TextPreviewPresenter.HorizontalTextPadding;
+        return Math.Max(1, width / TextScaleFactor());
+    }
+
+    /// <summary>Windows' text size as a factor (1 = 100 %, up to 2.25), or 1 when it cannot be read.</summary>
+    /// <returns>The factor, at least 1.</returns>
+    private static double TextScaleFactor()
+    {
+        try
+        {
+            textScaleSettings ??= new global::Windows.UI.ViewManagement.UISettings();
+            double factor = textScaleSettings.TextScaleFactor;
+            return double.IsFinite(factor) && factor > 1 ? factor : 1;
+        }
+        catch (Exception ex)
+        {
+            // A WinRT call that fails leaves tables at 100 %: they still fit unless the text is enlarged.
+            AppLog.Warn($"Reading Windows' text size failed: {ex.Message}");
+            return 1;
+        }
+    }
 
     /// <summary>Restarts the peek's rest timer (it opens the peek once the mouse has rested long enough).</summary>
     private void RestartTextHoverTimer()
@@ -735,7 +858,10 @@ public sealed partial class ClipboardFlyout
 
             var settings = controller.Settings.Current;
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(settings.TextViewerTextSize);
+
+            // The tables are fitted into the frame the peek will open in (its width depends only on the monitor).
+            double textWidth = settings.TextViewerWrap ? TextWidthIn(TextPeekWidth(MonitorOverlayGeometry().Width), TextPeekPadding) : 0;
+            var style = CurrentTextStyle(settings.TextViewerTextSize, textWidth);
             var prepared = await PrepareTextAsync(text, PeekMaxChars, null, null, formatted: true, palette, style, position: 0, load.Token).ConfigureAwait(true);
 
             // The mouse may have moved to another card, or the panel gone, while the text was prepared.
@@ -809,13 +935,13 @@ public sealed partial class ClipboardFlyout
         double maxHeight = geometry.Height * TextPeekMaxFraction;
         var frame = new Border
         {
-            Width = Math.Min(geometry.Width * TextPeekMaxFraction, TextPeekMaxWidthDip),
+            Width = TextPeekWidth(geometry.Width),
             MaxHeight = maxHeight,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Padding = new Thickness(14, 12, 10, 12),
+            Padding = TextPeekPadding,
             CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(TextFrameBorderDip),
             Style = OverlayStyle("OverlayFrameStyle"),
             Child = layout,
         };
@@ -1237,7 +1363,7 @@ public sealed partial class ClipboardFlyout
             }
 
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(state.TextSize);
+            var style = ViewerTextStyle(state);
             var prepared = await PrepareTextAsync(text, int.MaxValue, null, null, state.Formatted, palette, style, position: 0, token).ConfigureAwait(true);
             if (textViewer != state || token.IsCancellationRequested)
             {
@@ -1369,7 +1495,7 @@ public sealed partial class ClipboardFlyout
         layout.Children.Add(content);
         layout.Children.Add(status);
 
-        double width = Math.Min(geometry.Width * TextViewerFraction, TextViewerMaxWidthDip);
+        double width = TextViewerWidth(geometry.Width);
         double height = geometry.Height * TextViewerFraction;
         double left = Math.Clamp((Root.ActualWidth / 2) - geometry.OffsetX - (width / 2), 0, Math.Max(0, geometry.Width - width));
         double top = Math.Clamp((Root.ActualHeight / 2) - geometry.OffsetY - (height / 2), 0, Math.Max(0, geometry.Height - height));
@@ -1380,9 +1506,9 @@ public sealed partial class ClipboardFlyout
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(left, top, 0, 0),
-            Padding = new Thickness(16, 12, 12, 12),
+            Padding = TextViewerPadding,
             CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(TextFrameBorderDip),
             Style = OverlayStyle("OverlayFrameStyle"),
             Child = layout,
         };
@@ -1417,6 +1543,7 @@ public sealed partial class ClipboardFlyout
             Content = content,
             TextSize = settings.TextViewerTextSize,
             Wrap = settings.TextViewerWrap,
+            TextWidth = TextWidthIn(width, TextViewerPadding),
             LineNumbers = settings.TextViewerLineNumbers,
             Ring = ring,
             FormattedButton = formattedButton,
@@ -1441,7 +1568,18 @@ public sealed partial class ClipboardFlyout
         wrapButton.Click += (_, _) =>
         {
             state.Wrap = wrapButton.IsChecked == true;
-            presenter.SetWrap(state.Wrap);
+            if (state.View is { HasTables: true })
+            {
+                // A table is fitted into the text width while lines wrap and keeps its natural width while they do not,
+                // so the document is drawn again. Show applies the new wrapping with the new text: switched on over the
+                // old, wider grid, it would wrap the grid's lines out of line for the moment the drawing takes.
+                _ = RerenderTextViewerAsync(state, keepPosition: true);
+            }
+            else
+            {
+                presenter.SetWrap(state.Wrap);
+            }
+
             controller.Settings.Update(s => s with { TextViewerWrap = state.Wrap });
         };
         linesButton.Click += (_, _) =>
@@ -1588,7 +1726,7 @@ public sealed partial class ClipboardFlyout
         try
         {
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(state.TextSize);
+            var style = ViewerTextStyle(state);
             var prepared = await PreparePageAsync(source, view, pageIndex, palette, style, token).ConfigureAwait(true);
             if (textViewer == state && !token.IsCancellationRequested)
             {
@@ -1700,7 +1838,7 @@ public sealed partial class ClipboardFlyout
             // The place to come back to, in the text (the page it lies on is the one prepared).
             int? position = keepPosition ? textViewerPresenter?.FirstVisiblePosition() : null;
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(state.TextSize);
+            var style = ViewerTextStyle(state);
             var prepared = await PrepareTextAsync(source.Text, int.MaxValue, source, state.Language, state.Formatted, palette, style, position ?? 0, token).ConfigureAwait(true);
             if (textViewer == state && !token.IsCancellationRequested)
             {

@@ -252,6 +252,12 @@ public sealed class TextViewRendering
     /// <summary>The Markdown document's blocks (empty for a code document).</summary>
     public IReadOnlyList<MarkdownBlock> Blocks { get; private init; } = [];
 
+    /// <summary>
+    /// Whether the Markdown document holds a table, also inside a quote: its layout then depends on the text width
+    /// (<see cref="TextViewStyle.TextWidth"/>), so a viewer whose lines start or stop wrapping draws the document again.
+    /// </summary>
+    public bool HasTables { get; private init; }
+
     /// <summary>Where each line of <see cref="DisplayText"/> starts (code documents; empty for a Markdown document): the gutter's positions.</summary>
     public IReadOnlyList<int> LineStarts { get; private init; } = [];
 
@@ -296,6 +302,7 @@ public sealed class TextViewRendering
                     HasFormattedAlternative = true,
                     DisplayText = text,
                     Blocks = blocks,
+                    HasTables = ContainsTable(blocks),
                     Pages = [new TextViewPage(0, 0, text.Length, 0)],
                 };
                 view.ColorCodeBlocks(languages, cancellationToken);
@@ -309,6 +316,12 @@ public sealed class TextViewRendering
         bool reindent = formatted && reindentedText is not null;
         return CodeView(reindent ? reindentedText! : text, language, language, formatted, hasAlternative: reindentedText is not null, isLimited: false, reindent, cancellationToken);
     }
+
+    /// <summary>Whether blocks hold a table, at any depth of quotes.</summary>
+    /// <param name="blocks">The blocks.</param>
+    /// <returns>Whether one of them is a table, or a quote that holds one.</returns>
+    private static bool ContainsTable(IReadOnlyList<MarkdownBlock> blocks) =>
+        blocks.Any(block => block is MarkdownTable || (block is MarkdownQuote quote && ContainsTable(quote.Blocks)));
 
     /// <summary>Makes a code document view: its tokens and line starts.</summary>
     /// <param name="text">The text to show.</param>

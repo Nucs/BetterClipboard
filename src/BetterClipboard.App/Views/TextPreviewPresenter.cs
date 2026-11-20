@@ -61,6 +61,12 @@ internal sealed class TextPreviewPresenter
     /// <summary>The RichEditBox's padding around its text, in DIPs; the gutter adds the top to RichEdit's line positions.</summary>
     private static readonly Thickness EditorPadding = new(6, 4, 6, 4);
 
+    /// <summary>
+    /// How much narrower the text is laid out than the surface, in DIPs, for a document (no gutter): the text box's padding
+    /// on both sides. Its scroll bar takes no width (it lies over the text).
+    /// </summary>
+    public static double HorizontalTextPadding => EditorPadding.Left + EditorPadding.Right;
+
     /// <summary>The template brushes a RichEditBox paints its box with; all made transparent, so it never flashes a field color.</summary>
     private static readonly string[] BoxBrushKeys =
     [

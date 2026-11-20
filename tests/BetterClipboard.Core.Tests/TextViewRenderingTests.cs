@@ -174,7 +174,7 @@ public sealed class TextViewRenderingTests
         Assert.Contains("•\tone", text, StringComparison.Ordinal);
         Assert.Contains("☑\tdone", text, StringComparison.Ordinal);
         Assert.Contains("<a>1</a>", text, StringComparison.Ordinal);
-        Assert.Contains("A  Bee\n─  ───\n1  2", text, StringComparison.Ordinal);
+        Assert.Contains("A\tBee\n─\t───\n1\t2", text, StringComparison.Ordinal);
         Assert.Contains(new string('─', 32), text, StringComparison.Ordinal);
         Assert.Contains("quoted", text, StringComparison.Ordinal);
 
@@ -198,12 +198,14 @@ public sealed class TextViewRenderingTests
         var view = TextViewRendering.Create(TextViewSource.Create(Transcript, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
         var rtf = view.ToRtf(SyntaxPalette.Dark, Style, token);
         var text = RtfText(rtf);
-        Assert.Equal("● BC-TEST\nFills\n•\tone\nA  Bee\n─  ───\n1  2\nX\n─\n9\n<a>1</a>", text);
+        Assert.Equal("● BC-TEST\nFills\n•\tone\nA\tBee\n─\t───\n1\t2\nX\n─\n9\n<a>1</a>", text);
 
-        // The header row of each table, at its quote level, in the palette's secondary color like the rest of the quote.
+        // The header row of each table, at its quote level, in the palette's secondary color like the rest of the quote. The
+        // second column's stop lies past the quote's 18 DIPs, the first column (1 character) and the gap (2), at 8 DIPs a
+        // character: (18 + 3 × 8) × 15 twips.
         int secondary = Array.IndexOf(ColorTable(rtf), SyntaxPalette.Dark.Secondary) + 1;
         Assert.True(secondary > 0, "The palette's secondary color is in the color table.");
-        Assert.Contains($@"\pard\li270\sa0\f1\fs20\cf{secondary}\b ", rtf, StringComparison.Ordinal);
+        Assert.Contains($@"\pard\li270\tx630\sa0\f1\fs20\cf{secondary}\b ", rtf, StringComparison.Ordinal);
         Assert.Contains($@"\pard\li540\sa0\f1\fs20\cf{secondary}\b ", rtf, StringComparison.Ordinal);
 
         var quote = Assert.IsType<MarkdownQuote>(view.Blocks[1]);
@@ -224,7 +226,7 @@ public sealed class TextViewRenderingTests
             TextViewRendering.Create(TextViewSource.Create(markdown, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
 
         var output = Formatted("```\nBC-TEST report\n| A | Bee |\n|---|---|\n| 1 | 2 |\nend of report\n```");
-        Assert.Equal("BC-TEST report\nA  Bee\n─  ───\n1  2\nend of report", RtfText(output.ToRtf(SyntaxPalette.Dark, Style, token)));
+        Assert.Equal("BC-TEST report\nA\tBee\n─\t───\n1\t2\nend of report", RtfText(output.ToRtf(SyntaxPalette.Dark, Style, token)));
         Assert.Equal(["CodeBlock", "Table", "CodeBlock"], output.Blocks.Select(block => block.GetType().Name.Replace("Markdown", string.Empty, StringComparison.Ordinal)));
 
         var named = Formatted("> ```text\n> | A |\n> |---|\n> | 1 |\n> ```");
