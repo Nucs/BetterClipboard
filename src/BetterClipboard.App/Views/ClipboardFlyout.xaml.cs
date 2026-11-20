@@ -620,7 +620,11 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Conceals on deactivation (flyout semantics) unless one of our popups took activation.</summary>
+    /// <summary>
+    /// Conceals on deactivation (flyout semantics). While one of the panel's own popups is open, the deactivation could be
+    /// that popup taking the keyboard, so the panel first looks who is in front once the switch is done, and conceals itself
+    /// (with its viewers) when that is another window (ClipboardFlyout.Leaving.cs).
+    /// </summary>
     /// <param name="sender">The window.</param>
     /// <param name="args">Activation data.</param>
     private void OnActivated(object sender, WindowActivatedEventArgs args)
@@ -630,6 +634,13 @@ public sealed partial class ClipboardFlyout : Window
             if (openPopups == 0 && IsOpen)
             {
                 Conceal();
+            }
+            else if (IsOpen)
+            {
+                // Until 2026-11-20 nothing happened here, and the panel stayed on top of the window the user went to, for
+                // good: it was no longer active, so no later click elsewhere could deactivate it (CLAUDE.md §2.56). The
+                // popup's kind is read now: a menu closes by itself during the switch.
+                ConcealIfUserLeft(DescribeOpenPopups());
             }
 
             return;
@@ -1271,7 +1282,8 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// Tracks our own popups closing. The mouse may now lie over any row (a menu covers several): it selects none until it
-    /// really moves again, so the card the menu belonged to stays the selected one.
+    /// really moves again, so the card the menu belonged to stays the selected one. The last popup gone, the panel looks
+    /// whether the user went elsewhere meanwhile (ClipboardFlyout.Leaving.cs).
     /// </summary>
     /// <param name="sender">Popup.</param>
     /// <param name="e">Event data.</param>
@@ -1282,10 +1294,15 @@ public sealed partial class ClipboardFlyout : Window
         // A popup going away is not a move of the mouse, but WinUI reports "pointer entered" to the row it uncovers.
         SuspendPointerSelection();
 
-        // A viewer that stays open keeps the keyboard (FocusOpenViewer's remarks); otherwise it goes back to the search.
-        if (!FocusOpenViewer())
+        // A viewer that stays open keeps the keyboard (FocusOpenViewer's remarks); otherwise it goes back to the search —
+        // only while the panel shows and is in front: a menu also closes by itself when the user goes to another window.
+        GiveKeyboardBackAfterPopup();
+
+        // A deactivation while this popup showed may have been looked at while Windows named no foreground window yet;
+        // the popup closing asks again, so the panel does not stay behind on top of the window the user went to.
+        if (openPopups == 0)
         {
-            SearchBox.Focus(FocusState.Programmatic);
+            ConcealIfUserLeft("a popup showed (asked again as the last one closed)");
         }
     }
 

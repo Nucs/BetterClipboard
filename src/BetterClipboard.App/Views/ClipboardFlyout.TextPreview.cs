@@ -592,9 +592,14 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>Restarts the peek's rest timer (it opens the peek once the mouse has rested long enough).</summary>
+    /// <remarks>
+    /// Only once the mouse really moved since the panel last changed under it (<see cref="MouseMovedSincePanelChanged"/>):
+    /// after Esc or the X closed the viewer over a mouse resting where the eye was, WinUI reported the pointer entering the
+    /// card, and this peek opened by itself 450 ms later with the same text (QA, 2026-11-20, CLAUDE.md §2.56).
+    /// </remarks>
     private void RestartTextHoverTimer()
     {
-        if (!CanShowTextPeek())
+        if (!CanShowTextPeek() || !MouseMovedSincePanelChanged())
         {
             return;
         }
@@ -1274,6 +1279,10 @@ public sealed partial class ClipboardFlyout
         // the peek opened again under the resting mouse half a second later, so every Enter was lost until the mouse moved
         // (paste QA on 0.2.12, 2026-11-18). The image peek has always given its count back this way (HidePeek).
         openPopups = Math.Max(0, openPopups - 1);
+
+        // A peek opens again only once the mouse moves (MouseMovedSincePanelChanged), asked now: the "pointer entered"
+        // WinUI reports for the card this peek uncovers can come before Closed does (CLAUDE.md §2.56).
+        SuspendPointerSelection();
     }
 
     /// <summary>
@@ -1285,15 +1294,13 @@ public sealed partial class ClipboardFlyout
     /// <remarks>
     /// A popup going away is not a move of the mouse, but WinUI reports "pointer entered" to the card it uncovers: the mouse
     /// must not take the selection from the keyboard for it. The keyboard goes to a viewer that is still open (the text
-    /// viewer F3 opened from this peek), else back to the search box.
+    /// viewer F3 opened from this peek), else back to the search box, while the panel shows and is in front
+    /// (<see cref="GiveKeyboardBackAfterPopup"/>: the peek also closes when the user leaves the panel).
     /// </remarks>
     private void TextPeekPopup_Closed(object? sender, object e)
     {
         SuspendPointerSelection();
-        if (!FocusOpenViewer())
-        {
-            SearchBox.Focus(FocusState.Programmatic);
-        }
+        GiveKeyboardBackAfterPopup();
     }
 
     /// <summary>
@@ -1973,6 +1980,11 @@ public sealed partial class ClipboardFlyout
             controller.Settings.Update(s => s with { TextViewerTextSize = state.TextSize });
         }
 
+        // The mouse rests where Esc, the X or the backdrop's click left it, often on the card whose eye opened the viewer:
+        // no peek may open there before it moves (MouseMovedSincePanelChanged). Asked now, before the popup goes: the
+        // "pointer entered" WinUI reports for the uncovered card came before Popup_Closed and opened the text peek with the
+        // same text 450 ms later, 4 of 4 times in the QA (CLAUDE.md §2.56).
+        SuspendPointerSelection();
         state.Popup.IsOpen = false; // raises Closed → Popup_Closed (the count, the keyboard)
     }
 }

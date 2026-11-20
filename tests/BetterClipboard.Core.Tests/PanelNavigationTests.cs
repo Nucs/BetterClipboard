@@ -804,6 +804,79 @@ public sealed class PointerSelectionGateTests
         gate.Suspend(0, int.MaxValue, Threshold);
         Assert.True(gate.Observe(0, int.MinValue));
     }
+
+    /// <summary>
+    /// <see cref="PointerSelectionGate.HasMoved"/> answers what <see cref="PointerSelectionGate.Observe"/> would, and changes
+    /// nothing: a peek's question (CLAUDE.md §2.56) never hands the selection to the mouse, so the selection's own handler,
+    /// asking next, still sees the move. Also after the mouse took over, and after a wheel turn.
+    /// </summary>
+    [Fact]
+    public void HasMoved_AnswersLikeObserve_WithoutTakingTheSelection()
+    {
+        var gate = new PointerSelectionGate();
+        gate.Suspend(500, 300, Threshold);
+        Assert.False(gate.HasMoved(500, 300));
+        Assert.False(gate.HasMoved(504, 296));
+        Assert.True(gate.HasMoved(505, 300));
+        Assert.True(gate.HasMoved(500, 295));
+
+        // Asked past the threshold, the gate is still closed: Observe at the old spot still says no.
+        Assert.False(gate.IsPointerActive);
+        Assert.False(gate.Observe(500, 300));
+
+        // Once the mouse owns the selection, every position counts as moved, the old spot included.
+        Assert.True(gate.Observe(510, 300));
+        Assert.True(gate.HasMoved(500, 300));
+
+        gate.Suspend(500, 300, Threshold);
+        Assert.False(gate.HasMoved(500, 300));
+        gate.Activate();
+        Assert.True(gate.HasMoved(500, 300));
+    }
+
+    /// <summary>
+    /// Without a known spot (a suspension without a position) nothing counts as moved, and the question does not take the
+    /// first position as the spot: only <see cref="PointerSelectionGate.Observe"/> does, so a peek's question cannot
+    /// shift where the cursor must go from.
+    /// </summary>
+    [Fact]
+    public void HasMoved_WithoutAKnownSpot_IsNo_AndRecordsNothing()
+    {
+        var gate = new PointerSelectionGate();
+        gate.Suspend(Threshold);
+        Assert.False(gate.HasMoved(700, 700));
+        Assert.False(gate.HasMoved(9000, -9000));
+
+        // The spot is still the first one Observe sees, not one HasMoved saw.
+        Assert.False(gate.Observe(100, 100));
+        Assert.False(gate.HasMoved(103, 100));
+        Assert.True(gate.HasMoved(105, 100));
+    }
+
+    /// <summary>
+    /// On a grid of positions around the spot, and at the coordinate range's ends, <see cref="PointerSelectionGate.HasMoved"/>
+    /// and a fresh gate's <see cref="PointerSelectionGate.Observe"/> agree.
+    /// </summary>
+    [Fact]
+    public void HasMoved_AgreesWithObserve_EverywhereAroundTheSpot()
+    {
+        for (int dx = -6; dx <= 6; dx++)
+        {
+            for (int dy = -6; dy <= 6; dy++)
+            {
+                var asked = new PointerSelectionGate();
+                asked.Suspend(1000, 1000, Threshold);
+                var observed = new PointerSelectionGate();
+                observed.Suspend(1000, 1000, Threshold);
+                Assert.Equal(observed.Observe(1000 + dx, 1000 + dy), asked.HasMoved(1000 + dx, 1000 + dy));
+            }
+        }
+
+        var extreme = new PointerSelectionGate();
+        extreme.Suspend(int.MinValue, int.MaxValue, Threshold);
+        Assert.False(extreme.HasMoved(int.MinValue, int.MaxValue));
+        Assert.True(extreme.HasMoved(int.MaxValue, int.MinValue));
+    }
 }
 
 /// <summary>

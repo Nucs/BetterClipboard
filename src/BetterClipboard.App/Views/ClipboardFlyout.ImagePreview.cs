@@ -35,7 +35,9 @@ namespace BetterClipboard.App.Views;
 /// <b>Peek dismissal.</b> The peek's surface covers the monitor and is hit-testable, so the first real mouse move over it
 /// (after a tiny grace that swallows the synthetic move at open) dismisses it — "any mouse movement hides it". After it
 /// hides, the pointer is back over the card, whose <see cref="ImageCard_PointerEntered"/> restarts the rest timer, so the
-/// peek reappears if the mouse settles again. A key or a press dismisses it too.
+/// peek reappears if the mouse settles again. A key or a press dismisses it too; then the peek waits until the mouse has
+/// moved again (since 2026-11-20, <see cref="MouseMovedSincePanelChanged"/>): it used to reopen by itself half a second
+/// later, over a mouse that never moved.
 /// </para>
 /// <para>
 /// <b>Resolution.</b> Both overlays show the full-resolution image (<see cref="AppController.GetImageForDisplayAsync"/>: the
@@ -208,9 +210,14 @@ public sealed partial class ClipboardFlyout
         draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
 
     /// <summary>(Re)starts the rest timer so the peek opens one <see cref="HoverPeekDelayMs"/> after the mouse last moved.</summary>
+    /// <remarks>
+    /// Only once the mouse really moved since the panel last changed under it (<see cref="MouseMovedSincePanelChanged"/>):
+    /// WinUI reports the pointer entering a card that a closing viewer or a summon uncovered under a mouse lying still, and
+    /// the peek then opened by itself (CLAUDE.md §2.56).
+    /// </remarks>
     private void RestartHoverTimer()
     {
-        if (!CanShowPeek())
+        if (!CanShowPeek() || !MouseMovedSincePanelChanged())
         {
             return;
         }
@@ -390,6 +397,11 @@ public sealed partial class ClipboardFlyout
         peekAnchor = null;
         popup.IsOpen = false;
         openPopups = Math.Max(0, openPopups - 1);
+
+        // Closed by a click or a key, the peek would open again by itself half a second later: WinUI reports the pointer
+        // entering the card the peek uncovers. A peek opens again once the mouse moves and rests (MouseMovedSincePanelChanged);
+        // closed by a move, the mouse is moving already. The text peek does the same in its Closed handler.
+        SuspendPointerSelection();
     }
 
     /// <summary>Loads the full image into the cache without blocking the caller (hover preload).</summary>
@@ -831,6 +843,12 @@ public sealed partial class ClipboardFlyout
         viewerPanning = false;
         viewerLoad?.Cancel();
         viewerLoad = null;
+
+        // The mouse rests where Esc, the X or the backdrop's click left it, often on the card whose eye opened the viewer:
+        // no peek may open there before it moves (MouseMovedSincePanelChanged). Asked now, before the popup goes: WinUI's
+        // "pointer entered" for the uncovered card can come before Popup_Closed does (the text viewer's twin case, found in
+        // the QA; CLAUDE.md §2.56).
+        SuspendPointerSelection();
         popup.IsOpen = false; // raises Closed → Popup_Closed (openPopups--, focus back to the search box)
     }
 }
