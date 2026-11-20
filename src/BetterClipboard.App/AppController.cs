@@ -1065,6 +1065,15 @@ public sealed partial class AppController
     }
 
     /// <summary>
+    /// Shows a Background transparency level on the panel while Settings' slider is dragged, before it is saved: Settings
+    /// writes the file once the drag settles (every save makes Settings reload, too slow for each step of a drag), and the
+    /// saved level then reaches the panel through the settings change as usual (CLAUDE.md §2.58). UI thread only; nothing
+    /// happens before the panel exists, which reads the saved level when it is built.
+    /// </summary>
+    /// <param name="level">The level, 0 (most frosted) to 100 (clearest); clamped.</param>
+    public void PreviewBackgroundTransparency(int level) => flyout?.PreviewBackdropLevel(level);
+
+    /// <summary>
     /// Loads an image entry as full-resolution PNG bytes, for what must hand a PNG file on (<em>Save to temp and</em>). The
     /// image overlays read <see cref="GetImageForDisplayAsync"/> instead: it never encodes.
     /// </summary>

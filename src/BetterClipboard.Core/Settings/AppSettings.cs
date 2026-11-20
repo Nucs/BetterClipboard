@@ -338,6 +338,26 @@ public sealed record AppSettings
     public IReadOnlyList<string> HiddenPanelButtons { get; init; } = [];
 
     /// <summary>
+    /// The panel header's buttons in the order the user arranged them (Settings › Shortcut › Buttons in the panel, the up and
+    /// down arrows; CLAUDE.md §2.58), left to right, as <see cref="Presentation.PanelButton"/> names; empty while they stand
+    /// in the default order. The Settings button is never among them: it always ends the header.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written whole after a move (every button, hidden ones too, which keep their place for when they show again), and empty
+    /// again once the order equals the default (<see cref="Presentation.PanelButtons.ToStored"/>), so a later version's default
+    /// order still reaches users who never moved a button. The panel and Settings complete the list with buttons it lacks
+    /// (<see cref="Presentation.PanelButtons.Arrange"/>), so any list here shows every button once.
+    /// </para>
+    /// <para>
+    /// Names, read leniently like <see cref="HiddenPanelButtons"/> (<see cref="Normalize"/> keeps the known ones, spelled as
+    /// their member, each once, in the stored order). Footgun: a version from before this member drops it when it saves the
+    /// file, and the buttons are back in their default order.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> PanelButtonOrder { get; init; } = [];
+
+    /// <summary>
     /// Whether the panel stays open after pasting right now: <see cref="KeepPanelOpen"/>, while the pin shows in the header.
     /// Derived, so it is never written to the file.
     /// </summary>
@@ -740,6 +760,25 @@ public sealed record AppSettings
     public AppTheme Theme { get; init; } = AppTheme.System;
 
     /// <summary>
+    /// How much of what lies behind the panel shows through its frosted glass (Settings › App › Background transparency,
+    /// CLAUDE.md §2.58): <see cref="Presentation.PanelBackdrop.MinLevel"/> (0, the most frosted) to
+    /// <see cref="Presentation.PanelBackdrop.MaxLevel"/> (100, the clearest); <see cref="Presentation.PanelBackdrop.DefaultLevel"/>
+    /// (50) is Windows' own acrylic, the panel's look before the setting existed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The glass stays blurred at every level (the owner's "it always stays blur"): the level only sets how strongly its frost
+    /// covers the blurred background (<see cref="Presentation.PanelBackdrop.LookFor"/>). Where Windows draws no glass at all
+    /// (transparency effects off, battery saver, a remote session) the panel is a solid color whatever this says.
+    /// </para>
+    /// <para>
+    /// Only the panel's background: Settings keeps Windows' Mica, and the panel's cards, menus and viewers their own colors.
+    /// Footgun: a version from before this member drops it when it saves the file, and the panel is back to Windows' look.
+    /// </para>
+    /// </remarks>
+    public int BackgroundTransparency { get; init; } = Presentation.PanelBackdrop.DefaultLevel;
+
+    /// <summary>
     /// Serve the <c>bclip</c> command line (scripts, AI assistants): list, search, read, copy and add
     /// history items over a named pipe restricted to this Windows account.
     /// </summary>
@@ -1051,6 +1090,13 @@ public sealed record AppSettings
             // Known buttons only, each once, in the header's order (a hand-edited "pause" becomes "Pause"; "Settings" and
             // typos are dropped: the Settings button always shows).
             HiddenPanelButtons = Presentation.PanelButtons.Normalize(HiddenPanelButtons),
+
+            // Known buttons only, each once, in the stored order ("Settings" and typos dropped: it always ends the header);
+            // completed with missing buttons when it is read (PanelButtons.Arrange), never here.
+            PanelButtonOrder = Presentation.PanelButtons.NormalizeOrder(PanelButtonOrder),
+
+            // A hand-edited level outside 0..100 still gives a panel with glass.
+            BackgroundTransparency = Presentation.PanelBackdrop.Normalize(BackgroundTransparency),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

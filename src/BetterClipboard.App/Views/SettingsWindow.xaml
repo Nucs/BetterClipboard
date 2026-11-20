@@ -326,68 +326,106 @@
                     </ComboBox>
                 </controls:SettingsCard>
                 <!--
-                  The panel header's buttons (AppSettings.HiddenPanelButtons, CLAUDE.md §2.55): one box per button, in the
-                  header's order, each with the button's own icon so the header's icons can be told apart by name (the groups
-                  ribbon is the header's own path). Settings has no box: it always shows, as the way back here. Each box names
-                  itself (AutomationProperties.Name): its content is a panel, which a screen reader would not read as its name.
-                  The update button's box goes in the Microsoft Store edition, which has no update button
-                  (SettingsWindow.Store.cs). E737 = a window with its title bar (checked by rendering).
+                  The panel header's buttons (AppSettings.HiddenPanelButtons and PanelButtonOrder, CLAUDE.md §2.55, §2.58): one
+                  row per button, top to bottom as the header runs left to right, each with its box (shown or hidden) and its up
+                  and down arrows, which move it left and right in the panel. The rows are places that swap their buttons on a
+                  move (PanelButtonRowViewModel), and the keyboard follows the moved button (SettingsWindow.MovePanelButton), so
+                  the page stays still and the same arrow pressed again moves the button on. Each row shows the button's own
+                  icon, so the header's icons can be told apart by name (the groups ribbon is the header's own path). Settings
+                  has no box and no arrows: it always shows, and stays last, as the way back here (the owner's "have the
+                  settings stationary"); its row says so. Each box and arrow names itself (AutomationProperties.Name): a box's
+                  content is a panel, which a screen reader would not read as its name, and every row has the same arrows. The
+                  update button has no row in the Microsoft Store edition, which has no update button
+                  (SettingsViewModel.IsPanelButtonListed). E737 = a window with its title bar, E74A and E74B = arrows up and
+                  down, E713 = the gear (checked by rendering).
                 -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Text='Which buttons the panel shows next to Settings. What a hidden one does stays in reach: Ctrl+G for the groups, the tray icon menu for pausing and updates, Settings for clearing the history. Hiding the pin lets the panel close after pasting again.'}"
+                    Description="{loc:Tr Text='Which buttons the panel shows next to Settings, and in which order: the arrows move a button left or right in the panel. What a hidden one does stays in reach: Ctrl+G for the groups, the tray icon menu for pausing and updates, Settings for clearing the history. Hiding the pin lets the panel close after pasting again.'}"
                     Glyph="&#xE737;"
                     Header="{loc:Tr Text='Buttons in the panel'}"
-                    Keywords="{loc:Tr Text='header, toolbar, icons, hide buttons, show buttons, pin, keep open, declutter'}">
+                    Keywords="{loc:Tr Text='header, toolbar, icons, hide buttons, show buttons, order, reorder, sort, move, arrange, pin, keep open, declutter'}">
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="2">
-                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Pin: keep the panel open after pasting'}" IsChecked="{x:Bind ViewModel.ShowKeepOpenButton, Mode=TwoWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <FontIcon
-                                        Width="16"
-                                        FontSize="15"
-                                        Glyph="&#xE718;" />
-                                    <TextBlock Text="{loc:Tr Text='Pin: keep the panel open after pasting'}" />
-                                </StackPanel>
-                            </CheckBox>
-                            <CheckBox
-                                x:Name="UpdatesButtonBox"
-                                AutomationProperties.Name="{loc:Tr Text='Updates'}"
-                                IsChecked="{x:Bind ViewModel.ShowUpdatesButton, Mode=TwoWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <FontIcon
-                                        Width="16"
-                                        FontSize="15"
-                                        Glyph="&#xE895;" />
-                                    <TextBlock Text="{loc:Tr Text='Updates'}" />
-                                </StackPanel>
-                            </CheckBox>
-                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Pause capturing'}" IsChecked="{x:Bind ViewModel.ShowPauseButton, Mode=TwoWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <FontIcon
-                                        Width="16"
-                                        FontSize="15"
-                                        Glyph="&#xE769;" />
-                                    <TextBlock Text="{loc:Tr Text='Pause capturing'}" />
-                                </StackPanel>
-                            </CheckBox>
-                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Groups'}" IsChecked="{x:Bind ViewModel.ShowGroupsButton, Mode=TwoWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <PathIcon
-                                        Width="16"
-                                        Height="16"
-                                        Data="F0 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z M4.5,2.75 A0.25,0.25 0 0 0 4.25,3 V11.9 L8,9.4 L11.75,11.9 V3 A0.25,0.25 0 0 0 11.5,2.75 Z" />
-                                    <TextBlock Text="{loc:Tr Text='Groups'}" />
-                                </StackPanel>
-                            </CheckBox>
-                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Clear history'}" IsChecked="{x:Bind ViewModel.ShowClearButton, Mode=TwoWay}">
-                                <StackPanel Orientation="Horizontal" Spacing="10">
-                                    <FontIcon
-                                        Width="16"
-                                        FontSize="15"
-                                        Glyph="&#xE74D;" />
-                                    <TextBlock Text="{loc:Tr Text='Clear history'}" />
-                                </StackPanel>
-                            </CheckBox>
+                            <ItemsControl
+                                x:Name="PanelButtonList"
+                                IsTabStop="False"
+                                ItemsSource="{x:Bind ViewModel.PanelButtonRows}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PanelButtonRowViewModel">
+                                        <Grid ColumnSpacing="2">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <CheckBox AutomationProperties.Name="{x:Bind Label, Mode=OneWay}" IsChecked="{x:Bind IsShown, Mode=TwoWay}">
+                                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                                    <Grid Width="16" Height="16">
+                                                        <FontIcon
+                                                            FontSize="15"
+                                                            Glyph="{x:Bind Glyph, Mode=OneWay}"
+                                                            Visibility="{x:Bind GlyphVisibility, Mode=OneWay}" />
+                                                        <PathIcon
+                                                            Width="16"
+                                                            Height="16"
+                                                            Data="F0 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z M4.5,2.75 A0.25,0.25 0 0 0 4.25,3 V11.9 L8,9.4 L11.75,11.9 V3 A0.25,0.25 0 0 0 11.5,2.75 Z"
+                                                            Visibility="{x:Bind RibbonVisibility, Mode=OneWay}" />
+                                                    </Grid>
+                                                    <TextBlock Text="{x:Bind Label, Mode=OneWay}" />
+                                                </StackPanel>
+                                            </CheckBox>
+                                            <Button
+                                                x:Name="MoveUpButton"
+                                                Grid.Column="1"
+                                                AutomationProperties.Name="{x:Bind MoveUpName, Mode=OneWay}"
+                                                Click="MovePanelButtonUp_Click"
+                                                Content="&#xE74A;"
+                                                FontSize="13"
+                                                IsEnabled="{x:Bind CanMoveUp, Mode=OneWay}"
+                                                Style="{StaticResource IconButtonStyle}"
+                                                Tag="{x:Bind Position}"
+                                                ToolTipService.ToolTip="{loc:Tr Text='Move up: further left in the panel'}" />
+                                            <Button
+                                                x:Name="MoveDownButton"
+                                                Grid.Column="2"
+                                                AutomationProperties.Name="{x:Bind MoveDownName, Mode=OneWay}"
+                                                Click="MovePanelButtonDown_Click"
+                                                Content="&#xE74B;"
+                                                FontSize="13"
+                                                IsEnabled="{x:Bind CanMoveDown, Mode=OneWay}"
+                                                Style="{StaticResource IconButtonStyle}"
+                                                Tag="{x:Bind Position}"
+                                                ToolTipService.ToolTip="{loc:Tr Text='Move down: further right in the panel'}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <!--  Settings: always shown, always last; a box that cannot be unticked, and no arrows.  -->
+                            <Grid ColumnSpacing="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <CheckBox
+                                    AutomationProperties.Name="{loc:Tr Text='Settings'}"
+                                    IsChecked="True"
+                                    IsEnabled="False">
+                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                        <FontIcon
+                                            Width="16"
+                                            FontSize="15"
+                                            Glyph="&#xE713;" />
+                                        <TextBlock Text="{loc:Tr Text='Settings'}" />
+                                    </StackPanel>
+                                </CheckBox>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Margin="0,0,10,0"
+                                    VerticalAlignment="Center"
+                                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                    Style="{StaticResource CaptionTextBlockStyle}"
+                                    Text="{loc:Tr Text='Always shown, always last'}" />
+                            </Grid>
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
@@ -1048,6 +1086,30 @@
                         <ComboBoxItem Content="{loc:Tr Text='Light'}" />
                         <ComboBoxItem Content="{loc:Tr Text='Dark'}" />
                     </ComboBox>
+                </controls:SettingsCard>
+                <!--
+                  How see-through the panel's frosted glass is (AppSettings.BackgroundTransparency, CLAUDE.md §2.58): 0 the most
+                  frosted, 100 the clearest, 50 Windows' own look, the default. The glass stays blurred at every level; the
+                  slider sets how strongly its frost covers the blurred background (PanelBackdrop.LookFor). Steps of 5; a tick at
+                  each end and at the default. Each step shows on the panel at once and is saved when the slider rests
+                  (SettingsViewModel.OnBackgroundTransparencyChanged). E7A1 = a half-filled circle (checked by rendering).
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='How much of what lies behind the panel shows through its frosted glass. The glass always stays blurred: 0 is the most frosted, 100 the clearest, and 50 the usual look.'}"
+                    Glyph="&#xE7A1;"
+                    Header="{loc:Tr Text='Background transparency'}"
+                    Keywords="{loc:Tr Text='transparent, see-through, opacity, opaque, blur, frosted glass, acrylic, background'}">
+                    <Slider
+                        Width="220"
+                        AutomationProperties.Name="{loc:Tr Text='Background transparency'}"
+                        LargeChange="25"
+                        Maximum="100"
+                        Minimum="0"
+                        SmallChange="5"
+                        StepFrequency="5"
+                        TickFrequency="50"
+                        TickPlacement="Outside"
+                        Value="{x:Bind ViewModel.BackgroundTransparency, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Lets scripts and AI assistants list, search, read and copy your clipboard history with the bclip command. While this is on, any program running as you can read your history, so it is off by default.'}"

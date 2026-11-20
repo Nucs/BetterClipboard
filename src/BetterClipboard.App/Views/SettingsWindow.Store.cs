@@ -22,8 +22,9 @@ namespace BetterClipboard.App.Views;
 public sealed partial class SettingsWindow
 {
     /// <summary>
-    /// Keeps only the cards that are true for this edition, and hides the box for a panel button it does not have (the
-    /// update button, CLAUDE.md §2.55). Called once, right after the page was built and before the search indexes it.
+    /// Keeps only the cards that are true for this edition. Called once, right after the page was built and before the
+    /// search indexes it. The update button, which this edition's panel does not have, has no row in Buttons in the panel:
+    /// the view model leaves it out (<c>SettingsViewModel.IsPanelButtonListed</c>, CLAUDE.md §2.55, §2.58).
     /// </summary>
     private void ApplyEdition()
     {
@@ -31,10 +32,6 @@ public sealed partial class SettingsWindow
         {
             SettingsPage.Children.Remove(ReleaseFromExplorerCard);
             SettingsPage.Children.Remove(UpdatesCard);
-
-            // No update button in this edition's panel (its updates come from the Store), so nothing to show or hide. A box
-            // in a card, not a card: collapsed, not removed (the search only shows and hides whole cards).
-            UpdatesButtonBox.Visibility = Visibility.Collapsed;
         }
         else
         {

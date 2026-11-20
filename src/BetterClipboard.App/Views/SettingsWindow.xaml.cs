@@ -214,6 +214,10 @@ public sealed partial class SettingsWindow : Window
         CloseSearch();
         CloseStoredRefresh();
 
+        // A Background transparency level the slider showed but had not saved yet is saved now, and the view model lets go of
+        // its timer (whose handler would keep this window in memory, see above).
+        ViewModel.Close();
+
         // Closing the dialog also ends its own subscription to the update status; detaching it also lets go of its timer.
         updateDialog.Detach();
 
@@ -621,6 +625,90 @@ public sealed partial class SettingsWindow : Window
         {
             ViewModel.RemoveHotkey(text);
         }
+    }
+
+    /// <summary>A row's up arrow in Buttons in the panel: moves its button left in the panel (CLAUDE.md §2.58).</summary>
+    /// <param name="sender">The arrow; its <c>Tag</c> is its row's place.</param>
+    /// <param name="e">Click data.</param>
+    private void MovePanelButtonUp_Click(object sender, RoutedEventArgs e) => MovePanelButton(sender, later: false);
+
+    /// <summary>A row's down arrow in Buttons in the panel: moves its button right in the panel.</summary>
+    /// <param name="sender">The arrow; its <c>Tag</c> is its row's place.</param>
+    /// <param name="e">Click data.</param>
+    private void MovePanelButtonDown_Click(object sender, RoutedEventArgs e) => MovePanelButton(sender, later: true);
+
+    /// <summary>
+    /// Moves an arrow's button one place and gives the keyboard to the same arrow in the row the button went to, so the page
+    /// stays where it is and pressing again moves the button on (the owner's "have the settings stationary").
+    /// </summary>
+    /// <param name="sender">The pressed arrow.</param>
+    /// <param name="later"><see langword="true"/> for the down arrow, <see langword="false"/> for up.</param>
+    private void MovePanelButton(object sender, bool later)
+    {
+        if (sender is not Button { Tag: int position } arrow)
+        {
+            return;
+        }
+
+        // The focus state says how the arrow was pressed: a key leaves the focus rectangle on the next arrow, a click does not.
+        var how = arrow.FocusState == FocusState.Unfocused ? FocusState.Programmatic : arrow.FocusState;
+        int now = ViewModel.MovePanelButton(position, later);
+        if (now != position)
+        {
+            FocusPanelButtonArrow(now, later, how);
+        }
+    }
+
+    /// <summary>
+    /// Gives the keyboard to a row's arrow in Buttons in the panel: the one pointing the way the button just moved, or the
+    /// other when that one is disabled (the button reached the end), so the keyboard never drops out of the list.
+    /// </summary>
+    /// <param name="position">The row.</param>
+    /// <param name="later">The direction the button moved: <see langword="true"/> down.</param>
+    /// <param name="how">The focus state to give (keyboard, pointer or programmatic).</param>
+    private void FocusPanelButtonArrow(int position, bool later, FocusState how)
+    {
+        if (PanelButtonList.ContainerFromIndex(position) is not DependencyObject row)
+        {
+            return;
+        }
+
+        var same = FindNamed<Button>(row, later ? "MoveDownButton" : "MoveUpButton");
+        var other = FindNamed<Button>(row, later ? "MoveUpButton" : "MoveDownButton");
+        if (same is { IsEnabled: true })
+        {
+            same.Focus(how);
+        }
+        else if (other is { IsEnabled: true })
+        {
+            other.Focus(how);
+        }
+    }
+
+    /// <summary>The first descendant of an element with a given type and name, depth first; <see langword="null"/> when none.</summary>
+    /// <typeparam name="T">The element type.</typeparam>
+    /// <param name="root">Where to search.</param>
+    /// <param name="name">The element's <c>x:Name</c> (a template's names are unique within each row).</param>
+    /// <returns>The element, or <see langword="null"/>.</returns>
+    private static T? FindNamed<T>(DependencyObject root, string name)
+        where T : FrameworkElement
+    {
+        int count = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match && match.Name == name)
+            {
+                return match;
+            }
+
+            if (FindNamed<T>(child, name) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>History changed: refresh the counters, and soon what each integration card has to delete.</summary>

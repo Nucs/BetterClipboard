@@ -106,12 +106,14 @@
                 </Border>
             </Grid>
             <!--
-                The header's buttons. Each but Settings can be hidden in Settings › Shortcut › Buttons in the panel
-                (AppSettings.HiddenPanelButtons, ClipboardFlyout.KeepOpen.cs: ApplyHeaderButtons), and the panel's minimum
-                width follows how many show (AppSettings.MinFlyoutWidthFor: 36 DIPs a button with its gap). Settings never
-                hides: it is where a hidden button comes back.
+                The header's buttons. Each but Settings can be hidden and moved in Settings › Shortcut › Buttons in the panel
+                (AppSettings.HiddenPanelButtons and PanelButtonOrder, ClipboardFlyout.KeepOpen.cs: ApplyHeaderButtons, which
+                puts them in the user's order with ApplyHeaderOrder), and the panel's minimum width follows how many show
+                (AppSettings.MinFlyoutWidthFor: 36 DIPs a button with its gap). Settings never hides and never moves: it is
+                where a hidden button comes back, and it stays last. Below they stand in the default order (PanelButtons.All).
             -->
             <StackPanel
+                x:Name="HeaderButtons"
                 Grid.Column="2"
                 Orientation="Horizontal"
                 Spacing="2">

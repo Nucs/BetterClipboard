@@ -48,6 +48,10 @@ namespace BetterClipboard.App.Views;
 /// a button.
 /// </para>
 /// <para>
+/// <b>Ordering them</b> (<see cref="AppSettings.PanelButtonOrder"/>, CLAUDE.md §2.58): Settings' up and down arrows move a
+/// button left or right, and the header follows (<see cref="ApplyHeaderOrder"/>); the Settings button stays last.
+/// </para>
+/// <para>
 /// <b>The tip.</b> While the pinned panel shows, a tip points at the pin and says in a sentence and a half how pinning
 /// works, until the user closes it (ClipboardFlyout.KeepOpenTip.cs, <see cref="AppSettings.KeepOpenTipDismissed"/>).
 /// </para>
@@ -73,6 +77,12 @@ public sealed partial class ClipboardFlyout
     private bool onTopRestoreLogged;
 
     /// <summary>
+    /// Whether the header's order was applied once (<see cref="ApplyHeaderOrder"/>): the constructor's first application puts a
+    /// stored order in place without a log line, and every later change is logged.
+    /// </summary>
+    private bool headerOrderApplied;
+
+    /// <summary>
     /// How often a pinned panel on screen checks that its window is still always on top (<see cref="KeepOnTop"/>): a click
     /// into the window that already has the keyboard raises it over the panel without any notification to watch for.
     /// </summary>
@@ -91,9 +101,9 @@ public sealed partial class ClipboardFlyout
     public bool StaysOpen => controller.Settings.Current.PanelStaysOpen;
 
     /// <summary>
-    /// The header's buttons, shown or hidden as Settings says, the pin's look, and the following of the foreground window
-    /// while pinned. Called from the constructor, and by the controller after every settings change (idempotent and cheap:
-    /// only what changed is touched).
+    /// The header's buttons, shown or hidden and in the order Settings says, the pin's look, the following of the foreground
+    /// window while pinned, and the glass's transparency (ClipboardFlyout.Backdrop.cs). Called from the constructor, and by
+    /// the controller after every settings change (idempotent and cheap: only what changed is touched).
     /// </summary>
     /// <remarks>
     /// A panel on screen that now shows more buttons than its width holds is widened (<see cref="FitHeaderWhileShown"/>); the
@@ -107,6 +117,8 @@ public sealed partial class ClipboardFlyout
         SetShown(PauseButton, !PanelButtons.IsHidden(hidden, PanelButton.Pause));
         SetShown(GroupsToggle, !PanelButtons.IsHidden(hidden, PanelButton.Groups));
         SetShown(ClearButton, !PanelButtons.IsHidden(hidden, PanelButton.Clear));
+        ApplyHeaderOrder(PanelButtons.Arrange(settings.PanelButtonOrder));
+        ApplyBackdropLevel(settings.BackgroundTransparency);
 
         // The update button's visibility also depends on whether the update system started: its own method decides.
         ApplyUpdateButton();
@@ -138,6 +150,72 @@ public sealed partial class ClipboardFlyout
             }
         }
     }
+
+    /// <summary>
+    /// Puts the header's buttons in the user's order from left to right (<see cref="AppSettings.PanelButtonOrder"/>, completed
+    /// by <see cref="PanelButtons.Arrange"/>), with the Settings button last, where it always stays (CLAUDE.md §2.58).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Moves the buttons within the header's own panel (<c>UIElementCollection.Move</c>), so each keeps its handlers, its
+    /// flyout, its tooltip and its place in the pin's tip; a hidden button moves too, and shows at its place when it comes
+    /// back. Nothing moves while the order is already right, the usual case, since this runs after every settings change.
+    /// </para>
+    /// <para>
+    /// The pin's tip points at the pin, which may have moved: an open tip is placed again (<see cref="RepositionKeepOpenTip"/>).
+    /// A change after the first is logged, content-free (button names only).
+    /// </para>
+    /// </remarks>
+    /// <param name="order">Every hideable button once, left to right.</param>
+    private void ApplyHeaderOrder(IReadOnlyList<PanelButton> order)
+    {
+        var children = HeaderButtons.Children;
+        var wanted = new List<UIElement>(order.Count + 1);
+        foreach (var button in order)
+        {
+            wanted.Add(HeaderButtonOf(button));
+        }
+
+        wanted.Add(SettingsButton);
+
+        // Front to back: the elements before index i are final, so an element found later moves forward to i, shifting only
+        // elements not placed yet.
+        bool moved = false;
+        for (int i = 0; i < wanted.Count; i++)
+        {
+            int at = children.IndexOf(wanted[i]);
+            if (at > i)
+            {
+                children.Move((uint)at, (uint)i);
+                moved = true;
+            }
+        }
+
+        if (moved)
+        {
+            RepositionKeepOpenTip();
+            if (headerOrderApplied)
+            {
+                AppLog.Info($"The panel's header buttons, left to right: {string.Join(", ", order)}, then Settings.");
+            }
+        }
+
+        headerOrderApplied = true;
+    }
+
+    /// <summary>The header's element for a hideable button.</summary>
+    /// <param name="button">The button.</param>
+    /// <returns>Its element in the header (<see cref="HeaderButtons"/>).</returns>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="button"/> is no member the header has an element for.</exception>
+    private UIElement HeaderButtonOf(PanelButton button) => button switch
+    {
+        PanelButton.KeepOpen => KeepOpenButton,
+        PanelButton.Updates => UpdateButton,
+        PanelButton.Pause => PauseButton,
+        PanelButton.Groups => GroupsToggle,
+        PanelButton.Clear => ClearButton,
+        _ => throw new ArgumentOutOfRangeException(nameof(button), button, "No header button answers to it."),
+    };
 
     /// <summary>
     /// The user closed the panel — Esc, the shortcut while the panel is in front, Alt+F4, the Settings button: it goes away

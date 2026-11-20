@@ -1,6 +1,7 @@
 using BetterClipboard.Core.Localization;
 using System.Diagnostics;
 using System.Numerics;
+using BetterClipboard.App.Controls;
 using BetterClipboard.App.Interop;
 using BetterClipboard.App.ViewModels;
 using BetterClipboard.Core.Content;
@@ -630,7 +631,11 @@ public sealed partial class ClipboardFlyout : Window
         presenter.SetBorderAndTitleBar(true, false);
         AppWindow.SetPresenter(presenter);
         AppWindow.IsShownInSwitchers = false;
-        SystemBackdrop = new DesktopAcrylicBackdrop();
+
+        // Windows' acrylic, as the stock DesktopAcrylicBackdrop draws it, with the frost Settings › Background transparency
+        // asks for (ClipboardFlyout.Backdrop.cs); it stays glass while a pinned panel waits behind another app.
+        backdrop = new AdjustableAcrylicBackdrop(controller.Settings.Current.BackgroundTransparency);
+        SystemBackdrop = backdrop;
         WindowInterop.UseRoundedCorners(hwnd);
 
         // No zoom-and-fade from DWM when the window shows or hides: a panel summoned by a key must appear in one frame.
