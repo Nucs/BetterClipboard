@@ -122,7 +122,8 @@ public sealed partial class SettingsViewModel
         TempImagesNow = HistoryLimitsText.TempPicturesNow(tempPictures.Count, tempPictures.Bytes);
 
         var percent = HistoryLimitsText.BudgetPercent(stats, current.MaxTotalSizeMB);
-        var level = HistoryLimitsText.BudgetLevel(stats, current.MaxTotalSizeMB);
+        // The service's mark: a budget the prune keeps a few per cent under full shows as full, as its notification said.
+        var level = HistoryLimitsText.BudgetLevel(stats, current.MaxTotalSizeMB, controller.History.BudgetMark);
         bool full = level >= HistoryBudgetWarnings.FullLevel;
         HasBudget = percent is not null;
         BudgetPercentValue = Math.Clamp(percent ?? 0, 0, 100);

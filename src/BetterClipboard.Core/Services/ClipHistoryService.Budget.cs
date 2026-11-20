@@ -11,10 +11,11 @@ namespace BetterClipboard.Core.Services;
 public sealed partial class ClipHistoryService
 {
     /// <summary>
-    /// The highest budget level warned about (<see cref="HistoryBudgetWarnings"/>), as kept in the store's state; read once,
-    /// on the first prune that measures. Worker thread only, like every prune.
+    /// The highest budget level warned about and the budget it was reached under (<see cref="HistoryBudgetWarnings"/>), as
+    /// kept in the store's state; read once, on the first prune that measures. Written by the worker thread only, like every
+    /// prune; read from any thread through <see cref="BudgetMark"/> (an immutable object, so a reader never sees half of it).
     /// </summary>
-    private int? budgetMark;
+    private volatile StoredBudgetMark? budgetMark;
 
     /// <summary>Whether <see cref="budgetMark"/> was read from the store yet. Worker thread only.</summary>
     private bool budgetMarkRead;
@@ -22,9 +23,18 @@ public sealed partial class ClipHistoryService
     /// <summary>
     /// Raised on the worker thread when the history reaches a new level of its size budget: 90, 92, 94, 96 or 98 %, or full
     /// (the oldest items are now removed to make room). Each level once (the mark is kept with the history), and again only
-    /// after the usage fell a whole step below it. Same handler rules as <see cref="Changed"/>: marshal to the UI and return.
+    /// after the usage fell a whole step below it (below 88 % for a full budget). Same handler rules as
+    /// <see cref="Changed"/>: marshal to the UI and return.
     /// </summary>
     public event EventHandler<HistoryBudgetWarning>? BudgetWarning;
+
+    /// <summary>
+    /// The highest budget level warned about and still standing, with the budget it was reached under
+    /// (<see cref="HistoryBudgetWarnings"/>), or <see langword="null"/> for none: Settings shows a full budget as full with
+    /// it, as the notification said, while the budget is still that one (<see cref="Presentation.HistoryLimitsText.BudgetLevel"/>).
+    /// Read from any thread; known once the first prune with a budget measured (at start), <see langword="null"/> before that.
+    /// </summary>
+    public StoredBudgetMark? BudgetMark => budgetMark;
 
     /// <summary>
     /// Reads what each retention limit has to work with now (<see cref="ClipStore.GetRetentionStats"/>) on the thread pool,
@@ -102,12 +112,23 @@ public sealed partial class ClipHistoryService
                 budgetMarkRead = true;
             }
 
-            var decision = HistoryBudgetWarnings.Decide(budgetMark, used, budgetBytes, result.RemovedForSize > 0);
-            if (decision.Mark != budgetMark)
+            var previous = budgetMark;
+            var decision = HistoryBudgetWarnings.Decide(
+                previous?.Level, used, budgetBytes, result.RemovedForSize > 0, previous?.BudgetBytes ?? 0);
+
+            // Kept with the budget in effect, also when only the budget changed (or was not known): the next prune must not
+            // take the same budget for a new one again.
+            var next = decision.Mark is { } markLevel ? new StoredBudgetMark(markLevel, budgetBytes) : null;
+            if (next != previous)
             {
                 // Kept before the warning goes out: a warning whose mark could not be stored would come again at every copy.
-                store.SetStateValue(HistoryBudgetWarnings.StateName, HistoryBudgetWarnings.Format(decision.Mark));
-                budgetMark = decision.Mark;
+                store.SetStateValue(HistoryBudgetWarnings.StateName, HistoryBudgetWarnings.Format(next));
+                budgetMark = next;
+                if (previous is { BudgetBytes: > 0 } old && old.BudgetBytes != budgetBytes)
+                {
+                    // Content-free: levels and sizes only.
+                    AppLog.Info($"History size budget changed ({old.BudgetBytes:N0} to {budgetBytes:N0} bytes): its warnings start over from {(next is null ? "below 90 %" : $"the {next.Level} % level")}.");
+                }
             }
 
             if (decision.Warn is { } level)

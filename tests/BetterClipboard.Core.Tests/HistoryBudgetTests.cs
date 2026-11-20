@@ -55,8 +55,9 @@ public sealed class HistoryBudgetTests : IDisposable
 
     /// <summary>
     /// A walk up and down: each level is warned once on the way up; a jump warns the level reached, not those it passed;
-    /// a full budget that keeps removing stays quiet; a usage that fell a whole step below the mark warns again on the way
-    /// back up; and without a budget nothing is warned and the mark is left alone.
+    /// a full budget stays quiet while it keeps removing and while the prune keeps it anywhere above 88 % (the live check's
+    /// large items, which re-warned 92 to full at every refill before); below full, a usage a whole step under the mark
+    /// warns again on the way back up; and without a budget nothing is warned and the mark is left alone.
     /// </summary>
     [Fact]
     public void Decide_WarnsEachLevelOnceAndAgainAfterAFall()
@@ -84,15 +85,26 @@ public sealed class HistoryBudgetTests : IDisposable
         Assert.Null(Step(850, removed: true)); // one large item removed: far below, but it was full, so the mark stays
         Assert.Equal(100, mark);
 
-        // Back down within a step of the mark: still marked, nothing new.
-        Assert.Null(Step(985));
-        Assert.Equal(100, mark);
+        // A full budget the prune keeps a few per cent under full (large items): no warning again at every refill, down
+        // to 88 % included.
+        foreach (long perMille in new long[] { 985, 930, 941, 970, 990, 880 })
+        {
+            Assert.Null(Step(perMille));
+            Assert.Equal(100, mark);
+        }
 
-        // Fallen more than a step: the mark follows the usage, and climbing back warns again.
-        Assert.Null(Step(930));
-        Assert.Equal(92, mark);
-        Assert.Null(Step(931));
+        // Room the user made (under 88 %): the mark follows the usage, and climbing back warns again.
+        Assert.Null(Step(879));
+        Assert.Null(mark);
+        Assert.Equal(90, Step(905));
+
+        // Below full a whole step down re-arms: from 94, a dip to 92.5 keeps the mark, 91.9 lowers it to 90.
         Assert.Equal(94, Step(941));
+        Assert.Null(Step(925));
+        Assert.Equal(94, mark);
+        Assert.Null(Step(919));
+        Assert.Equal(90, mark);
+        Assert.Equal(92, Step(921));
         Assert.Null(Step(600));
         Assert.Null(mark);
         Assert.Equal(90, Step(900));
@@ -103,15 +115,80 @@ public sealed class HistoryBudgetTests : IDisposable
         Assert.Equal(0.0, HistoryBudgetWarnings.PercentUsed(-10, 100));
     }
 
-    /// <summary>The mark as stored: only the levels themselves read back; anything else is "nothing warned".</summary>
+    /// <summary>
+    /// A new budget starts the warnings over: the mark comes down to the level the usage is at under it (a full budget raised
+    /// a little shows its real level and warns again on the way up), a lowered budget warns about the level reached, and a
+    /// mark whose budget is not known (0) holds for the budget in effect.
+    /// </summary>
+    [Fact]
+    public void Decide_ANewBudgetStartsOver()
+    {
+        const long old = 1_000_000;
+        const long raised = 1_100_000;
+
+        // Full under 1,000,000 bytes, then raised a little: 1,000,000 of 1,100,000 is 90.9 %, so the mark is 90, not full.
+        Assert.Equal(new BudgetWarningDecision(null, 90), HistoryBudgetWarnings.Decide(100, 1_000_000, raised, false, old));
+
+        // Under the same budget the full rule holds it (90.9 % is above 88 %), and so does a budget that is not known.
+        Assert.Equal(new BudgetWarningDecision(null, 100), HistoryBudgetWarnings.Decide(100, 1_000_000, raised, false, raised));
+        Assert.Equal(new BudgetWarningDecision(null, 100), HistoryBudgetWarnings.Decide(100, 1_000_000, raised, false, 0));
+
+        // The climb under the new budget warns again: 96 %, then full.
+        Assert.Equal(new BudgetWarningDecision(96, 96), HistoryBudgetWarnings.Decide(90, 1_056_000, raised, false, raised));
+        Assert.Equal(new BudgetWarningDecision(100, 100), HistoryBudgetWarnings.Decide(98, 1_090_000, raised, true, raised));
+
+        // Raised far: no mark at all. Lowered: the level reached warns, a removal for it as full.
+        Assert.Equal(new BudgetWarningDecision(null, null), HistoryBudgetWarnings.Decide(100, 1_000_000, 4 * old, false, old));
+        Assert.Equal(new BudgetWarningDecision(96, 96), HistoryBudgetWarnings.Decide(90, 970_000, old, false, raised));
+        Assert.Equal(new BudgetWarningDecision(100, 100), HistoryBudgetWarnings.Decide(94, 999_000, 900_000, true, old));
+
+        // A full mark and a lowered budget that removes: still full, told once.
+        Assert.Equal(new BudgetWarningDecision(null, 100), HistoryBudgetWarnings.Decide(100, 899_000, 900_000, true, old));
+    }
+
+    /// <summary>
+    /// The level Settings shows: the usage's level, and full while the mark is full and the usage has not fallen under
+    /// 88 % (what the notification said, for a budget the prune keeps a few per cent under full).
+    /// </summary>
+    /// <param name="percent">How full the budget is.</param>
+    /// <param name="mark">The history service's mark.</param>
+    /// <param name="expected">The level shown, or <see langword="null"/> for no warning.</param>
+    [Theory]
+    [MemberData(nameof(Shown))]
+    public void ShownLevel_FollowsTheMarkWhileFull(double percent, int? mark, int? expected) =>
+        Assert.Equal(expected, HistoryBudgetWarnings.ShownLevel(percent, mark));
+
+    /// <summary>The shown level's rows.</summary>
+    /// <returns>Percent, mark, and the level shown.</returns>
+    public static TheoryData<double, int?, int?> Shown() => new()
+    {
+        // Without a full mark, the usage alone decides (as LevelOf).
+        { 95, null, 94 },
+        { 91.8, 94, 90 },
+        { 99.6, null, 100 },
+        { 50, 90, null },
+
+        // A full mark: full down to 88 %, the usage's own below (a larger budget a moment before the next prune).
+        { 91.8, 100, 100 },
+        { 88, 100, 100 },
+        { 87.99, 100, null },
+        { 20, 100, null },
+    };
+
+    /// <summary>
+    /// The mark as stored, level and budget: only the levels themselves read back, with their budget or without it (then
+    /// not known); anything else is "nothing warned".
+    /// </summary>
     [Fact]
     public void Mark_FormatAndParse()
     {
         Assert.Equal(string.Empty, HistoryBudgetWarnings.Format(null));
-        Assert.Equal("96", HistoryBudgetWarnings.Format(96));
-        Assert.Equal(94, HistoryBudgetWarnings.Parse("94"));
-        Assert.Equal(100, HistoryBudgetWarnings.Parse("100"));
-        foreach (var junk in new[] { null, "", " 94", "89", "101", "-90", "9 4", "x", "94.0" })
+        Assert.Equal("96@17179869184", HistoryBudgetWarnings.Format(new StoredBudgetMark(96, 16L * 1024 * 1024 * 1024)));
+        Assert.Equal(new StoredBudgetMark(100, 17_179_869_184), HistoryBudgetWarnings.Parse("100@17179869184"));
+        Assert.Equal(new StoredBudgetMark(94, 0), HistoryBudgetWarnings.Parse("94"));
+        Assert.Equal(new StoredBudgetMark(94, 0), HistoryBudgetWarnings.Parse("94@"));
+        Assert.Equal(new StoredBudgetMark(94, 0), HistoryBudgetWarnings.Parse("94@-1"));
+        foreach (var junk in new[] { null, "", " 94", "89", "101", "-90", "9 4", "x", "94.0", "@100", "89@1024", "x@1" })
         {
             Assert.Null(HistoryBudgetWarnings.Parse(junk));
         }
@@ -244,8 +321,9 @@ public sealed class HistoryBudgetTests : IDisposable
         }
 
         Assert.Equal([90, 92, 94, 96, 98, 100], Levels(warnings));
+        Assert.Equal(new StoredBudgetMark(100, size * 50), service.BudgetMark);
         Assert.Equal((size * 50, size * 50), (warnings[^1].UsedBytes, warnings[^1].BudgetBytes));
-        Assert.Equal("100", store.GetStateValue(HistoryBudgetWarnings.StateName));
+        Assert.Equal($"100@{size * 50}", store.GetStateValue(HistoryBudgetWarnings.StateName));
 
         // Over the budget: the oldest copy goes, and the full warning is not repeated.
         await service.AddAsync(Capture(50));
@@ -256,8 +334,10 @@ public sealed class HistoryBudgetTests : IDisposable
         // A restarted service reads the mark: still full, still removing, still quiet.
         warnings.Clear();
         service = Start(store, Rules, warnings);
+        Assert.Null(service.BudgetMark); // not read before its first prune
         await service.AddAsync(Capture(51));
         Assert.Empty(warnings);
+        Assert.Equal(100, service.BudgetMark?.Level);
 
         // Deleting well below the first level arms it again; the next copies past 90 % warn again.
         var oldest = store.Query(new ClipQuery { Limit = 1000 }, TestContext.Current.CancellationToken).Select(e => e.Id).Skip(20).ToArray();
@@ -265,12 +345,55 @@ public sealed class HistoryBudgetTests : IDisposable
         await service.AddAsync(Capture(52));
         Assert.Empty(warnings);
         Assert.Equal(string.Empty, store.GetStateValue(HistoryBudgetWarnings.StateName));
+        Assert.Null(service.BudgetMark);
         for (int i = 53; i < 77; i++)
         {
             await service.AddAsync(Capture(i));
         }
 
         Assert.Equal([90], Levels(warnings));
+        await service.DisposeAsync();
+    }
+
+    /// <summary>
+    /// A changed budget starts the warnings over at the prune it causes: a full budget raised a little comes down to the
+    /// usage's level without a warning, keeps the mark with the new budget, and the copies that fill it warn at the levels
+    /// above, then full.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Service_ANewBudgetStartsTheWarningsOver()
+    {
+        long budget = 0;
+        var warnings = new List<HistoryBudgetWarning>();
+        var store = NewStore();
+        CaptureRules Rules() => new() { Retention = new RetentionPolicy(0, null, Interlocked.Read(ref budget)) };
+
+        var service = Start(store, Rules, warnings);
+        var first = (await service.AddAsync(Capture(0)))!;
+        long size = first.SizeBytes;
+
+        // Fifty copies fill a budget of fifty: told 90 % to full.
+        Interlocked.Exchange(ref budget, size * 50);
+        for (int i = 1; i < 50; i++)
+        {
+            await service.AddAsync(Capture(i));
+        }
+
+        Assert.Equal(100, warnings[^1].Level);
+        warnings.Clear();
+
+        // Raised to fifty-two: 96 % now, so the mark comes down to 96, kept with the new budget, and nothing is told.
+        Interlocked.Exchange(ref budget, size * 52);
+        await service.PruneAsync();
+        Assert.Empty(warnings);
+        Assert.Equal(new StoredBudgetMark(96, size * 52), service.BudgetMark);
+        Assert.Equal($"96@{size * 52}", store.GetStateValue(HistoryBudgetWarnings.StateName));
+
+        // The next copies fill it: 98 %, then full.
+        await service.AddAsync(Capture(50));
+        await service.AddAsync(Capture(51));
+        Assert.Equal([98, 100], Levels(warnings));
         await service.DisposeAsync();
     }
 
@@ -294,7 +417,7 @@ public sealed class HistoryBudgetTests : IDisposable
             Interlocked.Exchange(ref budget, first.SizeBytes);
             Assert.NotNull(await service.AddAsync(Capture(1)));
             Assert.NotNull(await service.AddAsync(Capture(2)));
-            Assert.Equal("100", store.GetStateValue(HistoryBudgetWarnings.StateName));
+            Assert.Equal($"100@{first.SizeBytes}", store.GetStateValue(HistoryBudgetWarnings.StateName));
         }
         finally
         {

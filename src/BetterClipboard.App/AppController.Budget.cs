@@ -28,7 +28,7 @@ public sealed partial class AppController
             return;
         }
 
-        tray.ShowNotification(HistoryLimitsText.WarningTitle(warning.Level), HistoryLimitsText.NotificationText(warning), BudgetNotificationTag);
+        tray.ShowNotification(HistoryLimitsText.NotificationTitle(warning.Level), HistoryLimitsText.NotificationText(warning), BudgetNotificationTag);
     }
 
     /// <summary>

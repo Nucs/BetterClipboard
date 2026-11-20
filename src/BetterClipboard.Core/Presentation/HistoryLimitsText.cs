@@ -18,9 +18,12 @@ namespace BetterClipboard.Core.Presentation;
 /// database file's size on disk, which is larger than the payload (its search index and thumbnails).
 /// </para>
 /// <para>
-/// <b>Notification bounds.</b> Windows shows at most <see cref="MaxNotificationTitle"/> characters of a tray notification's
-/// title and <see cref="MaxNotificationText"/> of its text (<c>NOTIFYICONDATAW</c>), and cuts the rest; every language's
-/// wording is held under them by a test with the longest sizes these texts can carry.
+/// <b>Notification bounds.</b> Windows takes at most <see cref="MaxNotificationTitle"/> characters of a tray notification's
+/// title and <see cref="MaxNotificationText"/> of its text (<c>NOTIFYICONDATAW</c>), and a Windows 11 toast shows far less:
+/// two lines of title (about 37 characters each) and four lines of text (about 41), measured in a test desktop on
+/// 2026-11-20, where the first wording ("… Click to open Settings, or let") lost its bclip sentence. So the notification
+/// carries the level and what happens in its title, and its text only says what it means and what to do; every language's
+/// wording is held within slightly less than that room by a test that wraps it (wide characters count two).
 /// </para>
 /// </remarks>
 public static class HistoryLimitsText
@@ -46,15 +49,30 @@ public static class HistoryLimitsText
     }
 
     /// <summary>
-    /// The warning level the budget is at now (<see cref="HistoryBudgetWarnings.LevelOf"/>): 90 to 98, 100 when full, or
+    /// The warning level Settings shows (<see cref="HistoryBudgetWarnings.ShownLevel"/>): 90 to 98, 100 when full (also a
+    /// budget the prune keeps a few per cent under full, while the history service's mark says full), or
     /// <see langword="null"/> below 90 % or without a budget. Settings shows its warning from the first level on.
     /// </summary>
     /// <param name="stats">What the limits count now.</param>
     /// <param name="maxTotalSizeMB">The budget; 0 = none.</param>
+    /// <param name="mark">
+    /// The history service's mark (<see cref="ClipHistoryService.BudgetMark"/>), or <see langword="null"/> for none. A mark
+    /// reached under another budget is left out: the budget was changed a moment ago, and the next prune (which a changed
+    /// limit runs at once) starts the warnings over.
+    /// </param>
     /// <returns>The level, or <see langword="null"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="stats"/> is <see langword="null"/>.</exception>
-    public static int? BudgetLevel(RetentionStats stats, int maxTotalSizeMB) =>
-        BudgetPercent(stats, maxTotalSizeMB) is { } percent ? HistoryBudgetWarnings.LevelOf(percent, removedForSize: false) : null;
+    public static int? BudgetLevel(RetentionStats stats, int maxTotalSizeMB, StoredBudgetMark? mark = null)
+    {
+        if (BudgetPercent(stats, maxTotalSizeMB) is not { } percent)
+        {
+            return null;
+        }
+
+        // A mark whose budget is not known (0) counts as this budget's, as the history service treats it.
+        int? standing = mark is { } held && (held.BudgetBytes == 0 || held.BudgetBytes == BudgetBytes(maxTotalSizeMB)) ? held.Level : null;
+        return HistoryBudgetWarnings.ShownLevel(percent, standing);
+    }
 
     /// <summary>
     /// A percentage as these texts show it: whole numbers rounded down from 10 % on, one decimal below (so a fresh history
@@ -82,28 +100,37 @@ public static class HistoryLimitsText
             : (Math.Floor(percent * 10) / 10).ToString("0.#", culture);
     }
 
-    /// <summary>The notification's title: the level reached, or that the budget is full.</summary>
+    /// <summary>The title of Settings' warning under the budget: the level reached, or that the budget is full.</summary>
     /// <param name="level">The level (<see cref="HistoryBudgetWarning.Level"/>): 90 to 98, or 100 when full.</param>
-    /// <returns>At most <see cref="MaxNotificationTitle"/> characters in every shipped language (tested).</returns>
+    /// <returns>The title.</returns>
     public static string WarningTitle(int level) => level >= HistoryBudgetWarnings.FullLevel
         ? UiText.Translate("Clipboard history is full")
         : UiText.Format($"Clipboard history at {level} % of its size budget");
 
     /// <summary>
-    /// The notification's text: how much of the budget is used, what happens once it is full, and what to do — open
-    /// Settings (a click on the notification does), or let an AI assistant clean up with <c>bclip</c>.
+    /// The notification's title: how full the history is and what follows, the oldest items deleted. The title carries
+    /// both, because a toast shows its title whole and only four short lines of its text.
+    /// </summary>
+    /// <param name="level">The level (<see cref="HistoryBudgetWarning.Level"/>): 90 to 98, or 100 when full.</param>
+    /// <returns>At most <see cref="MaxNotificationTitle"/> characters, two toast lines, in every shipped language (tested).</returns>
+    public static string NotificationTitle(int level) => level >= HistoryBudgetWarnings.FullLevel
+        ? UiText.Translate("Clipboard history is full: the oldest items are being deleted")
+        : UiText.Format($"Clipboard history {level} % full: the oldest items will be deleted");
+
+    /// <summary>
+    /// The notification's text: that the history stops (or stopped) being permanent, and what to do — open Settings (a
+    /// click on the notification does), or let an AI assistant clean up with <c>bclip</c>. A full budget's names its size.
     /// </summary>
     /// <param name="warning">The warning.</param>
-    /// <returns>At most <see cref="MaxNotificationText"/> characters in every shipped language (tested).</returns>
+    /// <returns>Four toast lines at most in every shipped language (tested), well under <see cref="MaxNotificationText"/>.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="warning"/> is <see langword="null"/>.</exception>
     public static string NotificationText(HistoryBudgetWarning warning)
     {
         ArgumentNullException.ThrowIfNull(warning);
-        var used = ByteSizeText.Format(warning.UsedBytes);
         var budget = ByteSizeText.Format(warning.BudgetBytes);
         return warning.IsFull
-            ? UiText.Format($"The {budget} budget is full: the oldest items are now removed to make room for new copies, so your history is no longer permanent. Click to open Settings, or let an AI assistant clean up with bclip.")
-            : UiText.Format($"{used} of {budget} used. Once the budget is full, the oldest items are removed to make room, so your history stops being permanent. Click to open Settings, or let an AI assistant clean up with bclip.");
+            ? UiText.Format($"The {budget} budget is full, so your history is no longer permanent. Click for Settings, or let an AI assistant clean up with bclip.")
+            : UiText.Translate("When it fills up, your history stops being permanent. Click for Settings, or let an AI assistant clean up with bclip.");
     }
 
     /// <summary>

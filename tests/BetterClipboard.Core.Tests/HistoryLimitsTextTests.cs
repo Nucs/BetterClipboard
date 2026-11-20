@@ -8,8 +8,9 @@ namespace BetterClipboard.Core.Tests;
 
 /// <summary>
 /// Tests for the words of the history's limits (CLAUDE.md §2.60): Settings' "Now:" line under each limit, its warning, and
-/// the notification, in English; percentages rounded down; and every shipped language's notification held within what
-/// Windows shows of a tray notification (63 characters of title, 255 of text) at the longest sizes it can name.
+/// the notification, in English; percentages rounded down; the service's full mark keeping Settings at "full"; and every
+/// shipped language's notification held within what Windows takes (63 characters of title, 255 of text) and within what a
+/// Windows 11 toast shows of them (two lines of title, four of text) at the longest sizes it can name.
 /// </summary>
 public sealed class HistoryLimitsTextTests
 {
@@ -74,7 +75,10 @@ public sealed class HistoryLimitsTextTests
         Assert.Equal("Now: 3 pictures, 12 MB", HistoryLimitsText.TempPicturesNow(3, 12 * MB));
     });
 
-    /// <summary>The notification and Settings' warning, in English: the level, the sizes, what happens, what to do.</summary>
+    /// <summary>
+    /// The notification and Settings' warning, in English: the level and what follows in the notification's title, what
+    /// it means and what to do in its text, and the whole story under the budget's card.
+    /// </summary>
     [Fact]
     public void Warning_WordsTheLevelAndTheWayOut() => Invariant(() =>
     {
@@ -82,11 +86,13 @@ public sealed class HistoryLimitsTextTests
         Assert.Equal("Clipboard history at 98 % of its size budget", HistoryLimitsText.WarningTitle(98));
         Assert.Equal("Clipboard history is full", HistoryLimitsText.WarningTitle(100));
 
+        Assert.Equal("Clipboard history 92 % full: the oldest items will be deleted", HistoryLimitsText.NotificationTitle(92));
+        Assert.Equal("Clipboard history is full: the oldest items are being deleted", HistoryLimitsText.NotificationTitle(100));
         Assert.Equal(
-            "14.7 GB of 16 GB used. Once the budget is full, the oldest items are removed to make room, so your history stops being permanent. Click to open Settings, or let an AI assistant clean up with bclip.",
+            "When it fills up, your history stops being permanent. Click for Settings, or let an AI assistant clean up with bclip.",
             HistoryLimitsText.NotificationText(new HistoryBudgetWarning(92, 15_783_867_597, 16 * GB)));
         Assert.Equal(
-            "The 16 GB budget is full: the oldest items are now removed to make room for new copies, so your history is no longer permanent. Click to open Settings, or let an AI assistant clean up with bclip.",
+            "The 16 GB budget is full, so your history is no longer permanent. Click for Settings, or let an AI assistant clean up with bclip.",
             HistoryLimitsText.NotificationText(new HistoryBudgetWarning(100, 16 * GB, 16 * GB)));
         Assert.Throws<ArgumentNullException>(() => HistoryLimitsText.NotificationText(null!));
 
@@ -129,11 +135,22 @@ public sealed class HistoryLimitsTextTests
         Assert.Null(HistoryLimitsText.BudgetLevel(Stats(bytes: GB), 16_384));
         Assert.Equal(100, HistoryLimitsText.BudgetLevel(Stats(bytes: 16 * GB), 16_384));
         Assert.Throws<ArgumentNullException>(() => HistoryLimitsText.BudgetPercent(null!, 1));
+
+        // The service's full mark: a budget kept a few per cent under full still shows full (also a mark whose budget is not
+        // known); a mark reached under another budget is left out, the budget having changed a moment ago.
+        Assert.Equal(100, HistoryLimitsText.BudgetLevel(stats, 16_384, new StoredBudgetMark(100, 16 * GB)));
+        Assert.Equal(100, HistoryLimitsText.BudgetLevel(stats, 16_384, new StoredBudgetMark(100, 0)));
+        Assert.Equal(90, HistoryLimitsText.BudgetLevel(stats, 16_384, new StoredBudgetMark(94, 16 * GB)));
+        Assert.Equal(90, HistoryLimitsText.BudgetLevel(stats, 16_384, new StoredBudgetMark(100, 15 * GB)));
+        Assert.Null(HistoryLimitsText.BudgetLevel(stats, 65_536, new StoredBudgetMark(100, 16 * GB)));
+        Assert.Null(HistoryLimitsText.BudgetLevel(stats, 0, new StoredBudgetMark(100, 16 * GB)));
     }
 
     /// <summary>
-    /// Every shipped language's notification fits what Windows shows: its title at every level, and its text at the longest
-    /// sizes a budget can have (the largest budget Settings allows, 1 TB, nearly full); and the "Now:" lines are worded.
+    /// Every shipped language's notification fits what a Windows 11 toast shows, with a little less room than measured (a
+    /// title of 2 lines of 35 characters, a text of 4 lines of 38; measured about 37 and 41, and the first wording lost its
+    /// last sentence): its title at every level within Windows' 63 characters too, and its text at the longest size a
+    /// budget can have (the largest budget Settings allows, 1 TB); and the "Now:" lines are worded.
     /// </summary>
     [Fact]
     public void EveryLanguage_FitsTheNotification()
@@ -146,14 +163,16 @@ public sealed class HistoryLimitsTextTests
                 UiText.Language = language.Tag;
                 foreach (int level in new[] { 90, 92, 94, 96, 98, 100 })
                 {
-                    var title = HistoryLimitsText.WarningTitle(level);
+                    var title = HistoryLimitsText.NotificationTitle(level);
                     Assert.True(title.Length <= HistoryLimitsText.MaxNotificationTitle, $"{language.Tag} title at {level}: {title.Length} characters");
+                    Assert.True(ToastLines(title, 35) <= 2, $"{language.Tag} title at {level}: {ToastLines(title, 35)} lines");
                 }
 
                 foreach (var warning in new[] { new HistoryBudgetWarning(98, 1_099_500_000_000, 1024 * GB), new HistoryBudgetWarning(100, 1023 * GB, 1024 * GB) })
                 {
                     var text = HistoryLimitsText.NotificationText(warning);
                     Assert.True(text.Length <= HistoryLimitsText.MaxNotificationText, $"{language.Tag} text at {warning.Level}: {text.Length} characters");
+                    Assert.True(ToastLines(text, 38) <= 4, $"{language.Tag} text at {warning.Level}: {ToastLines(text, 38)} lines");
                 }
 
                 Assert.False(string.IsNullOrWhiteSpace(HistoryLimitsText.WarningMessage(96)));
@@ -165,6 +184,67 @@ public sealed class HistoryLimitsTextTests
         {
             UiText.Language = previous;
         }
+    }
+
+    /// <summary>
+    /// How many lines a toast wraps a text into, greedily by words, at a width in characters: Chinese, Japanese and Korean
+    /// characters (and full-width signs) count two and may break anywhere, the way a toast breaks them.
+    /// </summary>
+    /// <param name="text">The text (direction marks and other format characters take no room).</param>
+    /// <param name="width">The line's width in narrow characters.</param>
+    /// <returns>The number of lines.</returns>
+    private static int ToastLines(string text, int width)
+    {
+        static int Width(char c) => char.GetUnicodeCategory(c) == UnicodeCategory.Format ? 0
+            : c is (>= '\u1100' and <= '\u115F') or (>= '\u2E80' and <= '\uA4CF') or (>= '\uAC00' and <= '\uD7A3')
+                or (>= '\uF900' and <= '\uFAFF') or (>= '\uFE30' and <= '\uFE4F') or (>= '\uFF00' and <= '\uFF60') ? 2 : 1;
+
+        // A wide character is a word of its own: the toast breaks between any two of them.
+        var words = new List<string>();
+        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var run = new System.Text.StringBuilder();
+            foreach (char c in word)
+            {
+                if (Width(c) == 2)
+                {
+                    if (run.Length > 0)
+                    {
+                        words.Add(run.ToString());
+                        run.Clear();
+                    }
+
+                    words.Add(c.ToString());
+                }
+                else
+                {
+                    run.Append(c);
+                }
+            }
+
+            if (run.Length > 0)
+            {
+                words.Add(run.ToString());
+            }
+        }
+
+        int lines = 0, used = 0;
+        foreach (var word in words)
+        {
+            int size = word.Sum(Width);
+            int needed = used == 0 ? size : used + 1 + size;
+            if (used > 0 && needed > width)
+            {
+                lines++;
+                used = size;
+            }
+            else
+            {
+                used = needed;
+            }
+        }
+
+        return used > 0 ? lines + 1 : lines;
     }
 
     /// <summary>Runs a check with invariant number formats, so the expected texts do not follow this PC's formats.</summary>
