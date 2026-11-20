@@ -176,7 +176,7 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
 
             if (anyChange)
             {
-                store.Prune(rulesProvider().Retention, time.GetUtcNow());
+                ApplyRetention(rulesProvider().Retention);
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
 
                 // The batch raised no event per entry: a tab that had nothing may have something now (the first import
@@ -435,7 +435,7 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
     public Task<int> PruneAsync() => EnqueueAsync(() =>
     {
-        int removed = store.Prune(rulesProvider().Retention, time.GetUtcNow());
+        int removed = ApplyRetention(rulesProvider().Retention);
         if (removed > 0)
         {
             Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
@@ -921,7 +921,7 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         if (result.IsNew)
         {
             Raise(new ClipChangedEventArgs(ClipChangeKind.Added, result.Entry));
-            if (store.Prune(rules.Retention, time.GetUtcNow()) > 0)
+            if (ApplyRetention(rules.Retention) > 0)
             {
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
             }

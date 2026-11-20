@@ -396,6 +396,10 @@ public sealed partial class AppController
         history.GroupsChanged += (_, _) => ui.TryEnqueue(() => GroupsChanged?.Invoke(this, EventArgs.Empty));
         history.ForgottenChanged += (_, _) => ui.TryEnqueue(() => ForgottenChanged?.Invoke(this, EventArgs.Empty));
 
+        // Before the start's prune below: the service keeps a warning's mark when it raises it, so a warning nobody listened
+        // to would never come again. Queued to the UI thread, it runs once this start is done and the tray icon exists.
+        history.BudgetWarning += (_, warning) => ui.TryEnqueue(() => ShowBudgetWarning(warning));
+
         // The Run and Snipping tabs show only with something in them: the worker tells when a tab got its first entry or
         // lost its last (also right after it starts, for a history that has some), through each tab's own status event.
         history.TabContentChanged += (_, tab) => ui.TryEnqueue(() =>
@@ -476,6 +480,7 @@ public sealed partial class AppController
         tray = RestartBridge?.TakeTray() ?? new TrayIcon(IconPath, TrayTooltip(settings.Current));
         tray.Reveal();
         tray.Invoked += (_, _) => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()));
+        tray.NotificationClicked += (_, tag) => ui.TryEnqueue(() => OnNotificationClicked(tag));
         tray.MenuProvider = BuildTrayMenu;
 
         // Updates from GitHub's releases (AppController.Updates.cs). After the tray icon: the outcome of an update that

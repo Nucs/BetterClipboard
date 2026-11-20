@@ -127,6 +127,9 @@ public sealed partial class SettingsWindow : Window
 
         // Which integration cards have anything to delete (one pass over the history, on the pool).
         _ = ViewModel.RefreshStoredAsync();
+
+        // What History's limits count now: its "Now:" lines, and the size budget's bar and warning (another pass, on the pool).
+        _ = ViewModel.RefreshRetentionAsync();
         AppWindow.Show(true);
         Activate();
         ForegroundHelper.Activate(hwnd);
@@ -134,6 +137,30 @@ public sealed partial class SettingsWindow : Window
         // Otherwise XAML auto-focuses the first control (the shortcut box), which shows its text
         // selected and invites accidental edits of the global shortcut.
         Scroller.Focus(FocusState.Programmatic);
+    }
+
+    /// <summary>
+    /// Brings the size budget's card into view, with its bar, its "Now:" line and its warning: the budget warning's
+    /// notification opens Settings here (CLAUDE.md §2.60, "Please visit settings and consider your next move"). A search that
+    /// hides the card is cleared first.
+    /// </summary>
+    /// <remarks>
+    /// Queued at low priority: right after <see cref="Present"/> the page may not be laid out yet (a window opened just now),
+    /// and the cleared search restores the page's old position first; scrolling before either would be undone.
+    /// </remarks>
+    public void ShowHistoryBudget()
+    {
+        if (!string.IsNullOrEmpty(SearchBox.Text))
+        {
+            // Through the box's own TextChanged, so the page comes back whole (EndSearch).
+            SearchBox.Text = string.Empty;
+        }
+
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            Scroller.UpdateLayout();
+            HistoryBudgetCard.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0.15, AnimationDesired = false });
+        });
     }
 
     /// <summary>

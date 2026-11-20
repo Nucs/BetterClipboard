@@ -77,7 +77,7 @@ public sealed partial class ClipHistoryService
 
             if (anyChange)
             {
-                store.Prune(rulesProvider().Retention, time.GetUtcNow());
+                ApplyRetention(rulesProvider().Retention);
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
 
                 // The batch raised no event per entry: a tab that had nothing may have something now.
@@ -191,7 +191,7 @@ public sealed partial class ClipHistoryService
         if (outcome.IsNewEntry)
         {
             Raise(new ClipChangedEventArgs(ClipChangeKind.Added, entry));
-            if (store.Prune(rules.Retention, time.GetUtcNow()) > 0)
+            if (ApplyRetention(rules.Retention) > 0)
             {
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
             }

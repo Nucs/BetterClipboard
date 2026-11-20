@@ -70,6 +70,13 @@ public sealed class SettingsStore
             loaded = new AppSettings();
         }
 
+        // A file of an older format is migrated in memory (AppSettings.Normalize); say so once per start, content-free, so a
+        // changed limit can be traced to the update that changed it.
+        if (AppSettings.DescribeMigration(loaded) is { } migration)
+        {
+            AppLog.Info(migration);
+        }
+
         Volatile.Write(ref current, loaded.Normalize());
         return Current;
     }

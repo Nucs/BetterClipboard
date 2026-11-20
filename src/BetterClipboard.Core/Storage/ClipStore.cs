@@ -32,6 +32,44 @@ public sealed record UpsertResult(ClipEntry Entry, bool IsNew, bool Changed);
 /// </param>
 public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0, long ForgottenCount = 0, long RunCount = 0, long HiddenCount = 0);
 
+/// <summary>Outcome of <see cref="ClipStore.PruneAndMeasure"/>.</summary>
+/// <param name="Removed">Entries removed by every limit together.</param>
+/// <param name="RemovedForSize">
+/// Of those, the entries the size budget removed: above 0 means the budget is full and the history no longer keeps
+/// everything (<see cref="Services.HistoryBudgetWarnings"/> warns of it).
+/// </param>
+/// <param name="CountedBytes">
+/// The payload of the unprotected entries left, which is what the size budget counts; <see langword="null"/> when the policy
+/// has no size budget (the sum is then never added up).
+/// </param>
+public sealed record PruneResult(int Removed, int RemovedForSize, long? CountedBytes);
+
+/// <summary>
+/// What each retention limit has to work with now (<see cref="ClipStore.GetRetentionStats"/>): Settings › History's "Now:"
+/// lines and <c>bclip status</c> show it so the user can pick limits that fit.
+/// </summary>
+/// <param name="CountedItems">Entries the item limit and the size budget count: neither pinned nor in a group.</param>
+/// <param name="CountedBytes">Their stored payload: what the size budget counts.</param>
+/// <param name="ProtectedItems">Pinned or grouped entries, which no limit counts or removes.</param>
+/// <param name="ProtectedBytes">Their stored payload.</param>
+/// <param name="OldestCountedUseUtc">
+/// The retention clock of the counted entry the age limit reaches first (its last use, or when it left its last group or
+/// was unpinned, whichever is later); <see langword="null"/> when no entry is counted.
+/// </param>
+/// <param name="LargestItemBytes">The largest entry's payload, pinned and grouped ones included; 0 for an empty history.</param>
+/// <param name="DatabaseBytes">
+/// The history database file's size: the payload plus the search index, thumbnails and SQLite's own pages (the write-ahead
+/// log beside it is not counted).
+/// </param>
+public sealed record RetentionStats(
+    long CountedItems,
+    long CountedBytes,
+    long ProtectedItems,
+    long ProtectedBytes,
+    DateTimeOffset? OldestCountedUseUtc,
+    long LargestItemBytes,
+    long DatabaseBytes);
+
 /// <summary>Outcome of <see cref="ClipStore.RemoveFromGroup"/>.</summary>
 /// <param name="Removed">The entry was in the group and is not anymore.</param>
 /// <param name="RetentionReset">
@@ -1085,7 +1123,10 @@ public sealed partial class ClipStore
             sql.Append(" WHERE ").AppendJoin(" AND ", predicates);
         }
 
-        sql.Append(query.PinnedFirst ? " ORDER BY c.is_pinned DESC, c.last_used_utc DESC, c.id DESC" : " ORDER BY c.last_used_utc DESC, c.id DESC");
+        sql.Append(
+            query.LargestFirst ? " ORDER BY c.size_bytes DESC, c.last_used_utc DESC, c.id DESC"
+            : query.PinnedFirst ? " ORDER BY c.is_pinned DESC, c.last_used_utc DESC, c.id DESC"
+            : " ORDER BY c.last_used_utc DESC, c.id DESC");
         sql.Append(" LIMIT $limit OFFSET $offset;");
         command.Parameters.AddWithValue("$limit", Math.Clamp(query.Limit, 1, 1000));
         command.Parameters.AddWithValue("$offset", Math.Max(0, query.Offset));
@@ -1378,16 +1419,35 @@ public sealed partial class ClipStore
     /// Age and order use <see cref="RetentionKey"/>: an entry that recently left its last group counts as
     /// fresh from that moment. Runs in one transaction; afterwards an incremental vacuum returns freed pages
     /// to the OS so the file actually shrinks (large images are the usual culprit). Also expires old tombstones.
+    /// <see cref="PruneAndMeasure"/> does the same and also says what the size budget counts afterwards.
     /// </remarks>
     /// <param name="policy">The limits.</param>
     /// <param name="now">Reference time for the age limit.</param>
     /// <returns>Number of entries removed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="policy"/> is <see langword="null"/>.</exception>
     /// <exception cref="SqliteException">The write failed.</exception>
-    public int Prune(RetentionPolicy policy, DateTimeOffset now)
+    public int Prune(RetentionPolicy policy, DateTimeOffset now) => PruneAndMeasure(policy, now).Removed;
+
+    /// <summary>
+    /// Applies retention like <see cref="Prune"/>, and returns, besides how many entries went, what the size budget counts
+    /// once they are gone: the payload of every unprotected entry. The history service watches that against the budget to
+    /// warn the user before the oldest items start to go (<see cref="Services.HistoryBudgetWarnings"/>).
+    /// </summary>
+    /// <remarks>
+    /// The count comes from the sum the size step adds up anyway, so it costs no second pass over the table; it is
+    /// therefore only known while the policy has a size budget (<see cref="RetentionPolicy.MaxTotalBytes"/> above 0).
+    /// </remarks>
+    /// <param name="policy">The limits.</param>
+    /// <param name="now">Reference time for the age limit.</param>
+    /// <returns>What was removed, and the unprotected payload left.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="policy"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public PruneResult PruneAndMeasure(RetentionPolicy policy, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(policy);
         int removed = 0;
+        int removedForSize = 0;
+        long? countedBytes = null;
         using var connection = Open();
         using (var transaction = connection.BeginTransaction())
         {
@@ -1408,7 +1468,9 @@ public sealed partial class ClipStore
 
             if (policy.MaxTotalBytes > 0)
             {
-                removed += PruneBySize(connection, policy.MaxTotalBytes);
+                removedForSize = PruneBySize(connection, policy.MaxTotalBytes, out long remaining);
+                removed += removedForSize;
+                countedBytes = remaining;
             }
 
             using (var tombs = Command(connection, "DELETE FROM deleted_hashes WHERE deleted_utc < $cutoff;"))
@@ -1426,7 +1488,100 @@ public sealed partial class ClipStore
             Execute(connection, "PRAGMA incremental_vacuum;");
         }
 
-        return removed;
+        return new PruneResult(removed, removedForSize, countedBytes);
+    }
+
+    /// <summary>
+    /// What each retention limit has to work with right now, for Settings › History's "Now:" lines and <c>bclip status</c>:
+    /// the entries the limits count (neither pinned nor grouped) and their payload, the protected ones, the entry the age
+    /// limit would reach first, the largest entry, and how large the database file is.
+    /// </summary>
+    /// <remarks>
+    /// One pass over <c>clips</c> (the same scan <see cref="GetStats(IReadOnlyList{ClipFilter})"/> makes, plus a lookup in
+    /// <c>clip_groups</c>' primary key per row), and the file size from SQLite's page count, so no file system call. Call it
+    /// when a window that shows it opens or the history changed, never per copy.
+    /// </remarks>
+    /// <returns>The numbers.</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public RetentionStats GetRetentionStats()
+    {
+        using var connection = Open();
+        long countedItems, countedBytes, protectedItems, protectedBytes, largest;
+        DateTimeOffset? oldest;
+        using (var command = Command(connection,
+            "SELECT coalesce(sum(u), 0), coalesce(sum(CASE WHEN u THEN size_bytes ELSE 0 END), 0), " +
+            "count(*) - coalesce(sum(u), 0), coalesce(sum(CASE WHEN u THEN 0 ELSE size_bytes END), 0), " +
+            "min(CASE WHEN u THEN k END), coalesce(max(size_bytes), 0) " +
+            $"FROM (SELECT size_bytes, {RetentionKey} AS k, ({Unprotected}) AS u FROM clips);"))
+        using (var reader = command.ExecuteReader())
+        {
+            reader.Read();
+            countedItems = reader.GetInt64(0);
+            countedBytes = reader.GetInt64(1);
+            protectedItems = reader.GetInt64(2);
+            protectedBytes = reader.GetInt64(3);
+            oldest = reader.IsDBNull(4) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4));
+            largest = reader.GetInt64(5);
+        }
+
+        // The main file only: the write-ahead log beside it is checkpointed back into it and stays small.
+        long pages = Convert.ToInt64(Scalar(connection, "PRAGMA page_count;"));
+        long pageSize = Convert.ToInt64(Scalar(connection, "PRAGMA page_size;"));
+        return new RetentionStats(countedItems, countedBytes, protectedItems, protectedBytes, oldest, largest, pages * pageSize);
+    }
+
+    /// <summary>
+    /// Deletes several entries in one transaction, each tombstoned like <see cref="Delete"/> (an import from Windows' history
+    /// cannot bring it back), then gives the freed pages back to the file system: <c>bclip delete</c> with several ids, the
+    /// way an AI assistant frees space when the size budget fills up.
+    /// </summary>
+    /// <remarks>
+    /// Pins and groups do not protect an entry here: naming it is the explicit request, as for <see cref="Delete"/>. The
+    /// incremental vacuum makes the file shrink at once, which a one-by-one delete leaves to the next prune.
+    /// </remarks>
+    /// <param name="ids">The entry ids; unknown ids and repeats are skipped.</param>
+    /// <param name="now">Tombstone timestamp (tombstones expire after 30 days).</param>
+    /// <returns>The ids that were deleted, in the order given.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="ids"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The write failed (nothing is deleted then).</exception>
+    public IReadOnlyList<long> DeleteMany(IReadOnlyList<long> ids, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var deleted = new List<long>(ids.Count);
+        if (ids.Count == 0)
+        {
+            return deleted;
+        }
+
+        using var connection = Open();
+        using (var transaction = connection.BeginTransaction())
+        {
+            using var delete = Command(connection, "DELETE FROM clips WHERE id = $id RETURNING content_hash;");
+            var idParameter = delete.Parameters.Add("$id", SqliteType.Integer);
+            using var tomb = Command(connection, "INSERT OR REPLACE INTO deleted_hashes (content_hash, deleted_utc) VALUES ($hash, $now);");
+            var hashParameter = tomb.Parameters.Add("$hash", SqliteType.Text);
+            tomb.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            foreach (long id in ids.Distinct())
+            {
+                idParameter.Value = id;
+                if (delete.ExecuteScalar() is string hash)
+                {
+                    hashParameter.Value = hash;
+                    tomb.ExecuteNonQuery();
+                    deleted.Add(id);
+                }
+            }
+
+            transaction.Commit();
+        }
+
+        if (deleted.Count > 0)
+        {
+            // Outside the transaction, as after a prune: the file shrinks now instead of keeping the pages for later copies.
+            Execute(connection, "PRAGMA incremental_vacuum;");
+        }
+
+        return deleted;
     }
 
     /// <summary>
@@ -2482,10 +2637,12 @@ public sealed partial class ClipStore
     /// <summary>Deletes the oldest unprotected rows (by <see cref="RetentionKey"/>) until their total size fits <paramref name="maxBytes"/>.</summary>
     /// <param name="connection">Open connection inside the caller's transaction.</param>
     /// <param name="maxBytes">The size cap.</param>
+    /// <param name="remaining">The unprotected payload left afterwards (what the size budget counts).</param>
     /// <returns>Rows deleted.</returns>
-    private static int PruneBySize(SqliteConnection connection, long maxBytes)
+    private static int PruneBySize(SqliteConnection connection, long maxBytes, out long remaining)
     {
         long total = Convert.ToInt64(Scalar(connection, $"SELECT coalesce(sum(size_bytes), 0) FROM clips WHERE {Unprotected};"));
+        remaining = total;
         if (total <= maxBytes)
         {
             return 0;
@@ -2510,6 +2667,8 @@ public sealed partial class ClipStore
             delete.ExecuteNonQuery();
         }
 
+        // What the loop above left: the victims' sizes are already taken off.
+        remaining = total;
         return victims.Count;
     }
 

@@ -77,22 +77,134 @@ public sealed class TrayIconTests
         }
     }
 
+    /// <summary>
+    /// A notification asked for while the icon is hidden (a silent restart's new process, before the hand-over) waits, and
+    /// goes out once the icon shows; it is never lost and never shown twice.
+    /// </summary>
+    [Fact]
+    public void Notification_WhileHidden_WaitsForTheIcon()
+    {
+        var shell = new FakeShell((_, _) => true);
+        using var tray = new TrayIcon(NoIcon, "BC-TEST", startHidden: true, shell.Notify, retryAddInterval: TimeSpan.FromMilliseconds(30));
+        tray.ShowNotification("BC-TEST title", "BC-TEST text", "bc-test");
+        Sync(tray, shell);
+        Assert.Equal(0, shell.Notifications());
+
+        tray.Reveal();
+        Assert.True(shell.WaitFor(_ => shell.Notifications() == 1));
+        Sync(tray, shell);
+        Assert.Equal(1, shell.Notifications());
+    }
+
+    /// <summary>
+    /// A click on a notification shown with a tag raises that tag once (the budget warning opens Settings with it); a
+    /// second click event for the same notification, and a click on one shown without a tag, raise nothing.
+    /// </summary>
+    [Fact]
+    public void NotificationClick_RaisesItsTagOnce()
+    {
+        var shell = new FakeShell((_, _) => true);
+        using var tray = new TrayIcon(NoIcon, "BC-TEST", startHidden: false, shell.Notify, retryAddInterval: TimeSpan.FromMilliseconds(30));
+        var clicks = new List<string>();
+        tray.NotificationClicked += (_, tag) =>
+        {
+            lock (clicks)
+            {
+                clicks.Add(tag);
+            }
+        };
+
+        int selects = 0;
+        tray.Invoked += (_, _) => Interlocked.Increment(ref selects);
+
+        // The notification is shown before the clicks are sent: Windows reports clicks only on a notification it shows.
+        tray.ShowNotification("BC-TEST title", "BC-TEST text", "history-budget");
+        Assert.True(shell.WaitFor(_ => shell.Notifications() == 1));
+        Click(tray);
+        Click(tray);
+        Barrier(tray, () => Volatile.Read(ref selects));
+        lock (clicks)
+        {
+            Assert.Equal(["history-budget"], clicks);
+        }
+
+        tray.ShowNotification("BC-TEST plain", "BC-TEST no tag");
+        Assert.True(shell.WaitFor(_ => shell.Notifications() == 2));
+        Click(tray);
+        Barrier(tray, () => Volatile.Read(ref selects));
+        lock (clicks)
+        {
+            Assert.Single(clicks);
+        }
+    }
+
+    /// <summary>Sends the tray window the click event Windows sends for a notification (version-4 callback).</summary>
+    /// <param name="tray">The tray icon.</param>
+    private static void Click(TrayIcon tray) =>
+        Assert.True(PostMessage(tray.HostWindow, TrayIcon.CallbackMessage, 0, (nint)TrayIcon.NotificationClickEvent));
+
+    /// <summary>
+    /// Waits until the tray window has handled every message posted to it before: a posted select event (a left click on
+    /// the icon, <c>NIN_SELECT</c> = <c>WM_USER</c>) comes after them in the window's queue, and its <c>Invoked</c> shows
+    /// it was handled. (Work queued with <c>Post</c> is no barrier for posted messages: one wake-up runs all of it.)
+    /// </summary>
+    /// <param name="tray">The tray icon.</param>
+    /// <param name="selects">How many select events were handled so far.</param>
+    private static void Barrier(TrayIcon tray, Func<int> selects)
+    {
+        int before = selects();
+        Assert.True(PostMessage(tray.HostWindow, TrayIcon.CallbackMessage, 0, 0x400));
+        Assert.True(SpinWait.SpinUntil(() => selects() > before, TimeSpan.FromSeconds(5)));
+    }
+
+    /// <summary>
+    /// Waits until the tray thread has run everything queued with <c>Post</c> before: a tooltip change is queued the same
+    /// way, so once Explorer's stand-in sees it, every earlier action ran.
+    /// </summary>
+    /// <param name="tray">The tray icon.</param>
+    /// <param name="shell">The stand-in.</param>
+    private static void Sync(TrayIcon tray, FakeShell shell)
+    {
+        int before = shell.Calls().Length;
+        tray.SetTooltip("BC-TEST sync " + before);
+        Assert.True(shell.WaitFor(calls => calls.Length > before));
+    }
+
     /// <summary>A stand-in for <c>Shell_NotifyIcon</c> that records each command and answers as the test says.</summary>
     /// <param name="answer">The answer to a command, given the command and how many times it came so far (this one included).</param>
     private sealed class FakeShell(Func<uint, int, bool> answer)
     {
+        /// <summary><c>NIF_INFO</c>: the call shows a notification.</summary>
+        private const uint InfoFlag = 0x10;
+
         private readonly List<uint> calls = [];
+        private int notifications;
 
         /// <summary>The <c>Shell_NotifyIcon</c> stand-in; runs on the tray thread.</summary>
         /// <param name="message">The <c>NIM_*</c> command.</param>
-        /// <param name="data">The icon data (not looked at).</param>
+        /// <param name="data">The icon data: only its flags are looked at (a notification's).</param>
         /// <returns>The test's answer.</returns>
         public bool Notify(uint message, NOTIFYICONDATAW data)
         {
             lock (calls)
             {
                 calls.Add(message);
+                if (message == Modify && (data.uFlags & InfoFlag) != 0)
+                {
+                    notifications++;
+                }
+
                 return answer(message, calls.Count(m => m == message));
+            }
+        }
+
+        /// <summary>How many notifications were shown so far.</summary>
+        /// <returns>The count.</returns>
+        public int Notifications()
+        {
+            lock (calls)
+            {
+                return notifications;
             }
         }
 

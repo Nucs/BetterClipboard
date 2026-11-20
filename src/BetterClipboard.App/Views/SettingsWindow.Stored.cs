@@ -47,10 +47,17 @@ public sealed partial class SettingsWindow
         }
     }
 
-    /// <summary>Two seconds passed since the last change: count again what the integrations stored.</summary>
+    /// <summary>
+    /// Two seconds passed since the last change: count again what the integrations stored, and what History's limits count
+    /// (its "Now:" lines and the size budget's bar and warning).
+    /// </summary>
     /// <param name="sender">The timer.</param>
     /// <param name="args">Nothing.</param>
-    private void StoredRefresh_Tick(DispatcherQueueTimer sender, object args) => _ = ViewModel.RefreshStoredAsync();
+    private void StoredRefresh_Tick(DispatcherQueueTimer sender, object args)
+    {
+        _ = ViewModel.RefreshStoredAsync();
+        _ = ViewModel.RefreshRetentionAsync();
+    }
 
     /// <summary>Asks for a recount of what the integrations stored, two seconds from now (see <see cref="storedRefresh"/>).</summary>
     private void ScheduleStoredRefresh()

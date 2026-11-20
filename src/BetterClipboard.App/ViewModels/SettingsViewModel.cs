@@ -530,6 +530,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             RefreshShellHistoryStatus();
             RefreshPromptsStatus();
             RefreshUpdateStatus();
+
+            // A changed limit rewords History's "Now:" lines at once, from the numbers read last (no I/O).
+            ApplyRetentionLines();
         }
         finally
         {

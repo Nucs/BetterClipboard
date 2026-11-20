@@ -496,7 +496,12 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
 
-                <!--  History  -->
+                <!--
+                  History. Each limit's card ends with a "Now:" line: what the limit counts at the moment (CLAUDE.md §2.60, the
+                  owner's request of 2026-11-20 "show in History in settings the current number for each configurable"). The
+                  lines are read on the pool when the window opens and two seconds after the history last changed
+                  (SettingsViewModel.Retention.cs).
+                -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='History'}" />
                 <controls:SettingsCard
                     Description="{loc:Tr Text='The oldest items are removed beyond this count; pinned items and items in groups are kept and not counted. 0 = unlimited. (Win+V keeps 25.)'}"
@@ -511,6 +516,13 @@
                         SmallChange="100"
                         SpinButtonPlacementMode="Compact"
                         Value="{x:Bind ViewModel.MaxItems, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.MaxItemsNow, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Items not used for this many days are removed, except pinned items and items in groups. 0 = keep forever.'}"
@@ -523,6 +535,13 @@
                         Minimum="0"
                         SpinButtonPlacementMode="Compact"
                         Value="{x:Bind ViewModel.RetentionDays, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.RetentionDaysNow, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Copies larger than this are not recorded. (Win+V caps at 4 MB.)'}"
@@ -535,9 +554,22 @@
                         Minimum="1"
                         SpinButtonPlacementMode="Compact"
                         Value="{x:Bind ViewModel.MaxItemSizeMB, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.MaxItemSizeNow, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <!--
+                  The size budget, 16 GB by default (2026-11-20). Its footer: a bar of how full it is (caution color from 90 %,
+                  error color once full), the "Now:" line, and from 90 % a warning with every way to keep the history; the
+                  budget warning's notification opens Settings here (SettingsWindow.ShowHistoryBudget).
+                -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Text='Total size budget for history outside pins and groups; the least recently used items go first. 0 = unlimited.'}"
+                    x:Name="HistoryBudgetCard"
+                    Description="{loc:Tr Text='Total size budget for history outside pins and groups. Once it is full, the least recently used items are removed to make room; from 90 % on, a notification says so. 0 = unlimited.'}"
                     Glyph="&#xE8B7;"
                     Header="{loc:Tr Text='History size budget (MB)'}"
                     Keywords="{loc:Tr Text='disk space, storage, quota, total size'}">
@@ -549,6 +581,28 @@
                         SmallChange="256"
                         SpinButtonPlacementMode="Compact"
                         Value="{x:Bind ViewModel.MaxTotalSizeMB, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="6">
+                            <ProgressBar
+                                AutomationProperties.Name="{loc:Tr Text='History size budget used'}"
+                                Maximum="100"
+                                ShowError="{x:Bind ViewModel.BudgetBarFull, Mode=OneWay}"
+                                ShowPaused="{x:Bind ViewModel.BudgetBarCaution, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.HasBudget, Mode=OneWay}"
+                                Value="{x:Bind ViewModel.BudgetPercentValue, Mode=OneWay}" />
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.MaxTotalSizeNow, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <InfoBar
+                                IsClosable="False"
+                                IsOpen="{x:Bind ViewModel.IsBudgetWarningShown, Mode=OneWay}"
+                                Message="{x:Bind ViewModel.BudgetWarningMessage, Mode=OneWay}"
+                                Severity="{x:Bind ViewModel.BudgetWarningSeverity, Mode=OneWay}"
+                                Title="{x:Bind ViewModel.BudgetWarningTitle, Mode=OneWay}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Screenshots and copied images, with thumbnails.'}"
@@ -569,6 +623,13 @@
                         Minimum="0"
                         SpinButtonPlacementMode="Compact"
                         Value="{x:Bind ViewModel.TempImageDays, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.TempImagesNow, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Files copied in Explorer (their paths — not the file contents).'}"

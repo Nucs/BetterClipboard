@@ -235,6 +235,45 @@ public static class TempImageFiles
         return deleted;
     }
 
+    /// <summary>
+    /// How many saved pictures the folder holds and their size together: Settings' "Now:" line under <em>Keep temporary
+    /// pictures for (days)</em>, so the user sees what the setting is about before changing it.
+    /// </summary>
+    /// <remarks>
+    /// Counts what <see cref="Clean"/> would count: every file but an interrupted save's <c>.part</c>. Read on the caller's
+    /// thread (a directory walk of a few small folders): call it off the UI thread.
+    /// </remarks>
+    /// <param name="root">The saved pictures' folder (<see cref="RootIn"/>); a missing or unreadable one holds nothing.</param>
+    /// <returns>The number of pictures and their bytes.</returns>
+    public static (int Count, long Bytes) Measure(string root)
+    {
+        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+        {
+            return (0, 0);
+        }
+
+        int count = 0;
+        long bytes = 0;
+        try
+        {
+            var options = new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true, AttributesToSkip = FileAttributes.ReparsePoint };
+            foreach (var file in new DirectoryInfo(root).EnumerateFiles("*", options))
+            {
+                if (!file.Name.EndsWith(".part", StringComparison.OrdinalIgnoreCase))
+                {
+                    count++;
+                    bytes += file.Length;
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Removed or locked while being read (the start's clean-up running): what was counted so far stands.
+        }
+
+        return (count, bytes);
+    }
+
     /// <summary>Whether a file holds exactly <paramref name="bytes"/> (length first, so a different picture costs no read).</summary>
     /// <param name="path">The file.</param>
     /// <param name="bytes">The bytes to compare with.</param>

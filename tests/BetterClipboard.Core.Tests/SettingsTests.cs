@@ -73,7 +73,7 @@ public sealed class SettingsTests : IDisposable
         var path = Path.Combine(temp.Path, "settings.json");
         File.WriteAllText(path, "{ not json");
         var store = new SettingsStore(path);
-        Assert.Equal(10_000, store.Load().MaxItems);
+        Assert.Equal(AppSettings.DefaultMaxTotalSizeMB, store.Load().MaxTotalSizeMB);
         Assert.False(File.Exists(path));
         Assert.Single(Directory.GetFiles(temp.Path, "settings.json.corrupt-*"));
     }

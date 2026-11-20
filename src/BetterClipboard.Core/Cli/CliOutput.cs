@@ -61,16 +61,20 @@ public static class CliOutput
     /// <param name="command">The command that produced it.</param>
     /// <param name="response">The response (<see cref="CliResponse.Ok"/> = <see langword="true"/>).</param>
     /// <param name="now">Clock for relative times.</param>
+    /// <param name="showSizes">
+    /// <c>list</c>/<c>search</c>: add each item's size after its kind (<c>--sort size</c> asks for it, so the largest items
+    /// read with their sizes); the default table keeps its columns for whoever reads it as before.
+    /// </param>
     /// <returns>The text to write to stdout (may be empty).</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    public static string Render(string command, CliResponse response, DateTimeOffset now)
+    public static string Render(string command, CliResponse response, DateTimeOffset now, bool showSizes = false)
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(response);
         switch (command)
         {
             case CliCommands.List or CliCommands.Search:
-                return RenderTable(response.Items ?? [], now);
+                return RenderTable(response.Items ?? [], now, showSizes);
             case CliCommands.Grep:
                 return RenderMatches(response.Items ?? []);
             case CliCommands.Get:
@@ -91,25 +95,29 @@ public static class CliOutput
     }
 
     /// <summary>
-    /// Renders a listing as aligned columns: id (* = pinned), kind (<c>path</c> for text that is nothing but
+    /// Renders a listing as aligned columns: id (* = pinned, + = in a group), kind (<c>path</c> for text that is nothing but
     /// paths, so a <c>-f files</c> listing says why a text item is in it), age, source, first line.
     /// </summary>
     /// <param name="items">Items.</param>
     /// <param name="now">Clock.</param>
+    /// <param name="showSizes">Add a size column after the kind (<c>--sort size</c>), its width taken from the preview's.</param>
     /// <returns>The table.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="items"/> is <see langword="null"/>.</exception>
-    public static string RenderTable(IReadOnlyList<CliItem> items, DateTimeOffset now)
+    public static string RenderTable(IReadOnlyList<CliItem> items, DateTimeOffset now, bool showSizes = false)
     {
         ArgumentNullException.ThrowIfNull(items);
         var builder = new StringBuilder();
         foreach (var item in items)
         {
-            var id = item.Id.ToString(CultureInfo.InvariantCulture) + (item.Pinned ? "*" : string.Empty);
+            // "*" pinned, "+" in a group: the two kinds of item the limits never count, so an assistant freeing space by
+            // size (bclip list --sort size) sees which deletions free room in the budget.
+            var id = item.Id.ToString(CultureInfo.InvariantCulture) + (item.Pinned ? "*" : string.Empty) + (item.Groups is > 0 ? "+" : string.Empty);
             // English whatever the interface language: scripts and AI agents read this table (localized: false).
             var age = RelativeTimeFormatter.Format(item.LastUsed, now, culture: CultureInfo.InvariantCulture, localized: false);
             var source = item.Source ?? string.Empty;
             var kind = item.Paths is > 0 ? "path" : item.Kind;
-            builder.Append(CultureInfo.InvariantCulture, $"{id,7}  {kind,-9} {Cut(age, 14),-14} {Cut(source, 18),-18} {OneLine(item.Preview, PreviewWidth)}").Append('\n');
+            var size = showSizes ? string.Create(CultureInfo.InvariantCulture, $"{FormatBytes(item.SizeBytes),9} ") : string.Empty;
+            builder.Append(CultureInfo.InvariantCulture, $"{id,7}  {kind,-9} {size}{Cut(age, 14),-14} {Cut(source, 18),-18} {OneLine(item.Preview, PreviewWidth - size.Length)}").Append('\n');
             if (item.Text is { } text)
             {
                 builder.Append(Indent(text)).Append('\n');
@@ -200,6 +208,11 @@ public static class CliOutput
             builder.Append(CultureInfo.InvariantCulture, $"Prompts:  {status.Prompts:N0} sent to Claude Code and Codex, archived (bclip prompts)\n");
         }
 
+        if (status.Budget is { } budget)
+        {
+            RenderBudget(builder, budget);
+        }
+
         if (status.Capture is { } c)
         {
             builder.Append(CultureInfo.InvariantCulture,
@@ -207,6 +220,42 @@ public static class CliOutput
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Appends the retention limits and what they hold to <c>status</c>'s lines: the budget used (the line an assistant
+    /// freeing space reads first), what the limits count and what they leave alone, the largest item, the file on disk.
+    /// </summary>
+    /// <param name="builder">The status text so far.</param>
+    /// <param name="budget">The limits and their numbers.</param>
+    private static void RenderBudget(StringBuilder builder, CliBudget budget)
+    {
+        if (budget.BudgetBytes is { } limit)
+        {
+            builder.Append(CultureInfo.InvariantCulture,
+                $"Budget:   {FormatBytes(budget.UsedBytes)} of {FormatBytes(limit)} used ({(budget.PercentUsed ?? 0):0.#} %); once full, the oldest items are removed to make room\n");
+        }
+        else
+        {
+            builder.Append(CultureInfo.InvariantCulture, $"Budget:   none ({FormatBytes(budget.UsedBytes)} stored)\n");
+        }
+
+        var count = budget.MaxItems is { } max
+            ? string.Create(CultureInfo.InvariantCulture, $"{budget.CountedItems:N0} of {max:N0} items")
+            : string.Create(CultureInfo.InvariantCulture, $"{budget.CountedItems:N0} item{(budget.CountedItems == 1 ? string.Empty : "s")}, no item limit");
+        var kept = budget.KeepDays is { } days
+            ? string.Create(CultureInfo.InvariantCulture, $"removed after {days:N0} day{(days == 1 ? string.Empty : "s")} unused")
+            : "kept until a limit removes them";
+        builder.Append(CultureInfo.InvariantCulture, $"Counted:  {count}, {kept}");
+        if (budget.ProtectedItems > 0)
+        {
+            builder.Append(CultureInfo.InvariantCulture,
+                $"; {budget.ProtectedItems:N0} pinned or grouped item{(budget.ProtectedItems == 1 ? string.Empty : "s")} ({FormatBytes(budget.ProtectedBytes)}) not counted");
+        }
+
+        builder.Append('\n')
+            .Append(CultureInfo.InvariantCulture, $"Largest:  {FormatBytes(budget.LargestItemBytes)} (bclip list --sort size)\n")
+            .Append(CultureInfo.InvariantCulture, $"On disk:  {FormatBytes(budget.DatabaseBytes)} (the history file, with its search index and thumbnails)\n");
     }
 
     /// <summary>Formats a byte count.</summary>

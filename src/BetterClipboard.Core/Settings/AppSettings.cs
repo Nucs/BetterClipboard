@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace BetterClipboard.Core.Settings;
@@ -183,8 +184,49 @@ public sealed record AppSettings
     /// </summary>
     public const string DefaultTab = nameof(Storage.ClipFilter.All);
 
-    /// <summary>Settings file format version, for future migrations.</summary>
-    public int SchemaVersion { get; init; } = 1;
+    /// <summary>
+    /// The settings file format this build writes (<see cref="SchemaVersion"/>): 2 since 2026-11-20, when the retention
+    /// defaults changed and files from before move to the new ones once (<see cref="Normalize"/>).
+    /// </summary>
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>
+    /// How many items history keeps apart from pinned and grouped ones until the user picks a number
+    /// (<see cref="MaxItems"/>): no limit. The size budget (<see cref="DefaultMaxTotalSizeMB"/>) is what keeps the history
+    /// in bounds; the owner's choice of 2026-11-20 ("set maximum items to 0 (unlimited) by default").
+    /// </summary>
+    public const int DefaultMaxItems = 0;
+
+    /// <summary>
+    /// The size budget for history apart from pinned and grouped entries until the user picks one
+    /// (<see cref="MaxTotalSizeMB"/>): 16 GB, the owner's choice of 2026-11-20. From 90 % of it the user is warned
+    /// (<see cref="Services.HistoryBudgetWarnings"/>); once it is full the oldest items are removed to make room.
+    /// </summary>
+    public const int DefaultMaxTotalSizeMB = 16_384;
+
+    /// <summary>
+    /// <see cref="MaxItems"/>' default in settings files of format 1 (2026-09-25 to 2026-11-20). A format-1 file that still
+    /// holds it is moved to <see cref="DefaultMaxItems"/> when it is read (<see cref="Normalize"/>).
+    /// </summary>
+    public const int SchemaVersion1DefaultMaxItems = 10_000;
+
+    /// <summary>
+    /// <see cref="MaxTotalSizeMB"/>' default in settings files of format 1 (4 GB). A format-1 file that still holds it is
+    /// moved to <see cref="DefaultMaxTotalSizeMB"/> when it is read (<see cref="Normalize"/>).
+    /// </summary>
+    public const int SchemaVersion1DefaultMaxTotalSizeMB = 4096;
+
+    /// <summary>
+    /// Settings file format version. Written as <see cref="CurrentSchemaVersion"/>; a file with a lower one is migrated in
+    /// <see cref="Normalize"/>.
+    /// </summary>
+    /// <remarks>
+    /// Every version writes this member, so a file that lacks it was written by hand (an administrator's pre-seeded file):
+    /// it reads as the current format and is never migrated. Footgun: a version from before format 2 writes 1 again when it
+    /// saves the file, so going back to such a version and forward again migrates the file a second time (a limit of
+    /// exactly 10,000 items or 4,096 MB set there becomes the new default again).
+    /// </remarks>
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
     /// <summary>
     /// The main global shortcut that opens the flyout, e.g. <c>Win+V</c> or <c>Ctrl+Shift+V</c>: the first of
@@ -242,8 +284,15 @@ public sealed record AppSettings
     /// </summary>
     public bool UseKeyboardHookFallback { get; init; } = true;
 
-    /// <summary>Maximum entries kept apart from pinned and grouped ones (most recently used win); 0 = unlimited.</summary>
-    public int MaxItems { get; init; } = 10_000;
+    /// <summary>
+    /// Maximum entries kept apart from pinned and grouped ones (most recently used win); 0 = unlimited, the default since
+    /// 2026-11-20 (<see cref="DefaultMaxItems"/>; 10,000 before, and files that still held it were moved to unlimited).
+    /// </summary>
+    /// <remarks>
+    /// Every released version reads 0 as unlimited (the clamp has allowed it since the first one), so going back to an older
+    /// version keeps the history whole.
+    /// </remarks>
+    public int MaxItems { get; init; } = DefaultMaxItems;
 
     /// <summary>Drop entries not used for this many days (pinned and grouped ones never); 0 = keep forever.</summary>
     public int RetentionDays { get; init; }
@@ -251,8 +300,17 @@ public sealed record AppSettings
     /// <summary>Largest single copy recorded, in MB (Win+V caps at 4 MB).</summary>
     public int MaxItemSizeMB { get; init; } = 64;
 
-    /// <summary>Total payload budget for history apart from pinned and grouped entries, in MB; 0 = unlimited.</summary>
-    public int MaxTotalSizeMB { get; init; } = 4096;
+    /// <summary>
+    /// Total payload budget for history apart from pinned and grouped entries, in MB; 0 = unlimited. 16 GB by default since
+    /// 2026-11-20 (<see cref="DefaultMaxTotalSizeMB"/>; 4 GB before, and files that still held it were moved to 16 GB).
+    /// </summary>
+    /// <remarks>
+    /// It counts the stored payload (what was copied), not the database file, whose search index and thumbnails add to it:
+    /// Settings › History shows both. Once the payload passes the budget, retention removes the least recently used items
+    /// until it fits (<see cref="Storage.ClipStore.Prune"/>), and from 90 % on the user is warned
+    /// (<see cref="Services.HistoryBudgetWarnings"/>). Every released version accepts 16,384 (the clamp allows up to 1 TB).
+    /// </remarks>
+    public int MaxTotalSizeMB { get; init; } = DefaultMaxTotalSizeMB;
 
     /// <summary>Record image-only copies (screenshots etc.).</summary>
     public bool CaptureImages { get; init; } = true;
@@ -1051,17 +1109,69 @@ public sealed record AppSettings
         string.Concat((text ?? string.Empty).Where(c => !char.IsWhiteSpace(c)));
 
     /// <summary>
-    /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
-    /// into a broken state (e.g. a negative item cap), and merges catalogued password managers the
-    /// settings have not seen yet into <see cref="IgnoredApps"/> (see <see cref="SeededIgnoredApps"/>).
+    /// Words what <see cref="Normalize"/> changes when it reads a file of an older format, for the log line
+    /// <see cref="SettingsStore.Load"/> writes: content-free, the retention limits only, in English with invariant numbers
+    /// whatever Windows' formats (logs stay English, CLAUDE.md §2.37).
     /// </summary>
     /// <remarks>
+    /// The migration happens in memory at every start until the file is saved, so the line repeats until then (most uses of
+    /// the panel save the file: the remembered tab, a resize).
+    /// </remarks>
+    /// <param name="loaded">The settings as read from the file, before <see cref="Normalize"/>.</param>
+    /// <returns>The sentence, or <see langword="null"/> when the file is of the current format or the migration changes nothing in it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="loaded"/> is <see langword="null"/>.</exception>
+    public static string? DescribeMigration(AppSettings loaded)
+    {
+        ArgumentNullException.ThrowIfNull(loaded);
+        if (loaded.SchemaVersion >= CurrentSchemaVersion)
+        {
+            return null;
+        }
+
+        var changes = new List<string>(2);
+        if (loaded.MaxItems == SchemaVersion1DefaultMaxItems)
+        {
+            changes.Add(string.Create(CultureInfo.InvariantCulture, $"the item limit {SchemaVersion1DefaultMaxItems:N0} (format {loaded.SchemaVersion}'s default) is now unlimited"));
+        }
+
+        if (loaded.MaxTotalSizeMB == SchemaVersion1DefaultMaxTotalSizeMB)
+        {
+            changes.Add(string.Create(CultureInfo.InvariantCulture, $"the history size budget {SchemaVersion1DefaultMaxTotalSizeMB:N0} MB (format {loaded.SchemaVersion}'s default) is now {DefaultMaxTotalSizeMB:N0} MB"));
+        }
+
+        return changes.Count == 0
+            ? null
+            : string.Create(CultureInfo.InvariantCulture, $"Settings of format {loaded.SchemaVersion} read as format {CurrentSchemaVersion}: {string.Join(", and ", changes)}.");
+    }
+
+    /// <summary>
+    /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
+    /// into a broken state (e.g. a negative item cap), merges catalogued password managers the
+    /// settings have not seen yet into <see cref="IgnoredApps"/> (see <see cref="SeededIgnoredApps"/>), and migrates a file
+    /// of an older format (<see cref="SchemaVersion"/>) to the current one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
     /// Runs on every load and save, so everything here is idempotent. The catalog merge happens in memory
     /// on load and reaches the file with the next save — until then it simply repeats on each start.
+    /// </para>
+    /// <para>
+    /// <b>Format 1 → 2</b> (2026-11-20, the owner's request "set maximum items to 0 (unlimited) by default and for all users
+    /// that had previous default"): a file whose <see cref="MaxItems"/> is still format 1's default (10,000) gets no item
+    /// limit, and one whose <see cref="MaxTotalSizeMB"/> is still format 1's default (4,096 MB) gets the 16 GB budget. A value
+    /// the user picked stays. Like the catalog merge, this happens in memory at every start until the file is saved, which
+    /// gives the same result each time; <see cref="DescribeMigration"/> words it for the log.
+    /// </para>
     /// </remarks>
     /// <returns>A normalized copy.</returns>
     public AppSettings Normalize()
     {
+        // Only a file of format 1 still holding format 1's defaults moves; every later save writes the current format, so a
+        // value picked afterwards (10,000 included) is never touched again.
+        bool formatOne = SchemaVersion < CurrentSchemaVersion;
+        int maxItems = formatOne && MaxItems == SchemaVersion1DefaultMaxItems ? DefaultMaxItems : MaxItems;
+        int maxTotalSizeMB = formatOne && MaxTotalSizeMB == SchemaVersion1DefaultMaxTotalSizeMB ? DefaultMaxTotalSizeMB : MaxTotalSizeMB;
+
         var ignored = (IgnoredApps ?? [])
             .Select(a => a?.Trim() ?? string.Empty)
             .Where(a => a.Length > 0)
@@ -1096,7 +1206,7 @@ public sealed record AppSettings
 
         var normalized = this with
         {
-            SchemaVersion = 1,
+            SchemaVersion = CurrentSchemaVersion,
             OpenHotkey = primary,
             ExtraOpenHotkeys = extras.ToArray(),
             HotkeyHistory = NormalizeHotkeyHistory([primary, .. extras], HotkeyHistory),
@@ -1119,10 +1229,10 @@ public sealed record AppSettings
 
             // A hand-edited level outside 0..100 still gives a panel with glass.
             BackgroundTransparency = Presentation.PanelBackdrop.Normalize(BackgroundTransparency),
-            MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
+            MaxItems = Math.Clamp(maxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
-            MaxTotalSizeMB = Math.Clamp(MaxTotalSizeMB, 0, 1_048_576),
+            MaxTotalSizeMB = Math.Clamp(maxTotalSizeMB, 0, 1_048_576),
             TempImageDays = Math.Clamp(TempImageDays, 0, Content.TempImageFiles.MaxKeepDays),
 
             // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
