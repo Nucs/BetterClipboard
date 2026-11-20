@@ -185,6 +185,101 @@ public sealed class TextViewRenderingTests
     }
 
     /// <summary>
+    /// The owner's case (2026-11-20): a transcript quotes every message, tables included. A quoted table is drawn as the
+    /// aligned grid a table at the margin is, one level right (18 DIPs are 270 twips) and in the quote's secondary color;
+    /// a table in a quote in a quote two levels right; a quoted heading and list are drawn as such, no bar is left as text,
+    /// and a fence inside the quote is still colored as the language it names.
+    /// </summary>
+    [Fact]
+    public void Markdown_DrawsTablesAndBlocksInsideQuotes()
+    {
+        const string Transcript = "**● BC-TEST**\n> ## Fills\n> - one\n>\n> | A | Bee |\n> |---|---|\n> | 1 | 2 |\n>\n> > | X |\n> > |---|\n> > | 9 |\n>\n> ```xml\n> <a>1</a>\n> ```";
+        var token = TestContext.Current.CancellationToken;
+        var view = TextViewRendering.Create(TextViewSource.Create(Transcript, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+        var rtf = view.ToRtf(SyntaxPalette.Dark, Style, token);
+        var text = RtfText(rtf);
+        Assert.Equal("● BC-TEST\nFills\n•\tone\nA  Bee\n─  ───\n1  2\nX\n─\n9\n<a>1</a>", text);
+
+        // The header row of each table, at its quote level, in the palette's secondary color like the rest of the quote.
+        int secondary = Array.IndexOf(ColorTable(rtf), SyntaxPalette.Dark.Secondary) + 1;
+        Assert.True(secondary > 0, "The palette's secondary color is in the color table.");
+        Assert.Contains($@"\pard\li270\sa0\f1\fs20\cf{secondary}\b ", rtf, StringComparison.Ordinal);
+        Assert.Contains($@"\pard\li540\sa0\f1\fs20\cf{secondary}\b ", rtf, StringComparison.Ordinal);
+
+        var quote = Assert.IsType<MarkdownQuote>(view.Blocks[1]);
+        var code = quote.Blocks.OfType<MarkdownCodeBlock>().Single();
+        Assert.Contains(view.TokensOf(code), t => t.Kind == TokenKind.Tag);
+    }
+
+    /// <summary>
+    /// A code block that holds no code — a bare fence whose code reads as Markdown, or one its fence names text — has its
+    /// tables drawn and the rest of it stays code; a fence of code in a programming language keeps its table-shaped lines
+    /// as the code they are.
+    /// </summary>
+    [Fact]
+    public void Markdown_DrawsTablesInsideCodeBlocksWithoutCode()
+    {
+        var token = TestContext.Current.CancellationToken;
+        TextViewRendering Formatted(string markdown) =>
+            TextViewRendering.Create(TextViewSource.Create(markdown, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+
+        var output = Formatted("```\nBC-TEST report\n| A | Bee |\n|---|---|\n| 1 | 2 |\nend of report\n```");
+        Assert.Equal("BC-TEST report\nA  Bee\n─  ───\n1  2\nend of report", RtfText(output.ToRtf(SyntaxPalette.Dark, Style, token)));
+        Assert.Equal(["CodeBlock", "Table", "CodeBlock"], output.Blocks.Select(block => block.GetType().Name.Replace("Markdown", string.Empty, StringComparison.Ordinal)));
+
+        var named = Formatted("> ```text\n> | A |\n> |---|\n> | 1 |\n> ```");
+        Assert.Equal("A\n─\n1", RtfText(named.ToRtf(SyntaxPalette.Dark, Style, token)));
+
+        const string Python = "TABLE = \"\"\"\n| A | Bee |\n|---|---|\n| 1 | 2 |\n\"\"\"";
+        var code = Formatted("```python\n" + Python + "\n```");
+        Assert.Equal(Python, RtfText(code.ToRtf(SyntaxPalette.Dark, Style, token)));
+        Assert.NotEmpty(code.TokensOf(Assert.IsType<MarkdownCodeBlock>(Assert.Single(code.Blocks))));
+    }
+
+    /// <summary>
+    /// A numbered item's marker column has room for its number and a character after it (the QA of 2026-11-20 found "1."
+    /// filling the 16-DIP column in the monospace font, its text touching it): "1." gets 3 characters of 0.6 em at 13 DIPs
+    /// (23.4 DIPs, 351 twips), "10." 4 (468 twips), and a bullet keeps 16 DIPs (240 twips).
+    /// </summary>
+    [Fact]
+    public void Markdown_NumberedMarkersKeepAGap()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var view = TextViewRendering.Create(TextViewSource.Create("1. one\n10. ten\n\n- bullet", cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+        var rtf = view.ToRtf(SyntaxPalette.Dark, Style, token);
+        Assert.Contains(@"\pard\fi-351\li351\tx351", rtf, StringComparison.Ordinal);
+        Assert.Contains(@"\pard\fi-468\li468\tx468", rtf, StringComparison.Ordinal);
+        Assert.Contains(@"\pard\fi-240\li240\tx240", rtf, StringComparison.Ordinal);
+        Assert.Equal("1.\tone\n10.\tten\n•\tbullet", RtfText(rtf));
+    }
+
+    /// <summary>
+    /// Random text made of quote marks, table lines, fences, list markers and indentation draws without failing, nested as
+    /// deep as it goes (1,000 documents, a fixed seed), and every bar the viewer keeps is one of the source's.
+    /// </summary>
+    [Fact]
+    public void Markdown_RandomNestedMarkupDraws()
+    {
+        string[] pieces = ["> ", ">", "> > ", "| a ", "| b |", "|---|", "|---|---|", "```", "~~~", "- ", "1. ", "  ", "    ", "\t", "\n", "\n", "\n\n", "# ", "text", "**", "`", "BC"];
+        var random = new Random(20261120);
+        var token = TestContext.Current.CancellationToken;
+        for (int round = 0; round < 1000; round++)
+        {
+            var source = new StringBuilder();
+            int count = random.Next(1, 80);
+            for (int i = 0; i < count; i++)
+            {
+                source.Append(pieces[random.Next(pieces.Length)]);
+            }
+
+            var markdown = source.ToString();
+            var view = TextViewRendering.Create(TextViewSource.Create(markdown, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+            var text = RtfText(view.ToRtf(SyntaxPalette.Light, Style, token));
+            Assert.True(text.Count(c => c == '|') <= markdown.Count(c => c == '|'), markdown);
+        }
+    }
+
+    /// <summary>
     /// The owner's case: an XML prompt is shown as XML, colored; it is already tidy, so there is no formatted alternative
     /// and the switch can hide. Minified XML re-indents, and as copied shows it as it was.
     /// </summary>
@@ -549,6 +644,20 @@ public sealed class TextViewRenderingTests
         { "kubectl", "NAME      READY   STATUS    RESTARTS   AGE\nweb-1     1/1     Running   0          5d" },
         { "paths ending in a backslash", "Copied to:\nC:\\BC-TEST\\out\\\nD:\\BC-TEST\\backup\\" },
     };
+
+    /// <summary>The colors of an RTF document's color table, in table order (the first is <c>\cf1</c>), as 0xRRGGBB.</summary>
+    /// <param name="rtf">The document.</param>
+    /// <returns>The colors.</returns>
+    private static uint[] ColorTable(string rtf)
+    {
+        int start = rtf.IndexOf(@"{\colortbl", StringComparison.Ordinal);
+        int end = rtf.IndexOf('}', start);
+        return System.Text.RegularExpressions.Regex.Matches(rtf[start..end], @"\\red(\d+)\\green(\d+)\\blue(\d+);")
+            .Select(match => (uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) << 16) |
+                             (uint.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture) << 8) |
+                             uint.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture))
+            .ToArray();
+    }
 
     /// <summary>The faces of an RTF document's font table, in table order.</summary>
     /// <param name="rtf">The document.</param>

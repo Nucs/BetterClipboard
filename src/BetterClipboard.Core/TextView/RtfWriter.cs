@@ -51,7 +51,7 @@ public sealed record TextViewStyle(string ProseFont, string CodeFont, double Pro
 
 /// <summary>
 /// Writes what the text viewer shows as one RTF document for WinUI's <c>RichEditBox</c>: colored code, or Markdown drawn as
-/// a document (headings, lists, quotes, code blocks, tables, rules, emphasis and links). RTF gets colored text into
+/// a document (headings, lists, quotes and what they hold, code blocks, tables, rules, emphasis and links). RTF gets colored text into
 /// RichEdit in one call (one parse in native code), and one document lets a person select across all of it. Its cost still
 /// grows with the text, about 7 µs per character in the QA desktop (2026-11-13), so the viewer writes a long code text one
 /// page at a time (<see cref="TextViewRendering.Pages"/>).
@@ -79,8 +79,15 @@ public static class RtfWriter
     /// <summary>How far one list or quote level indents, in DIPs.</summary>
     private const double IndentDip = 18;
 
-    /// <summary>The width of a list item's marker column (the hanging indent), in DIPs.</summary>
+    /// <summary>The width of a list item's marker column (the hanging indent), in DIPs; wider for a long numbered marker (<see cref="MarkerWidth"/>).</summary>
     private const double MarkerDip = 16;
+
+    /// <summary>
+    /// The advance of one character of the prose font, in ems: about Cascadia Mono's (0.59) and over Consolas' (0.55), the
+    /// monospace fonts documents are drawn in (<see cref="TextViewStyle.Default"/>); a proportional font's digits are
+    /// narrower, so the estimate errs on the side of room.
+    /// </summary>
+    private const double CharWidthEm = 0.6;
 
     /// <summary>The widest a table column is laid out, in characters; longer cells overflow their column.</summary>
     private const int MaxColumnChars = 48;
@@ -111,16 +118,22 @@ public static class RtfWriter
 
     /// <summary>
     /// Writes a Markdown document: each block drawn as Markdown draws it, code blocks colored as the language
-    /// <paramref name="codeTokens"/> says.
+    /// <paramref name="codeTokens"/> says, and a block quote's blocks one level further right in the quote's look.
     /// </summary>
     /// <param name="blocks">The parsed blocks (<see cref="MarkdownParser.Parse(string?, MarkdownParseOptions)"/>).</param>
-    /// <param name="codeTokens">The tokens of a code block's code (empty for none), by block.</param>
+    /// <param name="codeTokens">The tokens of a code block's code (empty for none), by block, also for code inside a quote.</param>
     /// <param name="palette">The theme's colors.</param>
     /// <param name="style">Fonts and sizes.</param>
     /// <param name="cancellationToken">Stops a long run.</param>
     /// <returns>The RTF document.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    /// <remarks>
+    /// <b>The quote's look</b> (2026-11-20, when quotes began to hold blocks of their own). RichEdit draws no bar beside a
+    /// paragraph, so a quote is told by its indentation and its color: every block inside it is moved right one level per
+    /// quote (<see cref="IndentDip"/>) and drawn in the secondary color, its paragraphs and list items in italics as a
+    /// quote's text always was, while headings, tables and code keep their own look. Code keeps its syntax colors.
+    /// </remarks>
     public static string Markdown(IReadOnlyList<MarkdownBlock> blocks, Func<MarkdownCodeBlock, IReadOnlyList<SyntaxToken>> codeTokens, SyntaxPalette palette, TextViewStyle style, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(blocks);
@@ -129,20 +142,71 @@ public static class RtfWriter
         ArgumentNullException.ThrowIfNull(style);
 
         var rtf = new RtfBuilder(palette, style, 4096);
+        bool first = true;
+        WriteBlocks(rtf, blocks, offset: 0, quoted: false, codeTokens, palette, style, ref first, cancellationToken);
+        return rtf.Finish();
+    }
+
+    /// <summary>
+    /// Writes blocks of a Markdown document in order, a block quote's by recursion (its blocks one level further right).
+    /// </summary>
+    /// <param name="rtf">The document being written.</param>
+    /// <param name="blocks">The blocks: the document's, or a quote's own.</param>
+    /// <param name="offset">
+    /// How many levels the blocks are moved right of their own indentation: one per quote they are inside, plus the list
+    /// levels of a quote that sits inside a list item.
+    /// </param>
+    /// <param name="quoted">Whether the blocks are inside a quote, so drawn in the quote's look (see <see cref="Markdown"/>).</param>
+    /// <param name="codeTokens">The tokens of a code block's code, by block.</param>
+    /// <param name="palette">The theme's colors.</param>
+    /// <param name="style">Fonts and sizes.</param>
+    /// <param name="first">
+    /// Whether nothing was written yet in the whole document; cleared by the first block. Each block after the first starts
+    /// with the paragraph break that ends the one before, so the document never ends with an empty paragraph, wherever its
+    /// last block is nested.
+    /// </param>
+    /// <param name="cancellationToken">Stops a long run.</param>
+    /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>
+    private static void WriteBlocks(RtfBuilder rtf, IReadOnlyList<MarkdownBlock> blocks, int offset, bool quoted, Func<MarkdownCodeBlock, IReadOnlyList<SyntaxToken>> codeTokens, SyntaxPalette palette, TextViewStyle style, ref bool first, CancellationToken cancellationToken)
+    {
         int prose = HalfPoints(style.ProseSize);
-        int proseColor = rtf.ColorIndex(palette.Prose);
+        int textColor = rtf.ColorIndex(quoted ? palette.Secondary : palette.Prose);
         int gap = Twips(ParagraphGapDip);
-        for (int index = 0; index < blocks.Count; index++)
+
+        // A quote's paragraphs and list items are italic; the closing control word ends the italics with their block, since
+        // a new paragraph (\pard) resets the paragraph's layout but not its characters' style.
+        string italic = quoted ? @"\i" : string.Empty;
+        string upright = quoted ? @"\i0" : string.Empty;
+        foreach (var block in blocks)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            bool last = index == blocks.Count - 1;
-            switch (blocks[index])
+            if (block is MarkdownQuote quote)
+            {
+                // Its blocks one level right of the quote's own place (a quote inside a list item sits under the item's text).
+                WriteBlocks(rtf, quote.Blocks, offset + quote.Indent + 1, quoted: true, codeTokens, palette, style, ref first, cancellationToken);
+                continue;
+            }
+
+            if (block is not (MarkdownHeading or MarkdownListItem or MarkdownCodeBlock or MarkdownTable or MarkdownRule or MarkdownParagraph))
+            {
+                // A block kind added to the parser later is left out rather than written half.
+                continue;
+            }
+
+            bool firstOfDocument = first;
+            if (!first)
+            {
+                rtf.Raw("\\par\n");
+            }
+
+            first = false;
+            switch (block)
             {
                 case MarkdownHeading heading:
                 {
                     // Larger and bold, with room above it: a heading belongs to what follows it.
                     double factor = heading.Level switch { 1 => 1.5, 2 => 1.3, 3 => 1.15, _ => 1.0 };
-                    rtf.Raw($@"\pard\sb{(index == 0 ? 0 : Twips(6))}\sa{Twips(4)}\f0\fs{HalfPoints(style.ProseSize * factor)}\cf{proseColor}\b ");
+                    rtf.Raw($@"\pard{LeftIndent(offset)}\sb{(firstOfDocument ? 0 : Twips(6))}\sa{Twips(4)}\f0\fs{HalfPoints(style.ProseSize * factor)}\cf{textColor}\b ");
                     rtf.Inlines(heading.Inlines);
                     rtf.Raw(@"\b0");
                     break;
@@ -151,8 +215,9 @@ public static class RtfWriter
                 case MarkdownListItem item:
                 {
                     // A hanging indent: the marker in its own column, wrapped lines under the item's text.
-                    int left = Twips((item.Depth * IndentDip) + MarkerDip);
-                    rtf.Raw($@"\pard\fi-{Twips(MarkerDip)}\li{left}\tx{left}\sa{Twips(3)}\f0\fs{prose}\cf{proseColor} ");
+                    double marker = MarkerWidth(item.Marker, style);
+                    int left = Twips(((item.Depth + offset) * IndentDip) + marker);
+                    rtf.Raw($@"\pard\fi-{Twips(marker)}\li{left}\tx{left}\sa{Twips(3)}\f0\fs{prose}\cf{textColor}{italic} ");
                     if (item.Marker is MarkdownParser.OpenTask or MarkdownParser.DoneTask)
                     {
                         rtf.Raw(@"{\f2 ");
@@ -166,45 +231,55 @@ public static class RtfWriter
 
                     rtf.Raw(@"\tab ");
                     rtf.Inlines(item.Inlines);
+                    rtf.Raw(upright);
                     break;
                 }
 
                 case MarkdownCodeBlock code:
-                    WriteCodeBlock(rtf, code, codeTokens(code), palette, style, gap, cancellationToken);
+                    WriteCodeBlock(rtf, code, codeTokens(code), palette, style, gap, offset, cancellationToken);
                     break;
 
                 case MarkdownTable table:
-                    WriteTable(rtf, table, palette, style, gap);
+                    WriteTable(rtf, table, palette, style, gap, offset, quoted);
                     break;
 
                 case MarkdownRule:
-                    rtf.Raw($@"\pard\sa{gap}\f0\fs{prose}\cf{rtf.ColorIndex(palette.Secondary)} ");
+                    rtf.Raw($@"\pard{LeftIndent(offset)}\sa{gap}\f0\fs{prose}\cf{rtf.ColorIndex(palette.Secondary)} ");
                     rtf.Text(new string('─', 32));
                     break;
 
-                case MarkdownParagraph { IsQuote: true } quote:
-                    rtf.Raw($@"\pard\li{Twips(IndentDip)}\sa{gap}\f0\fs{prose}\cf{rtf.ColorIndex(palette.Secondary)}\i ");
-                    rtf.Inlines(quote.Inlines);
-                    rtf.Raw(@"\i0");
-                    break;
-
                 case MarkdownParagraph paragraph:
-                    rtf.Raw($@"\pard\li{Twips(paragraph.Indent * IndentDip)}\sa{gap}\f0\fs{prose}\cf{proseColor} ");
+                    rtf.Raw($@"\pard\li{Twips((paragraph.Indent + offset) * IndentDip)}\sa{gap}\f0\fs{prose}\cf{textColor}{italic} ");
                     rtf.Inlines(paragraph.Inlines);
+                    rtf.Raw(upright);
                     break;
-
-                default:
-                    continue;
-            }
-
-            if (!last)
-            {
-                rtf.Raw("\\par\n");
             }
         }
-
-        return rtf.Finish();
     }
+
+    /// <summary>
+    /// The width of a list item's marker column, in DIPs: <see cref="MarkerDip"/> for a bullet or a task box, and room for
+    /// a numbered marker and one character after it (<c>1.</c>, <c>10.</c>), so the item's text never touches its number.
+    /// </summary>
+    /// <param name="marker">The item's marker (<see cref="MarkdownListItem.Marker"/>).</param>
+    /// <param name="style">Fonts and sizes: the column grows with the text size.</param>
+    /// <returns>The column's width.</returns>
+    /// <remarks>
+    /// Found in the QA of 2026-11-20: in the monospace font a document is drawn in since 2026-11-16, "1." takes 15.6 of the
+    /// column's 16 DIPs, and the tab after it left no visible gap ("1.Hold the rest.").
+    /// </remarks>
+    private static double MarkerWidth(string marker, TextViewStyle style) =>
+        marker is MarkdownParser.Bullet or MarkdownParser.OpenTask or MarkdownParser.DoneTask
+            ? MarkerDip
+            : Math.Max(MarkerDip, (marker.Length + 1) * CharWidthEm * style.ProseSize);
+
+    /// <summary>
+    /// The left indentation of a block that has none of its own (a heading, a table outside a list, a rule) at
+    /// <paramref name="levels"/> levels right: nothing at the margin, so a document without quotes is written as before.
+    /// </summary>
+    /// <param name="levels">How many levels right of the margin.</param>
+    /// <returns>The <c>\li</c> control word, or an empty string for 0.</returns>
+    private static string LeftIndent(int levels) => levels > 0 ? $@"\li{Twips(levels * IndentDip)}" : string.Empty;
 
     /// <summary>Writes a fenced code block: its lines in the code font on the code background, colored by its tokens.</summary>
     /// <param name="rtf">The document being written.</param>
@@ -213,11 +288,12 @@ public static class RtfWriter
     /// <param name="palette">The theme's colors.</param>
     /// <param name="style">Fonts and sizes.</param>
     /// <param name="gap">The gap after the block, in twips.</param>
+    /// <param name="offset">How many levels it is moved right of its own indentation (the quotes it is inside).</param>
     /// <param name="cancellationToken">Stops a long run.</param>
-    private static void WriteCodeBlock(RtfBuilder rtf, MarkdownCodeBlock code, IReadOnlyList<SyntaxToken> tokens, SyntaxPalette palette, TextViewStyle style, int gap, CancellationToken cancellationToken)
+    private static void WriteCodeBlock(RtfBuilder rtf, MarkdownCodeBlock code, IReadOnlyList<SyntaxToken> tokens, SyntaxPalette palette, TextViewStyle style, int gap, int offset, CancellationToken cancellationToken)
     {
         int background = rtf.ColorIndex(palette.CodeBackground);
-        rtf.Raw($@"\pard\li{Twips((code.Indent * IndentDip) + 6)}\sa0\f1\fs{HalfPoints(style.CodeSize)}\cf{rtf.ColorIndex(palette.Text)} ");
+        rtf.Raw($@"\pard\li{Twips(((code.Indent + offset) * IndentDip) + 6)}\sa0\f1\fs{HalfPoints(style.CodeSize)}\cf{rtf.ColorIndex(palette.Text)} ");
         int lineStart = 0;
         int tokenIndex = 0;
         while (true)
@@ -262,7 +338,9 @@ public static class RtfWriter
     /// <param name="palette">The theme's colors.</param>
     /// <param name="style">Fonts and sizes.</param>
     /// <param name="gap">The gap after the table, in twips.</param>
-    private static void WriteTable(RtfBuilder rtf, MarkdownTable table, SyntaxPalette palette, TextViewStyle style, int gap)
+    /// <param name="offset">How many levels it is moved right of its own indentation (the quotes it is inside).</param>
+    /// <param name="quoted">Whether it is inside a quote: its cells are then in the quote's secondary color.</param>
+    private static void WriteTable(RtfBuilder rtf, MarkdownTable table, SyntaxPalette palette, TextViewStyle style, int gap, int offset, bool quoted)
     {
         var rows = table.Rows.Select(row => row.Cells.Select(cell => MarkdownParser.ToPlainText(cell).Replace('\n', ' ')).ToArray()).ToArray();
         int columns = rows.Length == 0 ? 0 : rows.Max(row => row.Length);
@@ -275,12 +353,16 @@ public static class RtfWriter
             }
         }
 
-        int textColor = rtf.ColorIndex(palette.Prose);
+        int textColor = rtf.ColorIndex(quoted ? palette.Secondary : palette.Prose);
         int ruleColor = rtf.ColorIndex(palette.Secondary);
+
+        // Every row is a paragraph of its own, so each one carries the table's indentation: under a list item's text, and
+        // one level right per quote it is inside.
+        string left = LeftIndent(table.Indent + offset);
         for (int r = 0; r < rows.Length; r++)
         {
             bool lastRow = r == rows.Length - 1;
-            rtf.Raw($@"\pard\sa{(lastRow ? gap : 0)}\f1\fs{HalfPoints(style.CodeSize)}\cf{textColor}{(r == 0 ? @"\b" : string.Empty)} ");
+            rtf.Raw($@"\pard{left}\sa{(lastRow ? gap : 0)}\f1\fs{HalfPoints(style.CodeSize)}\cf{textColor}{(r == 0 ? @"\b" : string.Empty)} ");
             var line = new StringBuilder();
             for (int c = 0; c < columns; c++)
             {
@@ -295,7 +377,7 @@ public static class RtfWriter
             rtf.Text(line.ToString().TrimEnd());
             if (r == 0)
             {
-                rtf.Raw($@"\b0\par" + "\n" + $@"\pard\sa0\cf{ruleColor} ");
+                rtf.Raw($@"\b0\par" + "\n" + $@"\pard{left}\sa0\cf{ruleColor} ");
                 rtf.Text(string.Join("  ", widths.Select(width => new string('─', Math.Max(1, width)))));
             }
 

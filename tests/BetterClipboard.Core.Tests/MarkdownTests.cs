@@ -16,8 +16,10 @@ public sealed class MarkdownTests
 
     /// <summary>
     /// Writes blocks as one compact line each, so a test compares a whole document with a few readable strings:
-    /// <c>P:</c> paragraph, <c>Q:</c> quote, <c>H2:</c> heading, <c>L1(•):</c> list item at depth 1, <c>C:</c> code,
-    /// <c>T:</c> table, <c>R</c> rule. Runs are written by <see cref="Describe(IReadOnlyList{MarkdownInline})"/>.
+    /// <c>P:</c> paragraph, <c>Q«…»</c> quote with its own blocks described inside (separated by <c>¦</c>), <c>H2:</c>
+    /// heading, <c>L1(•):</c> list item at depth 1, <c>C:</c> code, <c>T:</c> table, <c>R</c> rule. A number after
+    /// <c>P</c>, <c>C</c>, <c>T</c> or <c>Q</c> is the list indentation (<c>T1:</c>, <c>Q1«…»</c>). Runs are written by
+    /// <see cref="Describe(IReadOnlyList{MarkdownInline})"/>.
     /// </summary>
     /// <param name="blocks">The parsed blocks.</param>
     /// <returns>One description per block.</returns>
@@ -26,9 +28,9 @@ public sealed class MarkdownTests
         MarkdownHeading heading => $"H{heading.Level}:{Describe(heading.Inlines)}",
         MarkdownListItem item => $"L{item.Depth}({item.Marker}):{Describe(item.Inlines)}",
         MarkdownCodeBlock code => $"C{(code.Indent > 0 ? code.Indent.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty)}:{code.Code.Replace("\n", "⏎", StringComparison.Ordinal)}",
-        MarkdownTable table => "T:" + string.Join(" / ", table.Rows.Select(row => string.Join(" | ", row.Cells.Select(Describe)))),
+        MarkdownTable table => $"T{(table.Indent > 0 ? table.Indent.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty)}:" + string.Join(" / ", table.Rows.Select(row => string.Join(" | ", row.Cells.Select(Describe)))),
         MarkdownRule => "R",
-        MarkdownParagraph { IsQuote: true } quote => $"Q:{Describe(quote.Inlines)}",
+        MarkdownQuote quote => $"Q{(quote.Indent > 0 ? quote.Indent.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty)}«{string.Join(" ¦ ", Describe(quote.Blocks))}»",
         MarkdownParagraph paragraph => $"P{(paragraph.Indent > 0 ? paragraph.Indent.ToString(System.Globalization.CultureInfo.InvariantCulture) : string.Empty)}:{Describe(paragraph.Inlines)}",
         _ => block.GetType().Name,
     }).ToArray();
@@ -217,12 +219,162 @@ public sealed class MarkdownTests
         ], blocks);
     }
 
-    /// <summary>Block quotes become one quoted paragraph; an HTML comment is left out, wherever it ends.</summary>
+    /// <summary>A block quote's lines become the quote's paragraph; an HTML comment is left out, wherever it ends.</summary>
     [Fact]
     public void Parse_ReadsQuotes_AndDropsComments()
     {
         var blocks = Describe(MarkdownParser.Parse("> quoted **text**\n> second line\n\n<!-- a note\nto self -->\nvisible\n<!-- one line -->\nalso visible"));
-        Assert.Equal(["Q:quoted [b]text[/] second line", "P:visible", "P:also visible"], blocks);
+        Assert.Equal(["Q«P:quoted [b]text[/] second line»", "P:visible", "P:also visible"], blocks);
+    }
+
+    /// <summary>
+    /// A block quote holds blocks of its own — a heading, lists nested by indentation, a table with code, emphasis and an
+    /// escaped bar in its cells, a fence — read as a document reads them, with and without a kept layout. The owner's
+    /// case (2026-11-20): a Codex transcript quotes every message, and its tables showed as lines of bars.
+    /// </summary>
+    [Fact]
+    public void Parse_QuotesHoldBlocks()
+    {
+        const string Transcript = """
+            **❯ BC-TEST user**
+            > Show the fills.
+
+            **● BC-TEST assistant**
+            > Two fills so far.
+            >
+            > ## Fills
+            > - **Entry:** `FILL1` at 101.50
+            > - **Exits:**
+            >   - half at 104
+            >
+            > | Time | Fill | Note |
+            > |---|---|---|
+            > | 10:00 → 10:05 | **buy 100** @ 101.50 | `FILL1` |
+            > | 11:30 | sell 50 | a \| b |
+            >
+            > ```text
+            > done
+            > ```
+            """;
+        string[] expected =
+        [
+            "P:[b]❯ BC-TEST user[/]",
+            "Q«P:Show the fills.»",
+            "P:[b]● BC-TEST assistant[/]",
+            "Q«P:Two fills so far. ¦ H2:Fills ¦ L0(•):[b]Entry:[/] [c]FILL1[/] at 101.50 ¦ L0(•):[b]Exits:[/] ¦ L1(•):half at 104 ¦ " +
+            "T:Time | Fill | Note / 10:00 → 10:05 | [b]buy 100[/] @ 101.50 | [c]FILL1[/] / 11:30 | sell 50 | a | b ¦ C:done»",
+        ];
+        Assert.Equal(expected, Describe(MarkdownParser.Parse(Transcript)));
+        Assert.Equal(expected, Describe(MarkdownParser.Parse(Transcript, Laid)));
+        Assert.Equal("text", ((MarkdownQuote)MarkdownParser.Parse(Transcript)[3]).Blocks.OfType<MarkdownCodeBlock>().Single().Info);
+    }
+
+    /// <summary>
+    /// Quotes nest (<c>&gt; &gt;</c>, also with no blank between the marks), each holding its own blocks; a line without a
+    /// mark goes on the quote's last paragraph (CommonMark's lazy line, a wrapped "2026." line included), while a blank
+    /// line, a block start, or a line under a table row or inside a fence ends the quote; a quote of only blank lines is
+    /// nothing to draw.
+    /// </summary>
+    /// <param name="markdown">The text.</param>
+    /// <param name="expected">Its blocks.</param>
+    [Theory]
+    [MemberData(nameof(QuoteShapes))]
+    public void Parse_QuotesNestAndTakeLazyLines(string markdown, string[] expected)
+    {
+        Assert.Equal(expected, Describe(MarkdownParser.Parse(markdown)));
+    }
+
+    /// <summary>The cases of <see cref="Parse_QuotesNestAndTakeLazyLines"/>: a text, and the blocks it must become.</summary>
+    public static TheoryData<string, string[]> QuoteShapes => new()
+    {
+        { "> a\n> > b\n> > | x | y |\n> > |---|---|\n> > | 1 | 2 |\n> c", ["Q«P:a ¦ Q«P:b ¦ T:x | y / 1 | 2» ¦ P:c»"] },
+        { ">> deep\n>>> deeper", ["Q«Q«P:deep ¦ Q«P:deeper»»»"] },
+        { "> a long quote that\ngoes on here.\n\nafter", ["Q«P:a long quote that goes on here.»", "P:after"] },
+        { "> It shipped in\n2026. It was fast.", ["Q«P:It shipped in 2026. It was fast.»"] },
+        { "> a\n- b", ["Q«P:a»", "L0(•):b"] },
+        { "> | x |\n> |---|\n> | 1 |\nnot a row", ["Q«T:x / 1»", "P:not a row"] },
+        { "> ```\n> code\nnot code", ["Q«C:code»", "P:not code"] },
+        { "> a\n>\n> b", ["Q«P:a ¦ P:b»"] },
+        { "> a\n\n> b", ["Q«P:a»", "Q«P:b»"] },
+        { "   > three blanks in\n    > four blanks in", ["Q«P:three blanks in > four blanks in»"] },
+        { "> ## Title\nnot the title's", ["Q«H2:Title»", "P:not the title's"] },
+        { ">\n>", [] },
+    };
+
+    /// <summary>
+    /// A table or a quote indented to a list item's text stays in that item, drawn under its text with the list going on
+    /// after it; one at the margin ends the list, as before.
+    /// </summary>
+    [Fact]
+    public void Parse_TablesAndQuotesInListItems()
+    {
+        Assert.Equal(["L0(•):item", "T1:x | y / 1 | 2", "L0(•):next"], Describe(MarkdownParser.Parse("- item\n  | x | y |\n  |---|---|\n  | 1 | 2 |\n- next")));
+        Assert.Equal(
+            ["L0(•):outer", "L1(•):inner", "T2:x / 1", "L1(•):inner two"],
+            Describe(MarkdownParser.Parse("- outer\n  - inner\n    | x |\n    |---|\n    | 1 |\n  - inner two")));
+        Assert.Equal(
+            ["L0(•):item", "Q1«P:quoted ¦ T:x / 1»", "L0(•):next"],
+            Describe(MarkdownParser.Parse("- item\n  > quoted\n  > | x |\n  > |---|\n  > | 1 |\n- next")));
+        Assert.Equal(["L0(•):item", "T:x / 1"], Describe(MarkdownParser.Parse("- item\n| x |\n|---|\n| 1 |")));
+        Assert.Equal(["L0(•):item", "Q«P:quoted»"], Describe(MarkdownParser.Parse("- item\n> quoted")));
+    }
+
+    /// <summary>
+    /// With a kept layout a quoted ASCII table keeps its columns (a dashed line under text is that text's line) and a
+    /// quoted Markdown table is a table.
+    /// </summary>
+    [Fact]
+    public void Parse_KeepLayout_QuotedTables()
+    {
+        Assert.Equal(["Q«P:Name  Value⏎----  -----⏎BC    1»"], Describe(MarkdownParser.Parse("> Name  Value\n> ----  -----\n> BC    1", Laid)));
+        Assert.Equal(["Q«T:a | b / 1 | 2»"], Describe(MarkdownParser.Parse("> | a | b |\n> |---|---|\n> | 1 | 2 |", Laid)));
+    }
+
+    /// <summary>
+    /// Quote marks nest at most <see cref="MarkdownParser.MaxNesting"/> deep and deeper ones are text, so lines of a
+    /// thousand marks parse quickly and keep their words.
+    /// </summary>
+    [Fact]
+    public void Parse_BoundsQuoteNesting()
+    {
+        var deep = new string('>', 1000) + " BC-TEST\n" + new string('>', 1000) + " more";
+        var watch = Stopwatch.StartNew();
+        var blocks = MarkdownParser.Parse(deep);
+        watch.Stop();
+
+        int depth = 0;
+        var level = blocks;
+        while (level.Count == 1 && level[0] is MarkdownQuote quote)
+        {
+            depth++;
+            level = quote.Blocks;
+        }
+
+        Assert.Equal(MarkdownParser.MaxNesting, depth);
+        var text = MarkdownParser.ToPlainText(Assert.IsType<MarkdownParagraph>(Assert.Single(level)).Inlines);
+        Assert.Contains(" BC-TEST", text, StringComparison.Ordinal);
+        Assert.EndsWith(" more", text, StringComparison.Ordinal);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(2), $"Parsing took {watch.Elapsed.TotalMilliseconds:0} ms.");
+    }
+
+    /// <summary>
+    /// A code block is cut at its Markdown tables: the code before, the table, the code after, every piece keeping the
+    /// block's indentation and info, the blank lines next to a cut dropped; a block without a table comes back as itself.
+    /// </summary>
+    [Fact]
+    public void SplitTables_CutsACodeBlockAtItsTables()
+    {
+        var block = new MarkdownCodeBlock("$ report\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\ndone\n| c |\n|---|", Indent: 1, Info: "text");
+        var pieces = MarkdownParser.SplitTables(block);
+        Assert.Equal(["C1:$ report", "T1:a | b / 1 | 2", "C1:done", "T1:c"], Describe(pieces));
+        Assert.All(pieces.OfType<MarkdownCodeBlock>(), piece => Assert.Equal("text", piece.Info));
+
+        var plain = new MarkdownCodeBlock("| not | a table |\nx");
+        Assert.Same(plain, Assert.Single(MarkdownParser.SplitTables(plain)));
+        Assert.Equal(["T:a / 1"], Describe(MarkdownParser.SplitTables(new MarkdownCodeBlock("\n| a |\n|---|\n| 1 |\n"))));
+        // The block's own first lines are the author's: only the side that touches the table loses its blank lines.
+        Assert.Equal(["C:⏎⏎lead", "T:a"], Describe(MarkdownParser.SplitTables(new MarkdownCodeBlock("\n\nlead\n\n| a |\n|---|"))));
+        Assert.Throws<ArgumentNullException>(() => MarkdownParser.SplitTables(null!));
     }
 
     /// <summary>Tabs indent like four blanks, so a tab-indented item nests.</summary>
@@ -283,7 +435,7 @@ public sealed class MarkdownTests
         { "---\n# Title", ["R", "H1:Title"], ["R", "H1:Title"] },
         { "---\n- item", ["R", "L0(•):item"], ["R", "L0(•):item"] },
         { "- item\n---\ntext", ["L0(•):item", "R", "P:text"], ["L0(•):item", "R", "P:text"] },
-        { "> quote\n***\ntext", ["Q:quote", "R", "P:text"], ["Q:quote", "R", "P:text"] },
+        { "> quote\n***\ntext", ["Q«P:quote»", "R", "P:text"], ["Q«P:quote»", "R", "P:text"] },
         { "# Title\n___\ntext", ["H1:Title", "P:___⏎text"], ["H1:Title", "R", "P:text"] },
         { "---\n---\ntext", ["R", "P:---⏎text"], ["R", "R", "P:text"] },
     };
@@ -295,8 +447,8 @@ public sealed class MarkdownTests
     [Fact]
     public void Parse_KeepLayout_KeepsQuoteIndentationAndBackslashes()
     {
-        Assert.Equal(["Q:a⏎  b⏎\tc"], Describe(MarkdownParser.Parse("> a\n>   b\n>\t\tc", Laid)));
-        Assert.Equal(["Q:a b c"], Describe(MarkdownParser.Parse("> a\n>   b\n>\t\tc")));
+        Assert.Equal(["Q«P:a⏎  b⏎\tc»"], Describe(MarkdownParser.Parse("> a\n>   b\n>\t\tc", Laid)));
+        Assert.Equal(["Q«P:a b c»"], Describe(MarkdownParser.Parse("> a\n>   b\n>\t\tc")));
         Assert.Equal(["P:C:\\x\\⏎D:\\y\\"], Describe(MarkdownParser.Parse("C:\\x\\\nD:\\y\\", Laid)));
         Assert.Equal(["P:C:\\x⏎D:\\y\\"], Describe(MarkdownParser.Parse("C:\\x\\\nD:\\y\\", new MarkdownParseOptions(KeepLineBreaks: true))));
     }
