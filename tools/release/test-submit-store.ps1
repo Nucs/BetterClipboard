@@ -91,6 +91,9 @@ $state = [hashtable]::Synchronized(@{
         Published        = $true
         Pending          = $false
         PublishedVersion = '1.2.10.0'
+        # The published submission's notes for certification. The real Store answered empty for BetterClipboard's
+        # (2026-11-20): Partner Center keeps the notes testers read on a product page the API does not show.
+        PublishedNotes   = 'keep these notes'
         Statuses         = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
         Blocks           = [hashtable]::Synchronized(@{})
         Archive          = $null
@@ -143,7 +146,7 @@ $serve = {
   "isGameDvrEnabled": false,
   "hasExternalInAppProducts": false,
   "meetAccessibilityGuidelines": false,
-  "notesForCertification": "keep these notes",
+  "notesForCertification": "$($state.PublishedNotes)",
   "status": "$(if ($new) { 'PendingCommit' } else { 'Published' })",
   "statusDetails": { "errors": [], "warnings": [], "certificationReports": [] },
   $upload
@@ -387,6 +390,7 @@ function Reset-StandIn {
     $state.Published = $true
     $state.Pending = $false
     $state.PublishedVersion = '1.2.10.0'
+    $state.PublishedNotes = 'keep these notes'
     $state.Blocks.Clear()
     $state.Archive = $null
     $state.FailBlocks = 0
@@ -624,8 +628,9 @@ try {
     $calls = Get-Calls
     Assert-That 'uploads and does not commit' ($run.ExitCode -eq 0 -and ($calls -contains 'PUT blob list') -and -not ($calls -match 'commit$')) "exit $($run.ExitCode): $($calls -join '; ')"
 
-    # The submission the Store makes is a copy of the published one, notes for certification included; those notes
-    # described the published version, and 0.2.12 changes what they said (where the history stays after an uninstall).
+    # The submission the Store makes is a copy of the published one, notes for certification included, and those may
+    # describe an older version (for BetterClipboard the field is empty: the testers read a product page the API does
+    # not show). The kit's notes replace them.
     Write-Host 'Notes for certification'
     Reset-StandIn
     $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitFile)
@@ -633,6 +638,17 @@ try {
     Reset-StandIn
     $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitSame)
     Assert-That 'and when they are the same' ($run.ExitCode -eq 0 -and $run.Output -match 'Notes for certification: the published ones are the listing kit''s') $run.Output
+    # The real Store's answer for BetterClipboard: the published submission's field is empty, because the notes the
+    # testers read are on the product's Additional Testing Information page.
+    Reset-StandIn
+    $state.PublishedNotes = ''
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitFile)
+    Assert-That 'and when the published submission holds none, it names the page testers read, to keep by hand' ($run.ExitCode -eq 0 -and $run.Output -match 'the published submission holds none' -and $run.Output -match 'Additional Testing Information page') $run.Output
+    Reset-StandIn
+    $state.PublishedNotes = ''
+    $run = Invoke-Submit -Arguments $submit
+    $sent = Get-SentSubmission
+    Assert-That 'and a submission still sends the kit''s notes then' ($run.ExitCode -eq 0 -and $null -ne $sent -and $sent.notesForCertification -ceq $kitNotes) "exit $($run.ExitCode): $($run.Output)"
 
     Reset-StandIn
     $run = Invoke-Submit -Arguments ($submit + '-KeepCertificationNotes')

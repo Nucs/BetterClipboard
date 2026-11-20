@@ -14,9 +14,9 @@
       3. creates a submission, which the Store fills with a copy of the published one (listings, pricing, age
          ratings: all of that stays as it is);
       4. marks the published packages for removal and lists the new ones; sets "What's new" from the release notes,
-         and the notes for certification from the listing kit (docs/store-listing.md), so the Store's testers read
-         what is true for this version: the copy holds the published version's notes, which may no longer be (the
-         ones published with 1.2.11 say the history leaves with the app; from 0.2.12 on it stays);
+         and the submission's notes for certification from the listing kit (docs/store-listing.md), so that field
+         says what is true for this version instead of what the copy brought along (the notes Partner Center's
+         pages show testers are a product page of their own, kept by hand: see -ListingKit);
       5. uploads the packages (one ZIP, in blocks) to the address the Store gave;
       6. commits the submission and waits until the Store accepted or refused it. Certification itself takes hours
          or days and is not waited for.
@@ -74,6 +74,10 @@
     anything is sent: a kit that is missing, has no such block, or whose notes are over Partner Center's 2,000
     characters with every line break counted as two, ends the script with exit code 2. Check mode says whether the
     published notes are the kit's.
+    Footgun: this field is not what Partner Center's pages show the Store's testers. Those read the product's
+    Supplemental info > Additional Testing Information page, which lives outside every submission and which this API
+    does not read (measured 2026-11-20: the published submission's field was empty while that page held the notes).
+    Keep that page the kit's text by hand whenever the kit's notes change (docs/store-listing.md, section 1).
 
 .PARAMETER KeepCertificationNotes
     Send the published version's notes for certification unchanged, and do not read the listing kit. For a version
@@ -681,6 +685,13 @@ try {
         if ($null -ne $certificationNotes) {
             $publishedNotes = if ($publishedSubmission['notesForCertification']) { $publishedSubmission['notesForCertification'].ToString() } else { '' }
             if (Test-SameNotes $publishedNotes $certificationNotes) { Write-Step 'Notes for certification: the published ones are the listing kit''s' }
+            elseif (-not $publishedNotes.Trim()) {
+                # What the real Store answered for BetterClipboard (2026-11-20): Partner Center keeps the notes its
+                # testers read on the product's Additional Testing Information page, outside every submission, and
+                # this API never showed them (the published submission's field read empty while that page held
+                # 1,770 characters). So the page is kept the kit's text by hand, and this field is the API's copy.
+                Write-Step "Notes for certification: the published submission holds none; a submission from this script sends the listing kit's ($($certificationNotes.Length) characters). The notes Partner Center shows testers are on the product's Additional Testing Information page, which this API does not read: keep that page the kit's text by hand (docs/store-listing.md, section 1)"
+            }
             else { Write-Step "Notes for certification: the published ones ($($publishedNotes.Length) characters) are not the listing kit's ($($certificationNotes.Length) characters); a submission from this script sends the kit's" }
         }
     }
@@ -755,8 +766,9 @@ try {
         Write-Warning "The listing has no language '$NotesLanguage' (it has: $($languages -join ', ')), so ""What's new"" stays empty."
     }
 
-    # Notes for certification: the kit's, true for this version. The copy the Store made holds the published version's,
-    # and a release that changes what the app does (where its history stays, what it sends) must not carry those over.
+    # Notes for certification: the kit's, true for this version. The copy the Store made holds the published
+    # submission's (empty for BetterClipboard's first, whose notes went onto the product's Additional Testing
+    # Information page), and a release that changes what the app does must not carry stale ones along.
     $testerNotes = 'kept as published (-KeepCertificationNotes)'
     if ($null -ne $certificationNotes) {
         $submission['notesForCertification'] = [System.Text.Json.Nodes.JsonValue]::Create($certificationNotes)

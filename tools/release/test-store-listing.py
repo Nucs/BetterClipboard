@@ -388,7 +388,8 @@ def main():
         tight_notes = broken("tight-notes", kit.certification_notes, kit.certification_notes + extra)
         code, output = run(CHECKER, tight_notes)
         check("notes under 2,000 characters as written, but over it with line breaks counted as two, fail the check",
-              written <= store_listing.CERTIFICATION_NOTES_AT_MOST and code == 1 and "notes for certification over" in output,
+              written <= store_listing.CERTIFICATION_NOTES_AT_MOST and code == 1
+              and "notes for certification over" in output,
               f"{written} characters as written; {output[-200:]}")
 
         long_feature = broken("long-feature", english.features[0], english.features[0] + " and more" * 30)

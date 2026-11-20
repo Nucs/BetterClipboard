@@ -7,7 +7,7 @@ listing texts in the five languages the package declares (Store policy 10.7 asks
 **State (2026-11-20):** the app is published (Store ID `9PHL574X9BF9`, publisher "Nucs";
 https://apps.microsoft.com/detail/9PHL574X9BF9), certified on 2026-11-15, and its listings hold everything below.
 This file is the source: change a text here, check it, and import it (§4). The notes for certification (§1) need no
-import: every release sends them by itself.
+import: every release sends them, and the product's own notes page is kept the same text by hand.
 
 Limits are Microsoft's, from its documentation (read 2026-11-12; sources at the end of `microsoft-store.md`) and
 from Partner Center's own pages (2026-11-13): description up to 10,000 characters of plain text, without web
@@ -99,11 +99,19 @@ BetterClipboard is a clipboard history manager, a classic desktop app (WinUI 3).
 
 *Supplemental info › Additional Testing Information*; the submission options page links to it. No credentials.
 
-Every release sends this block to the Store by itself: `tools/release/submit-store.ps1` makes it the new submission's
-notes for certification, in place of the published version's (since 2026-11-20; until then a new submission carried
-the published notes over). So it must be true for the version being released. A submission made by hand gets it
-pasted. At most 2,000 characters with every line break counted as two; `check-store-listing.py` and the script both
-refuse more.
+This block goes to two places, and both must say it, true for the version being released:
+
+- **The page above**, which belongs to the product (`/products/9PHL574X9BF9/suppinfo/additionaltestinginfo`, headed
+  "Notes for Certification", a text box of at most 6,000 characters). It lives outside every submission: the testers
+  of every later submission read what it holds, saving it starts no submission, and only a person changes it. After
+  any change of this block, paste it there before the next tag. It holds this block since 2026-11-20 (until then the
+  v0.2.11 text, which said the history leaves with the app).
+- **The submission's own field**, `notesForCertification`, which the Store's API sets: every release sends this
+  block there by itself (`tools/release/submit-store.ps1`, since 2026-11-20). The API does not show the page: the
+  published submission's field read empty while the page held 1,770 characters.
+
+At most 2,000 characters with every line break counted as two (developers report that limit for the notes; the page
+itself takes 6,000); `check-store-listing.py` and the script both refuse more.
 
 **Notes for certification**
 
@@ -462,8 +470,8 @@ A listing is a promise. When a release changes what the app does, change the lis
 a new tab or kind of item goes into the description and the features; a new data source also goes into the README's
 *Privacy* section, which is the privacy policy the listing points at. The Store edition makes no network request;
 if that ever changes, the description's "Nothing is sent anywhere" and the certification notes must change first.
-The notes for certification reach the Store with the release itself (§1); the listing texts only through an import,
-below.
+The notes for certification reach the Store's API with the release itself and the product's notes page by hand
+(§1); the listing texts only through an import, below.
 
 After any edit of the texts, run `python tools/release/check-store-listing.py`: it checks every language's short
 description, description, features, search terms and captions against the Store's limits (§3's fenced blocks and
