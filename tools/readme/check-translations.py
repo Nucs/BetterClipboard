@@ -37,6 +37,12 @@ cannot read its language, so this tool compares structure, not words:
       "A+ (&lrm;`Ctrl+Plus`" need none. The app marks its own texts the same way (UiText.KeepTrailingSignsWithTheirWord).
 5. Marks as entities, in every translation: no raw U+200E, U+200F or U+061C. Written out, a mark is invisible in an
    editor and in a diff, so nobody sees it to keep it, move it or remove it; write &lrm; and &rlm;.
+6. Alert boxes at the top of the page, in every translation. GitHub draws a > [!NOTE], > [!TIP], ... quote as a box
+   only where no HTML element holds it: inside an open <div> or <details> (a right-to-left translation's own
+   <div dir="rtl"> too) it stays a plain quote that shows its marker as text. Seen on GitHub's HTML of the Hebrew
+   README, where both boxes stood inside that <div>, and in the API's gfm mode (2026-11-20). Check 2 compares the
+   markers and check 3 renders in README mode, which draws no box at all, so neither sees it. Close the element before
+   the alert and open it again after it.
 
 FILE defaults to every docs/translations/README.*.md. --ref reads README.md and the translations from git instead of
 the working tree: --ref HEAD for the last commit, --ref : for the index (what the next commit holds, without anybody's
@@ -83,6 +89,10 @@ KEY_COMBINATION = re.compile(r"<kbd>[^<]*</kbd>(?:\+<kbd>[^<]*</kbd>)+")
 STORE_BADGE = re.compile(r"https://get\.microsoft\.com/images/[A-Za-z-]+%20(\w+)\.svg")
 # An alert box's marker at the start of a block's text, as GitHub's /markdown API leaves it (see check 4a).
 ALERT_MARKER = re.compile(r"\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*")
+# The line that opens an alert box in the source: a quote at the start of the line whose first text is the marker.
+ALERT_LINE = re.compile(r">\s?\[!(?:NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]")
+# The HTML elements the READMEs wrap Markdown in, opening or closing tag, anywhere on a line (see check 6).
+WRAPPER_TAG = re.compile(r"<(/?)(div|details)\b[^>]*>", re.IGNORECASE)
 # Every README's language line starts with this, and is meant to read left to right in every language.
 LANGUAGE_LINE = "ENG /"
 
@@ -432,6 +442,40 @@ def check_raw_marks(text):
     return findings
 
 
+def check_alert_placement(text):
+    """Check 6 of the module's description: no alert box stands inside an open <div> or <details>.
+
+    The elements are followed line by line, outside code blocks and with code spans left out, so a sentence or a
+    command that names a tag opens nothing. An element opened and closed on one line holds no alert.
+
+    Args:
+        text: A translation's text.
+
+    Returns:
+        The findings, one per alert that an open element holds, naming the line and the elements, innermost first.
+    """
+    findings, fenced, open_elements = [], False, []
+    for number, line in enumerate(text.split("\n"), 1):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if open_elements and ALERT_LINE.match(line):
+            inside = " in ".join(f"<{name}>" for name in reversed(open_elements))
+            findings.append(f"line {number}: this alert stands inside {inside}, where GitHub draws it as a plain "
+                            "quote that shows its marker; close the element before it and open it again after it")
+        for tag in WRAPPER_TAG.finditer(CODE_SPAN.sub("", line)):
+            name = tag.group(2).lower()
+            if not tag.group(1):
+                open_elements.append(name)
+            elif name in open_elements:
+                # The innermost open element of that name closes. A closing tag with none open is skipped, as an
+                # HTML parser skips it, so one stray </div> cannot hide an alert that a real <div> holds later.
+                del open_elements[len(open_elements) - 1 - open_elements[::-1].index(name)]
+    return findings
+
+
 def github_token():
     """The token of the GitHub CLI's stored sign-in, which raises the API's limit from 60 requests an hour (per
     address, shared with every other program that asks without one) to 5,000. Each run of this tool makes one request
@@ -619,7 +663,7 @@ def main(argv=None):
     for name in files:
         text = texts[name]
         right_to_left = '<div dir="rtl">' in text
-        findings = compare_structure(english_sections, text) + check_raw_marks(text)
+        findings = compare_structure(english_sections, text) + check_raw_marks(text) + check_alert_placement(text)
         if right_to_left:
             findings += check_marks(text)
         if not args.offline:
