@@ -583,12 +583,25 @@
                         Value="{x:Bind ViewModel.MaxTotalSizeMB, Mode=TwoWay}" />
                     <controls:SettingsCard.Footer>
                         <StackPanel Spacing="6">
+                            <!--  One bar per color, at most one shown: WinUI's own warning looks (ShowPaused, ShowError) make a
+                                  screen reader announce the bar as "Paused" or "Error" (CLAUDE.md 2.60), so the caution and critical
+                                  colors come from the theme's brushes instead.  -->
                             <ProgressBar
                                 AutomationProperties.Name="{loc:Tr Text='History size budget used'}"
                                 Maximum="100"
-                                ShowError="{x:Bind ViewModel.BudgetBarFull, Mode=OneWay}"
-                                ShowPaused="{x:Bind ViewModel.BudgetBarCaution, Mode=OneWay}"
-                                Visibility="{x:Bind ViewModel.HasBudget, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.IsBudgetBarPlainShown, Mode=OneWay}"
+                                Value="{x:Bind ViewModel.BudgetPercentValue, Mode=OneWay}" />
+                            <ProgressBar
+                                AutomationProperties.Name="{loc:Tr Text='History size budget used'}"
+                                Foreground="{ThemeResource SystemFillColorCautionBrush}"
+                                Maximum="100"
+                                Visibility="{x:Bind ViewModel.IsBudgetBarCautionShown, Mode=OneWay}"
+                                Value="{x:Bind ViewModel.BudgetPercentValue, Mode=OneWay}" />
+                            <ProgressBar
+                                AutomationProperties.Name="{loc:Tr Text='History size budget used'}"
+                                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                                Maximum="100"
+                                Visibility="{x:Bind ViewModel.IsBudgetBarFullShown, Mode=OneWay}"
                                 Value="{x:Bind ViewModel.BudgetPercentValue, Mode=OneWay}" />
                             <TextBlock
                                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"

@@ -133,8 +133,9 @@ public sealed partial class ClipHistoryService
 
             if (decision.Warn is { } level)
             {
-                // Content-free: sizes only.
-                double percent = HistoryBudgetWarnings.PercentUsed(used, budgetBytes);
+                // Content-free: sizes only. Rounded down to a tenth, as Settings and bclip round: 97.97 % rounded to "98 %" read
+                // as a wrong level next to "(the 96 % level)" in the live check.
+                double percent = Math.Floor(HistoryBudgetWarnings.PercentUsed(used, budgetBytes) * 10) / 10;
                 AppLog.Info(level >= HistoryBudgetWarnings.FullLevel
                     ? $"History size budget full ({used:N0} of {budgetBytes:N0} bytes, {percent:0.#} %): the oldest items are removed to make room; the user is told."
                     : $"History size budget at {percent:0.#} % ({used:N0} of {budgetBytes:N0} bytes): the user is told (the {level} % level).");

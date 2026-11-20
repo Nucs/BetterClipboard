@@ -54,19 +54,30 @@ public sealed partial class SettingsViewModel
     [ObservableProperty]
     public partial bool HasBudget { get; set; }
 
-    /// <summary>Whether the bar shows its caution color: the budget is at 90 % or more, short of full.</summary>
+    /// <summary>
+    /// Whether the budget's bar shows in its plain (accent) color: there is a budget, under 90 % of it. The bar is three bars,
+    /// one per color, at most one shown: WinUI's own warning looks (<c>ShowPaused</c>, <c>ShowError</c>) would make a screen
+    /// reader announce it as "Paused" or "Error".
+    /// </summary>
     [ObservableProperty]
-    public partial bool BudgetBarCaution { get; set; }
+    public partial bool IsBudgetBarPlainShown { get; set; }
 
-    /// <summary>Whether the bar shows its error color: the budget is full and the oldest items are being removed.</summary>
+    /// <summary>Whether the budget's bar shows in its caution color: the budget is at 90 % or more, short of full.</summary>
     [ObservableProperty]
-    public partial bool BudgetBarFull { get; set; }
+    public partial bool IsBudgetBarCautionShown { get; set; }
+
+    /// <summary>Whether the budget's bar shows in its critical color: the budget is full and the oldest items are being removed.</summary>
+    [ObservableProperty]
+    public partial bool IsBudgetBarFullShown { get; set; }
 
     /// <summary>Whether the warning under the budget shows: from 90 % of it on.</summary>
     [ObservableProperty]
     public partial bool IsBudgetWarningShown { get; set; }
 
-    /// <summary>The warning's title: the level reached, or that the budget is full (the notification's title too).</summary>
+    /// <summary>
+    /// The warning's title: the level reached, or that the budget is full (the notification has a title of its own, which
+    /// also says what follows: <see cref="HistoryLimitsText.NotificationTitle"/>).
+    /// </summary>
     [ObservableProperty]
     public partial string BudgetWarningTitle { get; set; } = string.Empty;
 
@@ -127,8 +138,9 @@ public sealed partial class SettingsViewModel
         bool full = level >= HistoryBudgetWarnings.FullLevel;
         HasBudget = percent is not null;
         BudgetPercentValue = Math.Clamp(percent ?? 0, 0, 100);
-        BudgetBarCaution = level is not null && !full;
-        BudgetBarFull = full;
+        IsBudgetBarPlainShown = HasBudget && level is null;
+        IsBudgetBarCautionShown = HasBudget && level is not null && !full;
+        IsBudgetBarFullShown = HasBudget && full;
         IsBudgetWarningShown = level is not null;
         if (level is { } reached)
         {
