@@ -150,6 +150,81 @@ public sealed class CmdHistoryTests
     }
 
     /// <summary>
+    /// A window seen for the first time (every start, the silent restart after Settings closed, the Cmd tab's view of open
+    /// windows) puts each command the list does not keep just below the next newer command of the window, so a limit's trim
+    /// holds: under a limit of 2 the kept newest stay, never the window's older commands (CLAUDE.md §2.62: in the live check
+    /// they replaced the newest two); a command typed after the kept ones still comes first; and after Delete stored a
+    /// command typed since stays above the window's older ones.
+    /// </summary>
+    [Fact]
+    public void Remember_AWindowSeenFirst_KeepsItsOrderAgainstWhatIsKept()
+    {
+        string[] window = ["BC-TEST 1", "BC-TEST 2", "BC-TEST 3", "BC-TEST 4", "BC-TEST 5", "BC-TEST 6"];
+        var seenAt = Now.AddHours(-1);
+        var trimmed = CmdHistory.Trim(CmdHistory.Remember([], window, typedAgain: true, seenAt), 2);
+        Assert.Equal(["BC-TEST 6", "BC-TEST 5"], trimmed.Select(k => k.Text));
+
+        // A restart reads the window as one seen for the first time: the limit keeps the same two.
+        Assert.Equal(trimmed, CmdHistory.Remember(trimmed, window, typedAgain: false, Now, limit: 2));
+
+        // Without a limit the dropped ones come back below the kept ones, in the window's order, each counted once.
+        var unlimited = CmdHistory.Remember(trimmed, window, typedAgain: false, Now);
+        Assert.Equal(["BC-TEST 6", "BC-TEST 5", "BC-TEST 4", "BC-TEST 3", "BC-TEST 2", "BC-TEST 1"], unlimited.Select(k => k.Text));
+        Assert.All(unlimited, k => Assert.Equal(1, k.Count));
+        Assert.Equal(trimmed[1].LastSeen.AddMilliseconds(-1), unlimited[2].LastSeen);
+
+        // A command typed while the window was not read comes first: it is the window's newest.
+        Assert.Equal(
+            [new KeptCommand("BC-TEST 7", 1, Now), trimmed[0]],
+            CmdHistory.Remember(trimmed, [.. window, "BC-TEST 7"], typedAgain: false, Now, limit: 2));
+
+        // After Delete stored, a command typed since stays above the window's older ones.
+        IReadOnlyList<KeptCommand> sinceDelete = [new("BC-TEST 7", 1, seenAt.AddMinutes(5))];
+        Assert.Equal(
+            ["BC-TEST 7", "BC-TEST 6", "BC-TEST 5", "BC-TEST 4", "BC-TEST 3", "BC-TEST 2", "BC-TEST 1"],
+            CmdHistory.Remember(sinceDelete, [.. window, "BC-TEST 7"], typedAgain: false, Now).Select(k => k.Text));
+    }
+
+    /// <summary>
+    /// The reader's memory (CLAUDE.md §2.62), which outlives a restart: a command's fingerprint is exact and holds no text
+    /// (known answers from Python's hashlib), a read compares with a remembered one through fingerprints exactly as through
+    /// texts, and the memory round-trips in process-id order; a malformed line loses only its own window.
+    /// </summary>
+    [Fact]
+    public void ReaderMemory_FingerprintsCompareAndRoundTrip()
+    {
+        Assert.Equal("cec5334840dcf924", CmdHistory.Fingerprint("BC-TEST a"));
+        Assert.Equal("1bf64bb91de7fb85", CmdHistory.Fingerprint("BC-TEST שלום\tx"));
+        Assert.NotEqual(CmdHistory.Fingerprint("BC-TEST a"), CmdHistory.Fingerprint("bc-test a"));
+
+        static List<string> Prints(params string[] commands) => commands.Select(CmdHistory.Fingerprint).ToList();
+        Assert.Equal(["BC-TEST c"], CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST a", "BC-TEST b", "BC-TEST c"]));
+        Assert.Equal(["BC-TEST c"], CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST b", "BC-TEST c"]));
+        Assert.Empty(CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST a", "BC-TEST b"]));
+        Assert.Equal(["BC-TEST a"], CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST a", "BC-TEST b", "BC-TEST a"]));
+
+        var memory = new Dictionary<(uint ProcessId, long StartTicks), IReadOnlyList<string>>
+        {
+            [(4321, 638_000_000_000_000_000)] = Prints("BC-TEST a", "BC-TEST b"),
+            [(12, 638_000_000_000_000_001)] = [],
+        };
+        var text = CmdHistory.FormatWindows(memory);
+        Assert.StartsWith("12\t638000000000000001\t\n4321\t", text, StringComparison.Ordinal);
+        var read = CmdHistory.ParseWindows(text);
+        Assert.Equal(2, read.Count);
+        Assert.Equal(memory[(4321, 638_000_000_000_000_000)], read[(4321, 638_000_000_000_000_000)]);
+        Assert.Empty(read[(12, 638_000_000_000_000_001)]);
+
+        // A process id that is no number, a fingerprint that is none, a window given twice: each loses only its line.
+        var damaged = "x\t1\t\n7\t8\tnot-a-print\n9\t10\t" + CmdHistory.Fingerprint("BC-TEST a") + "\n9\t10\t\n";
+        var survived = CmdHistory.ParseWindows(damaged);
+        Assert.Equal([(9u, 10L)], survived.Keys);
+        Assert.Single(survived[(9, 10)]);
+        Assert.Empty(CmdHistory.ParseWindows(null));
+        Assert.Empty(CmdHistory.ParseWindows(string.Empty));
+    }
+
+    /// <summary>
     /// Only one-line, non-blank commands within the length limit are kept. The list keeps every one by default — 1,005 here,
     /// above the 1,000 kept until 2026-11-21 (CLAUDE.md §2.62) — and the newest under a limit, in memory and when written.
     /// </summary>
