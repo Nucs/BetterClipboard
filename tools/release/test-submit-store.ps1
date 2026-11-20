@@ -12,7 +12,10 @@
 
       - the sign-in request, the app, the published submission, a new submission that is a copy of it;
       - the update: the published packages marked for removal, the new ones listed, "What's new" set in one
-        language and emptied in the others, everything else sent back as it came (dates stay text);
+        language and emptied in the others, the notes for certification taken from the listing kit (or kept with
+        -KeepCertificationNotes), everything else sent back as it came (dates stay text);
+      - the listing kit read before anything is sent: a kit without notes, notes over Partner Center's 2,000
+        characters with line breaks counted as two, or no kit at all stop the script without a request;
       - the upload in blocks, put together again and compared byte for byte with the packages;
       - the commit and the wait for its outcome, accepted or refused;
       - what must not happen: a request without credentials, a first submission, a package that is not the Store's,
@@ -335,6 +338,43 @@ here that are not part of the first sentence.
 '@ | Set-Content -LiteralPath $notesFile -Encoding utf8
 $expectedNotes = "• A new tab. It lists what you copied in Notepad, with a link.`n• Fixed: 2 fixes."
 
+function New-TestKit {
+    <#
+    .SYNOPSIS
+        Writes a stand-in listing kit holding a "Notes for certification" block, laid out like docs/store-listing.md.
+    .DESCRIPTION
+        Written with CRLF line breaks, as a Windows checkout may have the real kit, so the checks also prove that the
+        script sends the notes with LF.
+    .PARAMETER Path
+        The file to write.
+    .PARAMETER Notes
+        The block's text, with LF line breaks; without it the kit has no such block at all.
+    .OUTPUTS
+        None.
+    #>
+    param([string] $Path, [string] $Notes)
+    $fence = '```'
+    $lines = @('# Microsoft Store listing kit (BC-TEST)', '', '### Additional testing information', '')
+    if ($Notes) { $lines += @('**Notes for certification**', '', "${fence}text") + @($Notes -split "`n") + @($fence, '') }
+    $lines += @('## 3. Listing texts', '')
+    Set-Content -LiteralPath $Path -Value ($lines -join "`r`n") -Encoding utf8 -NoNewline
+}
+
+# The notes the test kit holds, and kits that must stop the script before anything is sent.
+$kitNotes = "BC-TEST notes for certification, first line.`n`n1. A numbered step.`n2. Another step."
+$kitFile = Join-Path $work 'store-listing.md'
+New-TestKit -Path $kitFile -Notes $kitNotes
+$kitSame = Join-Path $work 'store-listing-same.md'
+New-TestKit -Path $kitSame -Notes 'keep these notes'
+$kitWithout = Join-Path $work 'store-listing-without-notes.md'
+New-TestKit -Path $kitWithout -Notes ''
+# 1,997 characters as written, 2,003 with its six line breaks counted as two: only the strict reading refuses it.
+$kitLong = Join-Path $work 'store-listing-long.md'
+New-TestKit -Path $kitLong -Notes (('x' * 1985) + ("`nz" * 6))
+$kitMissing = Join-Path $work 'no-such-store-listing.md'
+# The repository's own kit, which a run without -ListingKit reads.
+$realKit = Join-Path (Split-Path -Parent (Split-Path -Parent $here)) 'docs/store-listing.md'
+
 function Reset-StandIn {
     <#
     .SYNOPSIS
@@ -454,8 +494,21 @@ function Test-Leak {
     return $Output.Contains($Secret) -or $Output.Contains($Token) -or $Output.Contains($UploadKey)
 }
 
+function Get-SentSubmission {
+    <#
+    .SYNOPSIS
+        The submission the last run sent with its update (the PUT of the new submission), read from its JSON.
+    .OUTPUTS
+        System.Collections.Hashtable, or $null when no update was sent.
+    #>
+    $updates = @($state.Requests.ToArray() | Where-Object { $_.Method -eq 'PUT' -and $_.Path -like "*/submissions/$NewId" })
+    if ($updates.Count -eq 0) { return $null }
+    return ($updates[0].Body | ConvertFrom-Json -AsHashtable)
+}
+
 try {
-    $submit = @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile)
+    # The test kit, so the checks do not follow the real kit's text; one run below reads the real one.
+    $submit = @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile, '-ListingKit', $kitFile)
 
     Write-Host 'No credentials'
     Reset-StandIn
@@ -497,9 +550,11 @@ try {
     Assert-That 'the new packages are listed for upload' ((@($byStatus['PendingUpload'].fileName) -join ',') -eq 'BetterClipboard-9.9.9-store-x64.msix,BetterClipboard-9.9.9-store-arm64.msix' -and @($byStatus['PendingUpload'] | Where-Object { $_.minimumDirectXVersion -ne 'None' -or $_.minimumSystemRam -ne 'None' }).Count -eq 0) ($sent.applicationPackages | ConvertTo-Json -Compress)
     Assert-That '"What''s new" is this release''s notes in English' ($sent.listings.'en-us'.baseListing.releaseNotes -ceq $expectedNotes) $sent.listings.'en-us'.baseListing.releaseNotes
     Assert-That '"What''s new" is emptied in the other languages' ($sent.listings.ru.baseListing.releaseNotes -eq '') $sent.listings.ru.baseListing.releaseNotes
+    Assert-That 'the notes for certification are the listing kit''s, with LF line breaks' ($sent.notesForCertification -ceq $kitNotes) "$($sent.notesForCertification)"
+    Assert-That 'and the progress line says so' ($run.Output -match "notes for certification from the listing kit \($($kitNotes.Length) characters\)") $run.Output
     Assert-That 'the rest goes back as it came' (
         $update.Contains('"targetPublishDate":"1601-01-01T00:00:00Z"') -and $update.Contains('"mandatoryUpdateEffectiveDate":"1601-01-01T00:00:00.0000000Z"') -and
-        $sent.pricing.priceId -eq 'Free' -and $sent.notesForCertification -eq 'keep these notes' -and $sent.listings.ru.baseListing.description -ceq 'Описание' -and
+        $sent.pricing.priceId -eq 'Free' -and $sent.listings.ru.baseListing.description -ceq 'Описание' -and
         $sent.listings.'en-us'.baseListing.description -eq 'English description') $update.Substring(0, [Math]::Min(400, $update.Length))
 
     $archive = Join-Path $work 'uploaded.zip'
@@ -568,6 +623,44 @@ try {
     $run = Invoke-Submit -Arguments ($submit + @('-Mode', 'Draft'))
     $calls = Get-Calls
     Assert-That 'uploads and does not commit' ($run.ExitCode -eq 0 -and ($calls -contains 'PUT blob list') -and -not ($calls -match 'commit$')) "exit $($run.ExitCode): $($calls -join '; ')"
+
+    # The submission the Store makes is a copy of the published one, notes for certification included; those notes
+    # described the published version, and 0.2.12 changes what they said (where the history stays after an uninstall).
+    Write-Host 'Notes for certification'
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitFile)
+    Assert-That 'Check says when the published notes are not the kit''s, by their lengths' ($run.ExitCode -eq 0 -and $run.Output -match "the published ones \(16 characters\) are not the listing kit's \($($kitNotes.Length) characters\)" -and -not $run.Output.Contains('BC-TEST notes')) $run.Output
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitSame)
+    Assert-That 'and when they are the same' ($run.ExitCode -eq 0 -and $run.Output -match 'Notes for certification: the published ones are the listing kit''s') $run.Output
+
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + '-KeepCertificationNotes')
+    $sent = Get-SentSubmission
+    Assert-That '-KeepCertificationNotes sends the published notes back unchanged' ($run.ExitCode -eq 0 -and $null -ne $sent -and $sent.notesForCertification -ceq 'keep these notes' -and $run.Output -match 'notes for certification kept as published') "exit $($run.ExitCode): $($run.Output)"
+
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile)
+    $sent = Get-SentSubmission
+    $real = (Get-Content -LiteralPath $realKit -Raw -Encoding utf8) -replace "`r`n?", "`n"
+    $realSent = if ($null -ne $sent -and $sent.notesForCertification) { [string] $sent.notesForCertification } else { '' }
+    Assert-That 'without -ListingKit, the repository''s own kit is read: its block is what is sent' ($run.ExitCode -eq 0 -and $realSent.Length -gt 200 -and $real.Contains("``````text`n$realSent`n``````")) "exit $($run.ExitCode), $($realSent.Length) characters sent"
+
+    foreach ($case in @(
+            @{ Name = 'a kit without notes for certification'; Kit = $kitWithout; Says = 'has no notes for certification' },
+            @{ Name = 'notes over 2,000 characters with line breaks counted as two'; Kit = $kitLong; Says = 'have 2003 characters with every line break counted as two; Partner Center takes at most 2000' },
+            @{ Name = 'a kit that does not exist'; Kit = $kitMissing; Says = 'The listing kit does not exist' }
+        )) {
+        Reset-StandIn
+        $run = Invoke-Submit -Arguments @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile, '-ListingKit', $case.Kit)
+        Assert-That "$($case.Name) is refused without a request (exit code 2)" ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0 -and $run.Output.Contains($case.Says)) "exit $($run.ExitCode): $($run.Output)"
+    }
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitWithout)
+    Assert-That 'Check reads the kit too, and refuses a broken one before signing in (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0) "exit $($run.ExitCode): $($run.Output)"
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', '')
+    Assert-That 'an empty -ListingKit is refused, not taken as "keep the published notes" (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0 -and $run.Output -match '-ListingKit is empty') "exit $($run.ExitCode): $($run.Output)"
 
     # The workflows run the script in their own PowerShell and read $LASTEXITCODE; every ending must reach them.
     Write-Host 'In the caller''s PowerShell, as the workflows run it'
