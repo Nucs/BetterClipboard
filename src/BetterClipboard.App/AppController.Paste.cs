@@ -28,6 +28,12 @@ namespace BetterClipboard.App;
 /// idle until the target has taken the paste; and only then come the rest of putting the panel away
 /// (<see cref="Views.ClipboardFlyout.FinishPuttingAway"/>) and the item's bump to the top.
 /// </para>
+/// <para>
+/// <b>A pinned panel</b> (CLAUDE.md §2.55) pastes the same way, without being put away: it stays on screen, always on top and
+/// no longer active, and the target is the window of another app the user was last in, which a foreground tracker keeps in
+/// <see cref="pasteTarget"/> while it shows (<see cref="NoteForeignForeground"/>). The bump updates the card in place, so
+/// nothing moves under the mouse for the next click.
+/// </para>
 /// </remarks>
 public sealed partial class AppController
 {
@@ -164,7 +170,8 @@ public sealed partial class AppController
     /// <remarks>
     /// <para>
     /// UI thread: the panel is cloaked and marked away (<see cref="Views.ClipboardFlyout.PutAwayForPaste"/>), so its own
-    /// deactivation does nothing more. Then off the UI thread, which handles that deactivation (WinUI's own work, page faults
+    /// deactivation does nothing more — or, pinned, it stays on screen and its deactivation leaves it up. Then off the UI
+    /// thread, which handles that deactivation (WinUI's own work, page faults
     /// included) in parallel: the clipboard is written first, while nothing else competes with it; then the target is
     /// activated (this process still owns the foreground, so any of its threads may hand it on) and gets
     /// <see cref="PasteInjector.SettleTime"/> before the Ctrl+V — longer when its input thread is busy, and Ctrl stays down
@@ -210,7 +217,10 @@ public sealed partial class AppController
         var panel = flyout;
         var writer = monitor ?? throw new InvalidOperationException("The clipboard monitor is not running.");
         panel?.PutAwayForPaste();
-        timeline.Mark("panel away");
+
+        // A pinned panel stays on screen and only lost its overlays (CLAUDE.md §2.55): the stage is named for what happened,
+        // so a slow paste's log line tells the two apart.
+        timeline.Mark(panel?.IsOpen == true ? "panel kept" : "panel away");
         bool activated = false;
         PasteOutcome? outcome = null;
         try

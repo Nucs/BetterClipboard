@@ -69,16 +69,22 @@ public static class FlyoutSizing
     /// </summary>
     /// <param name="scale">The window's current scale (1.0 = 96 DPI); 0, negative or NaN count as 1.</param>
     /// <param name="extraWidthDip">The groups column's width while it is open, else 0.</param>
+    /// <param name="minWidthDip">
+    /// The narrowest the panel itself may be, in DIPs: <see cref="AppSettings.MinFlyoutWidthFor"/> the buttons its header
+    /// shows (CLAUDE.md §2.55). Anything below <see cref="AppSettings.MinFlyoutWidth"/> counts as that floor.
+    /// </param>
     /// <returns>The minimum outer width and height in pixels, rounded up so the minimum DIPs always fit.</returns>
     /// <remarks>
     /// Computed per call from the scale the window has then, unlike <c>OverlappedPresenter.PreferredMinimumWidth</c>,
     /// which takes raw pixels and keeps them when the window moves to a monitor with another scale (microsoft-ui-xaml
-    /// issues 10452 and 10475).
+    /// issues 10452 and 10475). The minimum width is the caller's for the same reason: it follows the header's buttons,
+    /// which Settings can show or hide while the panel exists.
     /// </remarks>
-    public static (int Width, int Height) MinimumTrackSize(double scale, double extraWidthDip)
+    public static (int Width, int Height) MinimumTrackSize(double scale, double extraWidthDip, int minWidthDip)
     {
         scale = Usable(scale);
-        return ((int)Math.Ceiling((AppSettings.MinFlyoutWidth + Math.Max(0, extraWidthDip)) * scale),
+        int width = Math.Max(AppSettings.MinFlyoutWidth, minWidthDip);
+        return ((int)Math.Ceiling((width + Math.Max(0, extraWidthDip)) * scale),
                 (int)Math.Ceiling(AppSettings.MinFlyoutHeight * scale));
     }
 

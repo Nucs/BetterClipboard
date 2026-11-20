@@ -45,7 +45,8 @@
     - **Everything:** los archivos que abres desde [Everything](https://www.voidtools.com/), para pegarlos como archivo o como ruta.
 - **Búsqueda instantánea** en cualquier idioma, con los interruptores de VS Code: coincidir mayúsculas y minúsculas, palabra completa y expresión regular ([Búsqueda](#search)). Win+V no tiene búsqueda.
 - **Hecho para el teclado.** <kbd>Enter</kbd> pega en la aplicación de la que viniste, <kbd>Shift</kbd>+<kbd>Enter</kbd> pega texto sin formato, y las flechas recorren los elementos, las pestañas y tus grupos ([Uso](#use)).
-- **Un panel a tu medida.** Muévelo, cambia su tamaño, reordena u oculta sus pestañas; se abre en la pestaña que usaste por última vez ([Pestañas](#tabs)).
+- **Pega un elemento tras otro.** Ancla el panel y se queda abierto: cada elemento en el que haces clic va a la aplicación en la que estuviste por última vez ([Uso](#use)).
+- **Un panel a tu medida.** Muévelo, cambia su tamaño, reordena u oculta sus pestañas y sus botones; se abre en la pestaña que usaste por última vez ([Pestañas](#tabs)).
 - **Anclados y grupos.** Ancla lo que reutilizas y reúne cosas en grupos con tus propios iconos. Los elementos anclados y agrupados sobreviven a todos los límites ([Grupos](#groups)).
 - **Poca memoria.** Después de cada uso libera la memoria que ya no necesita y mantiene listo solo lo que necesita el próximo Win+V ([Cómo funciona](#how-it-works)).
 - **Lee cada copia.** Las copias separadas por 2 ms o más se guardan todas. Las más rápidas se sobrescriben unas a otras antes de que cualquier aplicación pueda leerlas: se guarda la última y las demás se cuentan ([Cómo funciona](#how-it-works)).
@@ -167,6 +168,8 @@ Presiona **Win+V**. El panel aparece al instante junto a tu cursor de texto, en 
 
 *Configuración › Atajo de teclado › Posición del panel* lo abre junto al mouse en su lugar, o en el centro de una pantalla: la principal o aquella en la que escribes (con varios monitores, la pantalla de la ventana en la que estabas; después de un clic en el escritorio, la pantalla del mouse).
 
+**El botón de anclar** del encabezado del panel lo mantiene abierto después de pegar: haz clic en un elemento tras otro, y cada uno va a la aplicación en la que estuviste por última vez. Sigue anclado, también después de reiniciar, hasta que vuelvas a hacer clic en él. <kbd>Esc</kbd> sigue cerrando el panel, y <kbd>Win</kbd>+<kbd>V</kbd> trae un panel anclado al frente donde está.
+
 | Tecla | Acción |
 |---|---|
 | *escribir* | Buscar (por subcadena, sin distinguir mayúsculas, incluidos hebreo, CJK y emoji) |
@@ -192,6 +195,7 @@ Presiona **Win+V**. El panel aparece al instante junto a tu cursor de texto, en 
 | Rueda o arrastre sobre las pestañas | Desplazar las pestañas de lado cuando no caben, o hacer clic en las flechas ‹ › de sus extremos |
 | Dejar el mouse sobre una imagen | Verla a tamaño completo; su botón de ojo abre un visor con zoom (consulta [Vista previa de imágenes](#image-previews)) |
 | Dejar el mouse sobre un texto largo | Leerlo entero y desplazarlo con la rueda (mover el mouse lo cierra); clic derecho para copiarlo o para el menú del elemento; su botón de ojo abre el visor de texto, que se queda abierto (consulta [Vista previa de texto](#text-previews)) |
+| El botón de anclar, a la izquierda del de actualización | Mantener el panel abierto después de pegar, para pegar un elemento tras otro; haz clic otra vez para desanclarlo |
 | El botón de actualización, a la izquierda de Pausa | Abrir el cuadro de diálogo de actualización: las notas de la versión y *Actualizar y reiniciar* cuando existe una versión más nueva (entonces el botón está resaltado; consulta [Actualizaciones](#updates)) |
 
 Escribe y presiona <kbd>Enter</kbd> tan rápido como quieras: <kbd>Enter</kbd> espera a que termine la búsqueda y pega su mejor coincidencia, la más reciente que no está anclada cuando las coincidencias ancladas aparecen encima.
@@ -200,7 +204,7 @@ Escribe y presiona <kbd>Enter</kbd> tan rápido como quieras: <kbd>Enter</kbd> e
 
 El icono de la bandeja abre el panel y la configuración. El cuadro de búsqueda de la parte superior de la configuración (<kbd>Ctrl</kbd>+<kbd>F</kbd>) filtra la página mientras escribes, erratas incluidas; <kbd>Esc</kbd> lo vacía. Sus secciones:
 
-- **Atajo de teclado:** las teclas que abren el panel (agrega todas las que quieras: haz clic en el cuadro y presiónalas, o elige una en su menú de sugerencias y atajos usados antes), dónde se abre el panel (junto al cursor de texto, junto al mouse, en el centro de la pantalla principal o en el centro de la pantalla en la que escribes) y la liberación de atajos Win+letra del Explorador ([Elegir atajos](#choosing-shortcuts)).
+- **Atajo de teclado:** las teclas que abren el panel (agrega todas las que quieras: haz clic en el cuadro y presiónalas, o elige una en su menú de sugerencias y atajos usados antes), dónde se abre el panel (junto al cursor de texto, junto al mouse, en el centro de la pantalla principal o en el centro de la pantalla en la que escribes), qué botones muestra su encabezado (todos menos Configuración se pueden ocultar) y la liberación de atajos Win+letra del Explorador ([Elegir atajos](#choosing-shortcuts)).
 - **Historial:** cuántos elementos, durante cuántos días, de qué tamaño, qué registrar y cuánto tiempo se conservan las imágenes de *Guardar en carpeta temporal y*.
 - **Pegado:** pegar al elegir un elemento, mover al principio los elementos pegados, anclados primero.
 - **Privacidad:** pausa, aplicaciones ignoradas, *Olvidados para siempre*, fiabilidad de la captura, borrar historial.

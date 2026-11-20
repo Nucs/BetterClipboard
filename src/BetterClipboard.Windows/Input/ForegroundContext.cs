@@ -63,6 +63,29 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
     }
 
     /// <summary>
+    /// A context naming <paramref name="window"/> as the paste target, with the mouse cursor now and no caret: the window of
+    /// another app the user went to while a pinned panel stayed open (<see cref="ForegroundTracker"/>, CLAUDE.md §2.55), which
+    /// that panel's next paste goes into.
+    /// </summary>
+    /// <remarks>
+    /// No caret and no timestamp: nothing is placed next to it and no summon is timed from it. The window may close before
+    /// the paste; the paste then reports it gone (<see cref="PasteOutcome.NoTarget"/>), as for any target.
+    /// </remarks>
+    /// <param name="window">The window; 0 makes a context with no target, like <see cref="CursorOnly"/>.</param>
+    /// <returns>The context.</returns>
+    public static ForegroundContext ForWindow(nint window)
+    {
+        GetCursorPos(out var cursor);
+        uint processId = 0;
+        if (window != 0)
+        {
+            GetWindowThreadProcessId(window, out processId);
+        }
+
+        return new ForegroundContext(window, processId, null, new ScreenPoint(cursor.X, cursor.Y));
+    }
+
+    /// <summary>
     /// Captures the current foreground window, its caret and the cursor.
     /// </summary>
     /// <returns>The context.</returns>

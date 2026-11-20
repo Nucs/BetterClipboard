@@ -76,8 +76,9 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Once Windows has finished the current switch, looks whether the user went to another window, and if so closes the
-    /// panel's viewers, peeks and update dialog and conceals the panel. A no-op when the panel is not showing, when it or a
-    /// window it owns is in front, and while another look is pending.
+    /// panel's viewers, peeks and update dialog and conceals the panel — a pinned panel (CLAUDE.md §2.55) only loses those
+    /// and stays up. A no-op when the panel is not showing, when it or a window it owns is in front, and while another look
+    /// is pending.
     /// </summary>
     /// <param name="cause">
     /// What made the panel look, for the log line (content-free: which kind of popup showed, or that the last one closed).
@@ -124,6 +125,14 @@ public sealed partial class ClipboardFlyout
             // one of its popups has the keyboard: nothing to do.
             if (closingForExit || !IsOpen || ForegroundHelper.IsForeground(hwnd))
             {
+                return;
+            }
+
+            if (StaysOpen)
+            {
+                // Pinned: the panel itself stays up while the user works elsewhere; only what it showed for the use they
+                // left goes (ClipboardFlyout.KeepOpen.cs).
+                CloseOverlaysOfPinnedPanel(cause);
                 return;
             }
 

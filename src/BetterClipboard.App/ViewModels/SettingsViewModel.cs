@@ -252,6 +252,29 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int PlacementIndex { get; set; }
 
+    /// <summary>
+    /// Settings › Shortcut › Buttons in the panel: whether the pin (keeps the panel open after pasting) shows in the panel's
+    /// header. Unticked, the panel also closes after pasting again (<see cref="AppSettings.PanelStaysOpen"/>, CLAUDE.md §2.55).
+    /// </summary>
+    [ObservableProperty]
+    public partial bool ShowKeepOpenButton { get; set; } = true;
+
+    /// <summary>Whether the update button shows in the panel's header (<see cref="AppSettings.HiddenPanelButtons"/>).</summary>
+    [ObservableProperty]
+    public partial bool ShowUpdatesButton { get; set; } = true;
+
+    /// <summary>Whether the pause button shows in the panel's header (<see cref="AppSettings.HiddenPanelButtons"/>).</summary>
+    [ObservableProperty]
+    public partial bool ShowPauseButton { get; set; } = true;
+
+    /// <summary>Whether the groups button shows in the panel's header (<see cref="AppSettings.HiddenPanelButtons"/>; Ctrl+G works either way).</summary>
+    [ObservableProperty]
+    public partial bool ShowGroupsButton { get; set; } = true;
+
+    /// <summary>Whether the clear-history button shows in the panel's header (<see cref="AppSettings.HiddenPanelButtons"/>).</summary>
+    [ObservableProperty]
+    public partial bool ShowClearButton { get; set; } = true;
+
     /// <summary>Index into System / Light / Dark.</summary>
     [ObservableProperty]
     public partial int ThemeIndex { get; set; }
@@ -441,6 +464,11 @@ public sealed partial class SettingsViewModel : ObservableObject
             IsCapturePaused = settings.IsCapturePaused;
             IgnoredAppsText = string.Join(Environment.NewLine, settings.IgnoredApps);
             PlacementIndex = PlacementIndexOf(settings);
+            ShowKeepOpenButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.KeepOpen);
+            ShowUpdatesButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.Updates);
+            ShowPauseButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.Pause);
+            ShowGroupsButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.Groups);
+            ShowClearButton = !PanelButtons.IsHidden(settings.HiddenPanelButtons, PanelButton.Clear);
             ThemeIndex = (int)settings.Theme;
             // A saved tag this build does not ship (a newer version's language) shows as "Use Windows setting", which is
             // also what it means here (UiText.Resolve).
@@ -1282,6 +1310,35 @@ public sealed partial class SettingsViewModel : ObservableObject
         FlyoutPlacement.CenterScreen => settings.CenterOnMainScreen ? 2 : 3,
         _ => 0,
     };
+
+    /// <summary>Shows or hides the pin in the panel's header (and with it, the panel staying open after pasting).</summary>
+    /// <param name="value">Whether it shows.</param>
+    partial void OnShowKeepOpenButtonChanged(bool value) => SetPanelButtonShown(PanelButton.KeepOpen, value);
+
+    /// <summary>Shows or hides the update button in the panel's header.</summary>
+    /// <param name="value">Whether it shows.</param>
+    partial void OnShowUpdatesButtonChanged(bool value) => SetPanelButtonShown(PanelButton.Updates, value);
+
+    /// <summary>Shows or hides the pause button in the panel's header.</summary>
+    /// <param name="value">Whether it shows.</param>
+    partial void OnShowPauseButtonChanged(bool value) => SetPanelButtonShown(PanelButton.Pause, value);
+
+    /// <summary>Shows or hides the groups button in the panel's header.</summary>
+    /// <param name="value">Whether it shows.</param>
+    partial void OnShowGroupsButtonChanged(bool value) => SetPanelButtonShown(PanelButton.Groups, value);
+
+    /// <summary>Shows or hides the clear-history button in the panel's header.</summary>
+    /// <param name="value">Whether it shows.</param>
+    partial void OnShowClearButtonChanged(bool value) => SetPanelButtonShown(PanelButton.Clear, value);
+
+    /// <summary>
+    /// Persists one ticked or unticked box of Settings › Shortcut › Buttons in the panel, keeping the others as stored
+    /// (<see cref="PanelButtons.WithShown"/>); the controller then applies the header (<c>ClipboardFlyout.ApplyHeaderButtons</c>).
+    /// </summary>
+    /// <param name="button">The button.</param>
+    /// <param name="shown">Whether it shows.</param>
+    private void SetPanelButtonShown(PanelButton button, bool shown) =>
+        Update(s => s with { HiddenPanelButtons = PanelButtons.WithShown(s.HiddenPanelButtons, button, shown) });
 
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>

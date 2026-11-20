@@ -105,12 +105,36 @@
                         Text="{loc:Tr Text='Paused'}" />
                 </Border>
             </Grid>
+            <!--
+                The header's buttons. Each but Settings can be hidden in Settings › Shortcut › Buttons in the panel
+                (AppSettings.HiddenPanelButtons, ClipboardFlyout.KeepOpen.cs: ApplyHeaderButtons), and the panel's minimum
+                width follows how many show (AppSettings.MinFlyoutWidthFor: 36 DIPs a button with its gap). Settings never
+                hides: it is where a hidden button comes back.
+            -->
             <StackPanel
                 Grid.Column="2"
                 Orientation="Horizontal"
                 Spacing="2">
                 <!--
-                    Updates (ClipboardFlyout.Update.cs): left of Pause, always there. It looks like its neighbors while
+                    The pin (ClipboardFlyout.KeepOpen.cs, CLAUDE.md §2.55): keeps the panel open after pasting, so items can
+                    be clicked and pasted one after another into the app the user was last in. Remembered until clicked
+                    again (AppSettings.KeepPanelOpen). Like the groups toggle, its two looks are whole styles swapped from
+                    code with an outline pin (E718 Pin) while off and a filled pin (E842 PinFill, also the pinned cards'
+                    badge) on the active style while on, both checked by rendering; its tooltip and accessible name say
+                    what a click does, also from code.
+                -->
+                <Button
+                    x:Name="KeepOpenButton"
+                    Click="KeepOpenButton_Click"
+                    Style="{StaticResource IconButtonStyle}">
+                    <FontIcon
+                        x:Name="KeepOpenGlyph"
+                        FontSize="15"
+                        Glyph="&#xE718;" />
+                </Button>
+                <!--
+                    Updates (ClipboardFlyout.Update.cs): left of Pause, there unless the update system did not start or
+                    Settings hides it (the tray's "Update to …" then opens its dialog over Settings). It looks like its neighbors while
                     there is nothing to do, gets the accent fill of a primary button while an update waits (a whole style
                     swapped in from code), and shows a small ring instead of its glyph while an update downloads or is
                     being installed. A click opens the update dialog under it: the decision buttons, and below them the
@@ -200,7 +224,9 @@
                         </Flyout>
                     </Button.Flyout>
                 </Button>
+                <!--  Named for the update dialog, which opens over it while the update button is hidden (ClipboardFlyout.Update.cs).  -->
                 <Button
+                    x:Name="SettingsButton"
                     AutomationProperties.Name="{loc:Tr Text='Settings'}"
                     Click="SettingsButton_Click"
                     Content="&#xE713;"

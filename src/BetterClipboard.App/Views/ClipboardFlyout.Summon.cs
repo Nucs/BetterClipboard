@@ -99,23 +99,40 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Takes the panel off the screen for a paste and does nothing else: its overlays closed, its window cloaked (DWM drops it
     /// at its next frame), and marked away, so its deactivation — the paste activates its target next — finds nothing more to
-    /// do. The caller hands the foreground to the target itself, sends Ctrl+V, and then calls <see cref="FinishPuttingAway"/>.
+    /// do; a pinned panel only loses its overlays and stays. The caller hands the foreground to the target itself, sends
+    /// Ctrl+V, and then calls <see cref="FinishPuttingAway"/>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Why the split: everything else that putting the panel away does — hiding and showing the window, resetting its view for
     /// the next summon with a layout pass of the list — took 40 to 75 ms on the UI thread in a warm process and up to 1.3 s
     /// once the app's memory had been trimmed and paged out, and it all came before the Ctrl+V (CLAUDE.md §2.52).
+    /// </para>
+    /// <para>
+    /// A panel that stays open after use (pinned, CLAUDE.md §2.55) only closes its overlays — a viewer would cover the window
+    /// the paste goes into — and stays on screen: the target's activation deactivates it, which leaves it up, and the rest of
+    /// the paste is the same. <see cref="FinishPuttingAway"/> then finds nothing pending.
+    /// </para>
     /// </remarks>
-    public void PutAwayForPaste()
+    /// <returns><see langword="true"/> when the panel went off the screen; <see langword="false"/> when it was not open or stays open.</returns>
+    public bool PutAwayForPaste()
     {
         if (!IsOpen)
         {
-            return;
+            return false;
         }
 
         CloseImageOverlays();
         CloseUpdateDialog();
+        if (StaysOpen)
+        {
+            // It must stay above the target the paste activates next (ClipboardFlyout.KeepOpen.cs).
+            KeepOnTop();
+            return false;
+        }
+
         PutAway(handTo: 0, finishSoon: false);
+        return true;
     }
 
     /// <summary>
@@ -158,6 +175,9 @@ public sealed partial class ClipboardFlyout
 
         presented = false;
         finishPending = true;
+
+        // A pinned panel stops following the foreground window: the next summon captures its target from the shortcut.
+        UpdateForegroundTracking();
 
         // Off the screen at DWM's next frame, without any animation. Where DWM refuses to cloak, the window is hidden by
         // FinishPuttingAway instead, after the foreground went on.

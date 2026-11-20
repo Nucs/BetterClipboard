@@ -765,13 +765,24 @@ public sealed class UpdateSettingsTests
         Assert.Equal(string.Empty, (new AppSettings { SkippedUpdateVersion = null! }).Normalize().SkippedUpdateVersion);
     }
 
-    /// <summary>The panel's minimum width leaves room for the header's fifth button, and a narrower saved width is raised to it.</summary>
+    /// <summary>
+    /// The panel's minimum width follows the header's buttons (CLAUDE.md §2.55): 396 DIPs for the five buttons the header had
+    /// with the update button, 432 for all six with the pin, never below the floor of 360 (four buttons, the width before the
+    /// update button). A saved width is only raised to the floor: the panel opens at least as wide as its header needs anyway,
+    /// so a width saved while buttons were hidden comes back when they are hidden again.
+    /// </summary>
     [Fact]
-    public void Settings_MinimumWidthHoldsFiveHeaderButtons()
+    public void Settings_MinimumWidthFollowsTheHeaderButtons()
     {
-        Assert.Equal(396, AppSettings.MinFlyoutWidth);
+        Assert.Equal(360, AppSettings.MinFlyoutWidth);
+        Assert.Equal(396, AppSettings.MinFlyoutWidthFor(5));
+        Assert.Equal(432, AppSettings.MinFlyoutWidthFor(6));
+        Assert.Equal(360, AppSettings.MinFlyoutWidthFor(4));
+        Assert.Equal(360, AppSettings.MinFlyoutWidthFor(1));
+        Assert.Equal(360, AppSettings.MinFlyoutWidthFor(-3));
         Assert.True(AppSettings.DefaultFlyoutWidth >= AppSettings.MinFlyoutWidth);
-        Assert.Equal(AppSettings.MinFlyoutWidth, (new AppSettings { FlyoutWidth = 360 }).Normalize().FlyoutWidth);
+        Assert.Equal(AppSettings.MinFlyoutWidth, (new AppSettings { FlyoutWidth = 300 }).Normalize().FlyoutWidth);
+        Assert.Equal(380, (new AppSettings { FlyoutWidth = 380 }).Normalize().FlyoutWidth);
     }
 
     /// <summary>The command switches the check off and on in the settings file and says what it did.</summary>

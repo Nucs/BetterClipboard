@@ -13,6 +13,32 @@ internal static partial class WindowInterop
     private const uint DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
     private const uint DWMWA_WINDOW_CORNER_PREFERENCE = 33;
     private const int DWMWCP_ROUND = 2;
+    private const int GWL_EXSTYLE = -20;
+    private const long WS_EX_TOPMOST = 0x00000008;
+    private const nint HWND_TOPMOST = -1;
+    private const uint SWP_NOSIZE = 0x0001;
+    private const uint SWP_NOMOVE = 0x0002;
+    private const uint SWP_NOACTIVATE = 0x0010;
+
+    /// <summary>
+    /// Whether a window is in the topmost band (<c>WS_EX_TOPMOST</c>): above every window that is not, whichever has the
+    /// keyboard. <c>OverlappedPresenter.IsAlwaysOnTop</c> keeps answering what it was set to; this reads the window itself.
+    /// </summary>
+    /// <param name="hwnd">Top-level window.</param>
+    /// <returns><see langword="true"/> when the window has the flag; <see langword="false"/> otherwise or when it cannot be read.</returns>
+    public static bool IsTopmost(nint hwnd) => (GetWindowLongPtr(hwnd, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0;
+
+    /// <summary>
+    /// Puts a window back into the topmost band, at its top, without activating, moving or resizing it.
+    /// </summary>
+    /// <remarks>
+    /// Raises it above every other topmost window too (another app's "always on top" window), so callers do it only when the
+    /// flag is missing (<see cref="IsTopmost"/>), never on every occasion: a window the user put on top themselves would be
+    /// covered again and again.
+    /// </remarks>
+    /// <param name="hwnd">Top-level window of this process.</param>
+    /// <returns><see langword="true"/> when Windows took the change.</returns>
+    public static bool MakeTopmost(nint hwnd) => SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
     /// <summary>
     /// Draws a window's title bar (the one Windows draws: caption, icon, buttons) dark or light, to match the app's theme:
@@ -140,6 +166,26 @@ internal static partial class WindowInterop
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool ClientToScreen(nint hwnd, ref POINT point);
+
+    /// <summary>Reads a window's long value (here its extended style), pointer-sized as on every architecture the app ships for.</summary>
+    /// <param name="hwnd">Window.</param>
+    /// <param name="index">Which value (<see cref="GWL_EXSTYLE"/>).</param>
+    /// <returns>The value; 0 when it cannot be read.</returns>
+    [LibraryImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    private static partial nint GetWindowLongPtr(nint hwnd, int index);
+
+    /// <summary>Changes a window's size, position or place in the Z order.</summary>
+    /// <param name="hwnd">Window.</param>
+    /// <param name="insertAfter">The window to place it after, or a band (<see cref="HWND_TOPMOST"/>).</param>
+    /// <param name="x">New left edge (ignored with <see cref="SWP_NOMOVE"/>).</param>
+    /// <param name="y">New top edge (ignored with <see cref="SWP_NOMOVE"/>).</param>
+    /// <param name="cx">New width (ignored with <see cref="SWP_NOSIZE"/>).</param>
+    /// <param name="cy">New height (ignored with <see cref="SWP_NOSIZE"/>).</param>
+    /// <param name="flags">What to leave alone (<c>SWP_*</c>).</param>
+    /// <returns><see langword="true"/> on success.</returns>
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool SetWindowPos(nint hwnd, nint insertAfter, int x, int y, int cx, int cy, uint flags);
 
     /// <summary>The Win32 <c>POINT</c> (two 32-bit screen/client coordinates).</summary>
     [StructLayout(LayoutKind.Sequential)]

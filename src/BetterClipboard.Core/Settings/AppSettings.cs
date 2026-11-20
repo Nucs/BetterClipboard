@@ -91,22 +91,38 @@ public sealed record AppSettings
     /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).
     /// The outer window's width, frame included, without the groups column.
     /// </summary>
+    /// <remarks>
+    /// Footgun: not always the width a panel opens at. A summon opens it at least as wide as its header's buttons need
+    /// (<see cref="MinFlyoutWidthFor"/>): with all six buttons shown that is 432 DIPs, so a panel left at this default opens
+    /// 432 wide, and hiding two buttons gives the 400 back (CLAUDE.md §2.55).
+    /// </remarks>
     public const int DefaultFlyoutWidth = 400;
 
     /// <summary>The panel's height when nothing was resized yet, in DIPs (the outer window's, frame included).</summary>
     public const int DefaultFlyoutHeight = 560;
 
     /// <summary>
-    /// The narrowest the user can make the panel, in DIPs (without the groups column): the header's logo, "Clipboard", the
-    /// "Paused" chip and its five buttons (updates, pause, groups, clear, settings) still fit side by side, and the search
-    /// box keeps room for text left of its Aa / W / .* toggles. Narrower, the header's title would be cut off. Enforced
-    /// while resizing and when loading.
+    /// The narrowest the panel can ever be, in DIPs (without the groups column): the search box keeps room for text left of
+    /// its Aa / W / .* toggles, and a header of at most four buttons fits with its logo, "Clipboard" and the "Paused" chip.
+    /// Enforced when loading; the narrowest the user can drag a panel to is <see cref="MinFlyoutWidthFor"/> its buttons.
     /// </summary>
     /// <remarks>
-    /// 360 until the update button joined the header (four buttons took 312 of the 322 content DIPs); a fifth button is
-    /// 36 DIPs more. A width saved below this by an older version is raised to it when the settings load.
+    /// 360 until the update button joined the header in 2026-10 (four buttons took 312 of the 322 content DIPs), then 396
+    /// for five buttons, and the floor again since the buttons can be hidden and the minimum follows them (2026-11-20). A
+    /// width saved by an older version stays as it was: the panel opens at least as wide as its header needs anyway.
     /// </remarks>
-    public const int MinFlyoutWidth = 396;
+    public const int MinFlyoutWidth = 360;
+
+    /// <summary>
+    /// The width one more header button needs, in DIPs: the 34-DIP button and the 2-DIP gap before it
+    /// (<c>IconButtonStyle</c> and the header's button row in <c>ClipboardFlyout.xaml</c>).
+    /// </summary>
+    public const int HeaderButtonDip = 36;
+
+    /// <summary>
+    /// How many header buttons fit at <see cref="MinFlyoutWidth"/> next to the logo, "Clipboard" and the "Paused" chip.
+    /// </summary>
+    public const int HeaderButtonsAtMinWidth = 4;
 
     /// <summary>
     /// The lowest the user can make the panel, in DIPs: header, search box, tabs and footer take ~180 of them, so the list
@@ -261,6 +277,54 @@ public sealed record AppSettings
     public bool ShowGroupsPane { get; init; }
 
     /// <summary>
+    /// Whether the panel stays open after a paste (the pin in its header, left of the update button; CLAUDE.md §2.55): the
+    /// item still goes into the app the user was last in, and the panel stays where it is, so items can be clicked and
+    /// pasted one after another. Off by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Remembered until unpinned</b> (the owner's choice, 2026-11-20), like <see cref="ShowGroupsPane"/>: every summon
+    /// opens a pinned panel, also after a restart. Pinned, only the user closes the panel — Esc, the shortcut while the panel
+    /// is in front, Alt+F4, the Settings button; a click elsewhere, a paste, <i>Copy only</i> or opening a file leave it up.
+    /// The shortcut pressed while the pinned panel waits behind another app brings it forward in place
+    /// (<see cref="Presentation.PanelShortcut"/>).
+    /// </para>
+    /// <para>
+    /// In effect only while the pin itself shows (<see cref="PanelStaysOpen"/>): hiding the pin in Settings lets the panel
+    /// close after pasting again, and showing it again restores this. Footgun: a version from before this member drops it
+    /// when it saves the file, and the panel is unpinned again.
+    /// </para>
+    /// </remarks>
+    public bool KeepPanelOpen { get; init; }
+
+    /// <summary>
+    /// The panel header's buttons the user hid (Settings › Shortcut › Buttons in the panel), as
+    /// <see cref="Presentation.PanelButton"/> names; empty while every button shows (the default). The Settings button is
+    /// never among them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hiding a button only takes it off the header: what it does stays in reach elsewhere (<c>Ctrl+G</c> for the groups
+    /// column, the tray menu for pausing and updates, Settings for clearing the history), except the pin, whose mode ends
+    /// with it (<see cref="PanelStaysOpen"/>). Each hidden button lets the panel be 36 DIPs narrower
+    /// (<see cref="MinFlyoutWidthFor"/>).
+    /// </para>
+    /// <para>
+    /// Names, read leniently (<see cref="Presentation.PanelButtons.TryParse"/>) and kept canonical by
+    /// <see cref="Normalize"/>, never an enum written by name: an unknown name would make an older version set the whole file
+    /// aside. Footgun: a version from before this member drops it when it saves the file, and every button shows again.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> HiddenPanelButtons { get; init; } = [];
+
+    /// <summary>
+    /// Whether the panel stays open after pasting right now: <see cref="KeepPanelOpen"/>, while the pin shows in the header.
+    /// Derived, so it is never written to the file.
+    /// </summary>
+    [JsonIgnore]
+    public bool PanelStaysOpen => KeepPanelOpen && !Presentation.PanelButtons.IsHidden(HiddenPanelButtons, Presentation.PanelButton.KeepOpen);
+
+    /// <summary>
     /// The panel's width the user last dragged it to, in DIPs (device-independent pixels, 1/96 inch): the outer window,
     /// frame included, without the groups column — which adds its own width on the left while it is open, so opening or
     /// closing the column never changes this.
@@ -268,9 +332,10 @@ public sealed record AppSettings
     /// <remarks>
     /// Saved once when a resize ends (never during the drag), and only for a resize the user made: the panel moving to a
     /// monitor with another scale changes its pixels, not this. Every summon opens the panel at this size next to the
-    /// caret, shrunk to the monitor's work area when larger (the shrunk size is not saved). Kept in
-    /// <see cref="MinFlyoutWidth"/>..<see cref="MaxFlyoutSize"/>; resizing the panel wider shows more of the filter tabs,
-    /// which scroll sideways when they do not all fit.
+    /// caret, shrunk to the monitor's work area when larger (the shrunk size is not saved), and widened to what its
+    /// header's buttons need when narrower (<see cref="MinFlyoutWidthFor"/>; the widened size is not saved either, so hiding
+    /// buttons gives the narrower width back). Kept in <see cref="MinFlyoutWidth"/>..<see cref="MaxFlyoutSize"/>; resizing
+    /// the panel wider shows more of the filter tabs, which scroll sideways when they do not all fit.
     /// </remarks>
     public int FlyoutWidth { get; init; } = DefaultFlyoutWidth;
 
@@ -713,6 +778,25 @@ public sealed record AppSettings
         string.Equals(CompactHotkeyText(a), CompactHotkeyText(b), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// The narrowest a panel whose header shows <paramref name="headerButtons"/> buttons can be, in DIPs (without the
+    /// groups column): its logo, "Clipboard", the "Paused" chip and those buttons fit side by side, never below
+    /// <see cref="MinFlyoutWidth"/>. 360 for four buttons or fewer, 396 for five, 432 for all six.
+    /// </summary>
+    /// <remarks>
+    /// The panel answers it as the minimum Windows lets the user drag it to, and opens at least this wide whatever width is
+    /// remembered — never saved, so hiding buttons in Settings gives a narrower remembered width back (CLAUDE.md §2.55).
+    /// Linear on purpose: each button and its gap take <see cref="HeaderButtonDip"/>, measured on the five-button header
+    /// (348 of the 358 content DIPs at 396).
+    /// </remarks>
+    /// <param name="headerButtons">
+    /// The buttons in the header's right-hand group, the Settings button included (<see cref="Presentation.PanelButtons.CountShown"/>);
+    /// negative counts as none.
+    /// </param>
+    /// <returns>The minimum width in DIPs.</returns>
+    public static int MinFlyoutWidthFor(int headerButtons) =>
+        MinFlyoutWidth + (HeaderButtonDip * Math.Max(0, headerButtons - HeaderButtonsAtMinWidth));
+
+    /// <summary>
     /// Reads a tab name as stored in <see cref="LastTab"/>: the name of a <see cref="Storage.ClipFilter"/> member, ignoring
     /// case and surrounding spaces.
     /// </summary>
@@ -899,6 +983,10 @@ public sealed record AppSettings
             TabOrder = NormalizeTabNames(TabOrder),
             HiddenTabs = hiddenTabs,
             HiddenTabRows = NormalizeTabNames(HiddenTabRows).Where(name => hiddenTabs.Contains(name)).ToArray(),
+
+            // Known buttons only, each once, in the header's order (a hand-edited "pause" becomes "Pause"; "Settings" and
+            // typos are dropped: the Settings button always shows).
+            HiddenPanelButtons = Presentation.PanelButtons.Normalize(HiddenPanelButtons),
             MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

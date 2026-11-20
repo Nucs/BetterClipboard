@@ -87,6 +87,12 @@ public sealed partial class AppController
     /// </summary>
     private LanguageWindow? languageWindow;
     private volatile CaptureRules rules = new();
+
+    /// <summary>
+    /// Where a paste from the panel goes: the window in front when the shortcut opened it (the caret and the mouse with it),
+    /// replaced while a pinned panel shows by each window of another app the user goes to (<see cref="NoteForeignForeground"/>,
+    /// CLAUDE.md §2.55). <see langword="null"/> before the first summon. UI thread only.
+    /// </summary>
     private ForegroundContext? pasteTarget;
 
     /// <summary>
@@ -647,6 +653,14 @@ public sealed partial class AppController
         if (setupWindow is not null)
         {
             setupWindow.Present();
+            return;
+        }
+
+        // A pinned panel on screen is brought forward where it stands, not summoned again (the tray's Open clipboard, a second
+        // launch): a summon would move it and reset its view, and a context from the tray would take its paste target away.
+        if (flyout is { IsOpen: true, StaysOpen: true } pinned)
+        {
+            BringPinnedForward(pinned, context);
             return;
         }
 
@@ -1253,7 +1267,10 @@ public sealed partial class AppController
         Application.Current.Exit();
     }
 
-    /// <summary>Handles the global shortcut (UI thread).</summary>
+    /// <summary>
+    /// Handles the global shortcut (UI thread): opens the panel, closes it when it is in front, and brings a pinned panel
+    /// that waits behind another app forward (<see cref="PanelShortcut.Decide"/>, CLAUDE.md §2.55).
+    /// </summary>
     /// <param name="context">Where the user was when pressing it.</param>
     private void OnHotkey(ForegroundContext context)
     {
@@ -1265,14 +1282,55 @@ public sealed partial class AppController
         }
 
         var window = EnsureFlyout();
-        if (window.IsOpen)
+        switch (PanelShortcut.Decide(window.IsOpen, window.StaysOpen, ForegroundHelper.IsForeground(window.Handle)))
         {
-            // Pressing the shortcut again while the flyout is up closes it, like Win+V does.
-            window.Dismiss(restoreFocus: true);
+            case PanelShortcutAction.Close:
+                // Pressing the shortcut again while the flyout is up closes it, like Win+V does; a pinned one too (the user
+                // closed it, and it opens pinned again next time).
+                window.CloseByUser(restoreFocus: true);
+                return;
+            case PanelShortcutAction.BringForward:
+                // The pinned panel waits behind the app the user types in: it takes the keyboard where it stands, and its
+                // next paste goes into that app (the owner's choice, 2026-11-20).
+                BringPinnedForward(window, context);
+                return;
+            default:
+                ShowFlyout(context);
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Gives the keyboard to the pinned panel on screen, making the window the user was in (<paramref name="context"/>) the
+    /// target of its next paste when it names one: a context from the tray names none, and then the window the tracker saw
+    /// last stays the target.
+    /// </summary>
+    /// <param name="window">The panel (open and pinned).</param>
+    /// <param name="context">Where the user was when asking.</param>
+    private void BringPinnedForward(ClipboardFlyout window, ForegroundContext context)
+    {
+        if (context.TargetWindow != 0 && context.TargetWindow != window.Handle)
+        {
+            pasteTarget = context;
+        }
+
+        window.BringForward();
+    }
+
+    /// <summary>
+    /// A window of another app took the foreground while the pinned panel shows (<c>ForegroundTracker</c>, UI thread): it is
+    /// where the panel's next paste goes, as if the shortcut had been pressed there (CLAUDE.md §2.55). Ignored once the panel
+    /// is put away or unpinned, when the next summon captures its own target.
+    /// </summary>
+    /// <param name="window">The window (never 0, never one of this process's, never the taskbar, Start or Alt+Tab).</param>
+    internal void NoteForeignForeground(nint window)
+    {
+        if (exiting || window == 0 || flyout is not { IsOpen: true, StaysOpen: true })
+        {
             return;
         }
 
-        ShowFlyout(context);
+        pasteTarget = ForegroundContext.ForWindow(window);
     }
 
     /// <summary>Creates the flyout on first use.</summary>
@@ -1321,7 +1379,10 @@ public sealed partial class AppController
         return opened.Store;
     }
 
-    /// <summary>The paste target captured when the flyout was summoned (0 when none).</summary>
+    /// <summary>
+    /// The paste target: the window captured when the flyout was summoned, or — while a pinned panel shows — the window of
+    /// another app the user was in last (<see cref="NoteForeignForeground"/>); 0 when none.
+    /// </summary>
     internal nint PasteTargetWindow => pasteTarget?.TargetWindow ?? 0;
 
     /// <summary>
@@ -1425,6 +1486,14 @@ public sealed partial class AppController
             if (next.ShowEverythingTab != (everything is not null) && !exiting)
             {
                 SetEverything(next.ShowEverythingTab);
+            }
+
+            // Idempotent too: the header's buttons follow Settings › Buttons in the panel, the pin its state, and a pinned
+            // panel starts or stops following the window in front (ClipboardFlyout.KeepOpen.cs). A panel not built yet
+            // reads them when it is.
+            if (!exiting)
+            {
+                flyout?.ApplyHeaderButtons();
             }
         });
     }

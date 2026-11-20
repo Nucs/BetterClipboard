@@ -49,8 +49,10 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
   ([Search](#search)). Win+V has no search.
 - **Made for the keyboard.** <kbd>Enter</kbd> pastes into the app you came from, <kbd>Shift</kbd>+<kbd>Enter</kbd>
   pastes plain text, and the arrow keys walk the items, the tabs and your groups ([Use](#use)).
-- **A panel that fits you.** Move it, resize it, reorder or hide its tabs; it opens in the tab you used last
-  ([Tabs](#tabs)).
+- **Paste one item after another.** Pin the panel and it stays open: each item you click goes into the app you were
+  last in ([Use](#use)).
+- **A panel that fits you.** Move it, resize it, reorder or hide its tabs and its buttons; it opens in the tab you used
+  last ([Tabs](#tabs)).
 - **Pins and groups.** Pin what you reuse, and gather things in groups with your own icons. Pinned and grouped items
   outlive every limit ([Groups](#groups)).
 - **Light on memory.** After each use it frees the memory it no longer needs and keeps just what the next Win+V needs
@@ -216,6 +218,10 @@ instead). A search or a group starts at the top, its pinned items in view.
 or the one you are typing on (with several monitors, the screen with the window you were in; after a click on the
 desktop, the screen with the mouse).
 
+**The pin** in the panel's header keeps it open after pasting: click item after item, and each goes into the app you
+were last in. It stays pinned, also after a restart, until you click it again. <kbd>Esc</kbd> still closes the panel,
+and <kbd>Win</kbd>+<kbd>V</kbd> brings a pinned panel back to the front where it is.
+
 | Key | Action |
 |---|---|
 | *type* | Search (substring, case-insensitive, Hebrew/CJK/emoji included) |
@@ -241,6 +247,7 @@ desktop, the screen with the mouse).
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
 | Rest the mouse on a long text | Read all of it and scroll it with the wheel (moving the mouse closes it); right-click it to copy it or for the item's menu; its eye button opens the text viewer, which stays (see [Text previews](#text-previews)) |
+| The pin, left of the update button | Keep the panel open after pasting, to paste one item after another; click it again to unpin |
 | The update button, left of Pause | Open the update dialog: the release notes, and *Update and restart* when a newer version exists (the button is highlighted then; see [Updates](#updates)) |
 
 Type and press <kbd>Enter</kbd> as fast as you like: <kbd>Enter</kbd> waits for the search to finish and pastes its best match — the
@@ -256,8 +263,9 @@ type, typos included; <kbd>Esc</kbd> clears it. Its sections:
 
 - **Shortcut:** the keys that open the panel (add as many as you like: click the box and press them, or pick one from
   its menu of suggestions and shortcuts used before), where the panel opens (next to the text cursor, next to the mouse,
-  in the middle of the main screen, or in the middle of the screen you are typing on), and releasing Win+letter
-  shortcuts from Explorer ([Choosing shortcuts](#choosing-shortcuts)).
+  in the middle of the main screen, or in the middle of the screen you are typing on), which buttons its header shows
+  (all but Settings can be hidden), and releasing Win+letter shortcuts from Explorer
+  ([Choosing shortcuts](#choosing-shortcuts)).
 - **History:** how many items, for how many days, how large, what to record, and how long *Save to temp and*'s
   pictures are kept.
 - **Pasting:** paste after choosing, move pasted items to the top, pinned items first.

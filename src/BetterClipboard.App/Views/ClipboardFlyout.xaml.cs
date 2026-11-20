@@ -222,6 +222,10 @@ public sealed partial class ClipboardFlyout : Window
         // The update button left of Pause, and the dialog it opens: ClipboardFlyout.Update.cs.
         InitializeUpdateButton();
 
+        // The pin left of it, and the buttons Settings hides: ClipboardFlyout.KeepOpen.cs. After the update button, whose
+        // visibility it applies too.
+        ApplyHeaderButtons();
+
         // A click on a tooltip must not cost the panel its keyboard: ClipboardFlyout.ToolTipKeyboard.cs.
         InitializeToolTipKeyboardGuard();
 
@@ -415,8 +419,9 @@ public sealed partial class ClipboardFlyout : Window
 
         var cursor = ForegroundContext.CursorOnly().Cursor;
         var (workArea, scale) = MonitorLookup.FromPoint(cursor);
-        // The same arithmetic as ShowAt (the column added in whole pixels after the list's size), so the sizes match exactly.
-        var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
+        // The same arithmetic as ShowAt (the column added in whole pixels after the list's size, the width at least what the
+        // header's buttons need), so the sizes match exactly.
+        var (width, height) = FlyoutSizing.ToPixels(PanelWidthDip(settings), settings.FlyoutHeight, scale, extraWidthDip: 0);
         if (settings.ShowGroupsPane)
         {
             width += (int)Math.Round(GroupsPaneDip * scale);
@@ -496,6 +501,10 @@ public sealed partial class ClipboardFlyout : Window
                 return; // dismissed again (the shortcut pressed twice) while it waited for a frame
             }
 
+            // A pinned panel follows the window the user is in from now on, for its pastes (ClipboardFlyout.KeepOpen.cs);
+            // until another window takes the foreground, the target is the one the shortcut captured.
+            UpdateForegroundTracking();
+
             // The end of the summon proper, for its log line: the page faults it took and its last stage (LogSummon).
             uint faultsOnScreen = ProcessMemory.PageFaults();
             timeline?.Mark("shown");
@@ -546,11 +555,14 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Takes the flyout off the screen (<see cref="PutAway"/>: cloaked, its window kept ready for the next summon).
+    /// The panel's job is done — an item was copied, a file opened, a command run, a link followed, a paste failed: takes it
+    /// off the screen (<see cref="PutAway"/>: cloaked, its window kept ready for the next summon), unless it stays open after
+    /// use (pinned, CLAUDE.md §2.55), when only its overlays close and the keyboard goes back as asked. The user closing the
+    /// panel themselves is <see cref="CloseByUser"/>, which puts a pinned panel away too.
     /// </summary>
     /// <param name="restoreFocus">
-    /// Re-activate the window the user came from (Esc, the shortcut again, a failed paste); <see langword="false"/> when
-    /// another window is about to take the foreground (a link, a file opened, a command run).
+    /// Re-activate the window the user came from (<i>Copy only</i>, a failed paste); <see langword="false"/> when another
+    /// window is about to take the foreground (a link, a file opened, a command run).
     /// </param>
     public void Dismiss(bool restoreFocus)
     {
@@ -559,15 +571,14 @@ public sealed partial class ClipboardFlyout : Window
             return;
         }
 
-        // The image overlays belong to the open panel: tear them down before it goes away.
-        CloseImageOverlays();
+        if (StaysOpen)
+        {
+            // Pinned: the panel is there to be used again, also after a copy or an opened file (ClipboardFlyout.KeepOpen.cs).
+            KeepOpenAfterUse(restoreFocus);
+            return;
+        }
 
-        // So does the update dialog, a window of its own that would otherwise stay on screen without its panel.
-        CloseUpdateDialog();
-
-        // Off the screen, then the foreground to the target while this process still owns it, then the rest (PutAway's
-        // remarks have why in this order).
-        PutAway(restoreFocus ? controller.PasteTargetWindow : 0, finishSoon: true);
+        CloseByUser(restoreFocus);
     }
 
     /// <summary>Really closes the window during app exit (normal closes are turned into a conceal, <see cref="OnClosing"/>).</summary>
@@ -575,6 +586,9 @@ public sealed partial class ClipboardFlyout : Window
     {
         closingForExit = true;
         CloseImageOverlays();
+
+        // The WinEvent hook of a pinned panel goes with the window (Windows would remove it with the thread anyway).
+        DisposeForegroundTracking();
         DisposeUpdateButton();
         DisposeToolTipKeyboardGuard();
         sizeHook?.Dispose();
@@ -623,7 +637,9 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>
     /// Conceals on deactivation (flyout semantics). While one of the panel's own popups is open, the deactivation could be
     /// that popup taking the keyboard, so the panel first looks who is in front once the switch is done, and conceals itself
-    /// (with its viewers) when that is another window (ClipboardFlyout.Leaving.cs).
+    /// (with its viewers) when that is another window (ClipboardFlyout.Leaving.cs). A panel that stays open after use
+    /// (pinned) stays up instead, always on top, while the user works in another app, and a click on a card activates it
+    /// again for the next paste (ClipboardFlyout.KeepOpen.cs).
     /// </summary>
     /// <param name="sender">The window.</param>
     /// <param name="args">Activation data.</param>
@@ -631,15 +647,16 @@ public sealed partial class ClipboardFlyout : Window
     {
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
-            if (openPopups == 0 && IsOpen)
+            if (openPopups == 0 && IsOpen && !StaysOpen)
             {
                 Conceal();
             }
-            else if (IsOpen)
+            else if (IsOpen && openPopups > 0)
             {
                 // Until 2026-11-20 nothing happened here, and the panel stayed on top of the window the user went to, for
                 // good: it was no longer active, so no later click elsewhere could deactivate it (CLAUDE.md §2.56). The
-                // popup's kind is read now: a menu closes by itself during the switch.
+                // popup's kind is read now: a menu closes by itself during the switch. A pinned panel stays up itself, as
+                // after any other deactivation, and the look closes only its viewers and peeks (ClipboardFlyout.KeepOpen.cs).
                 ConcealIfUserLeft(DescribeOpenPopups());
             }
 
@@ -654,7 +671,10 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Turns user/system close requests (Alt+F4) into a conceal, so the drawn window is reused by the next summon.</summary>
+    /// <summary>
+    /// Turns user/system close requests (Alt+F4) into a conceal, so the drawn window is reused by the next summon. A close the
+    /// user asked for, so a pinned panel goes away too (<see cref="CloseByUser"/>).
+    /// </summary>
     /// <param name="sender">The app window.</param>
     /// <param name="args">Close data.</param>
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -662,7 +682,7 @@ public sealed partial class ClipboardFlyout : Window
         if (!closingForExit)
         {
             args.Cancel = true;
-            Dismiss(restoreFocus: true);
+            CloseByUser(restoreFocus: true);
         }
     }
 
@@ -831,7 +851,8 @@ public sealed partial class ClipboardFlyout : Window
                 }
                 else
                 {
-                    Dismiss(restoreFocus: true);
+                    // The user closes the panel: also a pinned one (it opens pinned again at the next summon).
+                    CloseByUser(restoreFocus: true);
                 }
 
                 break;
@@ -1227,12 +1248,15 @@ public sealed partial class ClipboardFlyout : Window
         _ = controller.History.ClearAsync(includePinned: false);
     }
 
-    /// <summary>Opens settings (and hides the flyout).</summary>
+    /// <summary>
+    /// Opens settings and hides the flyout, also a pinned one: an always-on-top panel would cover Settings, and the pin
+    /// comes back with the next summon.
+    /// </summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        Dismiss(restoreFocus: false);
+        CloseByUser(restoreFocus: false);
         controller.ShowSettings();
     }
 
@@ -1299,8 +1323,9 @@ public sealed partial class ClipboardFlyout : Window
         GiveKeyboardBackAfterPopup();
 
         // A deactivation while this popup showed may have been looked at while Windows named no foreground window yet;
-        // the popup closing asks again, so the panel does not stay behind on top of the window the user went to.
-        if (openPopups == 0)
+        // the popup closing asks again, so the panel does not stay behind on top of the window the user went to. Not for a
+        // pinned panel, which stays up while the user is elsewhere (ClipboardFlyout.KeepOpen.cs).
+        if (openPopups == 0 && !StaysOpen)
         {
             ConcealIfUserLeft("a popup showed (asked again as the last one closed)");
         }

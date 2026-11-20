@@ -129,11 +129,13 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Asks, at the end of a summon, whether the weekly reminder is due, and if so lets it open a moment later. Does
-    /// nothing while a reminder is already waiting or showing.
+    /// nothing while a reminder is already waiting or showing, and while Settings hides the update button: the reminder is
+    /// that button's tooltip, and a user who hid the button chose not to have it in view (CLAUDE.md §2.55). The week is not
+    /// counted then, so showing the button again reminds at the next summon.
     /// </summary>
     private void ScheduleUpdateReminder()
     {
-        if (updateReminderStage != UpdateReminderStage.None || !IsOpen || !controller.IsUpdateReminderDue)
+        if (updateReminderStage != UpdateReminderStage.None || !IsOpen || UpdateButton.Visibility != Visibility.Visible || !controller.IsUpdateReminderDue)
         {
             return;
         }

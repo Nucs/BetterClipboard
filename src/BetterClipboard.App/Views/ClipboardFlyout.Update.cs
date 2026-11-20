@@ -17,8 +17,10 @@ namespace BetterClipboard.App.Views;
 /// <b>The button</b> is always there and says the state of updates by its look: like its neighbors while there is
 /// nothing to do, filled with the accent color while an update waits that the user did not skip, and a small ring while
 /// an approved update downloads or is installed. Its tooltip and accessible name say the same in words
-/// (<see cref="UpdateText.ButtonTip"/>). It is hidden only when the update system did not start. Once a week, while an
-/// update waits, that tooltip opens by itself for a few seconds after a summon (ClipboardFlyout.UpdateReminder.cs).
+/// (<see cref="UpdateText.ButtonTip"/>). It is hidden when the update system did not start, and when Settings hides it
+/// (Buttons in the panel, CLAUDE.md §2.55): the dialog then opens over the Settings button. Once a week, while an update
+/// waits, that tooltip opens by itself for a few seconds after a summon (ClipboardFlyout.UpdateReminder.cs) — not while the
+/// button is hidden.
 /// </para>
 /// <para>
 /// <b>The dialog</b> (<see cref="UpdateDialog"/>) is the button's flyout: the decision buttons on top, the release notes
@@ -133,13 +135,23 @@ public sealed partial class ClipboardFlyout
     /// <summary>Closes the update dialog if it is open (a summon, a dismissal).</summary>
     private void CloseUpdateDialog() => updateDialog?.Hide();
 
-    /// <summary>Opens the update dialog under its button; does nothing while the button is hidden or the dialog is open.</summary>
+    /// <summary>
+    /// Opens the update dialog under its button, or under the Settings button while Settings hides the update button (the
+    /// tray's <i>Update to …</i> must still open it); does nothing without an update system or while the dialog is open.
+    /// </summary>
+    /// <remarks>
+    /// The dialog is the update button's own flyout (a click on that button toggles it), and a flyout can still be shown at
+    /// any element: its placement is worked out from the element it opens at (<c>UpdateDialogLayout</c>, in its
+    /// <c>Opening</c>), and both buttons are at the header's right, where it lies over the panel.
+    /// </remarks>
     private void ShowUpdateDialog()
     {
-        if (updateDialog is { IsOpen: false } dialog && UpdateButton.Visibility == Visibility.Visible)
+        if (updateDialog is not { IsOpen: false } dialog || updateButtonLook == UpdateButtonLook.Hidden)
         {
-            dialog.ShowAt(UpdateButton);
+            return;
         }
+
+        dialog.ShowAt(UpdateButton.Visibility == Visibility.Visible ? UpdateButton : SettingsButton);
     }
 
     /// <summary>Opens the update dialog when a summon was asked to (<see cref="OpenUpdateDialogWhenShown"/>); called at the end of a summon.</summary>
@@ -173,10 +185,29 @@ public sealed partial class ClipboardFlyout
             : snapshot.IsInstalling || (snapshot.Phase == UpdatePhase.Checking && snapshot.Offer is null) ? UpdateButtonLook.Busy
             : snapshot.WantsAttention ? UpdateButtonLook.Attention
             : UpdateButtonLook.Normal;
+        // Shown while there is an update system and Settings does not hide it (Buttons in the panel, CLAUDE.md §2.55), checked
+        // at every call: the setting changes without the look changing. Hidden, the dialog opens over Settings instead
+        // (ShowUpdateDialog), and the weekly reminder, which is this button's tooltip, stays quiet (ScheduleUpdateReminder).
+        var shown = look != UpdateButtonLook.Hidden && !PanelButtons.IsHidden(controller.Settings.Current.HiddenPanelButtons, PanelButton.Updates)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        if (UpdateButton.Visibility != shown)
+        {
+            UpdateButton.Visibility = shown;
+            if (shown == Visibility.Collapsed)
+            {
+                CancelUpdateReminder();
+            }
+            else
+            {
+                // One button more in the header: a panel on screen narrower than that needs is widened (ClipboardFlyout.KeepOpen.cs).
+                FitHeaderWhileShown();
+            }
+        }
+
         if (look != updateButtonLook)
         {
             updateButtonLook = look;
-            UpdateButton.Visibility = look == UpdateButtonLook.Hidden ? Visibility.Collapsed : Visibility.Visible;
 
             // Whole styles, so their theme brushes resolve in the panel's own theme (see App.xaml).
             UpdateButton.Style = (Style)Application.Current.Resources[look == UpdateButtonLook.Attention ? "IconButtonAttentionStyle" : "IconButtonStyle"];
@@ -260,8 +291,9 @@ public sealed partial class ClipboardFlyout
             {
                 SearchBox.Focus(FocusState.Programmatic);
             }
-            else
+            else if (!StaysOpen)
             {
+                // A pinned panel stays up while the user is elsewhere, like after any other deactivation (OnActivated).
                 Conceal();
             }
         }

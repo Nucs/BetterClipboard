@@ -325,6 +325,72 @@
                         <ComboBoxItem Content="{loc:Tr Text='Center of the current screen'}" />
                     </ComboBox>
                 </controls:SettingsCard>
+                <!--
+                  The panel header's buttons (AppSettings.HiddenPanelButtons, CLAUDE.md §2.55): one box per button, in the
+                  header's order, each with the button's own icon so the header's icons can be told apart by name (the groups
+                  ribbon is the header's own path). Settings has no box: it always shows, as the way back here. Each box names
+                  itself (AutomationProperties.Name): its content is a panel, which a screen reader would not read as its name.
+                  The update button's box goes in the Microsoft Store edition, which has no update button
+                  (SettingsWindow.Store.cs). E737 = a window with its title bar (checked by rendering).
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Which buttons the panel shows next to Settings. What a hidden one does stays in reach: Ctrl+G for the groups, the tray icon menu for pausing and updates, Settings for clearing the history. Hiding the pin lets the panel close after pasting again.'}"
+                    Glyph="&#xE737;"
+                    Header="{loc:Tr Text='Buttons in the panel'}"
+                    Keywords="{loc:Tr Text='header, toolbar, icons, hide buttons, show buttons, pin, keep open, declutter'}">
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="2">
+                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Pin: keep the panel open after pasting'}" IsChecked="{x:Bind ViewModel.ShowKeepOpenButton, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <FontIcon
+                                        Width="16"
+                                        FontSize="15"
+                                        Glyph="&#xE718;" />
+                                    <TextBlock Text="{loc:Tr Text='Pin: keep the panel open after pasting'}" />
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox
+                                x:Name="UpdatesButtonBox"
+                                AutomationProperties.Name="{loc:Tr Text='Updates'}"
+                                IsChecked="{x:Bind ViewModel.ShowUpdatesButton, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <FontIcon
+                                        Width="16"
+                                        FontSize="15"
+                                        Glyph="&#xE895;" />
+                                    <TextBlock Text="{loc:Tr Text='Updates'}" />
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Pause capturing'}" IsChecked="{x:Bind ViewModel.ShowPauseButton, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <FontIcon
+                                        Width="16"
+                                        FontSize="15"
+                                        Glyph="&#xE769;" />
+                                    <TextBlock Text="{loc:Tr Text='Pause capturing'}" />
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Groups'}" IsChecked="{x:Bind ViewModel.ShowGroupsButton, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <PathIcon
+                                        Width="16"
+                                        Height="16"
+                                        Data="F0 M4.5,1.5 H11.5 A1.5,1.5 0 0 1 13,3 V14.25 L8,10.9 L3,14.25 V3 A1.5,1.5 0 0 1 4.5,1.5 Z M4.5,2.75 A0.25,0.25 0 0 0 4.25,3 V11.9 L8,9.4 L11.75,11.9 V3 A0.25,0.25 0 0 0 11.5,2.75 Z" />
+                                    <TextBlock Text="{loc:Tr Text='Groups'}" />
+                                </StackPanel>
+                            </CheckBox>
+                            <CheckBox AutomationProperties.Name="{loc:Tr Text='Clear history'}" IsChecked="{x:Bind ViewModel.ShowClearButton, Mode=TwoWay}">
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <FontIcon
+                                        Width="16"
+                                        FontSize="15"
+                                        Glyph="&#xE74D;" />
+                                    <TextBlock Text="{loc:Tr Text='Clear history'}" />
+                                </StackPanel>
+                            </CheckBox>
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Win+V belongs to Windows, and other shortcuts may belong to other apps. When on, BetterClipboard intercepts exactly your shortcuts that are taken with a keyboard hook while it runs — quit BetterClipboard and their owners get them back instantly.'}"
                     Glyph="&#xEDA7;"

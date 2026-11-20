@@ -57,9 +57,10 @@ public sealed partial class ClipboardFlyout
         var screen = FlyoutPositioner.ChooseScreen(placement, centerOnMainScreen, context, target);
         var (workArea, scale) = MonitorLookup.FromScreen(screen);
 
-        // The size the user last dragged the panel to (without the column, added in whole pixels by Place), in this
-        // monitor's pixels; Place shrinks it to a smaller work area without changing what is remembered.
-        var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
+        // The size the user last dragged the panel to (without the column, added in whole pixels by Place), at least as wide
+        // as the header's buttons need (ClipboardFlyout.KeepOpen.cs), in this monitor's pixels; Place shrinks it to a
+        // smaller work area without changing what is remembered.
+        var (width, height) = FlyoutSizing.ToPixels(PanelWidthDip(settings), settings.FlyoutHeight, scale, extraWidthDip: 0);
         int column = groupsColumnOpen ? (int)Math.Round(GroupsPaneDip * scale) : 0;
         var bounds = FlyoutPositioner.Place(placement, context, workArea, width, height, (int)Math.Round(GapDip * scale), column);
         return new RectInt32(bounds.Left, bounds.Top, bounds.Width, bounds.Height);

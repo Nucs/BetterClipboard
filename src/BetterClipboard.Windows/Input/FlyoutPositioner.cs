@@ -319,10 +319,13 @@ public static class MonitorLookup
     public static bool IsDesktopWindowClass(string? className) =>
         className is not null && DesktopWindowClasses.Contains(className, StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Reads a window's class name.</summary>
+    /// <summary>
+    /// Reads a window's class name. Internal, not private: <see cref="ForegroundTracker"/> tells the shell's own surfaces
+    /// from apps by it too.
+    /// </summary>
     /// <param name="window">The window.</param>
-    /// <returns>The class name, or an empty string when it cannot be read.</returns>
-    private static unsafe string ClassNameOf(nint window)
+    /// <returns>The class name, or an empty string when it cannot be read (a window that closed meanwhile).</returns>
+    internal static unsafe string ClassNameOf(nint window)
     {
         // 256 characters is the longest class name Windows registers.
         char* buffer = stackalloc char[256];
