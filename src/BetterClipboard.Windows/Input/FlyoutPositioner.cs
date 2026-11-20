@@ -27,26 +27,25 @@ public static class FlyoutPositioner
     /// <see cref="Compute"/> anchors the panel), else the mouse's.</item>
     /// <item><b>Next to the mouse:</b> the mouse's monitor.</item>
     /// <item><b>Center of the main screen:</b> the main monitor, whatever was captured.</item>
-    /// <item><b>Center of the current screen</b> — the screen the user is typing on (the owner's choice, 2026-11-08, over
-    /// "where the mouse is"): the caret's monitor while the caret lies inside the window the user was in; else the monitor
-    /// showing most of that window, when the window marks a screen; else the mouse's monitor.</item>
+    /// <item><b>Center of the current screen:</b> the mouse's monitor, whichever window has the keyboard and wherever its
+    /// caret is (the owner's choice, 2026-11-20: "should be using the cursor position to pick which screen", asked and
+    /// answered "Mouse pointer").</item>
     /// </list>
     /// <para>
-    /// Why the caret must lie inside the window: some apps keep their caret in a hidden helper window parked at the screen's
-    /// corner, which would drag the panel to the main monitor while the app is on another. A caret on the desktop (renaming
-    /// an icon) still counts: the desktop's window spans every monitor, so the caret is inside it. Why the window must mark
-    /// a screen: the desktop's window spans every monitor, and the monitor "showing most of it" would be an arbitrary one
-    /// (the main one, with equal monitors) — after a click on another monitor's desktop, the mouse is the better witness.
-    /// Without any window (opened from the tray, nothing active) the mouse decides too.
+    /// Until 2026-11-20 the current screen was the one the user was typing on (the owner's choice of 2026-11-08): the caret's
+    /// monitor while the caret lay inside the window the user was in, else the monitor showing most of that window, else the
+    /// mouse's. With several monitors that opened the panel on the window's monitor while the mouse was on another one, and
+    /// the owner asked for the mouse's. Footgun: the window the shortcut captured (<see cref="ForegroundContext.TargetWindow"/>)
+    /// plays no part in where the panel goes any more; with the keyboard on one monitor and the mouse on another, a
+    /// centered panel opens away from the caret, and the paste still goes to the window that has the keyboard.
     /// </para>
     /// </remarks>
     /// <param name="placement">The placement setting (<see cref="AppSettings.Placement"/>); an unknown value counts as next to the caret.</param>
     /// <param name="centerOnMainScreen">The main-screen setting (<see cref="AppSettings.CenterOnMainScreen"/>); only <see cref="FlyoutPlacement.CenterScreen"/> reads it.</param>
-    /// <param name="context">The caret, the mouse and the window captured when the shortcut was pressed.</param>
-    /// <param name="target">What is known about that window (<see cref="MonitorLookup.DescribeTarget"/>); <see langword="default"/> for none.</param>
+    /// <param name="context">The caret and the mouse captured when the shortcut was pressed.</param>
     /// <returns>The monitor to look up.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
-    public static PanelScreen ChooseScreen(FlyoutPlacement placement, bool centerOnMainScreen, ForegroundContext context, TargetWindowFacts target)
+    public static PanelScreen ChooseScreen(FlyoutPlacement placement, bool centerOnMainScreen, ForegroundContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         switch (placement)
@@ -55,14 +54,9 @@ public static class FlyoutPositioner
                 return PanelScreen.Main;
 
             case FlyoutPlacement.CenterScreen:
-                if (context.Caret is { } caret && target.Bounds is { } bounds && Contains(bounds, CaretMiddle(caret)))
-                {
-                    return PanelScreen.At(CaretMiddle(caret));
-                }
-
-                return context.TargetWindow != 0 && target.MarksScreen
-                    ? PanelScreen.Of(context.TargetWindow)
-                    : PanelScreen.At(context.Cursor);
+                // The current screen is the one the mouse is on, as for the panel next to the mouse: with several monitors,
+                // the owner counts the pointer's screen as the one they are on, not the screen of the window they typed in.
+                return PanelScreen.At(context.Cursor);
 
             case FlyoutPlacement.NearCursor:
                 return PanelScreen.At(context.Cursor);
@@ -178,31 +172,18 @@ public static class FlyoutPositioner
         int left = Math.Min(bounds.Left + Math.Max(0, extra), bounds.Right - 1);
         return new ScreenRect(left, bounds.Top, bounds.Right, bounds.Bottom);
     }
-
-    /// <summary>
-    /// The middle of the caret's left edge: the point that says which monitor the caret is on, whichever end of a tall
-    /// caret touches a monitor's edge.
-    /// </summary>
-    /// <param name="caret">The caret's rectangle on screen.</param>
-    /// <returns>The point.</returns>
-    private static ScreenPoint CaretMiddle(ScreenRect caret) => new(caret.Left, caret.Top + (caret.Height / 2));
-
-    /// <summary>Whether a point lies inside a rectangle (right and bottom edges excluded, like the rectangle's own).</summary>
-    /// <param name="rect">The rectangle.</param>
-    /// <param name="point">The point.</param>
-    /// <returns><see langword="true"/> when inside.</returns>
-    private static bool Contains(ScreenRect rect, ScreenPoint point) =>
-        point.X >= rect.Left && point.X < rect.Right && point.Y >= rect.Top && point.Y < rect.Bottom;
 }
 
-/// <summary>The three kinds of monitor a summon can choose (<see cref="PanelScreen"/>).</summary>
+/// <summary>The two kinds of monitor a summon can choose (<see cref="PanelScreen"/>).</summary>
+/// <remarks>
+/// Value 1 was the monitor showing most of a window (the window the user was typing in), the third kind until
+/// "the current screen" became the mouse's (2026-11-20); it is left unused rather than renumbering <see cref="Main"/>.
+/// The values are never stored: a choice lives for one summon.
+/// </remarks>
 public enum PanelScreenKind
 {
     /// <summary>The monitor that holds a point, or the nearest one: the caret's or the mouse's.</summary>
     Point = 0,
-
-    /// <summary>The monitor that shows most of a window: the window the user was typing in.</summary>
-    Window = 1,
 
     /// <summary>The main monitor: the one Windows' display settings call the main display.</summary>
     Main = 2,
@@ -215,36 +196,16 @@ public enum PanelScreenKind
 /// </summary>
 /// <param name="Kind">Which kind of monitor.</param>
 /// <param name="Point">The point, for <see cref="PanelScreenKind.Point"/>; otherwise unused.</param>
-/// <param name="Window">The window, for <see cref="PanelScreenKind.Window"/>; otherwise 0.</param>
-public readonly record struct PanelScreen(PanelScreenKind Kind, ScreenPoint Point, nint Window)
+public readonly record struct PanelScreen(PanelScreenKind Kind, ScreenPoint Point)
 {
     /// <summary>The main monitor.</summary>
-    public static PanelScreen Main => new(PanelScreenKind.Main, default, 0);
+    public static PanelScreen Main => new(PanelScreenKind.Main, default);
 
     /// <summary>The monitor that holds a point (or is nearest to it).</summary>
     /// <param name="point">The point in physical screen pixels.</param>
     /// <returns>The choice.</returns>
-    public static PanelScreen At(ScreenPoint point) => new(PanelScreenKind.Point, point, 0);
-
-    /// <summary>The monitor that shows most of a window.</summary>
-    /// <param name="window">The window.</param>
-    /// <returns>The choice.</returns>
-    public static PanelScreen Of(nint window) => new(PanelScreenKind.Window, default, window);
+    public static PanelScreen At(ScreenPoint point) => new(PanelScreenKind.Point, point);
 }
-
-/// <summary>
-/// What a summon knows about the window the user was in (<see cref="ForegroundContext.TargetWindow"/>), read by
-/// <see cref="MonitorLookup.DescribeTarget"/> for <see cref="FlyoutPositioner.ChooseScreen"/>.
-/// </summary>
-/// <param name="Bounds">
-/// The window's rectangle on screen (invisible resize borders included); <see langword="null"/> without a window, for a
-/// minimized one (it sits at -32000), or when it could not be read.
-/// </param>
-/// <param name="MarksScreen">
-/// Whether the window says which screen the user works on: it is visible, not minimized, and not the desktop, whose
-/// window spans every monitor. <see langword="false"/> without a window.
-/// </param>
-public readonly record struct TargetWindowFacts(ScreenRect? Bounds, bool MarksScreen);
 
 /// <summary>
 /// Monitor geometry lookups for flyout placement.
@@ -255,13 +216,6 @@ public static class MonitorLookup
     private const uint MONITOR_DEFAULTTONEAREST = 2;
 
     /// <summary>
-    /// The class names of the desktop's own windows: <c>Progman</c> (the shell window), and <c>WorkerW</c>, which holds the
-    /// desktop icons while a wallpaper slideshow or an animated wallpaper runs. A click on the desktop of any monitor makes
-    /// one of them the foreground window, and each spans every monitor.
-    /// </summary>
-    private static readonly string[] DesktopWindowClasses = ["Progman", "WorkerW"];
-
-    /// <summary>
     /// Work area and scale factor of the monitor a summon chose (<see cref="FlyoutPositioner.ChooseScreen"/>).
     /// </summary>
     /// <param name="screen">The choice.</param>
@@ -269,7 +223,6 @@ public static class MonitorLookup
     public static (ScreenRect WorkArea, double Scale) FromScreen(PanelScreen screen) => screen.Kind switch
     {
         PanelScreenKind.Main => Main(),
-        PanelScreenKind.Window when screen.Window != 0 => FromWindow(screen.Window),
         _ => FromPoint(screen.Point),
     };
 
@@ -283,45 +236,9 @@ public static class MonitorLookup
         Describe(MonitorFromPoint(new POINT { X = 0, Y = 0 }, MONITOR_DEFAULTTOPRIMARY));
 
     /// <summary>
-    /// Reads what <see cref="FlyoutPositioner.ChooseScreen"/> needs to know about the window the user was in: where it is,
-    /// and whether it marks a screen (<see cref="TargetWindowFacts"/>).
-    /// </summary>
-    /// <remarks>
-    /// Read at the summon, after the shortcut: a few calls of microseconds each, on the UI thread, before the panel moves.
-    /// A window that closed meanwhile is described as no window at all.
-    /// </remarks>
-    /// <param name="window">The window (<see cref="ForegroundContext.TargetWindow"/>); 0 for none.</param>
-    /// <returns>The facts; <see langword="default"/> (no bounds, marks nothing) for 0 or a window that no longer exists.</returns>
-    public static TargetWindowFacts DescribeTarget(nint window)
-    {
-        if (window == 0 || !IsWindow(window))
-        {
-            return default;
-        }
-
-        if (IsIconic(window))
-        {
-            // Minimized: its rectangle is off every screen, and the user is not looking at it.
-            return new TargetWindowFacts(null, false);
-        }
-
-        ScreenRect? bounds = GetWindowRect(window, out var rect) ? new ScreenRect(rect.Left, rect.Top, rect.Right, rect.Bottom) : null;
-        bool marksScreen = IsWindowVisible(window) && !IsDesktopWindowClass(ClassNameOf(window));
-        return new TargetWindowFacts(bounds, marksScreen);
-    }
-
-    /// <summary>
-    /// Whether a window class is one of the desktop's own (<c>Progman</c>, <c>WorkerW</c>), whose windows span every monitor
-    /// and so say nothing about which screen the user works on.
-    /// </summary>
-    /// <param name="className">The class name; <see langword="null"/> or empty for an unreadable one.</param>
-    /// <returns><see langword="true"/> for a desktop class, ignoring case as Windows does for class names.</returns>
-    public static bool IsDesktopWindowClass(string? className) =>
-        className is not null && DesktopWindowClasses.Contains(className, StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Reads a window's class name. Internal, not private: <see cref="ForegroundTracker"/> tells the shell's own surfaces
-    /// from apps by it too.
+    /// Reads a window's class name. Internal: <see cref="ForegroundTracker"/> tells the shell's own surfaces from apps by
+    /// it. (It lives here because "the current screen" read the window's class too, until that screen became the mouse's
+    /// on 2026-11-20.)
     /// </summary>
     /// <param name="window">The window.</param>
     /// <returns>The class name, or an empty string when it cannot be read (a window that closed meanwhile).</returns>

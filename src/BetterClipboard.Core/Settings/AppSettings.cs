@@ -19,10 +19,10 @@ public enum FlyoutPlacement
     NearCursor = 1,
 
     /// <summary>
-    /// Centered on a screen's work area: the screen the user is working on, or the main screen when
-    /// <see cref="AppSettings.CenterOnMainScreen"/> is on. The screen the user is working on is the one with the text
-    /// cursor, else the one showing most of the window they were in, else the one with the mouse (nothing active, the
-    /// desktop, the tray); <c>FlyoutPositioner.ChooseScreen</c> in BetterClipboard.Windows has the full rule.
+    /// Centered on a screen's work area: the screen with the mouse pointer (the current screen), or the main screen when
+    /// <see cref="AppSettings.CenterOnMainScreen"/> is on; <c>FlyoutPositioner.ChooseScreen</c> in BetterClipboard.Windows
+    /// has the rule. Until 2026-11-20 the current screen was the one the user was typing on (the text cursor's, else the
+    /// window's); the owner asked for the mouse's instead.
     /// </summary>
     CenterScreen = 2,
 }
@@ -762,7 +762,7 @@ public sealed record AppSettings
 
     /// <summary>
     /// With <see cref="Placement"/> <see cref="FlyoutPlacement.CenterScreen"/>: center the panel on the main screen (the
-    /// one Windows' display settings call the main display) instead of the screen the user is working on. Off by default;
+    /// one Windows' display settings call the main display) instead of the screen with the mouse pointer. Off by default;
     /// the other placements ignore it.
     /// </summary>
     /// <remarks>

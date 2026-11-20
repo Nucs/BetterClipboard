@@ -311,10 +311,11 @@
                   Where the shortcut opens the panel (AppSettings.Placement + CenterOnMainScreen, mapped by
                   SettingsViewModel.PlacementIndex). Right under the shortcuts since 2026-11-08: under Pasting it went
                   unnoticed. Next to the text cursor, next to the mouse, centered on the main screen, centered on the
-                  screen the user is typing on (FlyoutPositioner.ChooseScreen).
+                  screen with the mouse pointer (FlyoutPositioner.ChooseScreen; until 2026-11-20 the screen the user was
+                  typing on, CLAUDE.md §2.38).
                 -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Text='Where the clipboard panel opens. The current screen is the one you are typing on, or the one with the mouse when you are on the desktop.'}"
+                    Description="{loc:Tr Text='Where the clipboard panel opens. The current screen is the one with the mouse pointer.'}"
                     Glyph="&#xE8A7;"
                     Header="{loc:Tr Text='Panel position'}"
                     Keywords="{loc:Tr Text='placement, location, where, caret, mouse pointer, monitor, screen, center'}">

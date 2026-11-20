@@ -828,7 +828,7 @@
   "Welcome to BetterClipboard": "欢迎使用 BetterClipboard",
   "What is new": "新增内容",
   "What is new in this version": "此版本新增内容",
-  "Where the clipboard panel opens. The current screen is the one you are typing on, or the one with the mouse when you are on the desktop.": "剪贴板面板的显示位置。当前屏幕是你正在输入的屏幕；在桌面上时，是鼠标所在的屏幕。",
+  "Where the clipboard panel opens. The current screen is the one with the mouse pointer.": "剪贴板面板的显示位置。当前屏幕是鼠标指针所在的屏幕。",
   "Which buttons the panel shows next to Settings, and in which order: the arrows move a button left or right in the panel. What a hidden one does stays in reach: Ctrl+G for the groups, the tray icon menu for pausing and updates, Settings for clearing the history. Hiding the pin lets the panel close after pasting again.": "面板在“设置”旁显示哪些按钮，以及按什么顺序：箭头可将按钮在面板中左移或右移。隐藏的按钮所做的事仍可在别处完成：Ctrl+G 打开分组，通知区域图标的菜单可暂停和更新，“设置”可清空历史。隐藏固定按钮后，面板在粘贴后会再次关闭。",
   "While voidtools Everything is installed or running, the panel gets an Everything tab: the files and folders you open from Everything, newest first, next to everything copied from it. BetterClipboard only reads from Everything. A file is kept in your history only when you paste, copy or pin it there.": "安装或运行 voidtools Everything 后，面板中会出现 Everything 标签页：你从 Everything 打开的文件和文件夹按时间倒序排列，也包含从中复制的内容。BetterClipboard 仅执行读取；只有粘贴、复制或固定时，才将文件保存到历史。",
   "Win+L locks the PC, and Windows does not let any app take it. Pick another shortcut.": "Win+L 用于锁定电脑，Windows 不允许任何应用占用它。请选择其他快捷键。",

@@ -7,13 +7,14 @@ namespace BetterClipboard.App.Views;
 
 /// <summary>
 /// Where a summon puts the panel (Settings › Shortcut › Panel position, <see cref="AppSettings.Placement"/>): next to the
-/// text cursor (the default), next to the mouse, or centered on the main screen or on the screen the user is typing on —
-/// and putting it there at exactly the size asked for, also on a monitor with another scale.
+/// text cursor (the default), next to the mouse, or centered on the main screen or on the screen with the mouse pointer
+/// (the current screen) — and putting it there at exactly the size asked for, also on a monitor with another scale.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Which screen, then where on it.</b> <see cref="FlyoutPositioner.ChooseScreen"/> picks the monitor from the setting
-/// and what the shortcut captured (caret, window, mouse; its remarks have the rule for "the current screen"),
+/// and what the shortcut captured (the caret and the mouse; its remarks have the rule for each choice, and the earlier
+/// rule for "the current screen"),
 /// <see cref="MonitorLookup.FromScreen"/> reads that monitor's work area and scale, and <see cref="FlyoutPositioner.Place"/>
 /// puts the remembered size there: below the caret or the mouse with the groups column added on the left, or centered as
 /// a whole.
@@ -38,7 +39,7 @@ public sealed partial class ClipboardFlyout
     /// the remembered size in that screen's pixels with the groups column while it is open, placed next to the caret or the
     /// mouse or centered (<see cref="FlyoutPositioner.Place"/>), never outside that screen's work area.
     /// </summary>
-    /// <param name="context">The caret, mouse and window captured when the shortcut was pressed.</param>
+    /// <param name="context">The caret and the mouse captured when the shortcut was pressed.</param>
     /// <param name="placement">The placement setting.</param>
     /// <param name="centerOnMainScreen">The main-screen setting (only a centered placement reads it).</param>
     /// <param name="groupsColumnOpen">Whether the groups column will show (it widens the panel on its left).</param>
@@ -49,12 +50,9 @@ public sealed partial class ClipboardFlyout
         ArgumentNullException.ThrowIfNull(context);
         var settings = controller.Settings.Current;
 
-        // The window the user was in is described only when the rule can use it (centered on the current screen): a few
-        // calls of microseconds, but nothing a summon next to the caret should pay for.
-        var target = placement == FlyoutPlacement.CenterScreen && !centerOnMainScreen
-            ? MonitorLookup.DescribeTarget(context.TargetWindow)
-            : default;
-        var screen = FlyoutPositioner.ChooseScreen(placement, centerOnMainScreen, context, target);
+        // The screen comes from what the shortcut captured alone (the caret, the mouse): nothing about the window the user
+        // was in is read any more, since the current screen is the mouse's (FlyoutPositioner.ChooseScreen).
+        var screen = FlyoutPositioner.ChooseScreen(placement, centerOnMainScreen, context);
         var (workArea, scale) = MonitorLookup.FromScreen(screen);
 
         // The size the user last dragged the panel to (without the column, added in whole pixels by Place), at least as wide
