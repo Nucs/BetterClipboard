@@ -1885,6 +1885,54 @@ public sealed partial class ClipStore
     }
 
     /// <summary>
+    /// Which of many fingerprints are forgotten forever: one connection and one query per <see cref="ForgottenLookupChunk"/>
+    /// fingerprints, instead of a connection per fingerprint (<see cref="IsForgotten"/>). What the merged tabs ask about every
+    /// command or pick they show — since 2026-11-21 every one, not the newest 700 at most (CLAUDE.md §2.62).
+    /// </summary>
+    /// <remarks>
+    /// The answer holds only fingerprints the caller passed in (the list's rows that match them), never another entry of the
+    /// list: the forgotten list's fingerprints stay inside the store, as <see cref="ForgottenColumns"/> keeps them out of
+    /// every listing.
+    /// </remarks>
+    /// <param name="fingerprints">Fingerprints to look up (<see cref="ForgetFingerprint"/>); duplicates and blanks are fine.</param>
+    /// <returns>The forgotten ones, each once.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="fingerprints"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public IReadOnlySet<string> FindForgotten(IEnumerable<string> fingerprints)
+    {
+        ArgumentNullException.ThrowIfNull(fingerprints);
+        var forgotten = new HashSet<string>(StringComparer.Ordinal);
+        var distinct = fingerprints.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count == 0)
+        {
+            return forgotten;
+        }
+
+        using var connection = Open();
+        foreach (var chunk in distinct.Chunk(ForgottenLookupChunk))
+        {
+            // Numbered parameters, never the values in the text: a fingerprint is data, and the chunk keeps the count far
+            // below SQLite's limit on variables per statement.
+            using var command = connection.CreateCommand();
+            var names = new string[chunk.Length];
+            for (int i = 0; i < chunk.Length; i++)
+            {
+                names[i] = "$fp" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                command.Parameters.AddWithValue(names[i], chunk[i]);
+            }
+
+            command.CommandText = $"SELECT fingerprint FROM forgotten WHERE fingerprint IN ({string.Join(", ", names)});";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                forgotten.Add(reader.GetString(0));
+            }
+        }
+
+        return forgotten;
+    }
+
+    /// <summary>
     /// Counts one more new copy kept out by a forgotten entry (shown in Settings as "kept out N times").
     /// </summary>
     /// <param name="fingerprint">The fingerprint that matched.</param>
@@ -2046,6 +2094,12 @@ public sealed partial class ClipStore
         DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
         reader.GetInt64(8),
         reader.IsDBNull(9) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(9)));
+
+    /// <summary>
+    /// Fingerprints asked about per query by <see cref="FindForgotten"/>: far below SQLite's limit on variables per statement
+    /// (32,766), and small enough that one query stays a few milliseconds.
+    /// </summary>
+    private const int ForgottenLookupChunk = 500;
 
     /// <summary>Columns of <c>forgotten</c> in the order <see cref="ReadForgotten(SqliteDataReader)"/> reads them (never the fingerprint).</summary>
     private const string ForgottenColumns =

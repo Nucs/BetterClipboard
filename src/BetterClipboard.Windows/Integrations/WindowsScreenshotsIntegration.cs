@@ -15,8 +15,9 @@ namespace BetterClipboard.Windows.Integrations;
 /// <remarks>
 /// <para>
 /// <b>Catch-up marker.</b> <see cref="LastSeenStateName"/> (kept in the encrypted store) is the newest write time of a
-/// screenshot already dealt with. At startup, files written after it are imported, at most <see cref="MaxCatchUpFiles"/> of
-/// the newest. The first activation sets it to "now", so turning the feature on never backfills the folder's archive.
+/// screenshot already dealt with. At startup, files written after it are imported: every one by default, or the newest
+/// <see cref="CatchUpLimit"/> when Settings sets one. The first activation sets it to "now", so turning the feature on never
+/// backfills the folder's archive.
 /// Turning it off clears it, and turning it back on starts fresh: screenshots taken while it was off are not imported
 /// afterwards. Exiting the app does not count as off. The same life cycle as <see cref="ShareXIntegration"/>, whose
 /// structure this follows (kept separate: the ShareX one also follows ShareX's own settings files).
@@ -36,9 +37,6 @@ public sealed class WindowsScreenshotsIntegration : IAsyncDisposable
 {
     /// <summary>Store state name of the catch-up marker (ISO 8601 round-trip UTC time; empty = none).</summary>
     public const string LastSeenStateName = "screenshots.last_seen_utc";
-
-    /// <summary>Most screenshots one catch-up imports (the newest ones), so a long absence cannot flood the history.</summary>
-    public const int MaxCatchUpFiles = 100;
 
     /// <summary>
     /// Store state name that marks the one-time search for the files of Snipping Tool and Win+PrtScn screenshots stored before
@@ -81,6 +79,14 @@ public sealed class WindowsScreenshotsIntegration : IAsyncDisposable
         this.locate = locate ?? WindowsScreenshotsLocator.Locate;
         this.time = time ?? TimeProvider.System;
     }
+
+    /// <summary>
+    /// The most screenshots one catch-up imports, asked at each catch-up — the newest of those saved meanwhile
+    /// (<see cref="Core.Settings.ListLimit"/>: 0 = every one, the default). The app passes Settings'
+    /// <see cref="Core.Settings.AppSettings.MaxScreenshotsCatchUp"/>; until 2026-11-21 it was a constant 100
+    /// (<c>MaxCatchUpFiles</c>), so a long absence could not flood the history.
+    /// </summary>
+    public Func<int> CatchUpLimit { get; init; } = static () => 0;
 
     /// <summary>Raised on a pool thread whenever <see cref="Location"/>, <see cref="IsWatching"/> or the import count changed.</summary>
     public event EventHandler? StatusChanged;
@@ -400,7 +406,7 @@ public sealed class WindowsScreenshotsIntegration : IAsyncDisposable
         {
             try
             {
-                int imported = await target.CatchUpAsync(since, MaxCatchUpFiles, shutdown.Token).ConfigureAwait(false);
+                int imported = await target.CatchUpAsync(since, Core.Settings.ListLimit.Effective(CatchUpLimit()), shutdown.Token).ConfigureAwait(false);
                 if (imported > 0)
                 {
                     AppLog.Info($"Imported {imported} screenshot{(imported == 1 ? string.Empty : "s")} saved while BetterClipboard was not watching.");

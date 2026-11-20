@@ -178,7 +178,10 @@ public sealed class ShareXScreenshotWatcher : IDisposable
     /// <paramref name="maxFiles"/> newest.
     /// </summary>
     /// <param name="since">Only files written after this instant.</param>
-    /// <param name="maxFiles">Cap, so a long absence cannot flood the history.</param>
+    /// <param name="maxFiles">
+    /// Most files imported, the newest (Settings' catch-up limit; <see cref="int.MaxValue"/> for every one,
+    /// <see cref="Core.Settings.ListLimit.Effective"/>).
+    /// </param>
     /// <param name="cancellationToken">Cancels between files.</param>
     /// <returns>How many screenshots were delivered.</returns>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled.</exception>

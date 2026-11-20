@@ -149,17 +149,31 @@ public sealed class CmdHistoryTests
             again);
     }
 
-    /// <summary>Only one-line, non-blank commands within the length limit are kept; the list keeps the newest <see cref="CmdHistory.MaxKept"/>.</summary>
+    /// <summary>
+    /// Only one-line, non-blank commands within the length limit are kept. The list keeps every one by default — 1,005 here,
+    /// above the 1,000 kept until 2026-11-21 (CLAUDE.md §2.62) — and the newest under a limit, in memory and when written.
+    /// </summary>
     [Fact]
-    public void Remember_SkipsUnkeepableAndTrims()
+    public void Remember_SkipsUnkeepable_KeepsEveryCommandOrTheNewestUnderALimit()
     {
         var kept = CmdHistory.Remember([], ["  ", "BC-TEST x\ny", new string('x', CmdHistory.MaxCommandLength + 1), "BC-TEST ok"], typedAgain: true, Now);
         Assert.Equal(["BC-TEST ok"], kept.Select(k => k.Text));
 
-        var many = Enumerable.Range(0, CmdHistory.MaxKept + 5).Select(i => $"BC-TEST {i}").ToList();
-        var trimmed = CmdHistory.Remember([], many, typedAgain: true, Now);
-        Assert.Equal(CmdHistory.MaxKept, trimmed.Count);
-        Assert.Equal($"BC-TEST {CmdHistory.MaxKept + 4}", trimmed[0].Text);
+        var many = Enumerable.Range(0, 1005).Select(i => $"BC-TEST {i}").ToList();
+        var all = CmdHistory.Remember([], many, typedAgain: true, Now);
+        Assert.Equal(1005, all.Count);
+        Assert.Equal("BC-TEST 1004", all[0].Text);
+        Assert.Equal(1005, CmdHistory.ParseKept(CmdHistory.FormatKept(all)).Count);
+
+        var limited = CmdHistory.Remember([], many, typedAgain: true, Now, limit: 1000);
+        Assert.Equal(1000, limited.Count);
+        Assert.Equal("BC-TEST 1004", limited[0].Text);
+        Assert.Equal("BC-TEST 5", limited[^1].Text);
+
+        // Written under a limit, and a lowered limit applied at once (CmdHistorySource.ApplyLimitAsync): the newest stay.
+        Assert.Equal(["BC-TEST 1004", "BC-TEST 1003", "BC-TEST 1002"], CmdHistory.ParseKept(CmdHistory.FormatKept(all, limit: 3)).Select(k => k.Text));
+        Assert.Equal(["BC-TEST 1004", "BC-TEST 1003"], CmdHistory.Trim(all, 2).Select(k => k.Text));
+        Assert.Equal(1005, CmdHistory.Trim(all, 0).Count);
     }
 
     /// <summary>The kept list round-trips (a tab inside a command included); malformed lines lose only themselves.</summary>
@@ -236,23 +250,26 @@ public sealed class ShellTabTests
         Assert.Equal(["BC-TEST cd src", "#1", "#2", "BC-TEST ls"], Describe(typedSince));
     }
 
-    /// <summary>The live commands are capped; every stored entry stays, also one placed after the last command shown.</summary>
+    /// <summary>
+    /// Every live command and every stored entry is a row: 3,000 commands here, where a tab showed the newest 500 until
+    /// 2026-11-21 (CLAUDE.md §2.62; the panel now turns rows into cards a page at a time).
+    /// </summary>
     [Fact]
-    public void CapCommands_KeepsEveryStoredEntry()
+    public void Merge_ShowsEveryCommand()
     {
-        var rows = new List<ShellTabRow>
-        {
-            new(null, Command("BC-TEST a")),
-            new(Entry(1, "BC-TEST kept", TestData.Now), null),
-            new(null, Command("BC-TEST b")),
-            new(null, Command("BC-TEST c")),
-            new(Entry(2, "BC-TEST old", TestData.Now.AddDays(-1)), null),
-        };
+        // Command Prompt commands: they carry the times the merge places stored entries among (PowerShell's carry none).
+        var live = Enumerable.Range(0, 3000)
+            .Select(i => new ShellCommand(ShellKind.Cmd, $"BC-TEST {i}", 1, TestData.Now.AddMinutes(-i), ShellSources.CmdName))
+            .ToList();
+        var stored = new[] { Entry(1, "BC-TEST kept", TestData.Now.AddMinutes(-2500.5)), Entry(2, "BC-TEST old", TestData.Now.AddDays(-30)) };
 
-        Assert.Equal(["BC-TEST a", "#1", "BC-TEST b", "#2"], Describe(ShellTab.CapCommands(rows, 2)));
-        Assert.Equal(["#1", "#2"], Describe(ShellTab.CapCommands(rows, 0)));
-        Assert.Throws<ArgumentOutOfRangeException>(() => ShellTab.CapCommands(rows, -1));
-        Assert.Throws<ArgumentNullException>(() => ShellTab.CapCommands(null!, 1));
+        var rows = ShellTab.Merge(stored, live, [], new HashSet<string>(), pinnedFirst: false);
+        Assert.Equal(3002, rows.Count);
+        Assert.Equal(3000, rows.Count(r => r.Command is not null));
+
+        // Each stored entry where its time falls: past the old cap of 500 commands, and after every command.
+        Assert.Equal(2501, rows.ToList().FindIndex(r => r.Entry?.Id == 1));
+        Assert.Equal(3001, rows.ToList().FindIndex(r => r.Entry?.Id == 2));
     }
 
     /// <summary>A live command that is also stored shows once (as the entry); a forgotten one never; a repeat once.</summary>
@@ -280,19 +297,30 @@ public sealed class ShellTabTests
         Assert.Single(ShellTab.Merge([], [thrice], hidden, new HashSet<string>(), false));
     }
 
-    /// <summary>Hides round-trip newest first, keep only the newest <see cref="ShellTab.MaxHidden"/>, and skip damaged lines.</summary>
+    /// <summary>
+    /// Hides round-trip newest first and skip damaged lines. Every hide is kept by default — 1,003 here, above the 1,000 kept
+    /// until 2026-11-21 (CLAUDE.md §2.62) — and the newest under a limit; reading never trims, so a raised limit loses nothing.
+    /// </summary>
     [Fact]
-    public void Hidden_RoundTripsNewestFirstAndTrims()
+    public void Hidden_RoundTripsNewestFirst_KeepsEveryHideOrTheNewestUnderALimit()
     {
         IReadOnlyList<HiddenCommand> hidden = [];
-        for (int i = 0; i < ShellTab.MaxHidden + 3; i++)
+        for (int i = 0; i < 1003; i++)
         {
             hidden = ShellTab.Hide(hidden, $"hash{i}", i + 1);
         }
 
-        Assert.Equal(ShellTab.MaxHidden, hidden.Count);
-        Assert.Equal(new HiddenCommand($"hash{ShellTab.MaxHidden + 2}", ShellTab.MaxHidden + 3), hidden[0]);
+        Assert.Equal(1003, hidden.Count);
+        Assert.Equal(new HiddenCommand("hash1002", 1003), hidden[0]);
         Assert.Equal(hidden, ShellTab.ParseHidden(ShellTab.FormatHidden(hidden)));
+
+        var limited = ShellTab.Hide(hidden, "hash-new", 1, limit: 1000);
+        Assert.Equal(1000, limited.Count);
+        Assert.Equal(new HiddenCommand("hash-new", 1), limited[0]);
+        Assert.Equal(new HiddenCommand("hash4", 5), limited[^1]);
+        Assert.Equal(3, ShellTab.ParseHidden(ShellTab.FormatHidden(hidden, limit: 3)).Count);
+        Assert.Equal([new HiddenCommand("hash1002", 1003), new HiddenCommand("hash1001", 1002)], ShellTab.Trim(hidden, 2));
+        Assert.Equal(1003, ShellTab.Trim(hidden, 0).Count);
 
         // Hiding a hash again moves it to the front with the new count.
         var again = ShellTab.Hide(hidden, "hash5", 99);

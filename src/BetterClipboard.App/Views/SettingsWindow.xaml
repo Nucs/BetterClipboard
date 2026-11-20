@@ -869,6 +869,22 @@
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Text="{x:Bind ViewModel.ShareXStatus, Mode=OneWay}"
                                 TextWrapping="Wrap" />
+                            <!--  The limit of this integration's list, 0 = unlimited by default (CLAUDE.md §2.62, ListLimit).
+                                  Its label stands above the box, not in its Header: a header makes the box as wide as its
+                                  label, and the boxes came out at different widths (their live check).  -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Tr Text='Maximum screenshots imported at start, of those saved while BetterClipboard was not running (0 = unlimited)'}" TextWrapping="Wrap" />
+                                <NumberBox
+                                    MinWidth="140"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="{loc:Tr Text='Maximum screenshots imported at start, of those saved while BetterClipboard was not running (0 = unlimited)'}"
+                                    LargeChange="100"
+                                    Maximum="1000000"
+                                    Minimum="0"
+                                    SmallChange="10"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaxShareXCatchUp, Mode=TwoWay}" />
+                            </StackPanel>
                             <Button
                                 Click="DeleteStored_Click"
                                 Content="{loc:Tr Text='Delete stored…'}"
@@ -893,6 +909,22 @@
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Text="{x:Bind ViewModel.SnippingStatus, Mode=OneWay}"
                                 TextWrapping="Wrap" />
+                            <!--  The limit of this integration's list, 0 = unlimited by default (CLAUDE.md §2.62, ListLimit).
+                                  Its label stands above the box, not in its Header: a header makes the box as wide as its
+                                  label, and the boxes came out at different widths (their live check).  -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Tr Text='Maximum screenshots imported at start, of those saved while BetterClipboard was not running (0 = unlimited)'}" TextWrapping="Wrap" />
+                                <NumberBox
+                                    MinWidth="140"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="{loc:Tr Text='Maximum screenshots imported at start, of those saved while BetterClipboard was not running (0 = unlimited)'}"
+                                    LargeChange="100"
+                                    Maximum="1000000"
+                                    Minimum="0"
+                                    SmallChange="10"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaxScreenshotsCatchUp, Mode=TwoWay}" />
+                            </StackPanel>
                             <Button
                                 Click="DeleteStored_Click"
                                 Content="{loc:Tr Text='Delete stored…'}"
@@ -966,6 +998,22 @@
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Text="{x:Bind ViewModel.EverythingStatus, Mode=OneWay}"
                                 TextWrapping="Wrap" />
+                            <!--  The limit of this integration's list, 0 = unlimited by default (CLAUDE.md §2.62, ListLimit).
+                                  Its label stands above the box, not in its Header: a header makes the box as wide as its
+                                  label, and the boxes came out at different widths (their live check).  -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Tr Text='Maximum files and folders hidden with Delete (0 = unlimited)'}" TextWrapping="Wrap" />
+                                <NumberBox
+                                    MinWidth="140"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="{loc:Tr Text='Maximum files and folders hidden with Delete (0 = unlimited)'}"
+                                    LargeChange="1000"
+                                    Maximum="1000000"
+                                    Minimum="0"
+                                    SmallChange="100"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaxHiddenEverythingPicks, Mode=TwoWay}" />
+                            </StackPanel>
                             <Button
                                 Click="DeleteStored_Click"
                                 Content="{loc:Tr Text='Delete stored…'}"
@@ -1014,6 +1062,22 @@
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Text="{x:Bind ViewModel.PowerShellHistoryStatus, Mode=OneWay}"
                                 TextWrapping="Wrap" />
+                            <!--  The limit of this integration's list, 0 = unlimited by default (CLAUDE.md §2.62, ListLimit).
+                                  Its label stands above the box, not in its Header: a header makes the box as wide as its
+                                  label, and the boxes came out at different widths (their live check).  -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Tr Text='Maximum commands hidden with Delete (0 = unlimited)'}" TextWrapping="Wrap" />
+                                <NumberBox
+                                    MinWidth="140"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="{loc:Tr Text='Maximum commands hidden with Delete (0 = unlimited)'}"
+                                    LargeChange="1000"
+                                    Maximum="1000000"
+                                    Minimum="0"
+                                    SmallChange="100"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaxHiddenPowerShellCommands, Mode=TwoWay}" />
+                            </StackPanel>
                             <Button
                                 Click="DeleteStored_Click"
                                 Content="{loc:Tr Text='Delete stored…'}"
@@ -1037,6 +1101,35 @@
                                 Style="{StaticResource CaptionTextBlockStyle}"
                                 Text="{x:Bind ViewModel.CmdHistoryStatus, Mode=OneWay}"
                                 TextWrapping="Wrap" />
+                            <!--  The limit of this integration's list, 0 = unlimited by default (CLAUDE.md §2.62, ListLimit).
+                                  Its label stands above the box, not in its Header: a header makes the box as wide as its
+                                  label, and the boxes came out at different widths (their live check).  -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Tr Text='Maximum commands kept (0 = unlimited)'}" TextWrapping="Wrap" />
+                                <NumberBox
+                                    MinWidth="140"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="{loc:Tr Text='Maximum commands kept (0 = unlimited)'}"
+                                    LargeChange="1000"
+                                    Maximum="1000000"
+                                    Minimum="0"
+                                    SmallChange="100"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaxKeptCmdCommands, Mode=TwoWay}" />
+                            </StackPanel>
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Tr Text='Maximum commands hidden with Delete (0 = unlimited)'}" TextWrapping="Wrap" />
+                                <NumberBox
+                                    MinWidth="140"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="{loc:Tr Text='Maximum commands hidden with Delete (0 = unlimited)'}"
+                                    LargeChange="1000"
+                                    Maximum="1000000"
+                                    Minimum="0"
+                                    SmallChange="100"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaxHiddenCmdCommands, Mode=TwoWay}" />
+                            </StackPanel>
                             <Button
                                 Click="DeleteStored_Click"
                                 Content="{loc:Tr Text='Delete stored…'}"

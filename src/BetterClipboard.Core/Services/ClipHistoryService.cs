@@ -353,30 +353,21 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// Fingerprints to look up (<see cref="ForgetFingerprint"/>; for a file list its content hash,
     /// <see cref="ContentHasher.ForFiles"/>). Duplicates are fine.
     /// </param>
-    /// <returns>The forgotten ones; empty right away (no per-item lookup) while the list itself is empty.</returns>
+    /// <returns>The forgotten ones; empty right away (no lookup at all) while the list itself is empty.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="fingerprints"/> is <see langword="null"/>.</exception>
     /// <exception cref="Microsoft.Data.Sqlite.SqliteException">Reading the store failed.</exception>
+    /// <remarks>
+    /// One query per 500 fingerprints (<see cref="ClipStore.FindForgotten"/>). Until 2026-11-21 each fingerprint opened a
+    /// connection of its own, which was fine for the at most 700 commands or 200 picks a tab then asked about; the tabs show
+    /// every row since (CLAUDE.md §2.62), thousands for a long PowerShell history.
+    /// </remarks>
     public Task<IReadOnlySet<string>> FindForgottenAsync(IReadOnlyCollection<string> fingerprints)
     {
         ArgumentNullException.ThrowIfNull(fingerprints);
         return Task.Run<IReadOnlySet<string>>(() =>
-        {
-            var forgotten = new HashSet<string>(StringComparer.Ordinal);
-            if (fingerprints.Count == 0 || store.CountForgotten() == 0)
-            {
-                return forgotten;
-            }
-
-            foreach (var fingerprint in fingerprints)
-            {
-                if (!forgotten.Contains(fingerprint) && store.IsForgotten(fingerprint))
-                {
-                    forgotten.Add(fingerprint);
-                }
-            }
-
-            return forgotten;
-        });
+            fingerprints.Count == 0 || store.CountForgotten() == 0
+                ? new HashSet<string>(StringComparer.Ordinal)
+                : store.FindForgotten(fingerprints));
     }
 
     /// <summary>

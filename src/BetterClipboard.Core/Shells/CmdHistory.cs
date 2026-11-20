@@ -21,14 +21,16 @@ namespace BetterClipboard.Core.Shells;
 /// appended again (or, with <c>HistoryNoDup</c> on, moved to the end); when full, the oldest drops off the front.
 /// <see cref="NewSince"/> reads two snapshots of one window with exactly those rules.
 /// </para>
+/// <para>
+/// <b>How many.</b> As many as Settings › Cmd tab › <em>Maximum commands kept</em> allows
+/// (<see cref="Settings.AppSettings.MaxKeptCmdCommands"/>, a <see cref="Settings.ListLimit"/>): no limit by default, the ones
+/// seen longest ago going first under one. Until 2026-11-21 the newest 1,000 (a constant here, <c>MaxKept</c>).
+/// </para>
 /// </remarks>
 public static class CmdHistory
 {
     /// <summary>Store state name of the kept commands (<see cref="FormatKept"/>).</summary>
     public const string KeptStateName = "cmd.kept";
-
-    /// <summary>Most commands kept; the ones seen longest ago go first.</summary>
-    public const int MaxKept = 1000;
 
     /// <summary>Longest command kept, in characters (a cmd line is limited to 8191 anyway).</summary>
     public const int MaxCommandLength = 8191;
@@ -98,9 +100,13 @@ public static class CmdHistory
     /// </param>
     /// <param name="now">When they were seen. Commands of one call are spaced a millisecond apart, oldest first, so
     /// the list keeps their order.</param>
-    /// <returns>The new kept list, newest first, at most <see cref="MaxKept"/>.</returns>
+    /// <param name="limit">
+    /// Most commands kept (<see cref="Settings.ListLimit"/>: 0 or less = no limit, the default); the ones seen longest ago
+    /// go first. The caller passes Settings' <see cref="Settings.AppSettings.MaxKeptCmdCommands"/>.
+    /// </param>
+    /// <returns>The new kept list, newest first, at most <paramref name="limit"/> commands when one is set.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    public static IReadOnlyList<KeptCommand> Remember(IReadOnlyList<KeptCommand> kept, IReadOnlyList<string> commands, bool typedAgain, DateTimeOffset now)
+    public static IReadOnlyList<KeptCommand> Remember(IReadOnlyList<KeptCommand> kept, IReadOnlyList<string> commands, bool typedAgain, DateTimeOffset now, int limit = 0)
     {
         ArgumentNullException.ThrowIfNull(kept);
         ArgumentNullException.ThrowIfNull(commands);
@@ -132,7 +138,21 @@ public static class CmdHistory
             }
         }
 
-        return byText.Values.OrderByDescending(c => c.LastSeen).Take(MaxKept).ToList();
+        return byText.Values.OrderByDescending(c => c.LastSeen).Take(Settings.ListLimit.Effective(limit)).ToList();
+    }
+
+    /// <summary>
+    /// The kept list under a limit: its newest <paramref name="limit"/> commands (a lowered limit applies at once,
+    /// <c>CmdHistorySource.ApplyLimitAsync</c>), or all of them when there is none.
+    /// </summary>
+    /// <param name="kept">The kept commands, any order (not changed).</param>
+    /// <param name="limit">Most commands kept (<see cref="Settings.ListLimit"/>: 0 or less = no limit).</param>
+    /// <returns>The commands kept, newest first.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="kept"/> is <see langword="null"/>.</exception>
+    public static IReadOnlyList<KeptCommand> Trim(IReadOnlyList<KeptCommand> kept, int limit)
+    {
+        ArgumentNullException.ThrowIfNull(kept);
+        return kept.OrderByDescending(c => c.LastSeen).Take(Settings.ListLimit.Effective(limit)).ToList();
     }
 
     /// <summary>
@@ -168,15 +188,16 @@ public static class CmdHistory
         return result.OrderByDescending(c => c.LastSeen).ToList();
     }
 
-    /// <summary>Writes the kept list for <see cref="ParseKept"/>, newest first, at most <see cref="MaxKept"/>.</summary>
+    /// <summary>Writes the kept list for <see cref="ParseKept"/>, newest first, at most <paramref name="limit"/> commands when one is set.</summary>
     /// <param name="kept">The commands.</param>
+    /// <param name="limit">Most commands written (<see cref="Settings.ListLimit"/>: 0 or less = no limit, the default).</param>
     /// <returns>The state value.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="kept"/> is <see langword="null"/>.</exception>
-    public static string FormatKept(IEnumerable<KeptCommand> kept)
+    public static string FormatKept(IEnumerable<KeptCommand> kept, int limit = 0)
     {
         ArgumentNullException.ThrowIfNull(kept);
         var builder = new StringBuilder();
-        foreach (var command in kept.Where(c => IsKeepable(c.Text)).OrderByDescending(c => c.LastSeen).Take(MaxKept))
+        foreach (var command in kept.Where(c => IsKeepable(c.Text)).OrderByDescending(c => c.LastSeen).Take(Settings.ListLimit.Effective(limit)))
         {
             builder.Append(command.LastSeen.UtcTicks.ToString(CultureInfo.InvariantCulture)).Append('\t')
                 .Append(command.Count.ToString(CultureInfo.InvariantCulture)).Append('\t')

@@ -32,20 +32,19 @@ namespace BetterClipboard.Core.Shells;
 /// <para>
 /// <b>Hiding.</b> Delete on a live command cannot delete anything from the shell (BetterClipboard only reads), so it
 /// hides the command until it is typed again: the hide remembers <see cref="ShellCommand.Count"/>, and a higher count
-/// shows it again. Kept in the encrypted store (<see cref="HiddenStateName"/>), newest <see cref="MaxHidden"/> first.
+/// shows it again. Kept in the encrypted store (<see cref="HiddenStateName"/>), newest first, as many as Settings allows
+/// (<see cref="Settings.AppSettings.MaxHiddenPowerShellCommands"/>, <see cref="Settings.AppSettings.MaxHiddenCmdCommands"/>:
+/// no limit by default; the newest 1,000 until 2026-11-21).
+/// </para>
+/// <para>
+/// <b>Every row.</b> A tab shows all of its rows (CLAUDE.md §2.62): every live command the shell remembers and every entry
+/// kept from it. The panel merges them at once and turns them into cards a page at a time as the list scrolls
+/// (<see cref="Presentation.RowPages{TRow}"/>). Until 2026-11-21 a tab showed the newest 500 live commands and loaded 200 kept
+/// entries (the constants <c>MaxCommands</c> and <c>MaxStoredEntries</c>, and <c>CapCommands</c>).
 /// </para>
 /// </remarks>
 public static class ShellTab
 {
-    /// <summary>Most live commands a tab shows (newest first, after the search narrowed them; no paging).</summary>
-    public const int MaxCommands = 500;
-
-    /// <summary>Most stored entries a tab loads.</summary>
-    public const int MaxStoredEntries = 200;
-
-    /// <summary>Most hides kept per shell; the oldest go first, which can only bring an old command back.</summary>
-    public const int MaxHidden = 1000;
-
     /// <summary>The store state name of a shell's hidden commands (<see cref="FormatHidden"/>).</summary>
     /// <param name="shell">The shell.</param>
     /// <returns><c>pwsh.hidden</c> or <c>cmd.hidden</c>.</returns>
@@ -104,23 +103,6 @@ public static class ShellTab
             .ToList();
     }
 
-    /// <summary>
-    /// Caps the live commands of merged rows (<see cref="Merge"/>) at <paramref name="maxCommands"/>, keeping every stored
-    /// entry wherever it is — a kept command whose place lies past the cap follows the last command shown.
-    /// </summary>
-    /// <param name="rows">The merged rows, in display order.</param>
-    /// <param name="maxCommands">Most live commands to keep (the first ones).</param>
-    /// <returns>The rows kept, in the same order.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="rows"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="maxCommands"/> is negative.</exception>
-    public static IReadOnlyList<ShellTabRow> CapCommands(IReadOnlyList<ShellTabRow> rows, int maxCommands)
-    {
-        ArgumentNullException.ThrowIfNull(rows);
-        ArgumentOutOfRangeException.ThrowIfNegative(maxCommands);
-        int commands = 0;
-        return rows.Where(r => r.Entry is not null || ++commands <= maxCommands).ToList();
-    }
-
     /// <summary>Whether a command is hidden: hidden at its current count or a higher one (not typed since).</summary>
     /// <param name="command">The command.</param>
     /// <param name="hidden">Hidden counts by content hash (<see cref="ToLookup"/>).</param>
@@ -139,16 +121,37 @@ public static class ShellTab
     /// <param name="hidden">The current hides, newest first (not changed).</param>
     /// <param name="contentHash">The command's <see cref="ShellCommand.ContentHash"/>.</param>
     /// <param name="count">Its current <see cref="ShellCommand.Count"/>.</param>
-    /// <returns>The new hides, newest first (this one), at most <see cref="MaxHidden"/>.</returns>
+    /// <param name="limit">
+    /// Most hides kept (<see cref="Settings.ListLimit"/>: 0 or less = no limit, the default); the oldest go first, which
+    /// can only bring an old command back. The caller passes the shell's setting.
+    /// </param>
+    /// <returns>The new hides, newest first (this one), at most <paramref name="limit"/> when one is set.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="hidden"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="contentHash"/> is null or blank.</exception>
-    public static IReadOnlyList<HiddenCommand> Hide(IReadOnlyList<HiddenCommand> hidden, string contentHash, int count)
+    public static IReadOnlyList<HiddenCommand> Hide(IReadOnlyList<HiddenCommand> hidden, string contentHash, int count, int limit = 0)
     {
         ArgumentNullException.ThrowIfNull(hidden);
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
-        var next = new List<HiddenCommand>(Math.Min(hidden.Count + 1, MaxHidden)) { new(contentHash, Math.Max(1, count)) };
-        next.AddRange(hidden.Where(h => !string.Equals(h.ContentHash, contentHash, StringComparison.Ordinal)).Take(MaxHidden - 1));
+        int keep = Settings.ListLimit.Effective(limit);
+
+        // Sized by what is there, never by the limit: an unlimited one is int.MaxValue.
+        var next = new List<HiddenCommand>(Math.Min(hidden.Count + 1, keep)) { new(contentHash, Math.Max(1, count)) };
+        next.AddRange(hidden.Where(h => !string.Equals(h.ContentHash, contentHash, StringComparison.Ordinal)).Take(keep - 1));
         return next;
+    }
+
+    /// <summary>
+    /// The hides under a limit: the newest <paramref name="limit"/> (a lowered setting applies at once,
+    /// <c>AppController.Limits.cs</c>), or all of them when there is none.
+    /// </summary>
+    /// <param name="hidden">The hides, newest first (not changed).</param>
+    /// <param name="limit">Most hides kept (<see cref="Settings.ListLimit"/>: 0 or less = no limit).</param>
+    /// <returns>The hides kept, newest first.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="hidden"/> is <see langword="null"/>.</exception>
+    public static IReadOnlyList<HiddenCommand> Trim(IReadOnlyList<HiddenCommand> hidden, int limit)
+    {
+        ArgumentNullException.ThrowIfNull(hidden);
+        return hidden.Take(Settings.ListLimit.Effective(limit)).ToList();
     }
 
     /// <summary>The hides as a lookup by content hash (the first, i.e. newest, wins for a hash listed twice).</summary>
@@ -172,7 +175,10 @@ public static class ShellTab
     /// skipped — a bad line can only un-hide one command. No command text is ever stored here, only its hash.
     /// </summary>
     /// <param name="value">The state value; <see langword="null"/> or empty when nothing is hidden.</param>
-    /// <returns>The hides, newest first.</returns>
+    /// <returns>
+    /// Every hide stored, newest first. Not trimmed: the limit is applied when the list is written (<see cref="Hide"/>,
+    /// <see cref="Trim"/>), so a raised or lifted limit loses nothing that is still stored.
+    /// </returns>
     public static IReadOnlyList<HiddenCommand> ParseHidden(string? value)
     {
         var result = new List<HiddenCommand>();
@@ -194,18 +200,19 @@ public static class ShellTab
             result.Add(new HiddenCommand(hash, count));
         }
 
-        return result.Take(MaxHidden).ToList();
+        return result;
     }
 
-    /// <summary>Writes hides for <see cref="ParseHidden"/>, in the given order (newest first), at most <see cref="MaxHidden"/>.</summary>
+    /// <summary>Writes hides for <see cref="ParseHidden"/>, in the given order (newest first), at most <paramref name="limit"/> when one is set.</summary>
     /// <param name="hidden">The hides.</param>
+    /// <param name="limit">Most hides written (<see cref="Settings.ListLimit"/>: 0 or less = no limit, the default).</param>
     /// <returns>The state value.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="hidden"/> is <see langword="null"/>.</exception>
-    public static string FormatHidden(IReadOnlyList<HiddenCommand> hidden)
+    public static string FormatHidden(IReadOnlyList<HiddenCommand> hidden, int limit = 0)
     {
         ArgumentNullException.ThrowIfNull(hidden);
         var builder = new StringBuilder();
-        foreach (var h in hidden.Take(MaxHidden))
+        foreach (var h in hidden.Take(Settings.ListLimit.Effective(limit)))
         {
             builder.Append(h.Count.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(h.ContentHash).Append('\n');
         }

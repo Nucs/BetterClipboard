@@ -515,6 +515,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ShowEverythingTab = settings.ShowEverythingTab;
             ShowPowerShellTab = settings.ShowPowerShellTab;
             ShowCmdTab = settings.ShowCmdTab;
+            LoadListLimits(settings);
             KeepClaudeCodePrompts = settings.KeepClaudeCodePrompts;
             KeepCodexPrompts = settings.KeepCodexPrompts;
             RecordRunHistory = settings.RecordRunHistory;

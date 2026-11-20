@@ -62,10 +62,15 @@ public sealed partial class SettingsViewModel
         var open = windows < 0 ? UiText.Translate("Reading open Command Prompt windows every 30 seconds.")
             : UiText.Format($"Reading open Command Prompt windows every 30 seconds: {windows:N0} open now.");
         int kept = controller.CmdKeptCount;
-        CmdHistoryStatus = UiText.Plural(
-            kept,
-            $"{open}\n{kept:N0} command kept (newest {CmdHistory.MaxKept:N0}).",
-            $"{open}\n{kept:N0} commands kept (newest {CmdHistory.MaxKept:N0}).");
+
+        // The limit is named only while there is one (Settings' number, no limit by default; until 2026-11-21 always 1,000).
+        int limit = controller.Settings.Current.MaxKeptCmdCommands;
+        CmdHistoryStatus = ListLimit.IsUnlimited(limit)
+            ? UiText.Plural(kept, $"{open}\n{kept:N0} command kept.", $"{open}\n{kept:N0} commands kept.")
+            : UiText.Plural(
+                kept,
+                $"{open}\n{kept:N0} command kept (newest {limit:N0}).",
+                $"{open}\n{kept:N0} commands kept (newest {limit:N0}).");
     }
 
     /// <summary>Persists the Pwsh tab switch; the tab and the status line follow the controller's status event.</summary>

@@ -376,6 +376,40 @@ public sealed class WindowsScreenshotsIntegrationTests : IAsyncLifetime
         await ShareXScreenshotWatcherTests.WaitUntilAsync(() => Marker(history.GetStateValueAsync(WindowsScreenshotsIntegration.LastSeenStateName).Result) == new DateTimeOffset(marker.AddMinutes(1), TimeSpan.Zero));
     }
 
+    /// <summary>
+    /// After a restart every screenshot saved since the marker is imported by default — until 2026-11-21 at most the 100
+    /// newest (CLAUDE.md §2.62) — and under Settings' limit only the newest that many; the marker reaches the newest either way.
+    /// </summary>
+    /// <param name="limit">The catch-up limit (<see cref="Core.Settings.AppSettings.MaxScreenshotsCatchUp"/>; 0 = none).</param>
+    /// <param name="expected">How many of the three screenshots are imported.</param>
+    /// <returns>A task.</returns>
+    [Theory]
+    [InlineData(0, 3)]
+    [InlineData(2, 2)]
+    public async Task Restart_CatchesUpEveryScreenshot_OrTheNewestUnderALimit(int limit, int expected)
+    {
+        // Whole seconds: the history keeps milliseconds, file times keep 100 ns ticks.
+        var marker = DateTime.UtcNow.AddMinutes(-10);
+        marker = new DateTime(marker.Ticks - (marker.Ticks % TimeSpan.TicksPerSecond), DateTimeKind.Utc);
+        await history.SetStateValueAsync(WindowsScreenshotsIntegration.LastSeenStateName, marker.ToString("o", CultureInfo.InvariantCulture));
+        for (int i = 1; i <= 3; i++)
+        {
+            var path = Path.Combine(folder, $"BC-TEST Screenshot 2026-10-01 09{i:00}00.png");
+            await File.WriteAllBytesAsync(path, await ShareXScreenshotWatcherTests.PngAsync(8, 8, (byte)(40 + i)), TestContext.Current.CancellationToken);
+            File.SetLastWriteTimeUtc(path, marker.AddMinutes(i));
+        }
+
+        await using var integration = new WindowsScreenshotsIntegration(history, () => long.MaxValue, () => location) { CatchUpLimit = () => limit };
+        await integration.StartAsync(enable: true);
+        var newest = new DateTimeOffset(marker.AddMinutes(3), TimeSpan.Zero);
+        await ShareXScreenshotWatcherTests.WaitUntilAsync(() => Marker(history.GetStateValueAsync(WindowsScreenshotsIntegration.LastSeenStateName).Result) == newest);
+        await ShareXScreenshotWatcherTests.WaitUntilAsync(() => SnippingItemsAsync().Result.Count == expected);
+
+        // The newest ones: one minute apart, ending at the newest file's time.
+        var times = (await SnippingItemsAsync()).Select(e => e.LastUsedUtc).OrderByDescending(t => t).ToList();
+        Assert.Equal(Enumerable.Range(0, expected).Select(i => newest.AddMinutes(-i)), times);
+    }
+
     /// <summary>Off stops watching and clears the marker; on again starts fresh (nothing taken while off is imported).</summary>
     /// <returns>A task.</returns>
     [Fact]

@@ -29,10 +29,12 @@ namespace BetterClipboard.Windows.Integrations;
 /// the first time adds its commands without counting them again.
 /// </para>
 /// <para>
-/// <b>Kept list</b> (<see cref="CmdHistory.KeptStateName"/>, in the encrypted store, newest
-/// <see cref="CmdHistory.MaxKept"/>): written only when it changed, and never while capture is paused — reads
-/// still happen then, so the tab shows open windows' commands, but nothing new is kept. Switching the feature off
-/// stops the timer and deletes the list. Nothing of it reaches a log (counts only).
+/// <b>Kept list</b> (<see cref="CmdHistory.KeptStateName"/>, in the encrypted store, as many commands as
+/// <see cref="KeptLimit"/> allows — Settings' <see cref="Core.Settings.AppSettings.MaxKeptCmdCommands"/>, no limit by default;
+/// the newest 1,000 until 2026-11-21): written only when it changed, and never while capture is paused — reads still happen
+/// then, so the tab shows open windows' commands, but nothing new is kept. A lowered limit applies at once
+/// (<see cref="ApplyLimitAsync"/>). Switching the feature off stops the timer and deletes the list. Nothing of it reaches a
+/// log (counts only).
 /// </para>
 /// Thread-safe: reads are serialized by a gate; events are raised on the pool.
 /// </remarks>
@@ -88,6 +90,12 @@ public sealed class CmdHistorySource : IAsyncDisposable
         this.helperPath = helperPath;
         this.time = time ?? TimeProvider.System;
     }
+
+    /// <summary>
+    /// The most commands the kept list may hold, asked at every read (<see cref="Core.Settings.ListLimit"/>: 0 = no limit, the
+    /// default). The app passes Settings' <see cref="Core.Settings.AppSettings.MaxKeptCmdCommands"/>; tests leave it unlimited.
+    /// </summary>
+    public Func<int> KeptLimit { get; init; } = static () => 0;
 
     /// <summary>Raised (pool thread) after a read changed the kept list, or the feature was switched on or off.</summary>
     public event EventHandler? StatusChanged;
@@ -183,6 +191,53 @@ public sealed class CmdHistorySource : IAsyncDisposable
     }
 
     /// <summary>
+    /// Applies <see cref="KeptLimit"/> to the kept list now, in memory and in the store: a lowered limit deletes the commands
+    /// seen longest ago at once, so Settings' count and the tab follow the number the user just typed instead of the next
+    /// read (up to <see cref="ScanInterval"/> later). Nothing changes when the list fits, or before it was ever loaded and
+    /// the store holds none.
+    /// </summary>
+    /// <remarks>
+    /// Applied also while capture is paused: pausing stops keeping new commands, not the user's own limit. Waits for a read in
+    /// progress (the same gate), so a read cannot write the longer list after it.
+    /// </remarks>
+    /// <returns>A task completing when applied; failures are logged, never thrown.</returns>
+    public async Task ApplyLimitAsync()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        bool trimmed = false;
+        await gate.WaitAsync();
+        try
+        {
+            kept ??= CmdHistory.ParseKept(await history.GetStateValueAsync(CmdHistory.KeptStateName));
+            var next = CmdHistory.Trim(kept, KeptLimit());
+            if (next.Count < kept.Count)
+            {
+                await history.SetStateValueAsync(CmdHistory.KeptStateName, CmdHistory.FormatKept(next));
+                AppLog.Info($"The Cmd tab's kept commands follow their new limit: {kept.Count - next.Count} deleted, {next.Count} kept.");
+                kept = next;
+                trimmed = true;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            AppLog.Warn($"Applying the limit of kept Command Prompt commands failed ({ex.GetType().Name}).");
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        if (trimmed)
+        {
+            StatusChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
     /// The Cmd tab's live commands: the kept list plus whatever open windows hold, newest first. Reads the windows
     /// first unless the last read is fresher than <see cref="FreshFor"/>.
     /// </summary>
@@ -201,10 +256,11 @@ public sealed class CmdHistorySource : IAsyncDisposable
         {
             var list = kept ?? [];
 
-            // While paused nothing new is kept, but the tab still shows what open windows hold (not counted again).
+            // While paused nothing new is kept, but the tab still shows what open windows hold (not counted again), within
+            // the limit a read would keep.
             if (openCommands.Count > 0)
             {
-                list = CmdHistory.Remember(list, openCommands, typedAgain: false, time.GetUtcNow());
+                list = CmdHistory.Remember(list, openCommands, typedAgain: false, time.GetUtcNow(), KeptLimit());
             }
 
             return list.Select(c => new ShellCommand(ShellKind.Cmd, c.Text, c.Count, c.LastSeen, ShellSources.CmdName)).ToList();
@@ -237,6 +293,7 @@ public sealed class CmdHistorySource : IAsyncDisposable
             var windows = FindInteractiveCmdWindows();
             var reads = await ReadWindowsAsync(windows);
             var now = time.GetUtcNow();
+            int limit = KeptLimit();
             var next = kept;
             var open = new List<string>();
             var seen = new HashSet<(uint, long)>();
@@ -245,8 +302,8 @@ public sealed class CmdHistorySource : IAsyncDisposable
                 seen.Add(window);
                 open.AddRange(commands);
                 next = lastReads.TryGetValue(window, out var previous)
-                    ? CmdHistory.Remember(next, CmdHistory.NewSince(previous, commands), typedAgain: true, now)
-                    : CmdHistory.Remember(next, commands, typedAgain: false, now);
+                    ? CmdHistory.Remember(next, CmdHistory.NewSince(previous, commands), typedAgain: true, now, limit)
+                    : CmdHistory.Remember(next, commands, typedAgain: false, now, limit);
                 lastReads[window] = commands;
             }
 
@@ -262,7 +319,7 @@ public sealed class CmdHistorySource : IAsyncDisposable
             bool changed = !SameList(kept, next);
             if (changed && !isPaused())
             {
-                await history.SetStateValueAsync(CmdHistory.KeptStateName, CmdHistory.FormatKept(next));
+                await history.SetStateValueAsync(CmdHistory.KeptStateName, CmdHistory.FormatKept(next, limit));
                 kept = next;
 
                 // Counts only, never a command.

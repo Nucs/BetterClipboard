@@ -51,6 +51,22 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private EverythingPicksResult? lastPicks;
 
     /// <summary>
+    /// The Everything tab's merged rows of its last load, handed out as cards a page at a time as the list scrolls
+    /// (<see cref="LoadMoreAsync"/>); empty outside that tab. Every pick and every stored entry since 2026-11-21 (CLAUDE.md
+    /// §2.62), where the tab used to merge the 200 newest of each and had no paging.
+    /// </summary>
+    private RowPages<EverythingTabRow> everythingPages = RowPages<EverythingTabRow>.Empty;
+
+    /// <summary>The next synthetic (negative) id for an Everything pick's card; continues across pages so ids stay unique.</summary>
+    private long nextPickCardId = -1;
+
+    /// <summary>
+    /// The most entries one store query returns (<see cref="ClipQuery.Limit"/> is clamped to it): the step
+    /// <see cref="QueryEveryEntryAsync"/> reads a merged tab's stored entries in.
+    /// </summary>
+    private const int StoredEntriesPerQuery = 1000;
+
+    /// <summary>
     /// Counts the history changes the view reported (<see cref="MarkHistoryChanged"/>): a load remembers the count it
     /// started at, so a change that arrives while it runs still leaves the list marked stale.
     /// </summary>
@@ -501,7 +517,8 @@ public sealed partial class FlyoutViewModel : ObservableObject
             int version = historyVersion;
             if (IsShellView)
             {
-                // A shell tab: kept commands merged with the shell's live ones (FlyoutViewModel.Shells.cs), no paging.
+                // A shell tab: kept commands merged with the shell's live ones, every one, turned into cards a page at a time
+                // (FlyoutViewModel.Shells.cs).
                 await ReloadShellAsync(cancellation.Token);
                 MarkLoaded(search, cancellation, view, version);
                 return;
@@ -518,25 +535,20 @@ public sealed partial class FlyoutViewModel : ObservableObject
 
             if (IsEverythingView)
             {
-                // Two bounded lists merged (stored entries, Everything's picks): no paging.
+                // Every stored entry and every pick merged at once; their cards come a page at a time as the list scrolls
+                // (RowPages, LoadMoreAsync): building a card is what costs, so the tab builds the first page, not hundreds.
                 var rows = await LoadEverythingRowsAsync(cancellation.Token);
                 if (cancellation.IsCancellationRequested)
                 {
                     return;
                 }
 
-                // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems). A kept
-                // file opened again in Everything since shows that newer time, the one its place in the list follows.
-                var cards = new List<ClipItemViewModel>(rows.Count);
-                long syntheticId = -1;
-                foreach (var row in rows)
-                {
-                    cards.Add(row.Entry is { } stored ? CreateItem(stored, row.Time) : ClipItemViewModel.ForPick(row.Pick!, syntheticId--));
-                }
-
-                ReplaceItems(cards);
+                // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems).
+                everythingPages = new RowPages<EverythingTabRow>(rows);
+                nextPickCardId = -1;
+                ReplaceItems(EverythingCards(everythingPages.Next(PageSize)));
                 loaded = Items.Count;
-                hasMore = false;
+                hasMore = everythingPages.HasMore;
                 HasPatternError = false;
                 UpdateEmptyState();
                 MarkLoaded(search, cancellation, view, version);
@@ -612,6 +624,26 @@ public sealed partial class FlyoutViewModel : ObservableObject
                 return;
             }
 
+            if (IsShellView)
+            {
+                // Every row of the tab is merged already (RowPages): the next page of cards, without a query.
+                LoadMoreShellRows();
+                return;
+            }
+
+            if (IsEverythingView)
+            {
+                // Like the shell tabs: the next page of the rows the last load merged.
+                foreach (var card in EverythingCards(everythingPages.Next(PageSize)))
+                {
+                    Items.Add(card);
+                }
+
+                loaded = Items.Count;
+                hasMore = everythingPages.HasMore;
+                return;
+            }
+
             var entries = await controller.History.QueryAsync(CreateQuery(loaded), token);
             if (token.IsCancellationRequested)
             {
@@ -664,12 +696,22 @@ public sealed partial class FlyoutViewModel : ObservableObject
                     promptOrder?.Forget(removedId);
                 }
 
+                // Likewise a stored row of a merged tab whose card is not built yet: dropped from the rows still to come.
+                int dropped = IsShellView ? shellPages.Forget(r => r.Entry?.Id == removedId)
+                    : IsEverythingView ? everythingPages.Forget(r => r.Entry?.Id == removedId)
+                    : 0;
+
                 var removed = Items.FirstOrDefault(i => i.Id == removedId);
                 if (removed is not null)
                 {
                     Items.Remove(removed);
                     loaded = Math.Max(0, loaded - 1);
                     UpdateEmptyState();
+                    _ = UpdateStatusAsync();
+                }
+                else if (dropped > 0)
+                {
+                    // The footer counts every row of the tab, the ones still to come included.
                     _ = UpdateStatusAsync();
                 }
 
@@ -956,32 +998,80 @@ public sealed partial class FlyoutViewModel : ObservableObject
     private List<long> GroupColumn() => [.. Groups.Select(g => g.Id)];
 
     /// <summary>
-    /// Loads the Everything tab's rows: stored Everything entries and Everything's picks, both narrowed by the search
-    /// words, merged by <see cref="EverythingTab.Merge"/> without hidden or forgotten picks.
+    /// Loads the Everything tab's rows: every stored Everything entry and every pick Everything remembers, both narrowed by
+    /// the search words, merged by <see cref="EverythingTab.Merge"/> without hidden or forgotten picks.
     /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 the 200 newest of each (<c>EverythingTab.MaxPicks</c>, <c>MaxStoredEntries</c>): a pick opened
+    /// longer ago could not be reached. Everything answers for all of them in one reply (a few hundred bytes a pick), and
+    /// the cards are built a page at a time (<see cref="everythingPages"/>).
+    /// </remarks>
     /// <param name="cancellationToken">Cancels a superseded load.</param>
     /// <returns>The rows in display order.</returns>
     /// <exception cref="OperationCanceledException">Superseded by a newer load.</exception>
     private async Task<IReadOnlyList<EverythingTabRow>> LoadEverythingRowsAsync(CancellationToken cancellationToken)
     {
         var history = controller.History;
-        var storedTask = history.QueryAsync(new ClipQuery
+        var storedTask = QueryEveryEntryAsync(new ClipQuery
         {
             SearchText = SearchText,
             Filter = ClipFilter.Everything,
-            Limit = EverythingTab.MaxStoredEntries,
             PinnedFirst = false, // the merge orders both sources together
             HiddenRows = HiddenRows,
         }, cancellationToken);
 
+        // int.MaxValue asks Everything for every pick (its query takes a count, and no history holds that many).
         var picks = controller.Everything is { } everything
-            ? await everything.GetPicksAsync(SearchText, EverythingTab.MaxPicks, cancellationToken)
+            ? await everything.GetPicksAsync(SearchText, int.MaxValue, cancellationToken)
             : new EverythingPicksResult([], EverythingPicksSource.None, null);
         var stored = await storedTask;
         var hidden = EverythingTab.ParseHidden(await history.GetStateValueAsync(EverythingTab.HiddenStateName));
         var forgotten = await history.FindForgottenAsync(picks.Picks.Select(p => p.FilesHash).ToList());
         lastPicks = picks;
         return EverythingTab.Merge(stored, picks.Picks, hidden, forgotten, controller.Settings.Current.PinnedOnTop);
+    }
+
+    /// <summary>
+    /// Every stored entry a query matches, read <see cref="StoredEntriesPerQuery"/> at a time (the store's most per query):
+    /// the merged tabs (Pwsh, Cmd, Everything, the prompt tabs) place each stored entry of theirs by its time among the
+    /// live rows, so none may be left unread. Until 2026-11-21 each read only its newest 200.
+    /// </summary>
+    /// <param name="query">The query; its <see cref="ClipQuery.Offset"/> and <see cref="ClipQuery.Limit"/> are replaced.</param>
+    /// <param name="cancellationToken">Cancels a superseded load.</param>
+    /// <returns>The entries in the query's order, each once (a copy arriving between two reads shifts the offsets).</returns>
+    /// <exception cref="OperationCanceledException">Superseded by a newer load.</exception>
+    /// <exception cref="SearchPatternException">The search is an invalid regular expression.</exception>
+    /// <exception cref="SearchTooSlowException">The search's regular expression ran out of time on an entry.</exception>
+    private async Task<List<ClipEntry>> QueryEveryEntryAsync(ClipQuery query, CancellationToken cancellationToken)
+    {
+        var entries = new List<ClipEntry>();
+        var seen = new HashSet<long>();
+        for (int offset = 0; ; offset += StoredEntriesPerQuery)
+        {
+            var page = await controller.History.QueryAsync(query with { Offset = offset, Limit = StoredEntriesPerQuery }, cancellationToken);
+            entries.AddRange(page.Where(e => seen.Add(e.Id)));
+            if (page.Count < StoredEntriesPerQuery)
+            {
+                return entries;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The cards of a page of the Everything tab's rows: a stored entry's card (showing the newer time when its file was
+    /// opened in Everything since it was kept — the time its place follows), or a pick's (a fresh negative id each).
+    /// </summary>
+    /// <param name="rows">The rows, in display order.</param>
+    /// <returns>The cards, in the same order.</returns>
+    private List<ClipItemViewModel> EverythingCards(IReadOnlyList<EverythingTabRow> rows)
+    {
+        var cards = new List<ClipItemViewModel>(rows.Count);
+        foreach (var row in rows)
+        {
+            cards.Add(row.Entry is { } stored ? CreateItem(stored, row.Time) : ClipItemViewModel.ForPick(row.Pick!, nextPickCardId--));
+        }
+
+        return cards;
     }
 
     /// <summary>Builds the query for a page.</summary>
@@ -1220,8 +1310,10 @@ public sealed partial class FlyoutViewModel : ObservableObject
     /// <returns>E.g. "37 opened in Everything · 2 kept" or "12 from Everything's saved history (not running)".</returns>
     private string EverythingStatusText()
     {
-        int picks = Items.Count(i => i.Pick is not null);
-        int stored = Items.Count - picks;
+        // Every row of the load, the ones whose cards are not built yet included: the numbers do not depend on how far the
+        // list was scrolled.
+        int picks = Items.Count(i => i.Pick is not null) + everythingPages.CountRemaining(r => r.Pick is not null);
+        int stored = Items.Count(i => i.Pick is null) + everythingPages.CountRemaining(r => r.Pick is null);
         var kept = stored > 0 ? UiText.Format($" · {stored:N0} kept") : string.Empty;
         return lastPicks?.Source switch
         {

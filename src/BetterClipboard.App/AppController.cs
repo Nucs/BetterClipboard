@@ -388,6 +388,10 @@ public sealed partial class AppController
         // Loaded here, or a moment ago by the Store edition's setup, which needed them for its welcome.
         settings ??= LoadSettings();
         rules = CaptureRules.FromSettings(settings.Current);
+
+        // The lists on disk were written under these limits (or under the larger caps of older versions): a later change is
+        // compared with them (AppController.Limits.cs).
+        appliedListLimits = ListLimitsOf(settings.Current);
         settings.Changed += OnSettingsChanged;
 
         var store = preopened is null ? OpenMachineBoundStore() : NoteStoreOpened(preopened);
@@ -428,7 +432,10 @@ public sealed partial class AppController
         monitor.Start(options.IsSilentRestart ? options.ClipboardSequence : null);
 
         // Located on a pool thread (registry + a few small files); the tab appears once it is found.
-        shareX = new ShareXIntegration(history, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L);
+        shareX = new ShareXIntegration(history, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L)
+        {
+            CatchUpLimit = () => Settings.Current.MaxShareXCatchUp,
+        };
         shareX.StatusChanged += (_, _) => ui.TryEnqueue(() => ShareXStatusChanged?.Invoke(this, EventArgs.Empty));
         _ = StartShareXAsync(shareX, settings.Current.ImportShareXScreenshots);
 
@@ -847,7 +854,7 @@ public sealed partial class AppController
         try
         {
             var hidden = EverythingTab.ParseHidden(await History.GetStateValueAsync(EverythingTab.HiddenStateName));
-            var next = EverythingTab.Hide(hidden, pick, DateTimeOffset.UtcNow);
+            var next = EverythingTab.Hide(hidden, pick, DateTimeOffset.UtcNow, Settings.Current.MaxHiddenEverythingPicks);
             await History.SetStateValueAsync(EverythingTab.HiddenStateName, EverythingTab.FormatHidden(next));
         }
         catch (Exception ex)
@@ -1613,6 +1620,12 @@ public sealed partial class AppController
             if (!exiting)
             {
                 await ApplyShellSettingsAsync(next);
+            }
+
+            // A lowered list limit applies at once (the Cmd tab's kept commands, the hidden lists); nothing when none changed.
+            if (!exiting)
+            {
+                await ApplyListLimitsAsync(next);
             }
 
             // Idempotent too: an agent's archive reader starts (catching up from its checkpoints) or stops (the archive stays).

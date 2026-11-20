@@ -673,6 +673,17 @@ public sealed record AppSettings
     public bool ImportShareXScreenshots { get; init; } = true;
 
     /// <summary>
+    /// Most ShareX screenshots one catch-up imports — the newest of those saved while BetterClipboard was not watching
+    /// (not running, or the watched folders just changed); 0 = every one of them (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 a catch-up imported at most the 100 newest, so a long absence could not flood the history; the
+    /// owner chose no limit by default, with this number in the ShareX card for whoever wants one back. The screenshots
+    /// left out stay in ShareX's folders, and the catch-up marker moves past them: they are never imported later.
+    /// </remarks>
+    public int MaxShareXCatchUp { get; init; }
+
+    /// <summary>
     /// Add every screenshot Windows' own tools save — Snipping Tool's auto-save (Win+Shift+S, PrtScn) and Win+PrtScn —
     /// to history the moment the file is written into the Screenshots folder, and show the panel's Snipping tab.
     /// </summary>
@@ -685,6 +696,16 @@ public sealed record AppSettings
     /// limit apply; the tab keeps showing Snipping Tool's clipboard copies only while this is on (it is hidden when off).
     /// </remarks>
     public bool ImportWindowsScreenshots { get; init; } = true;
+
+    /// <summary>
+    /// Most screenshots one catch-up of the Screenshots folder imports — the newest of those Snipping Tool and Win+PrtScn
+    /// saved while BetterClipboard was not watching; 0 = every one of them (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 the 100 newest (see <see cref="MaxShareXCatchUp"/>, the same rule for ShareX). The ones left out
+    /// stay in the folder and are never imported later: the catch-up marker moves past them.
+    /// </remarks>
+    public int MaxScreenshotsCatchUp { get; init; }
 
     /// <summary>
     /// Keep every command run with Win+R (the Run dialog) in the history, and show the panel's Run tab.
@@ -712,6 +733,14 @@ public sealed record AppSettings
     public bool ShowEverythingTab { get; init; } = true;
 
     /// <summary>
+    /// Most files and folders the Everything tab keeps hidden (Delete on a pick hides it until it is opened in Everything
+    /// again); the hides made longest ago go first, which shows their picks again. 0 = no limit (the default,
+    /// <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>Until 2026-11-21 the newest 500. A lowered number applies at once (<c>AppController.Limits.cs</c>).</remarks>
+    public int MaxHiddenEverythingPicks { get; init; }
+
+    /// <summary>
     /// Show the panel's Pwsh tab: every command in PowerShell's own history file (PSReadLine's, shared by Windows
     /// PowerShell and PowerShell 7), newest first, searchable beyond the 4,096 PowerShell itself loads.
     /// </summary>
@@ -721,6 +750,13 @@ public sealed record AppSettings
     /// The file is never written. Off hides the tab and stops reading it; commands kept from the tab stay.
     /// </remarks>
     public bool ShowPowerShellTab { get; init; } = true;
+
+    /// <summary>
+    /// Most commands the Pwsh tab keeps hidden (Delete on a command hides it until it is typed again); the hides made
+    /// longest ago go first, which shows their commands again. 0 = no limit (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>Until 2026-11-21 the newest 1,000. A lowered number applies at once (<c>AppController.Limits.cs</c>).</remarks>
+    public int MaxHiddenPowerShellCommands { get; init; }
 
     /// <summary>
     /// Show the panel's Cmd tab: the commands typed in Command Prompt windows. cmd keeps no history file, so
@@ -734,6 +770,24 @@ public sealed record AppSettings
     /// it and forgets the kept list; commands kept from the tab as history entries stay.
     /// </remarks>
     public bool ShowCmdTab { get; init; } = true;
+
+    /// <summary>
+    /// Most Command Prompt commands the Cmd tab keeps after their window closed (the ones seen longest ago go first);
+    /// 0 = no limit (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 the newest 1,000 — the cap the owner asked about ("are there any with a limit like I think Cmd has
+    /// (of 1000)?"). A lowered number applies at once: the oldest kept commands are deleted. Kept commands are not
+    /// clipboard history and count against none of its limits (<see cref="Shells.CmdHistory"/>).
+    /// </remarks>
+    public int MaxKeptCmdCommands { get; init; }
+
+    /// <summary>
+    /// Most commands the Cmd tab keeps hidden (Delete on a command hides it until it is typed again); the hides made
+    /// longest ago go first. 0 = no limit (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>Until 2026-11-21 the newest 1,000. A lowered number applies at once (<c>AppController.Limits.cs</c>).</remarks>
+    public int MaxHiddenCmdCommands { get; init; }
 
     /// <summary>
     /// Keep every prompt you send to Claude Code in BetterClipboard's encrypted prompt archive, and show the panel's Claude
@@ -1234,6 +1288,15 @@ public sealed record AppSettings
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
             MaxTotalSizeMB = Math.Clamp(maxTotalSizeMB, 0, 1_048_576),
             TempImageDays = Math.Clamp(TempImageDays, 0, Content.TempImageFiles.MaxKeepDays),
+
+            // The integrations' limits (ListLimit): a hand-edited negative number is "no limit" like 0, and a huge one the
+            // NumberBox's own maximum.
+            MaxShareXCatchUp = ListLimit.Normalize(MaxShareXCatchUp),
+            MaxScreenshotsCatchUp = ListLimit.Normalize(MaxScreenshotsCatchUp),
+            MaxHiddenEverythingPicks = ListLimit.Normalize(MaxHiddenEverythingPicks),
+            MaxHiddenPowerShellCommands = ListLimit.Normalize(MaxHiddenPowerShellCommands),
+            MaxKeptCmdCommands = ListLimit.Normalize(MaxKeptCmdCommands),
+            MaxHiddenCmdCommands = ListLimit.Normalize(MaxHiddenCmdCommands),
 
             // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
             FlyoutWidth = Math.Clamp(FlyoutWidth, MinFlyoutWidth, MaxFlyoutSize),
