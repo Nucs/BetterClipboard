@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using BetterClipboard.App.Interop;
 using BetterClipboard.Core.Diagnostics;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Windows.Input;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
 
 namespace BetterClipboard.App.Views;
 
@@ -41,11 +43,21 @@ namespace BetterClipboard.App.Views;
 /// <b>A peek that opened by itself</b> (<see cref="MouseMovedSincePanelChanged"/>). The hover peeks started their countdown
 /// on WinUI's "pointer entered", which also comes for a card that appears under a mouse lying still: WinUI replays the last
 /// pointer position after every frame that changed the picture. Found in the QA (2026-11-20): Esc or the X closed the text
-/// viewer, the mouse still rested where the eye had been, and 450 ms later the text peek opened with the same text, so the
-/// viewer looked as if Esc had not closed it (4 of 8 and 3 of 8 tries, depending on whether the look came before the
-/// peek). The same could happen after a summon under the mouse, a reload, and a peek closed by a click or a key. A
+/// viewer, the mouse still rested where the eye had been, and the text peek opened with the same text 0.65 to 0.73 s later
+/// (4 of 4 times on the unchanged build; the image viewer's Esc and its peek 3 of 3), so the viewer looked as if Esc had not
+/// closed it. The same could happen after a summon under the mouse, a reload, and a peek closed by a click or a key. A
 /// countdown now starts only once the mouse really moved since the panel last changed under it: the hover selection's rule
 /// (<see cref="PointerSelectionGate"/>), asked without taking the selection.
+/// </para>
+/// <para>
+/// <b>Replays are not moves</b> (<see cref="IsReplayedExitOver"/>). While Settings is open and the mouse has been over it,
+/// WinUI replays "pointer entered", "pointer moved" and "pointer exited" to the card under a resting mouse every half
+/// second, the exit's own position outside the card (a diagnostic build's log, 2026-11-20). Each exit stopped the peek's
+/// countdown and each enter started it again, so no peek ever opened (text 0 of 3, image 0 of 3, on the unchanged build
+/// too). A replayed exit (<see cref="Microsoft.UI.Xaml.Input.PointerRoutedEventArgs.IsGenerated"/>) while Windows' own
+/// cursor is still over the card or the peek is ignored, and a replayed event never postpones a countdown that runs: the
+/// replays came 493 to 514 ms apart, and restarting the 450-ms countdown at each would leave it a race of a few dozen
+/// milliseconds to end in.
 /// </para>
 /// <para>UI thread only.</para>
 /// </remarks>
@@ -201,6 +213,63 @@ public sealed partial class ClipboardFlyout
     /// mouse.
     /// </remarks>
     private bool MouseMovedSincePanelChanged() => ScreenPointer.Cursor() is { } cursor && pointerGate.HasMoved(cursor.X, cursor.Y);
+
+    /// <summary>
+    /// Whether a "pointer exited" is one of WinUI's replays over a mouse that never left: a generated event while Windows'
+    /// own cursor is still over the element that raised it. The hover peeks ignore such an exit (class remarks).
+    /// </summary>
+    /// <param name="sender">The element the exit came for (a card's text, a picture's border, the text peek's surface).</param>
+    /// <param name="e">The exit.</param>
+    /// <returns>
+    /// <see langword="true"/> for a replayed exit with the cursor still over the element; <see langword="false"/> for a real
+    /// exit (the mouse moved), for a replay after the element moved away from under the cursor (the list scrolled or
+    /// reloaded), and when the cursor's position cannot be read (a secure desktop): then the exit counts, as it always did.
+    /// </returns>
+    /// <remarks>
+    /// Only generated events are asked about: a real exit with the cursor inside the element's rectangle means something
+    /// covered it (a menu, another window), and the hover must end then. The exit's own position is not used, because a
+    /// replay reports one outside the element (measured: every replayed exit while Settings was open).
+    /// </remarks>
+    private bool IsReplayedExitOver(object sender, PointerRoutedEventArgs e) =>
+        e.IsGenerated && sender is FrameworkElement element && CursorIsOver(element);
+
+    /// <summary>
+    /// Whether Windows' cursor lies over an element of the panel or of one of its popups, compared in screen pixels: the
+    /// element's place in the panel's coordinates (its popups share them), scaled and moved by the panel's client origin.
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <returns>
+    /// <see langword="true"/> while the cursor is within the element's rectangle; <see langword="false"/> otherwise, when the
+    /// cursor cannot be read, and when the element is not in the tree any more.
+    /// </returns>
+    /// <remarks>
+    /// The rectangle is the element's whole layout box, also a part scrolled out of view: good enough for telling a replay
+    /// from a real exit, which is all it answers. The update reminder's tooltip check does the same arithmetic
+    /// (ClipboardFlyout.UpdateReminder.cs).
+    /// </remarks>
+    private bool CursorIsOver(FrameworkElement element)
+    {
+        if (Root.XamlRoot is not { } root || ScreenPointer.Cursor() is not { } cursor)
+        {
+            return false;
+        }
+
+        try
+        {
+            double scale = root.RasterizationScale > 0 ? root.RasterizationScale : 1.0;
+            var (clientLeft, clientTop) = WindowInterop.GetClientOrigin(hwnd);
+            var origin = element.TransformToVisual(null).TransformPoint(default);
+            double left = clientLeft + (origin.X * scale);
+            double top = clientTop + (origin.Y * scale);
+            return cursor.X >= left && cursor.X < left + (element.ActualWidth * scale)
+                && cursor.Y >= top && cursor.Y < top + (element.ActualHeight * scale);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            // The element left the tree between the event and here (a list that reloaded): it cannot be under the cursor.
+            return false;
+        }
+    }
 
     /// <summary>
     /// After one of the panel's popups closed: the keyboard goes to a viewer that is still open (its text, its backdrop),

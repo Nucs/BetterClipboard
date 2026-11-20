@@ -313,7 +313,7 @@ public sealed partial class ClipboardFlyout
 
         textHoverCard = card;
         _ = PreloadCardTextAsync(card);
-        RestartTextHoverTimer();
+        RestartTextHoverTimer(e.IsGenerated);
     }
 
     /// <summary>
@@ -336,7 +336,7 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        RestartTextHoverTimer();
+        RestartTextHoverTimer(e.IsGenerated);
     }
 
     /// <summary>The mouse left a card's text before the peek opened: stop waiting.</summary>
@@ -345,8 +345,9 @@ public sealed partial class ClipboardFlyout
     private void TextCard_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         // PointerExited bubbles: crossing from the card's text onto its eye raises it too, with the mouse still on the
-        // card. Only a pointer outside the area has left it.
-        if (IsInside(sender, e))
+        // card. Only a pointer outside the area has left it. A replayed exit over a mouse that never left is no leave
+        // either: while Settings was open WinUI sent one every half second, and no peek ever opened (CLAUDE.md §2.56).
+        if (IsInside(sender, e) || IsReplayedExitOver(sender, e))
         {
             return;
         }
@@ -603,12 +604,22 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>Restarts the peek's rest timer (it opens the peek once the mouse has rested long enough).</summary>
+    /// <param name="replayed">
+    /// Whether the pointer event behind the call was one of WinUI's replays (<see cref="PointerRoutedEventArgs.IsGenerated"/>):
+    /// such an event may start a countdown, never restart one that runs.
+    /// </param>
     /// <remarks>
+    /// <para>
     /// Only once the mouse really moved since the panel last changed under it (<see cref="MouseMovedSincePanelChanged"/>):
     /// after Esc or the X closed the viewer over a mouse resting where the eye was, WinUI reported the pointer entering the
     /// card, and this peek opened by itself 450 ms later with the same text (QA, 2026-11-20, CLAUDE.md §2.56).
+    /// </para>
+    /// <para>
+    /// A replay is not a move: while Settings was open, WinUI replayed the pointer to the card every half second, and each
+    /// replay restarting the 450-ms countdown left it a race of a few dozen milliseconds to end in (ClipboardFlyout.Leaving.cs).
+    /// </para>
     /// </remarks>
-    private void RestartTextHoverTimer()
+    private void RestartTextHoverTimer(bool replayed)
     {
         if (!CanShowTextPeek() || !MouseMovedSincePanelChanged())
         {
@@ -616,6 +627,11 @@ public sealed partial class ClipboardFlyout
         }
 
         textHoverTimer ??= CreateTextHoverTimer();
+        if (replayed && textHoverTimer.IsEnabled)
+        {
+            return;
+        }
+
         textHoverTimer.Stop();
         textHoverTimer.Start();
     }
@@ -1106,12 +1122,13 @@ public sealed partial class ClipboardFlyout
     /// <remarks>
     /// PointerExited bubbles: the text's own parts raise it whenever the mouse crosses from one to another inside the
     /// peek. Taking each for "left the peek" closed it at the first move over the text (found in the QA, 2026-11-13), so
-    /// only a pointer that is really outside the surface counts.
+    /// only a pointer that is really outside the surface counts. A replayed exit while the cursor is still over the surface
+    /// does not either: WinUI sent one every half second while Settings was open (ClipboardFlyout.Leaving.cs).
     /// </remarks>
     private void TextPeek_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         if (!textPeekMenuOpen && sender is UIElement surface && !e.GetCurrentPoint(surface).Properties.IsLeftButtonPressed &&
-            !IsInside(sender, e))
+            !IsInside(sender, e) && !IsReplayedExitOver(sender, e))
         {
             HideTextPeek();
         }

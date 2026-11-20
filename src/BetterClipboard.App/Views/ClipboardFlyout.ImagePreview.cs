@@ -128,7 +128,7 @@ public sealed partial class ClipboardFlyout
 
         // Preload so the peek (and a viewer opened from the eye) shows the crisp full image without a wait.
         _ = PreloadImageAsync(card);
-        RestartHoverTimer();
+        RestartHoverTimer(e.IsGenerated);
     }
 
     /// <summary>The pointer moved over an image card: restart the rest timer (the peek only opens once the mouse settles).</summary>
@@ -139,7 +139,7 @@ public sealed partial class ClipboardFlyout
         // Once the peek is open it covers this border and handles its own dismissal, so this fires only before it shows.
         if (peekPopup is null)
         {
-            RestartHoverTimer();
+            RestartHoverTimer(e.IsGenerated);
         }
     }
 
@@ -148,6 +148,13 @@ public sealed partial class ClipboardFlyout
     /// <param name="e">Pointer data.</param>
     private void ImageCard_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // A replayed exit over a mouse that never left the picture is no leave: while Settings was open WinUI sent one
+        // every half second, and no peek ever opened (ClipboardFlyout.Leaving.cs, CLAUDE.md §2.56).
+        if (IsReplayedExitOver(sender, e))
+        {
+            return;
+        }
+
         // A shown peek dismisses itself on the next move; only a pending (not-yet-shown) peek is cancelled here, so the
         // exit the covering surface itself raises does not wipe the card we are peeking.
         if (peekPopup is null)
@@ -210,12 +217,16 @@ public sealed partial class ClipboardFlyout
         draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
 
     /// <summary>(Re)starts the rest timer so the peek opens one <see cref="HoverPeekDelayMs"/> after the mouse last moved.</summary>
+    /// <param name="replayed">
+    /// Whether the pointer event behind the call was one of WinUI's replays (<see cref="PointerRoutedEventArgs.IsGenerated"/>):
+    /// such an event may start a countdown, never restart one that runs (a replay is not a move; ClipboardFlyout.Leaving.cs).
+    /// </param>
     /// <remarks>
     /// Only once the mouse really moved since the panel last changed under it (<see cref="MouseMovedSincePanelChanged"/>):
     /// WinUI reports the pointer entering a card that a closing viewer or a summon uncovered under a mouse lying still, and
     /// the peek then opened by itself (CLAUDE.md §2.56).
     /// </remarks>
-    private void RestartHoverTimer()
+    private void RestartHoverTimer(bool replayed)
     {
         if (!CanShowPeek() || !MouseMovedSincePanelChanged())
         {
@@ -223,6 +234,11 @@ public sealed partial class ClipboardFlyout
         }
 
         hoverTimer ??= CreateHoverTimer();
+        if (replayed && hoverTimer.IsEnabled)
+        {
+            return;
+        }
+
         hoverTimer.Stop();
         hoverTimer.Start();
     }
