@@ -231,15 +231,15 @@ BetterClipboard 从它的 [GitHub 发布版本](https://github.com/Nucs/BetterCl
 | 图片 | 你复制的图片，以及保存的截图 | 始终 |
 | 链接 | 复制的网址 | 始终 |
 | 文件 | 你在资源管理器中复制的文件，以及纯粹由路径组成的文本 | 始终 |
-| ShareX | ShareX 保存的截图，以及你从 ShareX 复制的所有内容 | 安装了 ShareX 时 |
-| 截图 | 截图工具和 Win+PrtScn 保存的截图 | 你的历史中有它们保存的截图时 |
-| Notepad++ | Notepad++ 未保存标签页的文本、你在 Notepad++ 中打开的文件，以及你在其中复制的内容 | 你的历史中有来自 Notepad++ 的内容时 |
-| 运行 | 你用 Win+R 运行的命令 | 你的历史中有 Win+R 命令时 |
-| Pwsh | PowerShell 自己的命令历史 | PowerShell 有历史文件时 |
-| Cmd | 在命令提示符窗口中输入的命令 | 始终 |
-| Claude | 你发送给 Claude Code 的提示词 | Claude Code 有提示词时 |
-| Codex | 你发送给 Codex 的提示词 | Codex 有提示词时 |
-| Everything | 你在 Everything 中打开的文件 | 安装了或正在运行 Everything 时 |
+| [ShareX](#sharex-screenshots) | ShareX 保存的截图，以及你从 ShareX 复制的所有内容 | 安装了 ShareX 时 |
+| [截图](#snipping-tool-and-winprtscn) | 截图工具和 Win+PrtScn 保存的截图 | 你的历史中有它们保存的截图时 |
+| [Notepad++](#notepad) | Notepad++ 未保存标签页的文本、你在 Notepad++ 中打开的文件，以及你在其中复制的内容 | 你的历史中有来自 Notepad++ 的内容时 |
+| [运行](#winr-history) | 你用 Win+R 运行的命令 | 你的历史中有 Win+R 命令时 |
+| [Pwsh](#powershell-and-command-prompt) | PowerShell 自己的命令历史 | PowerShell 有历史文件时 |
+| [Cmd](#powershell-and-command-prompt) | 在命令提示符窗口中输入的命令 | 始终 |
+| [Claude](#claude-code-and-codex-prompts) | 你发送给 Claude Code 的提示词 | Claude Code 有提示词时 |
+| [Codex](#claude-code-and-codex-prompts) | 你发送给 Codex 的提示词 | Codex 有提示词时 |
+| [Everything](#everything) | 你在 Everything 中打开的文件 | 安装了或正在运行 Everything 时 |
 
 “文件”之后的每个标签页在 *设置 › 集成* 中都有自己的开关。它们默认全部开启；关闭某一个，它的标签页就会消失。[其他应用的标签页](#tabs-for-other-apps)说明了每个标签页读取的内容。
 
@@ -439,7 +439,7 @@ Windows 只记得你最近 26 条 Win+R 命令。BetterClipboard 会把你用 <k
 <a id="powershell-and-command-prompt"></a>
 ### PowerShell 和命令提示符
 
-- **Pwsh** 列出 PowerShell 自己的历史文件：你在 PowerShell 7 或 Windows PowerShell 中输入的每条命令，最新的在前。搜索可以覆盖所有命令，包括 PowerShell 的上箭头已经不再加载的旧命令。
+- **Pwsh** 列出 [PowerShell](https://learn.microsoft.com/powershell/) 自己的历史文件：你在 PowerShell 7 或 Windows PowerShell 中输入的每条命令，最新的在前。搜索可以覆盖所有命令，包括 PowerShell 的上箭头已经不再加载的旧命令。
 - **Cmd** 列出你在命令提示符窗口中输入的命令。命令提示符会在窗口关闭时忘掉它们，因此 BetterClipboard 每 30 秒读取一次你打开的窗口，并保留读到的内容。由其他程序启动的窗口（构建工具、AI 代理）会被跳过。在上次读取后 30 秒内关闭的窗口，会丢失此后输入的命令。
 
 这两个标签页都不会塞满你的历史：只有当你粘贴、复制、固定或分组某条命令时，它才会成为历史项目。它仍只显示一次，位于命令之间它应在的位置：只有在你于最新一条命令之后用过它时，它才排在最上方。<kbd>Del</kbd> 会隐藏一条命令，直到你再次输入它；*永久忘记* 会永久排除它。PowerShell 的文件和命令提示符窗口永远不会被更改。

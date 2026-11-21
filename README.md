@@ -304,15 +304,15 @@ keep working (one pressed in that second opens the panel a moment later), and a 
 | Images | Pictures you copied, and saved screenshots | Always |
 | Links | Copied URLs | Always |
 | Files | Files you copied in Explorer, and text that is nothing but paths | Always |
-| ShareX | Screenshots that ShareX saved, and everything you copied from ShareX | When ShareX is installed |
-| Snipping | Screenshots that Snipping Tool and Win+PrtScn saved | When your history has a screenshot from them |
-| Notepad++ | The text of Notepad++'s unsaved tabs, the files you opened in Notepad++, and what you copied in it | When your history has something from Notepad++ |
-| Run | Commands you ran with Win+R | When your history has a Win+R command |
-| Pwsh | PowerShell's own command history | When PowerShell has a history file |
-| Cmd | Commands typed in Command Prompt windows | Always |
-| Claude | Prompts you sent to Claude Code | When Claude Code has prompts |
-| Codex | Prompts you sent to Codex | When Codex has prompts |
-| Everything | Files you opened in Everything | When Everything is installed or running |
+| [ShareX](#sharex-screenshots) | Screenshots that ShareX saved, and everything you copied from ShareX | When ShareX is installed |
+| [Snipping](#snipping-tool-and-winprtscn) | Screenshots that Snipping Tool and Win+PrtScn saved | When your history has a screenshot from them |
+| [Notepad++](#notepad) | The text of Notepad++'s unsaved tabs, the files you opened in Notepad++, and what you copied in it | When your history has something from Notepad++ |
+| [Run](#winr-history) | Commands you ran with Win+R | When your history has a Win+R command |
+| [Pwsh](#powershell-and-command-prompt) | PowerShell's own command history | When PowerShell has a history file |
+| [Cmd](#powershell-and-command-prompt) | Commands typed in Command Prompt windows | Always |
+| [Claude](#claude-code-and-codex-prompts) | Prompts you sent to Claude Code | When Claude Code has prompts |
+| [Codex](#claude-code-and-codex-prompts) | Prompts you sent to Codex | When Codex has prompts |
+| [Everything](#everything) | Files you opened in Everything | When Everything is installed or running |
 
 Every tab after Files has its own switch in *Settings › Integrations*. All of them are on by default; turn one off
 and its tab goes away. [Tabs for other apps](#tabs-for-other-apps) tells what each one reads.
@@ -636,8 +636,9 @@ if Windows remembers none, with the first one you run.
 
 ### PowerShell and Command Prompt
 
-- **Pwsh** lists PowerShell's own history file: every command you typed in PowerShell 7 or Windows PowerShell,
-  newest first. The search reaches all of them, also the old ones that PowerShell's Up arrow no longer loads.
+- **Pwsh** lists [PowerShell](https://learn.microsoft.com/powershell/)'s own history file: every command you typed
+  in PowerShell 7 or Windows PowerShell, newest first. The search reaches all of them, also the old ones that
+  PowerShell's Up arrow no longer loads.
 - **Cmd** lists the commands typed in your Command Prompt windows. Command Prompt forgets them when its window
   closes, so BetterClipboard reads your open windows every 30 seconds and keeps what it saw. Windows that other
   programs start (build tools, AI agents) are skipped. A window closed within 30 seconds of its last read loses

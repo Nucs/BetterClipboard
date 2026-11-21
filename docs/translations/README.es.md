@@ -231,15 +231,15 @@ El icono de la bandeja abre el panel y la configuración. El cuadro de búsqueda
 | Imágenes | Las imágenes que copiaste y las capturas guardadas | Siempre |
 | Vínculos | Las URL copiadas | Siempre |
 | Archivos | Los archivos que copiaste en el Explorador y el texto que no es más que rutas | Siempre |
-| ShareX | Las capturas que guardó ShareX y todo lo que copiaste desde ShareX | Cuando ShareX está instalado |
-| Recortes | Las capturas que guardaron Recortes y Win+PrtScn | Cuando tu historial tiene una captura de ellos |
-| Notepad++ | El texto de las pestañas sin guardar de Notepad++, los archivos que abriste en Notepad++ y lo que copiaste en él | Cuando tu historial tiene algo de Notepad++ |
-| Ejecutar | Los comandos que ejecutaste con Win+R | Cuando tu historial tiene un comando de Win+R |
-| Pwsh | El historial de comandos propio de PowerShell | Cuando PowerShell tiene un archivo de historial |
-| Cmd | Los comandos escritos en ventanas del Símbolo del sistema | Siempre |
-| Claude | Los prompts que enviaste a Claude Code | Cuando Claude Code tiene prompts |
-| Codex | Los prompts que enviaste a Codex | Cuando Codex tiene prompts |
-| Everything | Los archivos que abriste en Everything | Cuando Everything está instalado o en ejecución |
+| [ShareX](#sharex-screenshots) | Las capturas que guardó ShareX y todo lo que copiaste desde ShareX | Cuando ShareX está instalado |
+| [Recortes](#snipping-tool-and-winprtscn) | Las capturas que guardaron Recortes y Win+PrtScn | Cuando tu historial tiene una captura de ellos |
+| [Notepad++](#notepad) | El texto de las pestañas sin guardar de Notepad++, los archivos que abriste en Notepad++ y lo que copiaste en él | Cuando tu historial tiene algo de Notepad++ |
+| [Ejecutar](#winr-history) | Los comandos que ejecutaste con Win+R | Cuando tu historial tiene un comando de Win+R |
+| [Pwsh](#powershell-and-command-prompt) | El historial de comandos propio de PowerShell | Cuando PowerShell tiene un archivo de historial |
+| [Cmd](#powershell-and-command-prompt) | Los comandos escritos en ventanas del Símbolo del sistema | Siempre |
+| [Claude](#claude-code-and-codex-prompts) | Los prompts que enviaste a Claude Code | Cuando Claude Code tiene prompts |
+| [Codex](#claude-code-and-codex-prompts) | Los prompts que enviaste a Codex | Cuando Codex tiene prompts |
+| [Everything](#everything) | Los archivos que abriste en Everything | Cuando Everything está instalado o en ejecución |
 
 Cada pestaña después de Archivos tiene su propio interruptor en *Configuración › Integraciones*. Todas están activadas de forma predeterminada; desactiva una y su pestaña desaparece. [Pestañas para otras aplicaciones](#tabs-for-other-apps) explica lo que lee cada una.
 
@@ -437,7 +437,7 @@ Windows solo recuerda tus últimos 26 comandos de Win+R. BetterClipboard guarda 
 <a id="powershell-and-command-prompt"></a>
 ### PowerShell y Símbolo del sistema
 
-- **Pwsh** muestra el archivo de historial propio de PowerShell: cada comando que escribiste en PowerShell 7 o Windows PowerShell, el más reciente primero. La búsqueda llega a todos, también a los antiguos que la flecha hacia arriba de PowerShell ya no carga.
+- **Pwsh** muestra el archivo de historial propio de [PowerShell](https://learn.microsoft.com/powershell/): cada comando que escribiste en PowerShell 7 o Windows PowerShell, el más reciente primero. La búsqueda llega a todos, también a los antiguos que la flecha hacia arriba de PowerShell ya no carga.
 - **Cmd** muestra los comandos escritos en tus ventanas del Símbolo del sistema. El Símbolo del sistema los olvida cuando se cierra su ventana, así que BetterClipboard lee tus ventanas abiertas cada 30 segundos y guarda lo que vio. Las ventanas que abren otros programas (herramientas de compilación, agentes de IA) se omiten. Una ventana que se cierra en los 30 segundos posteriores a su última lectura pierde los comandos escritos desde entonces.
 
 Ninguna de las dos pestañas llena tu historial: un comando se convierte en un elemento del historial solo cuando lo pegas, lo copias, lo anclas o lo agregas a un grupo. Aun así aparece una sola vez, en su lugar entre los comandos: arriba solo mientras lo usaste después del más reciente. <kbd>Del</kbd> oculta un comando hasta que lo vuelvas a escribir, y *Olvidar para siempre* lo deja fuera para siempre. El archivo de PowerShell y las ventanas del Símbolo del sistema nunca se cambian.
