@@ -110,7 +110,7 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
         // instance and whose records would be the regular ones. Only tests and dev runs set it; they use a test desktop.
         if (elevate && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(AppPaths.DataDirectoryVariable)))
         {
-            throw new UpdateException(UpdateFailure.Installer, $"An isolated instance ({AppPaths.DataDirectoryVariable}) cannot update a copy in a folder only administrators may change: the installer would run as administrator without its data folder. The installed version is unchanged.");
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.IsolatedInstanceNeedsAdministrator, AppPaths.DataDirectoryVariable));
         }
 
         if (elevate && !UiAccess.CanElevateWithConsent())
@@ -183,12 +183,12 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
             var entry = archive.Entries.FirstOrDefault(e => string.Equals(e.FullName, ScriptEntryName, StringComparison.OrdinalIgnoreCase));
             if (entry is null)
             {
-                throw new UpdateException(UpdateFailure.Installer, $"The update package holds no installer ({ScriptEntryName}), so it cannot be installed from here. The installed version is unchanged.");
+                throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.PackageHoldsNoInstaller, ScriptEntryName));
             }
 
             if (entry.Length <= 0 || entry.Length > MaxScriptBytes)
             {
-                throw new UpdateException(UpdateFailure.Installer, $"The installer inside the update package has an implausible size ({entry.Length:N0} bytes). The installed version is unchanged.");
+                throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.InstallerImplausibleSize, entry.Length));
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -208,7 +208,7 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
                 written += read;
                 if (written > MaxScriptBytes)
                 {
-                    throw new UpdateException(UpdateFailure.Installer, "The installer inside the update package is larger than it claims. The installed version is unchanged.");
+                    throw new UpdateException(UpdateFailure.Installer, UpdateMessages.InstallerLargerThanClaimed);
                 }
 
                 target.Write(buffer, 0, read);
@@ -218,7 +218,7 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
-            throw new UpdateException(UpdateFailure.Installer, $"The installer could not be taken out of the update package ({ex.Message}). The installed version is unchanged.", ex);
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.InstallerNotTakenOut, ex.Message), ex);
         }
     }
 
@@ -373,17 +373,17 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
     {
         if (!File.Exists(info.FileName))
         {
-            throw new UpdateException(UpdateFailure.Installer, $"Windows PowerShell was not found ({info.FileName}), and the installer needs it. The installed version is unchanged.");
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.PowerShellMissing, info.FileName));
         }
 
         try
         {
             return Process.Start(info)
-                   ?? throw new UpdateException(UpdateFailure.Installer, "Windows did not start the installer. The installed version is unchanged.");
+                   ?? throw new UpdateException(UpdateFailure.Installer, UpdateMessages.InstallerProcessMissing);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {
-            throw new UpdateException(UpdateFailure.Installer, $"The installer could not be started ({ex.Message}). The installed version is unchanged.", ex);
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.InstallerNotStarted, ex.Message), ex);
         }
     }
 
@@ -398,13 +398,13 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
     {
         if (!File.Exists(info.FileName))
         {
-            throw new UpdateException(UpdateFailure.Installer, $"Windows PowerShell was not found ({info.FileName}), and the installer needs it. The installed version is unchanged.");
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.PowerShellMissing, info.FileName));
         }
 
         try
         {
             return Process.Start(info)
-                   ?? throw new UpdateException(UpdateFailure.Installer, "Windows did not start the installer. The installed version is unchanged.");
+                   ?? throw new UpdateException(UpdateFailure.Installer, UpdateMessages.InstallerProcessMissing);
         }
         catch (Win32Exception ex) when (ex.NativeErrorCode == Interop.NativeMethods.ERROR_CANCELLED)
         {
@@ -412,7 +412,7 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {
-            throw new UpdateException(UpdateFailure.Installer, $"The installer could not be started ({ex.Message}). The installed version is unchanged.", ex);
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.InstallerNotStarted, ex.Message), ex);
         }
     }
 

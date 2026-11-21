@@ -43,6 +43,20 @@ public static class TempImageFiles
     private const string TimeNamePattern = "'Image 'yyyy-MM-dd HHmmss'.png'";
 
     /// <summary>
+    /// {0}: <see cref="MaxCopiesPerName"/>. The message of the <see cref="IOException"/> <see cref="Save"/> throws when a
+    /// picture's folder already holds that many differing copies of one name: the panel shows it after "Could not save the
+    /// picture:", in the interface language (<see cref="MessageTemplates"/>).
+    /// </summary>
+    public const string TooManyCopies = "The folder already holds {0} copies named like this picture.";
+
+    /// <summary>
+    /// The messages this class words itself, for translating an exception's message where it is shown
+    /// (<c>UiText.TranslateFormatted</c>): every other message comes from Windows or .NET and is shown as it came.
+    /// </summary>
+    /// <remarks>Until 2026-11-21 the message was worded inline and showed in English in every language.</remarks>
+    public static IReadOnlyList<string> MessageTemplates { get; } = [TooManyCopies];
+
+    /// <summary>
     /// The folder saved pictures go to, under Windows' temp folder.
     /// </summary>
     /// <param name="tempPath">Windows' temp folder (<see cref="Path.GetTempPath"/>).</param>
@@ -120,7 +134,10 @@ public static class TempImageFiles
     /// <returns>The saved file's full path.</returns>
     /// <exception cref="ArgumentException">An argument is empty, or <paramref name="fileName"/> is not a plain name.</exception>
     /// <exception cref="ArgumentNullException"><paramref name="png"/> is <see langword="null"/>.</exception>
-    /// <exception cref="IOException">The folder or file could not be written (disk full, a name taken by a folder, …).</exception>
+    /// <exception cref="IOException">
+    /// The folder or file could not be written (disk full, a name taken by a folder, …), or the folder already holds
+    /// <see cref="MaxCopiesPerName"/> differing copies of the name (<see cref="TooManyCopies"/>).
+    /// </exception>
     /// <exception cref="UnauthorizedAccessException">Windows refused the write.</exception>
     public static string Save(string root, string contentHash, string fileName, byte[] png, DateTimeOffset nowUtc)
     {
@@ -162,7 +179,7 @@ public static class TempImageFiles
         }
 
         // Only a folder filled by hand (or a runaway caller) gets here: refuse rather than loop on.
-        throw new IOException($"The folder already holds {MaxCopiesPerName} copies named like this picture.");
+        throw new IOException(string.Format(CultureInfo.CurrentCulture, TooManyCopies, MaxCopiesPerName));
     }
 
     /// <summary>

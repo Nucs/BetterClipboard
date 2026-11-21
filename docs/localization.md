@@ -185,6 +185,13 @@ choice, confirmed 2026-11-09 ("Keep left-to-right"). The text carries its direct
   English back through its template list: `UiText.TranslateFormatted(text, templates)` finds the template whose shape
   matches, translates it, and carries the matched parts over unchanged (a part is translated only when it is itself in
   the list, like "the release list"). Each list is the component's contract with the catalogs.
+  - **Every update failure comes from `UpdateMessages`**, the Windows installer's too: a message typed into
+    `new UpdateException(…)` showed in English in every language (eight of them until 2026-11-21), and
+    `TranslationCoverageTests.UpdateFailures_AreWordedFromTheTemplates` now fails on one.
+  - **An exception's message shown inside a sentence** ("Could not save the picture: {0}", "The history could not be
+    copied: {0} …") is Windows' or .NET's own text, shown as it came, unless BetterClipboard worded it: those messages
+    are constants in a template list of their class (`TempImageFiles.MessageTemplates`,
+    `EditionDataMigrator.MessageTemplates`), and the sentence translates the message through it.
 - **Names BetterClipboard makes up for a copy's source** ("Command Prompt", "Snipping Tool", "Screenshots folder") are
   stored in English, because the tabs filter by them, and translated where they are shown (`SourceNames.Display`).
 - **Words BetterClipboard stores with a copy** (`ContentClassifier`'s previews: "Image · 1920 × 1080", "Formatted
@@ -330,12 +337,17 @@ Some words stay English in every language:
 
 The tests check that every text handed to `UiText` or `{loc:Tr …}` has an entry in every catalog. They cannot see a
 text that never reaches either: a label typed into the XAML, a word built in code, a unit or a date .NET formats by
-itself. Such a text shows in English in every language, and only a reader of that language notices. Two checks find
-them; both ran before 0.2.12 (2026-11-16, CLAUDE.md §2.37):
+itself. Such a text shows in English in every language, and only a reader of that language notices. These checks find
+them; they ran twice before 0.2.12 (2026-11-16 and, after five days of new features, 2026-11-21; CLAUDE.md §2.37):
 
 - **A scan of the sources.** Every literal text attribute and element content in the XAML that is not a markup
   extension, and every C# string literal on its way to the screen that does not pass through `UiText`. Most findings
-  are log lines, font and key names, or constants; each one is checked by hand.
+  are log lines, font and key names, or constants; each one is checked by hand. A second run only needs what is new:
+  compare its rows with the last run's, file and text without line numbers. Read the exception messages too: a
+  message BetterClipboard words itself reaches the screen wherever a sentence shows `{ex.Message}`, and the update
+  dialog shows every update failure's message.
+- **The catalogs' new strings.** A translation copied from the English counts as present, so list the strings added
+  since the last check and compare each language's value with the English (none were copies on 2026-11-21).
 - **A pseudo-translated build.** Every value of one catalog (`es.json`) wrapped as `⟦English⟧`, the app packaged with
   it and run in a disposable Windows test desktop with that language chosen, and every window, menu, dialog and tab
   read through UI Automation. A visible text without the brackets bypassed the catalogs, unless it is a name, a key,

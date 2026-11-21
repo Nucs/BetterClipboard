@@ -428,7 +428,8 @@ public sealed class PortableUpdateHelper
             {
                 if (Directory.Exists(newFile))
                 {
-                    throw new IOException("a folder of that name is in the way");
+                    // Worded from the update's templates: it becomes the reason inside the failure the app translates.
+                    throw new IOException(UpdateMessages.FolderInTheWay);
                 }
 
                 bool existed = File.Exists(newFile);

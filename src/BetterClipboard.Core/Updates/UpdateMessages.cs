@@ -167,8 +167,49 @@ public static class UpdateMessages
     public const string ElevationDeclined = "The update needs administrator rights for this copy's folder, and Windows did not get them (the prompt was declined). The installed version is unchanged.";
 
     /// <summary>
-    /// Every template above, for translating a finished message (and the release list's two names, which the messages
-    /// carry inside them).
+    /// {0}: the environment variable that gives an isolated instance its own data folder
+    /// (<see cref="AppPaths.DataDirectoryVariable"/>). Windows starts an elevated program with its account's environment,
+    /// so the installer would lose that folder; only tests and dev runs meet this.
+    /// </summary>
+    /// <remarks>Worded inline in the Windows installer until 2026-11-21, and so shown in English in every language.</remarks>
+    public const string IsolatedInstanceNeedsAdministrator = "An isolated instance ({0}) cannot update a copy in a folder only administrators may change: the installer would run as administrator without its data folder. The installed version is unchanged.";
+
+    /// <summary>{0}: the installer script's name the package should hold at its root (<c>install.ps1</c>).</summary>
+    public const string PackageHoldsNoInstaller = "The update package holds no installer ({0}), so it cannot be installed from here. The installed version is unchanged.";
+
+    /// <summary>{0}: the size, in bytes, the package states for its installer script: none, or beyond any script's size.</summary>
+    public const string InstallerImplausibleSize = "The installer inside the update package has an implausible size ({0:N0} bytes). The installed version is unchanged.";
+
+    /// <summary>The installer script inside the package held more bytes than its entry stated, so it is not run.</summary>
+    public const string InstallerLargerThanClaimed = "The installer inside the update package is larger than it claims. The installed version is unchanged.";
+
+    /// <summary>{0}: why the installer script could not be read out of the package (the system's reason: a damaged zip, a full disk).</summary>
+    public const string InstallerNotTakenOut = "The installer could not be taken out of the update package ({0}). The installed version is unchanged.";
+
+    /// <summary>{0}: where Windows PowerShell, which runs the installer, was looked for.</summary>
+    public const string PowerShellMissing = "Windows PowerShell was not found ({0}), and the installer needs it. The installed version is unchanged.";
+
+    /// <summary>Windows answered the installer's start without a running process.</summary>
+    public const string InstallerProcessMissing = "Windows did not start the installer. The installed version is unchanged.";
+
+    /// <summary>{0}: why Windows refused to start the installer (the system's reason).</summary>
+    public const string InstallerNotStarted = "The installer could not be started ({0}). The installed version is unchanged.";
+
+    /// <summary>
+    /// A reason inside <see cref="PortableHelperNotStarted"/>: Windows answered the new version's start without a running
+    /// process. Itself a template, so the interface translates it inside that sentence (as <see cref="TheReleaseList"/>).
+    /// </summary>
+    public const string NoProcess = "no process";
+
+    /// <summary>
+    /// A reason inside <see cref="PortableFileNotReplaced"/>: a folder has the name of a file the new version brings. Itself
+    /// a template, so the interface translates it inside that sentence (as <see cref="TheReleaseList"/>).
+    /// </summary>
+    public const string FolderInTheWay = "a folder of that name is in the way";
+
+    /// <summary>
+    /// Every template above, for translating a finished message (and the fragments the messages carry inside them: the
+    /// release list's two names, and the two reasons of a portable update that BetterClipboard words itself).
     /// </summary>
     public static IReadOnlyList<string> Templates { get; } =
     [
@@ -180,6 +221,8 @@ public static class UpdateMessages
         BuildPackageGone, BuildPackageChangedSinceOffer, BuildPackageChangedWhileCopied, BuildNotCopied, BuildAssetNotAFile,
         PortablePackageUnreadable, PortablePackageNoProgram, PortableHelperNotStarted, PortableNotAppFolder, PortableAppDidNotClose,
         PortableFileNotReplaced, PortableRestoreIncomplete, ElevatedUpdateTooOld, NeedsAdministrator, ElevationDeclined,
+        IsolatedInstanceNeedsAdministrator, PackageHoldsNoInstaller, InstallerImplausibleSize, InstallerLargerThanClaimed,
+        InstallerNotTakenOut, PowerShellMissing, InstallerProcessMissing, InstallerNotStarted, NoProcess, FolderInTheWay,
     ];
 
     /// <summary>

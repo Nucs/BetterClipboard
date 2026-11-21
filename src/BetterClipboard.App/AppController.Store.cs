@@ -769,7 +769,10 @@ public sealed partial class AppController
             copyRow.State = SetupRowState.Failed;
             AppLog.Warn($"Microsoft Store edition setup: copying the other edition's data failed ({ex.GetType().Name}: {ex.Message}).");
             await DiscardUnfinishedMoveAsync();
-            return UiText.Format($"The history could not be copied: {ex.Message} Nothing was changed.");
+
+            // Windows' and .NET's reasons are shown as they came; the two the copy words itself (a history already in the
+            // target, a copy that differs from its file) read in the interface language.
+            return UiText.Format($"The history could not be copied: {UiText.TranslateFormatted(ex.Message, EditionDataMigrator.MessageTemplates)} Nothing was changed.");
         }
         finally
         {
