@@ -138,7 +138,8 @@ $serve = {
   "targetPublishDate": "1601-01-01T00:00:00Z",
   "listings": {
     "en-us": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": ["clipboard"], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "English description", "features": ["one"], "releaseNotes": "notes of the version before", "images": [], "title": "BetterClipboard", "shortDescription": "short" }, "platformOverrides": {} },
-    "ru": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": [], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "Описание", "features": [], "releaseNotes": "старые заметки", "images": [], "title": "BetterClipboard", "shortDescription": "" }, "platformOverrides": {} }
+    "ru": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": [], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "Описание", "features": [], "releaseNotes": "старые заметки", "images": [], "title": "BetterClipboard", "shortDescription": "" }, "platformOverrides": {} },
+    "zh-hans": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": [], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "说明", "features": [], "releaseNotes": "旧的说明", "images": [], "title": "BetterClipboard", "shortDescription": "" }, "platformOverrides": {} }
   },
   "hardwarePreferences": [],
   "automaticBackupEnabled": false,
@@ -340,6 +341,34 @@ here that are not part of the first sentence.
 - Not code-signed yet: a zip downloaded with a browser may trigger SmartScreen.
 '@ | Set-Content -LiteralPath $notesFile -Encoding utf8
 $expectedNotes = "• A new tab. It lists what you copied in Notepad, with a link.`n• Fixed: 2 fixes."
+
+# The same release's notes in Simplified Chinese, as tools/release/release_notes.py compose --store-dir writes them
+# (the notes alone: no language line, stamp or footer), in the folder -TranslatedNotesDirectory names.
+$translatedDirectory = Join-Path $work 'translated'
+New-Item -ItemType Directory -Path $translatedDirectory -Force | Out-Null
+$chineseNotesFile = Join-Path $translatedDirectory 'zh-Hans.md'
+@'
+BetterClipboard 9.9.9
+
+```powershell
+irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
+```
+
+**新标签页。** 它列出你在 `Notepad` 中复制的内容，并附有[一个链接](https://example.invalid/x)。版本号 0.2.12 不会截断句子
+后面还有不属于第一句的话。
+- 一个细节。
+
+**修复**
+- 一处问题不再出现。
+- 另一处问题不再出现。
+
+| 文件 | 内容 |
+|---|---|
+| `BetterClipboard-9.9.9-win-x64.zip` | 应用 |
+
+- 尚未进行代码签名：用浏览器下载的 zip 可能触发 SmartScreen。
+'@ | Set-Content -LiteralPath $chineseNotesFile -Encoding utf8
+$expectedChineseNotes = "• 新标签页。它列出你在 Notepad 中复制的内容，并附有一个链接。`n• 修复：共 2 项。"
 
 function New-TestKit {
     <#
@@ -553,7 +582,7 @@ try {
     Assert-That 'the published packages are marked for removal' (@($byStatus['PendingDelete']).Count -eq 2 -and (@($byStatus['PendingDelete'].fileName) -join ',') -match 'old-store-x64.*old-store-arm64') ($sent.applicationPackages | ConvertTo-Json -Compress)
     Assert-That 'the new packages are listed for upload' ((@($byStatus['PendingUpload'].fileName) -join ',') -eq 'BetterClipboard-9.9.9-store-x64.msix,BetterClipboard-9.9.9-store-arm64.msix' -and @($byStatus['PendingUpload'] | Where-Object { $_.minimumDirectXVersion -ne 'None' -or $_.minimumSystemRam -ne 'None' }).Count -eq 0) ($sent.applicationPackages | ConvertTo-Json -Compress)
     Assert-That '"What''s new" is this release''s notes in English' ($sent.listings.'en-us'.baseListing.releaseNotes -ceq $expectedNotes) $sent.listings.'en-us'.baseListing.releaseNotes
-    Assert-That '"What''s new" is emptied in the other languages' ($sent.listings.ru.baseListing.releaseNotes -eq '') $sent.listings.ru.baseListing.releaseNotes
+    Assert-That '"What''s new" is emptied in the other languages' ($sent.listings.ru.baseListing.releaseNotes -eq '' -and $sent.listings.'zh-hans'.baseListing.releaseNotes -eq '') "ru: $($sent.listings.ru.baseListing.releaseNotes); zh-hans: $($sent.listings.'zh-hans'.baseListing.releaseNotes)"
     Assert-That 'the notes for certification are the listing kit''s, with LF line breaks' ($sent.notesForCertification -ceq $kitNotes) "$($sent.notesForCertification)"
     Assert-That 'and the progress line says so' ($run.Output -match "notes for certification from the listing kit \($($kitNotes.Length) characters\)") $run.Output
     Assert-That 'the rest goes back as it came' (
@@ -718,6 +747,33 @@ try {
     $whole = $state.Archive
     Assert-That 'is sent again, and the archive arrives whole' ($run.ExitCode -eq 0 -and $null -ne $whole -and $whole.Length -eq (Get-Item -LiteralPath $archive).Length) "exit $($run.ExitCode): $($run.Output)"
 
+    Write-Host 'Release notes in other languages'
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', $translatedDirectory))
+    $sent = Get-SentSubmission
+    Assert-That 'ends with exit code 0' ($run.ExitCode -eq 0 -and $null -ne $sent) "exit $($run.ExitCode): $($run.Output)"
+    if ($null -ne $sent) {
+        Assert-That 'the Chinese listing gets the Chinese notes, shortened by Chinese punctuation' ($sent.listings.'zh-hans'.baseListing.releaseNotes -ceq $expectedChineseNotes) $sent.listings.'zh-hans'.baseListing.releaseNotes
+        Assert-That 'the English listing keeps the English notes' ($sent.listings.'en-us'.baseListing.releaseNotes -ceq $expectedNotes) $sent.listings.'en-us'.baseListing.releaseNotes
+        Assert-That 'a language without notes is still emptied' ($sent.listings.ru.baseListing.releaseNotes -eq '') $sent.listings.ru.baseListing.releaseNotes
+    }
+    Assert-That 'the progress line names each language''s length' ($run.Output -match "$($expectedChineseNotes.Length) in zh-hans" -and $run.Output -match "$($expectedNotes.Length) in en-us") $run.Output
+    $russianOnly = Join-Path $work 'translated-ru'
+    New-Item -ItemType Directory -Path $russianOnly -Force | Out-Null
+    Copy-Item -LiteralPath $chineseNotesFile -Destination (Join-Path $russianOnly 'fr.md')
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', $russianOnly))
+    Assert-That 'notes in a language the listing lacks are not sent, with a warning' ($run.ExitCode -eq 0 -and $run.Output -match "has no language 'fr'") $run.Output
+    $badName = Join-Path $work 'translated-bad'
+    New-Item -ItemType Directory -Path $badName -Force | Out-Null
+    Copy-Item -LiteralPath $chineseNotesFile -Destination (Join-Path $badName 'zh_Hans.md')
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', $badName))
+    Assert-That 'a file not named by a catalog tag is refused without a request (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0) "exit $($run.ExitCode): $($run.Output)"
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', (Join-Path $work 'no-such-folder')))
+    Assert-That 'a folder that does not exist is refused without a request (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0) "exit $($run.ExitCode): $($run.Output)"
+
     Write-Host 'Release notes for "What''s new"'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref] $null, [ref] $null)
     $definition = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'ConvertTo-StoreNotes' }, $true)[0]
@@ -733,6 +789,15 @@ try {
     Assert-That 'eighty changes still fit the Store''s 1,500 characters' ($long.Length -le 1500 -and $long.Length -gt 1000 -and $long.StartsWith('• Change number 1.')) "$($long.Length) characters"
     $windows = ConvertTo-StoreNotes -Markdown "BetterClipboard 1.2.3`r`n`r`n**One.** First.`r`n- detail`r`n`r`n**Two.** Second."
     Assert-That 'Windows line endings read the same' ($windows -ceq "• One. First.`n• Two. Second.") $windows
+    $chineseMarkdown = Get-Content -LiteralPath $chineseNotesFile -Raw -Encoding utf8
+    $chinese = ConvertTo-StoreNotes -Markdown $chineseMarkdown -Language 'zh-Hans'
+    Assert-That 'Chinese: a sentence ends at 。, the lead and its sentence join without a blank, the fixes are counted' ($chinese -ceq $expectedChineseNotes) $chinese
+    $chineseShort = ConvertTo-StoreNotes -Markdown $chineseMarkdown -Language 'zh-Hans' -Limit 20
+    Assert-That 'Chinese, too long: the lead-ins alone, the fixes'' one ending with 。' ($chineseShort -ceq "• 新标签页。`n• 修复。") $chineseShort
+    $chineseColon = ConvertTo-StoreNotes -Markdown "BetterClipboard 1.2.3`n`n**四个选择**有以下几种：`n- 一`n- 二" -Language 'zh-Hans'
+    Assert-That 'Chinese: a lead without a stop gets 。, a sentence that introduces bullets ends with 。' ($chineseColon -ceq "• 四个选择。有以下几种。") $chineseColon
+    $englishRules = ConvertTo-StoreNotes -Markdown $chineseMarkdown
+    Assert-That 'Chinese notes read with the English rules keep the old, wrong shape (the language matters)' ($englishRules -cne $expectedChineseNotes) $englishRules
 }
 finally {
     $listener.Stop()

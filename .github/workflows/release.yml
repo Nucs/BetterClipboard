@@ -6,6 +6,9 @@
 #   betterclipboard.<version>.nupkg                                              (Chocolatey, stable only)
 # Release notes are the annotated tag's message (git tag -a v1.2.3 -F notes.md), followed by a link to the README's
 # "Code signing policy": SignPath Foundation's terms ask for that term on every download/release page (docs/code-signing.md).
+# Translations of the notes (docs/release-notes/<version>/<tag>.md, e.g. zh-Hans.md) go into the same body as hidden
+# blocks under an "ENG / 简体中文" line (tools/release/release_notes.py, CLAUDE.md section 2.67); a translation made from
+# other notes than the tag's stops the release in seconds, before anything is built.
 #
 # Chocolatey (stable versions only: the Community Repository refuses SemVer 2 prereleases such as 1.0.0-rc.1):
 # the package embeds the two .7z archives and is installed, upgraded and uninstalled for real on this runner
@@ -81,11 +84,23 @@ jobs:
           if ($signature -and $message.EndsWith($signature)) { $message = $message.Substring(0, $message.Length - $signature.Length) }
           $message = $message.Trim()
           if (-not $message) { throw "Tag '$tag' has an empty message: release notes are the annotated tag's message (git tag -a $tag -F notes.md)." }
-          $footer = '**Code signing policy:** see [the README](https://github.com/Nucs/BetterClipboard#code-signing-policy) for whether this release is signed, what is signed, and who approves it.'
+
+          # The composer writes three things from the message and docs/release-notes/<version>/ (CLAUDE.md section 2.67):
+          # the release page's body (the English with an "ENG / 简体中文" line and each translation in a hidden block, or
+          # without translations the notes and the code signing footer, as always); the English notes with the footer,
+          # which the Store's English listing reads; and each translation's notes, for its listing. A translation of
+          # other notes than this tag's message stops here, before the long steps.
           # RUNNER_TEMP, not artifacts/: the package scripts own that folder.
+          $messageFile = Join-Path $env:RUNNER_TEMP 'tag-message.md'
+          [IO.File]::WriteAllText($messageFile, "$message`n", [Text.UTF8Encoding]::new($false))
           $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          [IO.File]::WriteAllText($notesFile, "$message`n`n---`n`n$footer`n", [Text.UTF8Encoding]::new($false))
+          $bodyFile = Join-Path $env:RUNNER_TEMP 'release-body.md'
+          $translated = Join-Path $env:RUNNER_TEMP 'release-notes-translated'
+          python tools/release/release_notes.py compose --version '${{ steps.version.outputs.version }}' --notes $messageFile --body $bodyFile --english $notesFile --store-dir $translated
+          if ($LASTEXITCODE -ne 0) { throw "The release notes could not be composed (exit code $LASTEXITCODE); the lines above say why." }
           "file=$notesFile" >> $env:GITHUB_OUTPUT
+          "body=$bodyFile" >> $env:GITHUB_OUTPUT
+          "translated=$translated" >> $env:GITHUB_OUTPUT
 
       - name: Test
         run: dotnet test --solution BetterClipboard.sln -c Release
@@ -142,7 +157,7 @@ jobs:
           $tag = '${{ github.ref_name }}'
           $assets = @(Get-ChildItem artifacts/release/*.zip, artifacts/release/*.7z, artifacts/release/*.nupkg | ForEach-Object FullName) + @('artifacts/release/SHA256SUMS.txt', 'install.ps1')
           $prerelease = if ($version -match '-') { '--prerelease' } else { $null }
-          gh release create $tag @assets --title "BetterClipboard $version" --notes-file '${{ steps.notes.outputs.file }}' --verify-tag $prerelease
+          gh release create $tag @assets --title "BetterClipboard $version" --notes-file '${{ steps.notes.outputs.body }}' --verify-tag $prerelease
           if ($LASTEXITCODE -ne 0) { throw "gh release create failed ($LASTEXITCODE)." }
 
       - name: Push to Chocolatey
@@ -171,7 +186,7 @@ jobs:
           PARTNER_CENTER_CLIENT_SECRET: ${{ secrets.PARTNER_CENTER_CLIENT_SECRET }}
         run: |
           $version = '${{ steps.version.outputs.version }}'
-          tools/release/submit-store.ps1 -Version $version -PackageDirectory artifacts/store -ReleaseNotesFile '${{ steps.notes.outputs.file }}'
+          tools/release/submit-store.ps1 -Version $version -PackageDirectory artifacts/store -ReleaseNotesFile '${{ steps.notes.outputs.file }}' -TranslatedNotesDirectory '${{ steps.notes.outputs.translated }}'
           $code = $LASTEXITCODE
           $again = 'Send it later with Actions > Microsoft Store > Run workflow (mode "submit", this version), or upload the packages of this run''s artifact "store-packages" in Partner Center.'
           switch ($code) {

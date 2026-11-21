@@ -64,8 +64,14 @@
     characters, the Store's limit for "What's new in this version". Without the file, "What's new" is left empty.
 
 .PARAMETER NotesLanguage
-    The listing language that gets the notes. Default: en-us. Every other language's "What's new" is emptied, so that
-    no listing keeps the notes of an older version.
+    The listing language that gets the notes. Default: en-us. Every language without notes of this release (here or in
+    -TranslatedNotesDirectory) has its "What's new" emptied, so that no listing keeps the notes of an older version.
+
+.PARAMETER TranslatedNotesDirectory
+    A folder of this release's notes in other languages, one file per language named by the app's catalog tag
+    (zh-Hans.md): the notes alone, without a language line, stamp or footer, as tools/release/release_notes.py compose
+    --store-dir writes them. Each goes to the listing of the same language (the tag in lower case: zh-Hans to zh-hans),
+    shortened by that language's punctuation (CLAUDE.md section 2.67). Without it only -NotesLanguage gets notes.
 
 .PARAMETER ListingKit
     The listing kit (docs/store-listing.md, relative to the repository unless rooted). Its "Notes for certification"
@@ -131,6 +137,8 @@ param(
     [string] $ReleaseNotesFile,
 
     [string] $NotesLanguage = 'en-us',
+
+    [string] $TranslatedNotesDirectory,
 
     [string] $ListingKit = 'docs/store-listing.md',
 
@@ -253,14 +261,26 @@ function ConvertTo-StoreNotes {
         title, code blocks, tables and the code signing paragraph are left out; every other paragraph becomes one
         line, its lead-in and its first sentence; Markdown marks are removed. Too long: the lead-ins alone; still too
         long: cut at the last whole line that fits, with an ellipsis.
+        Chinese notes (CLAUDE.md section 2.67) follow Chinese punctuation: a sentence ends at a full-width 。！？ as well,
+        a lead-in and its sentence join without a blank, a lead-in ends with 。, and the fixes are counted as
+        "修复：共 N 项。". The rules are the same for every other language, which they were written for in English.
     .PARAMETER Markdown
         The notes.
     .PARAMETER Limit
         The most characters the result may have.
+    .PARAMETER Language
+        The notes' language, an app catalog tag (en, zh-Hans); anything starting with "zh" takes the Chinese rules.
+        Default: en.
     .OUTPUTS
         System.String. May be empty when the notes hold nothing to say.
     #>
-    param([string] $Markdown, [int] $Limit = 1500)
+    param([string] $Markdown, [int] $Limit = 1500, [string] $Language = 'en')
+
+    # Chinese writes full-width stops and no blank between sentences; "Fixed" is "修复".
+    $chinese = $Language -match '^zh'
+    $sentenceEnd = if ($chinese) { '^(.+?(?:[.!?](?=\s|$)|[。！？]))' } else { '^(.+?[.!?])(\s|$)' }
+    $stop = if ($chinese) { '。' } else { '.' }
+    $join = if ($chinese) { '' } else { ' ' }
 
     $text = ($Markdown -replace "`r`n?", "`n")
     # Fenced code blocks (the install command) go as a whole.
@@ -303,24 +323,28 @@ function ConvertTo-StoreNotes {
         }
         $lead = & $clean $lead
         $plain = & $clean $plain
-        $sentence = if ($plain -match '^(.+?[.!?])(\s|$)') { $Matches[1] } else { $plain }
+        $sentence = if ($plain -match $sentenceEnd) { $Matches[1] } else { $plain }
         # A sentence that introduced the bullets ("... with four choices:") stands alone here.
-        $sentence = $sentence -replace ':$', '.'
+        $sentence = $sentence -replace '[:：]$', $stop
         if (-not $lead -and -not $sentence) { continue }
 
         # "Fixed" is followed by one bullet per fix and no sentence of its own: say how many.
         $bullets = @($lines | Where-Object { $_ -match '^[-*+]\s+' }).Count
-        if ($lead -match '^Fix' -and -not $sentence -and $bullets -gt 0) {
+        if ($chinese -and $lead -match '^修复' -and -not $sentence -and $bullets -gt 0) {
+            $lead = "$($lead.TrimEnd('。', '：', '.', ':'))："
+            $sentence = "共 $bullets 项。"
+        }
+        elseif ($lead -match '^Fix' -and -not $sentence -and $bullets -gt 0) {
             $lead = "$($lead.TrimEnd('.', ':')):"
             $sentence = if ($bullets -eq 1) { '1 fix.' } else { "$bullets fixes." }
         }
-        if ($lead -and $lead -notmatch '[.!?:]$') { $lead += '.' }
+        if ($lead -and $lead -notmatch '[.!?:。！？：]$') { $lead += $stop }
         $items.Add(@{ Lead = $lead; Sentence = $sentence })
     }
     if ($items.Count -eq 0) { return '' }
 
-    $long = @($items | ForEach-Object { '• ' + ((@($_.Lead, $_.Sentence) | Where-Object { $_ }) -join ' ') })
-    $short = @($items | ForEach-Object { '• ' + $(if ($_.Lead) { $_.Lead -replace ':$', '.' } else { $_.Sentence }) })
+    $long = @($items | ForEach-Object { '• ' + ((@($_.Lead, $_.Sentence) | Where-Object { $_ }) -join $join) })
+    $short = @($items | ForEach-Object { '• ' + $(if ($_.Lead) { $_.Lead -replace '[:：]$', $stop } else { $_.Sentence }) })
     foreach ($candidate in @($long, $short)) {
         $joined = $candidate -join "`n"
         if ($joined.Length -le $Limit) { return $joined }
@@ -599,6 +623,8 @@ try {
 
     $packages = @()
     $notes = ''
+    # Listing language (lower case) to its "What's new", for the languages in -TranslatedNotesDirectory.
+    $translatedNotes = [ordered]@{}
     if ($Mode -ne 'Check') {
         if ($Version -notmatch '^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$') { throw [StoreExit]::new(2, '-Version must be the release version (X.Y.Z).') }
         if ($Version -match '-') { throw [StoreExit]::new(2, "A pre-release ($Version) is not sent to the Store: its customers get every published version.") }
@@ -623,6 +649,20 @@ try {
         if ($ReleaseNotesFile) {
             if (-not (Test-Path -LiteralPath $ReleaseNotesFile)) { throw [StoreExit]::new(2, "The release notes file does not exist: $ReleaseNotesFile") }
             $notes = ConvertTo-StoreNotes -Markdown (Get-Content -LiteralPath $ReleaseNotesFile -Raw -Encoding utf8) -Limit $NotesLimit
+        }
+
+        # The notes in other languages, each for the listing of its language (zh-Hans.md for zh-hans).
+        if ($TranslatedNotesDirectory) {
+            if (-not (Test-Path -LiteralPath $TranslatedNotesDirectory -PathType Container)) {
+                throw [StoreExit]::new(2, "The folder of translated notes does not exist: $TranslatedNotesDirectory")
+            }
+            foreach ($file in @(Get-ChildItem -LiteralPath $TranslatedNotesDirectory -Filter '*.md' -File | Sort-Object Name)) {
+                $tag = $file.BaseName
+                if ($tag -notmatch '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$') {
+                    throw [StoreExit]::new(2, "$($file.Name) is not named by a language's catalog tag (zh-Hans.md). Nothing was sent.")
+                }
+                $translatedNotes[$tag.ToLowerInvariant()] = ConvertTo-StoreNotes -Markdown (Get-Content -LiteralPath $file.FullName -Raw -Encoding utf8) -Limit $NotesLimit -Language $tag
+            }
         }
     }
 
@@ -750,7 +790,13 @@ try {
         $list.Add($node)
     }
 
-    # "What's new": this release's notes in one language, nothing in the others (never an older version's notes).
+    # "What's new": this release's notes in each language it has them in, nothing in the others (never an older
+    # version's notes).
+    $whatsNew = [ordered]@{}
+    if ($notes) { $whatsNew[$NotesLanguage.ToLowerInvariant()] = $notes }
+    foreach ($entry in $translatedNotes.GetEnumerator()) {
+        if ($entry.Value) { $whatsNew[$entry.Key] = $entry.Value }
+    }
     $listings = $submission['listings']
     $languages = @()
     if ($listings) {
@@ -758,13 +804,17 @@ try {
             $base = $listing.Value['baseListing']
             if (-not $base) { continue }
             $languages += $listing.Key
-            $text = if ($listing.Key -ieq $NotesLanguage) { $notes } else { '' }
+            $text = $whatsNew[$listing.Key.ToLowerInvariant()]
+            if ($null -eq $text) { $text = '' }
             $base['releaseNotes'] = [System.Text.Json.Nodes.JsonValue]::Create($text)
         }
     }
-    if ($notes -and @($languages | Where-Object { $_ -ieq $NotesLanguage }).Count -eq 0) {
-        Write-Warning "The listing has no language '$NotesLanguage' (it has: $($languages -join ', ')), so ""What's new"" stays empty."
+    foreach ($language in @($whatsNew.Keys)) {
+        if (@($languages | Where-Object { $_ -ieq $language }).Count -eq 0) {
+            Write-Warning "The listing has no language '$language' (it has: $($languages -join ', ')), so its ""What's new"" is not sent."
+        }
     }
+    $whatsNewSummary = if ($whatsNew.Count -gt 0) { (@($whatsNew.GetEnumerator() | ForEach-Object { "$($_.Value.Length) in $($_.Key)" }) -join ', ') } else { 'none' }
 
     # Notes for certification: the kit's, true for this version. The copy the Store made holds the published
     # submission's (empty for BetterClipboard's first, whose notes went onto the product's Additional Testing
@@ -775,7 +825,7 @@ try {
         $testerNotes = "from the listing kit ($($certificationNotes.Length) characters)"
     }
 
-    Write-Step "Updating submission $submissionId`: $($packages.Count) package(s) of version $newVersion, ""What's new"" of $($notes.Length) character(s) in $NotesLanguage, notes for certification $testerNotes"
+    Write-Step "Updating submission $submissionId`: $($packages.Count) package(s) of version $newVersion, ""What's new"" characters: $whatsNewSummary, notes for certification $testerNotes"
     $submissionUri = [Uri]::new($api, "/v1.0/my/applications/$ProductId/submissions/$submissionId")
     [void] (Invoke-Store -Http $http -Token $token -Method PUT -Uri $submissionUri -Body $submission.ToJsonString())
 

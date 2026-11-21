@@ -442,8 +442,11 @@ release is published ([`release.yml`](../.github/workflows/release.yml)):
 2. **Submission**: [`submit-store.ps1`](../tools/release/submit-store.ps1), the release's last step, with
    Microsoft's Store submission API **[docs]**. A new submission is made as a copy of the published one; its
    packages are replaced by the two new ones; "What's new" in the English listing gets the tag's notes, cut to the
-   Store's 1,500 characters (each lead-in with its first sentence, the fixes as a count), and is emptied in the
-   other languages; the notes for certification become the kit's (`store-listing.md` §1, *Additional testing
+   Store's 1,500 characters (each lead-in with its first sentence, the fixes as a count); since 0.2.12 each listing
+   whose language has a translation of the notes (`docs/release-notes/<version>/<tag>.md`, passed as
+   `-TranslatedNotesDirectory`) gets that translation, cut the same way with its own punctuation (the Chinese for
+   `zh-hans`: 602 characters for 0.2.12; `CLAUDE.md` §2.67), and the other languages are emptied; the notes for
+   certification become the kit's (`store-listing.md` §1, *Additional testing
    information*; since 2026-11-20); the packages go up in one archive; the submission is committed, and its status
    is followed until the Store has taken it into certification. Listing texts, pictures, price and age rating are
    carried over untouched from the published submission.

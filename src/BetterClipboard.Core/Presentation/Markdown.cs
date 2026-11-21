@@ -839,11 +839,16 @@ public static class MarkdownParser
         line.EndsWith("  ", StringComparison.Ordinal) || (line.EndsWith('\\') && !line.EndsWith(@"\\", StringComparison.Ordinal));
 
     /// <summary>Reads a code fence's opening line.</summary>
-    /// <param name="trimmed">The trimmed line.</param>
+    /// <remarks>
+    /// Internal, not private: the release notes' language blocks (<c>Updates/ReleaseNotesLanguages</c>) must see fences
+    /// exactly as this parser does, or a translation block would be found where the dialog draws code, or missed where it
+    /// hides a comment.
+    /// </remarks>
+    /// <param name="trimmed">The trimmed line; must not be empty.</param>
     /// <param name="fenceChar">The fence's character: a backtick or a tilde.</param>
     /// <param name="fenceLength">How many of them open it (at least three).</param>
     /// <returns><see langword="true"/> for an opening fence.</returns>
-    private static bool TryReadFence(string trimmed, out char fenceChar, out int fenceLength)
+    internal static bool TryReadFence(string trimmed, out char fenceChar, out int fenceLength)
     {
         fenceChar = trimmed[0];
         fenceLength = 0;
@@ -862,11 +867,12 @@ public static class MarkdownParser
     }
 
     /// <summary>Whether a line closes the open code fence: at least as many fence characters, and nothing else.</summary>
+    /// <remarks>Internal for the same reason as <see cref="TryReadFence"/>.</remarks>
     /// <param name="trimmed">The trimmed line.</param>
     /// <param name="fenceChar">The open fence's character.</param>
     /// <param name="fenceLength">The open fence's length.</param>
     /// <returns><see langword="true"/> for the closing fence.</returns>
-    private static bool IsClosingFence(string trimmed, char fenceChar, int fenceLength)
+    internal static bool IsClosingFence(string trimmed, char fenceChar, int fenceLength)
     {
         if (trimmed.Length < fenceLength)
         {
