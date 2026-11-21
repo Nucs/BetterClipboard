@@ -15,7 +15,7 @@ and settings.
 | [For every user of a PC](for-every-user-of-a-pc.md) | Shared and family PCs | Yes | `%ProgramFiles%\BetterClipboard` | An administrator runs the installer again |
 | [Intune, RMM tools and scripts](intune-and-rmm.md) | Managed PCs | Runs as SYSTEM | `%ProgramFiles%\BetterClipboard` | The same command, run again |
 | [Chocolatey](chocolatey.md) | Chocolatey users (not published yet) | Usually | `%ChocolateyInstall%\lib\betterclipboard\tools\app` | `choco upgrade betterclipboard` |
-| [Microsoft Store edition](microsoft-store-edition.md) | The Store (in certification) | No | Windows' own app folder | The Store |
+| [Microsoft Store edition](microsoft-store-edition.md) | A copy signed by Microsoft, from the Store | No | Windows' own app folder | The Store |
 | [From source](build-from-source.md) | Developers | No | Where you build it | Development builds through the update button |
 
 ## Which one?

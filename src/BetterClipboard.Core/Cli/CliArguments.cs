@@ -67,8 +67,14 @@ public static class CliArguments
     private static readonly HashSet<string> ValueOptions = new(StringComparer.Ordinal)
     {
         "-n", "--limit", "--offset", "-f", "--filter", "-s", "--since", "-r", "--recent", "--format", "-o", "--out", "-t", "--timeout",
-        "-a", "--agent",
+        "-a", "--agent", "--sort",
     };
+
+    /// <summary>
+    /// The most ids one <c>bclip delete</c> takes: enough for an assistant freeing space a page of <c>bclip list -n 1000</c>
+    /// at a time, small enough that one request stays one short transaction.
+    /// </summary>
+    public const int MaxDeleteIds = 1000;
 
     /// <summary>
     /// Parses a command line.
@@ -169,8 +175,11 @@ public static class CliArguments
     private static string HelpBody(string? topic) => topic switch
     {
         CliCommands.List => """
-            bclip list [-n N] [--offset N] [-f FILTER] [-s SINCE] [--full] [--json]
-              Recent items, newest first: id (* = pinned), kind, age, source app, first line.
+            bclip list [-n N] [--offset N] [-f FILTER] [-s SINCE] [--sort recent|size] [--full] [--json]
+              Recent items, newest first: id (* = pinned, + = in a group), kind, age, source app, first line.
+              --sort size lists the largest items first, with their sizes: where to start when the history size
+              budget fills up (bclip status shows how full it is). Pinned items (*) and items in groups (+; JSON
+              "groups": N) do not count toward the budget, so deleting them frees no room in it.
               FILTER: all | pinned | text | images | links | files | run | sharex | snipping | notepad++ |
                       everything | pwsh | cmd | claude | codex.
               --full adds each item's whole text.
@@ -190,9 +199,9 @@ public static class CliArguments
               "codex"); every prompt you sent is in the prompt archive instead: bclip prompts.
             """,
         CliCommands.Search => """
-            bclip search <words...> [-n N] [-f FILTER] [-s SINCE] [--full] [--json]
+            bclip search <words...> [-n N] [-f FILTER] [-s SINCE] [--sort recent|size] [--full] [--json]
               Items whose text contains every word (case-insensitive substring, any language).
-              Exit code 1 when nothing matches.
+              Exit code 1 when nothing matches. --sort size: the largest matches first.
             """,
         CliCommands.Copy => """
             bclip copy [ID | -r N] [--plain]
@@ -204,8 +213,11 @@ public static class CliArguments
               Pinned items are kept forever: retention limits and "clear history" skip them.
             """,
         CliCommands.Delete => """
-            bclip delete <ID | -r N>
-              Deletes an item for good (a later import from Windows' history does not bring it back).
+            bclip delete <ID... | -r N>
+              Deletes items for good (a later import from Windows' history does not bring them back).
+              Several ids at once (up to 1,000) are deleted together, and the history file shrinks right away:
+              bclip delete 812 640 77. Pinned items and items in groups go too when named; the size budget does
+              not count them, so deleting them frees disk space but not room in the budget.
             """,
         CliCommands.Forget => """
             bclip forget <ID | -r N>
@@ -216,6 +228,10 @@ public static class CliArguments
         CliCommands.Status => """
             bclip status [--json]
               Version, item count and size, whether capture is paused, and listener statistics.
+              Also the history's limits and how full they are (JSON "budget"): the size budget used, in per cent
+              (once it is full the oldest items are removed to make room), the item limit, how long items are kept,
+              the largest item, and the history file's size on disk. Pinned items and items in groups are not counted.
+              To free space: bclip list --sort size, then bclip delete the ids you no longer need.
             """,
         CliCommands.Prompts => """
             bclip prompts [WORDS...] [-a claude|codex] [-n N] [--offset N] [-s SINCE] [--all] [--full] [--json]
@@ -262,15 +278,19 @@ public static class CliArguments
               copy [ID]             Put an item back on the clipboard (default: the latest)
               put [TEXT | -]        Copy text (or stdin) to the clipboard and history
               pin [ID] | unpin [ID] Pin or unpin (default: the latest)
-              delete <ID>           Delete an item
+              delete <ID...>        Delete items (several ids at once)
               forget <ID>           Delete an item and never record its content again
               wait                  Wait for the next copy and print it
-              status                Version, item counts, capture statistics
+              status                Version, item counts, how full the history's limits are, capture statistics
               prompts [WORDS...]    Prompts you sent to Claude Code and Codex (see: bclip help prompts)
               prompt <ID>           Print one of those prompts exactly
 
+            Freeing space when the history size budget fills up: bclip status, then bclip list --sort size,
+            then bclip delete the ids you no longer need.
+
             Options:
               -n, --limit N         Maximum items (default 20)        --offset N  Skip N items
+                  --sort S          list/search: recent (default) | size (largest first)
               -f, --filter F        all | pinned | text | images | links | files | run | sharex | everything |
                                     pwsh | cmd | claude | codex
               -s, --since T         Used within T (30s, 10m, 2h, 7d, 2w) or since a date/time
@@ -347,6 +367,28 @@ public static class CliArguments
                     request = request with { Text = string.Join(' ', positional) };
                 }
 
+                break;
+
+            case CliCommands.Delete when positional.Count > 1:
+                // Several ids: one request, one transaction (an assistant freeing space). A single id stays in Id below,
+                // so a one-item delete reads the same to every server version.
+                if (positional.Count > MaxDeleteIds)
+                {
+                    return Fail(string.Create(CultureInfo.InvariantCulture, $"delete takes at most {MaxDeleteIds} ids at once (got {positional.Count}); delete them in parts."));
+                }
+
+                var ids = new List<long>(positional.Count);
+                foreach (var text in positional)
+                {
+                    if (!long.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out long one) || one <= 0)
+                    {
+                        return Fail($"'{text}' is not an item id (ids are the numbers shown by bclip list).");
+                    }
+
+                    ids.Add(one);
+                }
+
+                request = request with { Ids = ids };
                 break;
 
             case CliCommands.Get or CliCommands.Copy or CliCommands.Pin or CliCommands.Unpin or CliCommands.Delete or CliCommands.Forget:
@@ -431,6 +473,14 @@ public static class CliArguments
                 case "--all":
                     request = request with { AllSends = true };
                     break;
+                case "--sort":
+                    if (!TryParseSort(value, out var sort))
+                    {
+                        return Fail($"Unknown sort '{value}' (use recent or size).");
+                    }
+
+                    request = request with { Sort = sort };
+                    break;
                 case "--out" or "--json":
                     break; // client-side only, handled below
                 default:
@@ -438,7 +488,7 @@ public static class CliArguments
             }
         }
 
-        if (request.Id is not null && request.Recent is not null)
+        if ((request.Id is not null || request.Ids is not null) && request.Recent is not null)
         {
             return Fail("Give either an item id or --recent, not both.");
         }
@@ -486,6 +536,21 @@ public static class CliArguments
         }
 
         return DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out since);
+    }
+
+    /// <summary>The order <c>--sort</c> names, as sent on the wire (<see cref="CliRequest.Sort"/>).</summary>
+    /// <param name="value">As typed (any case, surrounding spaces ignored); <c>largest</c> is taken for <c>size</c>.</param>
+    /// <param name="sort"><c>recent</c> or <c>size</c>.</param>
+    /// <returns>Whether the value names an order.</returns>
+    public static bool TryParseSort(string? value, out string sort)
+    {
+        sort = (value ?? string.Empty).Trim().ToLowerInvariant() switch
+        {
+            "recent" or "recency" or "newest" => "recent",
+            "size" or "largest" or "biggest" => "size",
+            _ => string.Empty,
+        };
+        return sort.Length > 0;
     }
 
     /// <summary>Maps short options to their long names.</summary>

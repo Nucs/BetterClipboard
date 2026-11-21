@@ -99,6 +99,30 @@ public static class RunningCopies
     }
 }
 
+/// <summary>Waits on another process's end with no more rights than waiting needs.</summary>
+public static class ProcessExitWait
+{
+    /// <summary>
+    /// Opens a process for waiting on its end only (<c>SYNCHRONIZE</c>): what the next process of a silent restart needs to
+    /// wait for the one it replaces (CLAUDE.md §2.46).
+    /// </summary>
+    /// <param name="processId">The process.</param>
+    /// <returns>A handle the caller owns (signaled when the process ends), or <see langword="null"/> when the process is gone or cannot be opened. Never throws.</returns>
+    /// <remarks>
+    /// Not <see cref="Process.Handle"/>, which asks for every right on the process. A copy that Windows started with UI access
+    /// was made at the High integrity level and lowered its own token to Medium at once (CLAUDE.md §2.63), but its process
+    /// object keeps the High label it was made with, and Windows grants a Medium process only the right to wait and to read
+    /// a little on it. With every right asked for, the next process of a silent restart could not wait, took the old process
+    /// for gone, found it still holding the single-instance lock, and ended - so after Settings closed, no BetterClipboard
+    /// ran at all (found in a test desktop, 2026-11-21).
+    /// </remarks>
+    public static Microsoft.Win32.SafeHandles.SafeWaitHandle? Open(int processId)
+    {
+        nint handle = OpenProcess(SYNCHRONIZE, false, unchecked((uint)processId));
+        return handle == 0 ? null : new Microsoft.Win32.SafeHandles.SafeWaitHandle(handle, ownsHandle: true);
+    }
+}
+
 /// <summary>Reads the version a BetterClipboard program reports, from its version resource.</summary>
 public static class ProgramVersion
 {

@@ -104,6 +104,18 @@ public sealed record CliRequest
     /// <summary>Target item id (from a listing). Takes precedence over <see cref="Recent"/>.</summary>
     public long? Id { get; init; }
 
+    /// <summary>
+    /// <c>delete</c>: several item ids at once (<c>bclip delete 12 34 56</c>), deleted in one go; omitted for a single id,
+    /// which travels in <see cref="Id"/> as before, so a request for one item reads the same to every server version.
+    /// </summary>
+    public IReadOnlyList<long>? Ids { get; init; }
+
+    /// <summary>
+    /// <c>list</c>/<c>search</c>: the order, <c>recent</c> (most recently used first, the default) or <c>size</c> (largest
+    /// first: what to look at when the size budget fills up); <see langword="null"/> = <c>recent</c>.
+    /// </summary>
+    public string? Sort { get; init; }
+
     /// <summary>Target the n-th most recently used item (1 = latest) when no <see cref="Id"/> is given.</summary>
     public int? Recent { get; init; }
 
@@ -189,6 +201,12 @@ public sealed record CliItem
 
     /// <summary>Whether the item is pinned.</summary>
     public bool Pinned { get; init; }
+
+    /// <summary>
+    /// How many groups the item is in; omitted when none. A grouped item is kept like a pinned one: no retention limit
+    /// counts or removes it, so deleting it frees disk space but not room in the size budget.
+    /// </summary>
+    public int? Groups { get; init; }
 
     /// <summary>Friendly name of the app it was copied from, when known.</summary>
     public string? Source { get; init; }
@@ -402,6 +420,49 @@ public sealed record CliStatus
 
     /// <summary>Clipboard listener accounting since the app started (see the app's Settings › Capture reliability).</summary>
     public CliCaptureStats? Capture { get; init; }
+
+    /// <summary>
+    /// The retention limits and what they count now (Settings › History): how full the size budget is, before the oldest
+    /// items start to go. Omitted by servers that predate it.
+    /// </summary>
+    public CliBudget? Budget { get; init; }
+}
+
+/// <summary>
+/// The retention limits and what they hold now, as <c>bclip status</c> reports them (<see cref="CliStatus.Budget"/>): what an
+/// AI assistant reads before it frees space for the user (CLAUDE.md §2.60).
+/// </summary>
+public sealed record CliBudget
+{
+    /// <summary>The payload the size budget counts: every item that is neither pinned nor in a group.</summary>
+    public long UsedBytes { get; init; }
+
+    /// <summary>The size budget in bytes (Settings › History size budget); omitted when there is none.</summary>
+    public long? BudgetBytes { get; init; }
+
+    /// <summary>How full the budget is, in per cent with one decimal; omitted without a budget. At 100 the oldest items go.</summary>
+    public double? PercentUsed { get; init; }
+
+    /// <summary>The items the limits count (neither pinned nor in a group).</summary>
+    public long CountedItems { get; init; }
+
+    /// <summary>The item limit (Settings › Maximum items); omitted when there is none, the default.</summary>
+    public int? MaxItems { get; init; }
+
+    /// <summary>Pinned or grouped items: no limit counts or removes them.</summary>
+    public long ProtectedItems { get; init; }
+
+    /// <summary>Their payload, which the budget does not count.</summary>
+    public long ProtectedBytes { get; init; }
+
+    /// <summary>Items not used for this many days are removed (Settings › Keep items for); omitted when kept forever.</summary>
+    public int? KeepDays { get; init; }
+
+    /// <summary>The largest item's payload.</summary>
+    public long LargestItemBytes { get; init; }
+
+    /// <summary>The history database file's size on disk: the payload plus its search index, thumbnails and SQLite's pages.</summary>
+    public long DatabaseBytes { get; init; }
 }
 
 /// <summary>Clipboard listener accounting, mirrored from the Windows layer's monitor statistics.</summary>

@@ -87,6 +87,12 @@ public sealed partial class AppController
     /// </summary>
     private LanguageWindow? languageWindow;
     private volatile CaptureRules rules = new();
+
+    /// <summary>
+    /// Where a paste from the panel goes: the window in front when the shortcut opened it (the caret and the mouse with it),
+    /// replaced while a pinned panel shows by each window of another app the user goes to (<see cref="NoteForeignForeground"/>,
+    /// CLAUDE.md §2.55). <see langword="null"/> before the first summon. UI thread only.
+    /// </summary>
     private ForegroundContext? pasteTarget;
 
     /// <summary>
@@ -291,6 +297,13 @@ public sealed partial class AppController
         // Program.Main took the lock over from an older copy before the log existed (it writes to the same file): said here.
         string tookOver = options.TookOverFrom is { } older ? $", took over from BetterClipboard {older}, which was asked to exit" : string.Empty;
         AppLog.Info($"BetterClipboard {Version} starting (data: {paths.DataDirectory}, background: {options.Background}{restarted}{edition}{tookOver}).");
+
+        // Program.Main lowered the level of a copy that runs with UI access before the log existed (CLAUDE.md §2.63).
+        if (UiAccess.AtStart?.Describe() is { } uiAccess)
+        {
+            AppLog.Info(uiAccess);
+        }
+
         LogStoreDataFolder();
 
         // First, because it may undo a move that was left unfinished, which changes whether a history exists.
@@ -382,6 +395,10 @@ public sealed partial class AppController
         // Loaded here, or a moment ago by the Store edition's setup, which needed them for its welcome.
         settings ??= LoadSettings();
         rules = CaptureRules.FromSettings(settings.Current);
+
+        // The lists on disk were written under these limits (or under the larger caps of older versions): a later change is
+        // compared with them (AppController.Limits.cs).
+        appliedListLimits = ListLimitsOf(settings.Current);
         settings.Changed += OnSettingsChanged;
 
         var store = preopened is null ? OpenMachineBoundStore() : NoteStoreOpened(preopened);
@@ -389,6 +406,10 @@ public sealed partial class AppController
         history.Changed += (_, e) => ui.TryEnqueue(() => HistoryChanged?.Invoke(this, e));
         history.GroupsChanged += (_, _) => ui.TryEnqueue(() => GroupsChanged?.Invoke(this, EventArgs.Empty));
         history.ForgottenChanged += (_, _) => ui.TryEnqueue(() => ForgottenChanged?.Invoke(this, EventArgs.Empty));
+
+        // Before the start's prune below: the service keeps a warning's mark when it raises it, so a warning nobody listened
+        // to would never come again. Queued to the UI thread, it runs once this start is done and the tray icon exists.
+        history.BudgetWarning += (_, warning) => ui.TryEnqueue(() => ShowBudgetWarning(warning));
 
         // The Run and Snipping tabs show only with something in them: the worker tells when a tab got its first entry or
         // lost its last (also right after it starts, for a history that has some), through each tab's own status event.
@@ -418,7 +439,10 @@ public sealed partial class AppController
         monitor.Start(options.IsSilentRestart ? options.ClipboardSequence : null);
 
         // Located on a pool thread (registry + a few small files); the tab appears once it is found.
-        shareX = new ShareXIntegration(history, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L);
+        shareX = new ShareXIntegration(history, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L)
+        {
+            CatchUpLimit = () => Settings.Current.MaxShareXCatchUp,
+        };
         shareX.StatusChanged += (_, _) => ui.TryEnqueue(() => ShareXStatusChanged?.Invoke(this, EventArgs.Empty));
         _ = StartShareXAsync(shareX, settings.Current.ImportShareXScreenshots);
 
@@ -470,6 +494,7 @@ public sealed partial class AppController
         tray = RestartBridge?.TakeTray() ?? new TrayIcon(IconPath, TrayTooltip(settings.Current));
         tray.Reveal();
         tray.Invoked += (_, _) => ui.TryEnqueue(() => ShowFlyout(ForegroundContext.CursorOnly()));
+        tray.NotificationClicked += (_, tag) => ui.TryEnqueue(() => OnNotificationClicked(tag));
         tray.MenuProvider = BuildTrayMenu;
 
         // Updates from GitHub's releases (AppController.Updates.cs). After the tray icon: the outcome of an update that
@@ -650,10 +675,37 @@ public sealed partial class AppController
             return;
         }
 
-        pasteTarget = context;
+        // A pinned panel on screen is brought forward where it stands, not summoned again (the tray's Open clipboard, a second
+        // launch): a summon would move it and reset its view, and a context from the tray would take its paste target away.
+        if (flyout is { IsOpen: true, StaysOpen: true } pinned)
+        {
+            BringPinnedForward(pinned, context);
+            return;
+        }
+
+        // Start, Search, Quick settings, the notification center and Task View live in a layer of Windows above every app
+        // window, where the panel can never go (CLAUDE.md §2.61). Beside Start or Search, when there is room, the panel opens
+        // there and pastes into the search box; otherwise the surface is closed first, the way Esc closes it, and the panel
+        // opens over the window that has the keyboard then.
+        if (MustCloseShellSurface(context, bringForward: false))
+        {
+            CloseShellSurfaceThenSummon(context);
+            return;
+        }
 
         // One snapshot for both halves of the placement (where, and which screen when centered).
         var settings = Settings.Current;
+
+        // "Next to the text cursor" over an app that keeps no Win32 caret (Chromium, Firefox, the classic console): its
+        // accessibility caret is asked for here, on the UI thread and before the panel shows, never on the shortcut's input
+        // thread, which runs the keyboard hook (CLAUDE.md §2.64). The other placements never ask: no wait, and Firefox's
+        // accessibility stays off.
+        if (PlacesByCaret(settings.Placement))
+        {
+            context = context.WithAccessibleCaret(AccessibleCaret.DefaultDeadline);
+        }
+
+        pasteTarget = context;
         EnsureFlyout().ShowAt(context, settings.Placement, settings.CenterOnMainScreen);
 
         // The looks that may show or hide a tab come after the panel, never before it: the tabs follow when they land, as
@@ -818,7 +870,7 @@ public sealed partial class AppController
         try
         {
             var hidden = EverythingTab.ParseHidden(await History.GetStateValueAsync(EverythingTab.HiddenStateName));
-            var next = EverythingTab.Hide(hidden, pick, DateTimeOffset.UtcNow);
+            var next = EverythingTab.Hide(hidden, pick, DateTimeOffset.UtcNow, Settings.Current.MaxHiddenEverythingPicks);
             await History.SetStateValueAsync(EverythingTab.HiddenStateName, EverythingTab.FormatHidden(next));
         }
         catch (Exception ex)
@@ -1051,6 +1103,15 @@ public sealed partial class AppController
     }
 
     /// <summary>
+    /// Shows a Background transparency level on the panel while Settings' slider is dragged, before it is saved: Settings
+    /// writes the file once the drag settles (every save makes Settings reload, too slow for each step of a drag), and the
+    /// saved level then reaches the panel through the settings change as usual (CLAUDE.md §2.58). UI thread only; nothing
+    /// happens before the panel exists, which reads the saved level when it is built.
+    /// </summary>
+    /// <param name="level">The level, 0 (most frosted) to 100 (clearest); clamped.</param>
+    public void PreviewBackgroundTransparency(int level) => flyout?.PreviewBackdropLevel(level);
+
+    /// <summary>
     /// Loads an image entry as full-resolution PNG bytes, for what must hand a PNG file on (<em>Save to temp and</em>). The
     /// image overlays read <see cref="GetImageForDisplayAsync"/> instead: it never encodes.
     /// </summary>
@@ -1253,7 +1314,10 @@ public sealed partial class AppController
         Application.Current.Exit();
     }
 
-    /// <summary>Handles the global shortcut (UI thread).</summary>
+    /// <summary>
+    /// Handles the global shortcut (UI thread): opens the panel, closes it when it is in front, and brings a pinned panel
+    /// that waits behind another app forward (<see cref="PanelShortcut.Decide"/>, CLAUDE.md §2.55).
+    /// </summary>
     /// <param name="context">Where the user was when pressing it.</param>
     private void OnHotkey(ForegroundContext context)
     {
@@ -1265,14 +1329,169 @@ public sealed partial class AppController
         }
 
         var window = EnsureFlyout();
-        if (window.IsOpen)
+
+        // In front: its window, or — shown without the keyboard (ClipboardFlyout.Focusless.cs) — taking the keys while the
+        // app keeps the focus. Pressed again then, the shortcut closes the panel, as it does with the keyboard.
+        bool inFront = ForegroundHelper.IsForeground(window.Handle) || window.TakesKeysWithoutFocus;
+        switch (PanelShortcut.Decide(window.IsOpen, window.StaysOpen, inFront))
         {
-            // Pressing the shortcut again while the flyout is up closes it, like Win+V does.
-            window.Dismiss(restoreFocus: true);
+            case PanelShortcutAction.Close:
+                // Pressing the shortcut again while the flyout is up closes it, like Win+V does; a pinned one too (the user
+                // closed it, and it opens pinned again next time).
+                window.CloseByUser(restoreFocus: true);
+                return;
+            case PanelShortcutAction.BringForward:
+                // The pinned panel waits behind the app the user types in: it takes the keyboard where it stands, and its
+                // next paste goes into that app (the owner's choice, 2026-11-20).
+                BringPinnedForward(window, context);
+                return;
+            default:
+                ShowFlyout(context);
+                return;
+        }
+    }
+
+    /// <summary>
+    /// Gives the keyboard to the pinned panel on screen, making the window the user was in (<paramref name="context"/>) the
+    /// target of its next paste when it names one: a context from the tray names none, and then the window the tracker saw
+    /// last stays the target.
+    /// </summary>
+    /// <param name="window">The panel (open and pinned).</param>
+    /// <param name="context">Where the user was when asking.</param>
+    private void BringPinnedForward(ClipboardFlyout window, ForegroundContext context)
+    {
+        // Start or Search over the pinned panel, or another shell surface in front: closed first, unless the panel stands
+        // beside Start or Search already, where it takes the keys and pastes into the search box (CLAUDE.md §2.61).
+        if (MustCloseShellSurface(context, bringForward: true))
+        {
+            CloseShellSurfaceThenSummon(context);
             return;
         }
 
-        ShowFlyout(context);
+        if (context.TargetWindow != 0 && context.TargetWindow != window.Handle)
+        {
+            pasteTarget = context;
+        }
+
+        // A panel shown without the keyboard takes the keys again over the window the user types in now; from the tray (no
+        // window) it takes the keyboard the usual way.
+        window.BringForward(context);
+    }
+
+    /// <summary>
+    /// The longest a summon waits for a shell surface it closed with Esc to leave the foreground (<see cref="CloseShellSurfaceAsync"/>).
+    /// Measured: 17 to 45 ms for Start in a test desktop; the rest is room for a busy PC.
+    /// </summary>
+    private static readonly TimeSpan ShellSurfaceCloseTimeout = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>
+    /// Whether a summon over <paramref name="context"/> must close a shell surface first (CLAUDE.md §2.61): one was in front
+    /// (Start, Search, Quick settings, the notification center, Task View), and the panel cannot open beside it — not Start or
+    /// Search, the panel would take the keyboard (the setting is off), or there is no room beside it
+    /// (<see cref="ClipboardFlyout.CanOpenBeside"/>).
+    /// </summary>
+    /// <param name="context">Where the user was when asking.</param>
+    /// <param name="bringForward">The pinned panel on screen is brought forward where it stands (not placed anew).</param>
+    /// <returns><see langword="true"/> to close the surface before the panel shows.</returns>
+    private bool MustCloseShellSurface(ForegroundContext context, bool bringForward) =>
+        context.Surface.Kind != ShellSurfaceKind.None && !EnsureFlyout().CanOpenBeside(context, bringForward);
+
+    /// <summary>
+    /// Closes the shell surface in front, then summons the panel over the window in front afterwards, as if the shortcut had
+    /// been pressed there: the pinned panel is brought forward when it shows, otherwise the panel opens (UI thread).
+    /// </summary>
+    /// <param name="context">The summon's context; its window is the surface.</param>
+    /// <remarks><c>async void</c>: started from the shortcut's handler, awaited by nobody; it catches everything itself.</remarks>
+    private async void CloseShellSurfaceThenSummon(ForegroundContext context)
+    {
+        try
+        {
+            var after = await CloseShellSurfaceAsync(context);
+            if (exiting)
+            {
+                return;
+            }
+
+            // The panel may have been closed, opened or pinned meanwhile (the wait is up to half a second): decided anew.
+            // The surface is cleared in the new context, so nothing is closed a second time.
+            if (flyout is { IsOpen: true, StaysOpen: true } pinned)
+            {
+                BringPinnedForward(pinned, after);
+            }
+            else
+            {
+                ShowFlyout(after);
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"Opening the panel past Start, Search or another shell surface failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Closes the shell surface <paramref name="context"/> names, the way Esc does, and logs it (content-free): Windows then
+    /// gives the foreground back to the window the user was in before opening it (<see cref="ShellSurfaces.CloseAsync"/>).
+    /// </summary>
+    /// <param name="context">The context whose window is the surface.</param>
+    /// <returns>The context of the window in front afterwards, its surface cleared.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="context"/> is <see langword="null"/>.</exception>
+    internal async Task<ForegroundContext> CloseShellSurfaceAsync(ForegroundContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var kind = context.Surface.Kind;
+        long started = Stopwatch.GetTimestamp();
+        var after = await ShellSurfaces.CloseAsync(context, ShellSurfaceCloseTimeout);
+        long elapsed = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+        string what = kind == ShellSurfaceKind.Search ? "Start or Search" : "Quick settings, the notification center or Task View";
+        AppLog.Info(after.TargetWindow != context.TargetWindow
+            ? $"Closed {what} in {elapsed} ms (the way Esc does) to show the panel over the window in front then."
+            : $"{what} did not close within {elapsed} ms of an Esc; the panel may show under it.");
+        return after;
+    }
+
+    /// <summary>
+    /// The panel beside Start or Search takes the keyboard (a click into its search box, Ctrl+F, a viewer; CLAUDE.md §2.61):
+    /// nothing can take the keyboard from Start, so it is closed first, and the panel's next paste goes into the window in
+    /// front then instead of the search box. A no-op when the paste target is no shell surface.
+    /// </summary>
+    /// <returns>A task completing once the surface left the foreground (or the wait ended).</returns>
+    internal async Task CloseShellSurfaceForKeyboardAsync()
+    {
+        if (pasteTarget is not { Surface.Kind: not ShellSurfaceKind.None } surfaceContext)
+        {
+            return;
+        }
+
+        var after = await CloseShellSurfaceAsync(surfaceContext);
+
+        // The window Windows gave the foreground back to; never the panel itself, which stays unable to activate until the
+        // surface is gone for exactly this reason.
+        if (after.TargetWindow != 0 && after.TargetProcessId != (uint)Environment.ProcessId)
+        {
+            pasteTarget = after;
+        }
+        else if (pasteTarget == surfaceContext)
+        {
+            // No other window took the foreground: no target, as for a panel opened from the tray, rather than a hidden Start.
+            pasteTarget = ForegroundContext.CursorOnly();
+        }
+    }
+
+    /// <summary>
+    /// A window of another app took the foreground while the pinned panel shows (<c>ForegroundTracker</c>, UI thread): it is
+    /// where the panel's next paste goes, as if the shortcut had been pressed there (CLAUDE.md §2.55). Ignored once the panel
+    /// is put away or unpinned, when the next summon captures its own target.
+    /// </summary>
+    /// <param name="window">The window (never 0, never one of this process's, never the taskbar, Start or Alt+Tab).</param>
+    internal void NoteForeignForeground(nint window)
+    {
+        if (exiting || window == 0 || flyout is not { IsOpen: true, StaysOpen: true })
+        {
+            return;
+        }
+
+        pasteTarget = ForegroundContext.ForWindow(window);
     }
 
     /// <summary>Creates the flyout on first use.</summary>
@@ -1313,6 +1532,13 @@ public sealed partial class AppController
         // Ids and flags only — never the key, the binding or the identifiers they come from.
         AppLog.Info($"History store {opened.StoreId} opened (encrypted: {opened.Store.IsEncrypted}, new key: {opened.CreatedKey}, " +
                     $"adopted legacy: {opened.AdoptedLegacyDatabase}, encrypted legacy in place: {opened.Store.MigratedFromPlaintext}).");
+
+        // Once per store, at the first start of a version with the longer previews (CLAUDE.md §2.57): a count, never content.
+        if (opened.Store.RebuiltPreviews > 0)
+        {
+            AppLog.Info($"Rebuilt {opened.Store.RebuiltPreviews} preview(s) that earlier versions cut short, so cards set to show many lines fill them.");
+        }
+
         if (opened.QuarantinedDirectory is not null)
         {
             AppLog.Warn($"The previous history could not be decrypted on this machine and was set aside at '{opened.QuarantinedDirectory}': {opened.QuarantineReason}");
@@ -1321,7 +1547,10 @@ public sealed partial class AppController
         return opened.Store;
     }
 
-    /// <summary>The paste target captured when the flyout was summoned (0 when none).</summary>
+    /// <summary>
+    /// The paste target: the window captured when the flyout was summoned, or — while a pinned panel shows — the window of
+    /// another app the user was in last (<see cref="NoteForeignForeground"/>); 0 when none.
+    /// </summary>
     internal nint PasteTargetWindow => pasteTarget?.TargetWindow ?? 0;
 
     /// <summary>
@@ -1350,6 +1579,20 @@ public sealed partial class AppController
             MaxItemBytes = current.MaxItemSizeMB * 1024L * 1024L,
         };
     }
+
+    /// <summary>
+    /// Whether a panel position puts the panel by the text caret, so that a summon must find the caret: "Next to the text
+    /// cursor", and any value no version knows, which <see cref="FlyoutPositioner.ChooseScreen"/> also counts as it.
+    /// </summary>
+    /// <remarks>
+    /// Only these placements make a summon ask an app without a Win32 caret for its accessibility caret
+    /// (<see cref="ForegroundContext.WithAccessibleCaret"/>), which can hold the panel up to
+    /// <see cref="AccessibleCaret.DefaultDeadline"/> and starts Firefox's accessibility.
+    /// </remarks>
+    /// <param name="placement">The placement (<see cref="AppSettings.Placement"/>).</param>
+    /// <returns><see langword="true"/> unless the panel goes next to the mouse or centered.</returns>
+    private static bool PlacesByCaret(FlyoutPlacement placement) =>
+        placement is not (FlyoutPlacement.NearCursor or FlyoutPlacement.CenterScreen);
 
     /// <summary>Reacts to settings changes (any thread; marshals UI work).</summary>
     /// <param name="sender">The store.</param>
@@ -1409,6 +1652,12 @@ public sealed partial class AppController
                 await ApplyShellSettingsAsync(next);
             }
 
+            // A lowered list limit applies at once (the Cmd tab's kept commands, the hidden lists); nothing when none changed.
+            if (!exiting)
+            {
+                await ApplyListLimitsAsync(next);
+            }
+
             // Idempotent too: an agent's archive reader starts (catching up from its checkpoints) or stops (the archive stays).
             if (!exiting)
             {
@@ -1425,6 +1674,16 @@ public sealed partial class AppController
             if (next.ShowEverythingTab != (everything is not null) && !exiting)
             {
                 SetEverything(next.ShowEverythingTab);
+            }
+
+            // Idempotent too: the header's buttons follow Settings › Buttons in the panel, the pin its state, and a pinned
+            // panel starts or stops following the window in front (ClipboardFlyout.KeepOpen.cs). The cards show the lines
+            // Settings › Lines per card asks for, also while the panel shows (ClipboardFlyout.TextPreview.cs). A panel not
+            // built yet reads both when it is.
+            if (!exiting)
+            {
+                flyout?.ApplyHeaderButtons();
+                flyout?.ApplyCardLines();
             }
         });
     }
@@ -1517,7 +1776,10 @@ public sealed partial class AppController
     /// <b>Launch first, hide after.</b> The panel is the foreground window while the command starts, and Windows lets
     /// a process started by the foreground process bring its window to the front. Hiding first would hand the
     /// foreground back to the app below, and the new window could open behind it. The panel is then hidden
-    /// without re-activating that app: the new window keeps the focus.
+    /// without re-activating that app: the new window keeps the focus. While the panel leaves the keyboard with the app
+    /// (CLAUDE.md §2.59) it is not the foreground window: a key that runs a command makes the panel take the keyboard first
+    /// (ClipboardFlyout.TakeKeyboardBeforeLaunchAsync), and a click on the card menu is input this process received, which
+    /// gives it the same leave (both measured 2026-11-21).
     /// </para>
     /// <para>
     /// Only offered for entries with a run time (<see cref="ClipEntry.HasRunHistory"/>): commands the user ran
@@ -1526,24 +1788,30 @@ public sealed partial class AppController
     /// </para>
     /// </remarks>
     /// <param name="entry">The entry (its <c>CF_UNICODETEXT</c> is the command).</param>
-    /// <param name="asAdministrator">Run elevated: Windows asks for consent first.</param>
+    /// <param name="asAdministrator">
+    /// Run elevated where Windows can: Windows asks for consent first. A target Windows has no administrator mode for (a
+    /// picture, a document, a folder, a link) is opened normally, as Win+R's Ctrl+Shift+Enter does
+    /// (<see cref="RunCommandResult.WithoutAdministrator"/>).
+    /// </param>
     /// <param name="ownerWindow">The panel's window, owner of the consent prompt.</param>
     /// <returns>How it ended, or <see langword="null"/> when the entry holds no single-line command or reading it failed (logged). Never throws.</returns>
     public async Task<RunCommandResult?> RunCommandAsync(ClipEntry entry, bool asAdministrator, nint ownerWindow)
     {
         try
         {
-            var formats = await History.GetFormatsAsync(entry.Id);
-            var text = formats.FirstOrDefault(f => f.Name == ClipFormatNames.UnicodeText);
-            var command = text is null ? string.Empty : UnicodeTextCodec.Decode(text.Data).Trim();
-            if (command.Length == 0 || command.AsSpan().IndexOfAny('\r', '\n') >= 0)
+            if (await ReadRunCommandAsync(entry) is not { } command)
             {
                 AppLog.Warn($"Entry {entry.Id} holds no single-line command to run.");
                 return null;
             }
 
             var result = await RunCommandLauncher.RunAsync(command, asAdministrator, ownerWindow);
-            AppLog.Info($"Ran entry {entry.Id} as a Win+R command{(asAdministrator ? " as administrator" : string.Empty)}: {result.Describe()}");
+
+            // Content-free either way; the second form says why "as administrator" opened it normally, so a report of "no
+            // administrator prompt" can be read from the log.
+            AppLog.Info(result.WithoutAdministrator
+                ? $"Ran entry {entry.Id} as a Win+R command, asked as administrator: Windows has no administrator mode for it, so it was opened without one, as Win+R's Ctrl+Shift+Enter does. {result.Describe()}"
+                : $"Ran entry {entry.Id} as a Win+R command{(asAdministrator ? " as administrator" : string.Empty)}: {result.Describe()}");
             if (result.Outcome != RunCommandOutcome.Started)
             {
                 return result;
@@ -1570,6 +1838,55 @@ public sealed partial class AppController
             AppLog.Error($"Running entry {entry.Id} failed.", ex);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Whether Windows can run a stored Win+R command as administrator (<see cref="RunCommandLauncher.CanRunAsAdministrator(string)"/>):
+    /// the card menu grays its "Run as administrator" when the answer is <see langword="false"/> (the owner's choice,
+    /// 2026-11-21: a picture's item used to do nothing).
+    /// </summary>
+    /// <remarks>
+    /// The command is read from the store and judged on the thread pool: judging it reads the file system (a shortcut's
+    /// target, a network share that may not answer), which never belongs on the UI thread. Nothing is logged for a normal
+    /// answer: the menu asks every time it opens.
+    /// </remarks>
+    /// <param name="entry">A card's entry with <see cref="ClipEntry.HasRunHistory"/>.</param>
+    /// <returns>
+    /// The answer, or <see langword="null"/> when only running tells, the entry holds no single-line command, or the
+    /// question failed (logged, content-free). Never throws.
+    /// </returns>
+    public async Task<bool?> CanRunAsAdministratorAsync(ClipEntry entry)
+    {
+        try
+        {
+            if (await ReadRunCommandAsync(entry) is not { } command)
+            {
+                return null;
+            }
+
+            return await Task.Run(() => RunCommandLauncher.CanRunAsAdministrator(command));
+        }
+        catch (Exception ex)
+        {
+            // The menu keeps the item enabled then: a run asked as administrator still opens what Windows cannot elevate.
+            AppLog.Warn($"Could not tell whether entry {entry.Id} can run as administrator ({ex.GetType().Name}).");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The single-line Win+R command a stored entry holds: its <c>CF_UNICODETEXT</c>, trimmed.
+    /// </summary>
+    /// <param name="entry">The entry.</param>
+    /// <returns>The command, or <see langword="null"/> when the entry has no text or more than one line (Win+R takes one).</returns>
+    /// <exception cref="InvalidOperationException">Called before <see cref="Start"/> (<see cref="History"/> is not there yet).</exception>
+    /// <exception cref="Microsoft.Data.Sqlite.SqliteException">The store could not be read.</exception>
+    private async Task<string?> ReadRunCommandAsync(ClipEntry entry)
+    {
+        var formats = await History.GetFormatsAsync(entry.Id);
+        var text = formats.FirstOrDefault(f => f.Name == ClipFormatNames.UnicodeText);
+        var command = text is null ? string.Empty : UnicodeTextCodec.Decode(text.Data).Trim();
+        return command.Length == 0 || command.AsSpan().IndexOfAny('\r', '\n') >= 0 ? null : command;
     }
 
     /// <summary>

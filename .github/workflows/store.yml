@@ -97,15 +97,27 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Fetching the tag object of '$tag' failed ($LASTEXITCODE)." }
           [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
           $notesFile = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $translated = ''
           if ((git cat-file -t "refs/tags/$tag") -eq 'tag') {
             $message = ((git tag --list $tag '--format=%(contents)') -join "`n").Trim()
             [IO.File]::WriteAllText($notesFile, "$message`n", [Text.UTF8Encoding]::new($false))
+            # A release from 0.2.12 on has the composer, and the notes' translations for the other listings (release.yml
+            # does the same; CLAUDE.md section 2.67). The tag's own scripts run here, so an older tag sends English only.
+            if (Test-Path -LiteralPath tools/release/release_notes.py) {
+              $translated = Join-Path $env:RUNNER_TEMP 'release-notes-translated'
+              $bodyFile = Join-Path $env:RUNNER_TEMP 'release-body.md'
+              $messageFile = Join-Path $env:RUNNER_TEMP 'tag-message.md'
+              [IO.File]::WriteAllText($messageFile, "$message`n", [Text.UTF8Encoding]::new($false))
+              python tools/release/release_notes.py compose --version '${{ steps.plan.outputs.version }}' --notes $messageFile --body $bodyFile --english $notesFile --store-dir $translated
+              if ($LASTEXITCODE -ne 0) { throw "The release notes could not be composed (exit code $LASTEXITCODE); the lines above say why." }
+            }
           }
           else {
             Write-Host "::warning title=Microsoft Store::Tag $tag is not annotated, so ""What's new"" stays empty."
             [IO.File]::WriteAllText($notesFile, '', [Text.UTF8Encoding]::new($false))
           }
           "file=$notesFile" >> $env:GITHUB_OUTPUT
+          "translated=$translated" >> $env:GITHUB_OUTPUT
 
       - name: Microsoft Store packages
         if: ${{ steps.plan.outputs.mode != 'check' }}
@@ -132,7 +144,11 @@ jobs:
         run: |
           $version = '${{ steps.plan.outputs.version }}'
           $mode = if ('${{ steps.plan.outputs.mode }}' -eq 'draft') { 'Draft' } else { 'Submit' }
-          tools/release/submit-store.ps1 -Mode $mode -Version $version -PackageDirectory artifacts/store -ReleaseNotesFile '${{ steps.notes.outputs.file }}'
+          # The translated notes only when the tag's script knows the parameter (0.2.12 on: see "Release notes from the tag").
+          $translated = '${{ steps.notes.outputs.translated }}'
+          # A hashtable: array splatting does not bind a "-Name" string to a script run in this PowerShell (CLAUDE.md section 4).
+          $more = if ($translated) { @{ TranslatedNotesDirectory = $translated } } else { @{} }
+          tools/release/submit-store.ps1 -Mode $mode -Version $version -PackageDirectory artifacts/store -ReleaseNotesFile '${{ steps.notes.outputs.file }}' @more
           switch ($LASTEXITCODE) {
             0 { "BetterClipboard ${version}: $(if ($mode -eq 'Draft') { 'a draft submission is in Partner Center; it was not committed' } else { 'submitted to the Microsoft Store; certification follows' })." >> $env:GITHUB_STEP_SUMMARY }
             3 { throw 'The PARTNER_CENTER_* secrets are not set in this repository (docs/microsoft-store.md).' }

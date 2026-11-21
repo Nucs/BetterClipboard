@@ -12,7 +12,10 @@
 
       - the sign-in request, the app, the published submission, a new submission that is a copy of it;
       - the update: the published packages marked for removal, the new ones listed, "What's new" set in one
-        language and emptied in the others, everything else sent back as it came (dates stay text);
+        language and emptied in the others, the notes for certification taken from the listing kit (or kept with
+        -KeepCertificationNotes), everything else sent back as it came (dates stay text);
+      - the listing kit read before anything is sent: a kit without notes, notes over Partner Center's 2,000
+        characters with line breaks counted as two, or no kit at all stop the script without a request;
       - the upload in blocks, put together again and compared byte for byte with the packages;
       - the commit and the wait for its outcome, accepted or refused;
       - what must not happen: a request without credentials, a first submission, a package that is not the Store's,
@@ -88,6 +91,9 @@ $state = [hashtable]::Synchronized(@{
         Published        = $true
         Pending          = $false
         PublishedVersion = '1.2.10.0'
+        # The published submission's notes for certification. The real Store answered empty for BetterClipboard's
+        # (2026-11-20): Partner Center keeps the notes testers read on a product page the API does not show.
+        PublishedNotes   = 'keep these notes'
         Statuses         = [System.Collections.ArrayList]::Synchronized([System.Collections.ArrayList]::new())
         Blocks           = [hashtable]::Synchronized(@{})
         Archive          = $null
@@ -132,7 +138,8 @@ $serve = {
   "targetPublishDate": "1601-01-01T00:00:00Z",
   "listings": {
     "en-us": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": ["clipboard"], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "English description", "features": ["one"], "releaseNotes": "notes of the version before", "images": [], "title": "BetterClipboard", "shortDescription": "short" }, "platformOverrides": {} },
-    "ru": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": [], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "Описание", "features": [], "releaseNotes": "старые заметки", "images": [], "title": "BetterClipboard", "shortDescription": "" }, "platformOverrides": {} }
+    "ru": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": [], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "Описание", "features": [], "releaseNotes": "старые заметки", "images": [], "title": "BetterClipboard", "shortDescription": "" }, "platformOverrides": {} },
+    "zh-hans": { "baseListing": { "copyrightAndTrademarkInfo": "", "keywords": [], "licenseTerms": "", "privacyPolicy": "https://example.invalid/privacy", "supportContact": "", "websiteUrl": "", "description": "说明", "features": [], "releaseNotes": "旧的说明", "images": [], "title": "BetterClipboard", "shortDescription": "" }, "platformOverrides": {} }
   },
   "hardwarePreferences": [],
   "automaticBackupEnabled": false,
@@ -140,7 +147,7 @@ $serve = {
   "isGameDvrEnabled": false,
   "hasExternalInAppProducts": false,
   "meetAccessibilityGuidelines": false,
-  "notesForCertification": "keep these notes",
+  "notesForCertification": "$($state.PublishedNotes)",
   "status": "$(if ($new) { 'PendingCommit' } else { 'Published' })",
   "statusDetails": { "errors": [], "warnings": [], "certificationReports": [] },
   $upload
@@ -335,6 +342,71 @@ here that are not part of the first sentence.
 '@ | Set-Content -LiteralPath $notesFile -Encoding utf8
 $expectedNotes = "• A new tab. It lists what you copied in Notepad, with a link.`n• Fixed: 2 fixes."
 
+# The same release's notes in Simplified Chinese, as tools/release/release_notes.py compose --store-dir writes them
+# (the notes alone: no language line, stamp or footer), in the folder -TranslatedNotesDirectory names.
+$translatedDirectory = Join-Path $work 'translated'
+New-Item -ItemType Directory -Path $translatedDirectory -Force | Out-Null
+$chineseNotesFile = Join-Path $translatedDirectory 'zh-Hans.md'
+@'
+BetterClipboard 9.9.9
+
+```powershell
+irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
+```
+
+**新标签页。** 它列出你在 `Notepad` 中复制的内容，并附有[一个链接](https://example.invalid/x)。版本号 0.2.12 不会截断句子
+后面还有不属于第一句的话。
+- 一个细节。
+
+**修复**
+- 一处问题不再出现。
+- 另一处问题不再出现。
+
+| 文件 | 内容 |
+|---|---|
+| `BetterClipboard-9.9.9-win-x64.zip` | 应用 |
+
+- 尚未进行代码签名：用浏览器下载的 zip 可能触发 SmartScreen。
+'@ | Set-Content -LiteralPath $chineseNotesFile -Encoding utf8
+$expectedChineseNotes = "• 新标签页。它列出你在 Notepad 中复制的内容，并附有一个链接。`n• 修复：共 2 项。"
+
+function New-TestKit {
+    <#
+    .SYNOPSIS
+        Writes a stand-in listing kit holding a "Notes for certification" block, laid out like docs/store-listing.md.
+    .DESCRIPTION
+        Written with CRLF line breaks, as a Windows checkout may have the real kit, so the checks also prove that the
+        script sends the notes with LF.
+    .PARAMETER Path
+        The file to write.
+    .PARAMETER Notes
+        The block's text, with LF line breaks; without it the kit has no such block at all.
+    .OUTPUTS
+        None.
+    #>
+    param([string] $Path, [string] $Notes)
+    $fence = '```'
+    $lines = @('# Microsoft Store listing kit (BC-TEST)', '', '### Additional testing information', '')
+    if ($Notes) { $lines += @('**Notes for certification**', '', "${fence}text") + @($Notes -split "`n") + @($fence, '') }
+    $lines += @('## 3. Listing texts', '')
+    Set-Content -LiteralPath $Path -Value ($lines -join "`r`n") -Encoding utf8 -NoNewline
+}
+
+# The notes the test kit holds, and kits that must stop the script before anything is sent.
+$kitNotes = "BC-TEST notes for certification, first line.`n`n1. A numbered step.`n2. Another step."
+$kitFile = Join-Path $work 'store-listing.md'
+New-TestKit -Path $kitFile -Notes $kitNotes
+$kitSame = Join-Path $work 'store-listing-same.md'
+New-TestKit -Path $kitSame -Notes 'keep these notes'
+$kitWithout = Join-Path $work 'store-listing-without-notes.md'
+New-TestKit -Path $kitWithout -Notes ''
+# 1,997 characters as written, 2,003 with its six line breaks counted as two: only the strict reading refuses it.
+$kitLong = Join-Path $work 'store-listing-long.md'
+New-TestKit -Path $kitLong -Notes (('x' * 1985) + ("`nz" * 6))
+$kitMissing = Join-Path $work 'no-such-store-listing.md'
+# The repository's own kit, which a run without -ListingKit reads.
+$realKit = Join-Path (Split-Path -Parent (Split-Path -Parent $here)) 'docs/store-listing.md'
+
 function Reset-StandIn {
     <#
     .SYNOPSIS
@@ -347,6 +419,7 @@ function Reset-StandIn {
     $state.Published = $true
     $state.Pending = $false
     $state.PublishedVersion = '1.2.10.0'
+    $state.PublishedNotes = 'keep these notes'
     $state.Blocks.Clear()
     $state.Archive = $null
     $state.FailBlocks = 0
@@ -454,8 +527,21 @@ function Test-Leak {
     return $Output.Contains($Secret) -or $Output.Contains($Token) -or $Output.Contains($UploadKey)
 }
 
+function Get-SentSubmission {
+    <#
+    .SYNOPSIS
+        The submission the last run sent with its update (the PUT of the new submission), read from its JSON.
+    .OUTPUTS
+        System.Collections.Hashtable, or $null when no update was sent.
+    #>
+    $updates = @($state.Requests.ToArray() | Where-Object { $_.Method -eq 'PUT' -and $_.Path -like "*/submissions/$NewId" })
+    if ($updates.Count -eq 0) { return $null }
+    return ($updates[0].Body | ConvertFrom-Json -AsHashtable)
+}
+
 try {
-    $submit = @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile)
+    # The test kit, so the checks do not follow the real kit's text; one run below reads the real one.
+    $submit = @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile, '-ListingKit', $kitFile)
 
     Write-Host 'No credentials'
     Reset-StandIn
@@ -496,10 +582,12 @@ try {
     Assert-That 'the published packages are marked for removal' (@($byStatus['PendingDelete']).Count -eq 2 -and (@($byStatus['PendingDelete'].fileName) -join ',') -match 'old-store-x64.*old-store-arm64') ($sent.applicationPackages | ConvertTo-Json -Compress)
     Assert-That 'the new packages are listed for upload' ((@($byStatus['PendingUpload'].fileName) -join ',') -eq 'BetterClipboard-9.9.9-store-x64.msix,BetterClipboard-9.9.9-store-arm64.msix' -and @($byStatus['PendingUpload'] | Where-Object { $_.minimumDirectXVersion -ne 'None' -or $_.minimumSystemRam -ne 'None' }).Count -eq 0) ($sent.applicationPackages | ConvertTo-Json -Compress)
     Assert-That '"What''s new" is this release''s notes in English' ($sent.listings.'en-us'.baseListing.releaseNotes -ceq $expectedNotes) $sent.listings.'en-us'.baseListing.releaseNotes
-    Assert-That '"What''s new" is emptied in the other languages' ($sent.listings.ru.baseListing.releaseNotes -eq '') $sent.listings.ru.baseListing.releaseNotes
+    Assert-That '"What''s new" is emptied in the other languages' ($sent.listings.ru.baseListing.releaseNotes -eq '' -and $sent.listings.'zh-hans'.baseListing.releaseNotes -eq '') "ru: $($sent.listings.ru.baseListing.releaseNotes); zh-hans: $($sent.listings.'zh-hans'.baseListing.releaseNotes)"
+    Assert-That 'the notes for certification are the listing kit''s, with LF line breaks' ($sent.notesForCertification -ceq $kitNotes) "$($sent.notesForCertification)"
+    Assert-That 'and the progress line says so' ($run.Output -match "notes for certification from the listing kit \($($kitNotes.Length) characters\)") $run.Output
     Assert-That 'the rest goes back as it came' (
         $update.Contains('"targetPublishDate":"1601-01-01T00:00:00Z"') -and $update.Contains('"mandatoryUpdateEffectiveDate":"1601-01-01T00:00:00.0000000Z"') -and
-        $sent.pricing.priceId -eq 'Free' -and $sent.notesForCertification -eq 'keep these notes' -and $sent.listings.ru.baseListing.description -ceq 'Описание' -and
+        $sent.pricing.priceId -eq 'Free' -and $sent.listings.ru.baseListing.description -ceq 'Описание' -and
         $sent.listings.'en-us'.baseListing.description -eq 'English description') $update.Substring(0, [Math]::Min(400, $update.Length))
 
     $archive = Join-Path $work 'uploaded.zip'
@@ -569,6 +657,56 @@ try {
     $calls = Get-Calls
     Assert-That 'uploads and does not commit' ($run.ExitCode -eq 0 -and ($calls -contains 'PUT blob list') -and -not ($calls -match 'commit$')) "exit $($run.ExitCode): $($calls -join '; ')"
 
+    # The submission the Store makes is a copy of the published one, notes for certification included, and those may
+    # describe an older version (for BetterClipboard the field is empty: the testers read a product page the API does
+    # not show). The kit's notes replace them.
+    Write-Host 'Notes for certification'
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitFile)
+    Assert-That 'Check says when the published notes are not the kit''s, by their lengths' ($run.ExitCode -eq 0 -and $run.Output -match "the published ones \(16 characters\) are not the listing kit's \($($kitNotes.Length) characters\)" -and -not $run.Output.Contains('BC-TEST notes')) $run.Output
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitSame)
+    Assert-That 'and when they are the same' ($run.ExitCode -eq 0 -and $run.Output -match 'Notes for certification: the published ones are the listing kit''s') $run.Output
+    # The real Store's answer for BetterClipboard: the published submission's field is empty, because the notes the
+    # testers read are on the product's Additional Testing Information page.
+    Reset-StandIn
+    $state.PublishedNotes = ''
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitFile)
+    Assert-That 'and when the published submission holds none, it names the page testers read, to keep by hand' ($run.ExitCode -eq 0 -and $run.Output -match 'the published submission holds none' -and $run.Output -match 'Additional Testing Information page') $run.Output
+    Reset-StandIn
+    $state.PublishedNotes = ''
+    $run = Invoke-Submit -Arguments $submit
+    $sent = Get-SentSubmission
+    Assert-That 'and a submission still sends the kit''s notes then' ($run.ExitCode -eq 0 -and $null -ne $sent -and $sent.notesForCertification -ceq $kitNotes) "exit $($run.ExitCode): $($run.Output)"
+
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + '-KeepCertificationNotes')
+    $sent = Get-SentSubmission
+    Assert-That '-KeepCertificationNotes sends the published notes back unchanged' ($run.ExitCode -eq 0 -and $null -ne $sent -and $sent.notesForCertification -ceq 'keep these notes' -and $run.Output -match 'notes for certification kept as published') "exit $($run.ExitCode): $($run.Output)"
+
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile)
+    $sent = Get-SentSubmission
+    $real = (Get-Content -LiteralPath $realKit -Raw -Encoding utf8) -replace "`r`n?", "`n"
+    $realSent = if ($null -ne $sent -and $sent.notesForCertification) { [string] $sent.notesForCertification } else { '' }
+    Assert-That 'without -ListingKit, the repository''s own kit is read: its block is what is sent' ($run.ExitCode -eq 0 -and $realSent.Length -gt 200 -and $real.Contains("``````text`n$realSent`n``````")) "exit $($run.ExitCode), $($realSent.Length) characters sent"
+
+    foreach ($case in @(
+            @{ Name = 'a kit without notes for certification'; Kit = $kitWithout; Says = 'has no notes for certification' },
+            @{ Name = 'notes over 2,000 characters with line breaks counted as two'; Kit = $kitLong; Says = 'have 2003 characters with every line break counted as two; Partner Center takes at most 2000' },
+            @{ Name = 'a kit that does not exist'; Kit = $kitMissing; Says = 'The listing kit does not exist' }
+        )) {
+        Reset-StandIn
+        $run = Invoke-Submit -Arguments @('-Version', '9.9.9', '-PackageDirectory', $good, '-ReleaseNotesFile', $notesFile, '-ListingKit', $case.Kit)
+        Assert-That "$($case.Name) is refused without a request (exit code 2)" ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0 -and $run.Output.Contains($case.Says)) "exit $($run.ExitCode): $($run.Output)"
+    }
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', $kitWithout)
+    Assert-That 'Check reads the kit too, and refuses a broken one before signing in (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0) "exit $($run.ExitCode): $($run.Output)"
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments @('-Mode', 'Check', '-ListingKit', '')
+    Assert-That 'an empty -ListingKit is refused, not taken as "keep the published notes" (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0 -and $run.Output -match '-ListingKit is empty') "exit $($run.ExitCode): $($run.Output)"
+
     # The workflows run the script in their own PowerShell and read $LASTEXITCODE; every ending must reach them.
     Write-Host 'In the caller''s PowerShell, as the workflows run it'
     Reset-StandIn
@@ -609,6 +747,33 @@ try {
     $whole = $state.Archive
     Assert-That 'is sent again, and the archive arrives whole' ($run.ExitCode -eq 0 -and $null -ne $whole -and $whole.Length -eq (Get-Item -LiteralPath $archive).Length) "exit $($run.ExitCode): $($run.Output)"
 
+    Write-Host 'Release notes in other languages'
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', $translatedDirectory))
+    $sent = Get-SentSubmission
+    Assert-That 'ends with exit code 0' ($run.ExitCode -eq 0 -and $null -ne $sent) "exit $($run.ExitCode): $($run.Output)"
+    if ($null -ne $sent) {
+        Assert-That 'the Chinese listing gets the Chinese notes, shortened by Chinese punctuation' ($sent.listings.'zh-hans'.baseListing.releaseNotes -ceq $expectedChineseNotes) $sent.listings.'zh-hans'.baseListing.releaseNotes
+        Assert-That 'the English listing keeps the English notes' ($sent.listings.'en-us'.baseListing.releaseNotes -ceq $expectedNotes) $sent.listings.'en-us'.baseListing.releaseNotes
+        Assert-That 'a language without notes is still emptied' ($sent.listings.ru.baseListing.releaseNotes -eq '') $sent.listings.ru.baseListing.releaseNotes
+    }
+    Assert-That 'the progress line names each language''s length' ($run.Output -match "$($expectedChineseNotes.Length) in zh-hans" -and $run.Output -match "$($expectedNotes.Length) in en-us") $run.Output
+    $russianOnly = Join-Path $work 'translated-ru'
+    New-Item -ItemType Directory -Path $russianOnly -Force | Out-Null
+    Copy-Item -LiteralPath $chineseNotesFile -Destination (Join-Path $russianOnly 'fr.md')
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', $russianOnly))
+    Assert-That 'notes in a language the listing lacks are not sent, with a warning' ($run.ExitCode -eq 0 -and $run.Output -match "has no language 'fr'") $run.Output
+    $badName = Join-Path $work 'translated-bad'
+    New-Item -ItemType Directory -Path $badName -Force | Out-Null
+    Copy-Item -LiteralPath $chineseNotesFile -Destination (Join-Path $badName 'zh_Hans.md')
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', $badName))
+    Assert-That 'a file not named by a catalog tag is refused without a request (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0) "exit $($run.ExitCode): $($run.Output)"
+    Reset-StandIn
+    $run = Invoke-Submit -Arguments ($submit + @('-TranslatedNotesDirectory', (Join-Path $work 'no-such-folder')))
+    Assert-That 'a folder that does not exist is refused without a request (exit code 2)' ($run.ExitCode -eq 2 -and $state.Requests.Count -eq 0) "exit $($run.ExitCode): $($run.Output)"
+
     Write-Host 'Release notes for "What''s new"'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($Script, [ref] $null, [ref] $null)
     $definition = $ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'ConvertTo-StoreNotes' }, $true)[0]
@@ -624,6 +789,15 @@ try {
     Assert-That 'eighty changes still fit the Store''s 1,500 characters' ($long.Length -le 1500 -and $long.Length -gt 1000 -and $long.StartsWith('• Change number 1.')) "$($long.Length) characters"
     $windows = ConvertTo-StoreNotes -Markdown "BetterClipboard 1.2.3`r`n`r`n**One.** First.`r`n- detail`r`n`r`n**Two.** Second."
     Assert-That 'Windows line endings read the same' ($windows -ceq "• One. First.`n• Two. Second.") $windows
+    $chineseMarkdown = Get-Content -LiteralPath $chineseNotesFile -Raw -Encoding utf8
+    $chinese = ConvertTo-StoreNotes -Markdown $chineseMarkdown -Language 'zh-Hans'
+    Assert-That 'Chinese: a sentence ends at 。, the lead and its sentence join without a blank, the fixes are counted' ($chinese -ceq $expectedChineseNotes) $chinese
+    $chineseShort = ConvertTo-StoreNotes -Markdown $chineseMarkdown -Language 'zh-Hans' -Limit 20
+    Assert-That 'Chinese, too long: the lead-ins alone, the fixes'' one ending with 。' ($chineseShort -ceq "• 新标签页。`n• 修复。") $chineseShort
+    $chineseColon = ConvertTo-StoreNotes -Markdown "BetterClipboard 1.2.3`n`n**四个选择**有以下几种：`n- 一`n- 二" -Language 'zh-Hans'
+    Assert-That 'Chinese: a lead without a stop gets 。, a sentence that introduces bullets ends with 。' ($chineseColon -ceq "• 四个选择。有以下几种。") $chineseColon
+    $englishRules = ConvertTo-StoreNotes -Markdown $chineseMarkdown
+    Assert-That 'Chinese notes read with the English rules keep the old, wrong shape (the language matters)' ($englishRules -cne $expectedChineseNotes) $englishRules
 }
 finally {
     $listener.Stop()

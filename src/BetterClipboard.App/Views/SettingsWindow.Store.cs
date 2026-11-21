@@ -23,7 +23,8 @@ public sealed partial class SettingsWindow
 {
     /// <summary>
     /// Keeps only the cards that are true for this edition. Called once, right after the page was built and before the
-    /// search indexes it.
+    /// search indexes it. The update button, which this edition's panel does not have, has no row in Buttons in the panel:
+    /// the view model leaves it out (<c>SettingsViewModel.IsPanelButtonListed</c>, CLAUDE.md §2.55, §2.58).
     /// </summary>
     private void ApplyEdition()
     {

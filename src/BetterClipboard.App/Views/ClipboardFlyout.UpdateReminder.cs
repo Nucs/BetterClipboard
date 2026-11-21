@@ -129,11 +129,13 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Asks, at the end of a summon, whether the weekly reminder is due, and if so lets it open a moment later. Does
-    /// nothing while a reminder is already waiting or showing.
+    /// nothing while a reminder is already waiting or showing, and while Settings hides the update button: the reminder is
+    /// that button's tooltip, and a user who hid the button chose not to have it in view (CLAUDE.md §2.55). The week is not
+    /// counted then, so showing the button again reminds at the next summon.
     /// </summary>
     private void ScheduleUpdateReminder()
     {
-        if (updateReminderStage != UpdateReminderStage.None || !IsOpen || !controller.IsUpdateReminderDue)
+        if (updateReminderStage != UpdateReminderStage.None || !IsOpen || UpdateButton.Visibility != Visibility.Visible || !controller.IsUpdateReminderDue)
         {
             return;
         }
@@ -271,14 +273,16 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Whether the reminder may open now: the panel is on screen with nothing of ours over it, the update button shows
-    /// that an update waits, its tooltip is not open already, and the reminder is still due.
+    /// Whether the reminder may open now: the panel is on screen with nothing of ours over it — the pin's tip included, which
+    /// points at the header from above too (ClipboardFlyout.KeepOpenTip.cs) — the update button shows that an update waits,
+    /// its tooltip is not open already, and the reminder is still due.
     /// </summary>
     /// <returns><see langword="true"/> to open it.</returns>
     private bool CanShowUpdateReminder() =>
         IsOpen
         && openPopups == 0
         && drag is null
+        && !KeepOpenTip.IsOpen
         && updateButtonLook == UpdateButtonLook.Attention
         && updateToolTip is { IsOpen: false }
         && controller.IsUpdateReminderDue;

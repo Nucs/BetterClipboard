@@ -411,8 +411,8 @@ public sealed partial class SettingsWindow
 
     /// <summary>
     /// Gathers the texts an element shows or names, recursively: text blocks and boxes, button and option contents,
-    /// list rows, tooltips, accessible names. Switches and number boxes give nothing (their "On", "Off" and digits would
-    /// find every card).
+    /// list rows, tooltips, accessible names. Switches give nothing, and a number box only its label (its accessible name
+    /// and its header): their "On", "Off" and digits would find every card.
     /// </summary>
     /// <param name="node">An element, a content object or a string.</param>
     /// <param name="into">Receives each new text once.</param>
@@ -445,7 +445,15 @@ public sealed partial class SettingsWindow
                 }
 
                 return;
-            case ToggleSwitch or NumberBox:
+            case NumberBox number:
+                // Its label, never its value: its accessible name and its header. Until 2026-11-21 every number box was
+                // skipped whole; the integrations' limits (CLAUDE.md §2.62) first carried their label as the box's
+                // header, which a search for "unlimited" then missed (found in their live check). Their label now
+                // stands above the box as a text block of its own, gathered like any other.
+                Add(AutomationProperties.GetName(number));
+                CollectTexts(number.Header, into, seen, depth + 1);
+                return;
+            case ToggleSwitch:
                 return;
         }
 

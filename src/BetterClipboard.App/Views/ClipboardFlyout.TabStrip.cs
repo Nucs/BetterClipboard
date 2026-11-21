@@ -322,6 +322,33 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
+    /// A tab the user picked with a click: glides the strip until the tab lies wholly between the arrows, as WinUI's own
+    /// bring-into-view did while the click gave the tab the focus (an ItemsView brings a clicked item into view only when it
+    /// took the focus, microsoft-ui-xaml <c>ItemsView::SetFocusElementIndex</c>; the search box keeps it since 2026-11-21,
+    /// ClipboardFlyout.SearchFocus.cs).
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="RevealSelectedTab"/>, it leaves a strip alone when the tab shows whole already: going through
+    /// <see cref="ScrollTabsTo"/> would end <see cref="tabStripFollowsSelection"/> at every click on a tab in view, where
+    /// WinUI's bring-into-view did nothing.
+    /// </remarks>
+    private void RevealClickedTab()
+    {
+        if (Filters.SelectedItem is not { } selected || selected.ActualWidth <= 0 || !IsTabStripScrollable)
+        {
+            return; // not laid out yet, or nothing to scroll
+        }
+
+        double left = selected.TransformToVisual(Filters).TransformPoint(default).X;
+        var extent = new TabExtent(left, left + selected.ActualWidth);
+        double target = TabStripScroll.Reveal(extent, TabsBaseOffset, TabsScroller.ViewportWidth, TabsScroller.ScrollableWidth, TabArrowWidth);
+        if (Math.Abs(TabStripScroll.Clamp(target, TabsScroller.ScrollableWidth) - TabsBaseOffset) > TabStripScroll.EdgeTolerance)
+        {
+            ScrollTabsTo(target, animate: true);
+        }
+    }
+
+    /// <summary>
     /// The visible tabs' extents in the strip's content (<see cref="Filters"/>' own coordinates, which do not move while the
     /// strip scrolls). Collapsed tabs and tabs not laid out yet are left out.
     /// </summary>
@@ -421,6 +448,14 @@ public sealed partial class ClipboardFlyout
             // leave a tab holding a press. Left and right only, like the tab itself, which ignores the other buttons.
             var buttons = e.GetCurrentPoint(TabsScroller).Properties;
             heldTab = buttons.IsLeftButtonPressed || buttons.IsRightButtonPressed ? FindTab(e.OriginalSource as DependencyObject) : null;
+        }
+
+        // A press on a tab leaves the keyboard focus in the search box (ClipboardFlyout.SearchFocus.cs), and the tab is
+        // remembered instead: the Menu key opens its menu, and Left and Right switch tabs, as while the tab had the focus.
+        // Not for the middle button, which a tab ignores (it only pulls the strip).
+        if (!e.GetCurrentPoint(TabsScroller).Properties.IsMiddleButtonPressed && FindTab(e.OriginalSource as DependencyObject) is { } pressedTab)
+        {
+            NoteTabPressed(pressedTab);
         }
 
         if (tabPanPointerId is not null || e.Pointer.PointerDeviceType != PointerDeviceType.Mouse || !IsTabStripScrollable)
@@ -667,6 +702,9 @@ public sealed partial class ClipboardFlyout
         if (focusSearch && IsOpen)
         {
             SearchBox.Focus(FocusState.Programmatic);
+
+            // The press that started the drag was no click on its tab: the Menu key goes back to the selected card.
+            ForgetClickedTab();
         }
     }
 

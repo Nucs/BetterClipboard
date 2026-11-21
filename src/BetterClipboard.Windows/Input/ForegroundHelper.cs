@@ -101,6 +101,23 @@ public static class ForegroundHelper
     }
 
     /// <summary>
+    /// Whether a window other than <paramref name="hwnd"/> (or a popup it owns) is in front: the user went somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// The cautious question to ask before sending keys to a window that was in front a moment ago (a paste that waited for
+    /// the window's input thread, CLAUDE.md §2.54). It is <see langword="false"/> in the moments in which Windows has no
+    /// foreground window at all — during a switch, and while another program attaches to the window's thread
+    /// (<c>AttachThreadInput</c>) — so neither is taken for the user leaving, unlike <c>!</c><see cref="IsForeground"/>.
+    /// </remarks>
+    /// <param name="hwnd">The window that should be in front.</param>
+    /// <returns><see langword="true"/> only when a foreground window exists and is neither <paramref name="hwnd"/> nor owned by it.</returns>
+    public static bool IsAnotherWindowInForeground(nint hwnd)
+    {
+        nint foreground = GetForegroundWindow();
+        return foreground != 0 && foreground != hwnd && GetAncestor(foreground, GA_ROOTOWNER) != hwnd;
+    }
+
+    /// <summary>
     /// Whether a window of another process is in front: the user really is somewhere else.
     /// </summary>
     /// <remarks>

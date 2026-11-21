@@ -286,6 +286,35 @@ public sealed class StoredDataTests : IAsyncLifetime
     }
 
     /// <summary>
+    /// An example shows what its card shows (2026-11-16): formatted content copied in Everything without text reads in the
+    /// interface language (the app's own words, <see cref="PreviewText"/>), and a text copied there stays as it is.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Service_Examples_ShowTheAppsOwnWordsInTheInterfaceLanguage()
+    {
+        Add(new ClipCapture
+        {
+            Formats = [new ClipFormatData(ClipFormatNames.Html, System.Text.Encoding.UTF8.GetBytes("<b>BC-TEST</b>"))],
+            CapturedAtUtc = TestData.Now.AddMinutes(1),
+            Source = EverythingApp,
+        });
+        Add(TestData.Text("BC-TEST copied in Everything", TestData.Now.AddMinutes(2), source: EverythingApp));
+        var history = await StartAsync();
+        string previous = Localization.UiText.Language;
+        try
+        {
+            Localization.UiText.Language = "zh-Hans";
+            var preview = await history.PreviewStoredAsync(StoredSource.Everything, TestContext.Current.CancellationToken);
+            var examples = preview.Parts.SelectMany(part => part.Examples).Select(example => example.Text).ToList();
+            Assert.Contains("带格式内容", examples);
+            Assert.Contains("BC-TEST copied in Everything", examples);
+            Assert.DoesNotContain(ContentClassifier.RichOnlyPreview, examples);
+        }
+        finally { Localization.UiText.Language = previous; }
+    }
+
+    /// <summary>
     /// The service's deletion: entries go in one Reset, the kept list is emptied, an untouched hidden list stays, an archive
     /// clears with its event, and a tab that showed only with something in it (Run) learns it is empty.
     /// </summary>

@@ -35,7 +35,9 @@ namespace BetterClipboard.App.Views;
 /// <b>Peek dismissal.</b> The peek's surface covers the monitor and is hit-testable, so the first real mouse move over it
 /// (after a tiny grace that swallows the synthetic move at open) dismisses it — "any mouse movement hides it". After it
 /// hides, the pointer is back over the card, whose <see cref="ImageCard_PointerEntered"/> restarts the rest timer, so the
-/// peek reappears if the mouse settles again. A key or a press dismisses it too.
+/// peek reappears if the mouse settles again. A key or a press dismisses it too; then the peek waits until the mouse has
+/// moved again (since 2026-11-20, <see cref="MouseMovedSincePanelChanged"/>): it used to reopen by itself half a second
+/// later, over a mouse that never moved.
 /// </para>
 /// <para>
 /// <b>Resolution.</b> Both overlays show the full-resolution image (<see cref="AppController.GetImageForDisplayAsync"/>: the
@@ -70,6 +72,12 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>The card whose image the pointer is currently resting on (drives the peek), or <see langword="null"/>.</summary>
     private ClipItemViewModel? hoverCard;
+
+    /// <summary>
+    /// The picture border of <see cref="hoverCard"/> the countdown started on, or <see langword="null"/>: the peek opens only
+    /// while Windows' cursor is still over it (<see cref="StillOverHoveredCard"/>). Set and forgotten with the card.
+    /// </summary>
+    private FrameworkElement? hoverElement;
 
     /// <summary>Rest timer for the hover peek (created lazily, reused).</summary>
     private DispatcherTimer? hoverTimer;
@@ -123,10 +131,11 @@ public sealed partial class ClipboardFlyout
         }
 
         hoverCard = card;
+        hoverElement = sender as FrameworkElement;
 
         // Preload so the peek (and a viewer opened from the eye) shows the crisp full image without a wait.
         _ = PreloadImageAsync(card);
-        RestartHoverTimer();
+        RestartHoverTimer(e.IsGenerated);
     }
 
     /// <summary>The pointer moved over an image card: restart the rest timer (the peek only opens once the mouse settles).</summary>
@@ -137,7 +146,7 @@ public sealed partial class ClipboardFlyout
         // Once the peek is open it covers this border and handles its own dismissal, so this fires only before it shows.
         if (peekPopup is null)
         {
-            RestartHoverTimer();
+            RestartHoverTimer(e.IsGenerated);
         }
     }
 
@@ -146,12 +155,20 @@ public sealed partial class ClipboardFlyout
     /// <param name="e">Pointer data.</param>
     private void ImageCard_PointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // A replayed exit over a mouse that never left the picture is no leave: while Settings was open WinUI sent one
+        // every half second, and no peek ever opened (ClipboardFlyout.Leaving.cs, CLAUDE.md §2.56).
+        if (IsReplayedExitOver(sender, e))
+        {
+            return;
+        }
+
         // A shown peek dismisses itself on the next move; only a pending (not-yet-shown) peek is cancelled here, so the
         // exit the covering surface itself raises does not wipe the card we are peeking.
         if (peekPopup is null)
         {
             StopHoverTimer();
             hoverCard = null;
+            hoverElement = null;
         }
     }
 
@@ -201,27 +218,52 @@ public sealed partial class ClipboardFlyout
     /// <returns><see langword="true"/> when a peek is allowed.</returns>
     /// <remarks>
     /// <see cref="drag"/> is the window move, <see cref="draggedClipIds"/> a card being dragged onto a group; a peek during
-    /// either would be noise. <see cref="openPopups"/> being 0 rules out an open context menu or the viewer itself.
+    /// either would be noise. <see cref="openPopups"/> being 0 rules out an open context menu or the viewer itself. Beside
+    /// Start or Search (<see cref="besideSurface"/>) no peek opens: it covers the monitor, and Start would hide most of it.
     /// </remarks>
     private bool CanShowPeek() =>
-        IsOpen && peekPopup is null && viewerPopup is null && textPeekPopup is null && textViewer is null && drag is null &&
-        draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
+        IsOpen && !besideSurface && peekPopup is null && viewerPopup is null && textPeekPopup is null && textViewer is null &&
+        drag is null && draggedClipIds is null && openPopups == 0 && hoverCard is { Kind: ClipKind.Image };
 
     /// <summary>(Re)starts the rest timer so the peek opens one <see cref="HoverPeekDelayMs"/> after the mouse last moved.</summary>
-    private void RestartHoverTimer()
+    /// <param name="replayed">
+    /// Whether the pointer event behind the call was one of WinUI's replays (<see cref="PointerRoutedEventArgs.IsGenerated"/>):
+    /// such an event may start a countdown, never restart one that runs (a replay is not a move; ClipboardFlyout.Leaving.cs).
+    /// </param>
+    /// <remarks>
+    /// Only once the mouse really moved since the panel last changed under it (<see cref="MouseMovedSincePanelChanged"/>):
+    /// WinUI reports the pointer entering a card that a closing viewer or a summon uncovered under a mouse lying still, and
+    /// the peek then opened by itself (CLAUDE.md §2.56).
+    /// </remarks>
+    private void RestartHoverTimer(bool replayed)
     {
-        if (!CanShowPeek())
+        if (!CanShowPeek() || !MouseMovedSincePanelChanged())
         {
             return;
         }
 
         hoverTimer ??= CreateHoverTimer();
+        if (replayed && hoverTimer.IsEnabled)
+        {
+            return;
+        }
+
         hoverTimer.Stop();
         hoverTimer.Start();
     }
 
     /// <summary>Stops the rest timer (the pointer left, or a peek is up).</summary>
     private void StopHoverTimer() => hoverTimer?.Stop();
+
+    /// <summary>
+    /// Forgets the picture the mouse rested on once its countdown ended with the mouse elsewhere: no peek of it opens until
+    /// the mouse comes back over a card, whose "pointer entered" starts a countdown again.
+    /// </summary>
+    private void ForgetHover()
+    {
+        hoverCard = null;
+        hoverElement = null;
+    }
 
     /// <summary>Creates the one-shot rest timer that opens the peek.</summary>
     /// <returns>The timer.</returns>
@@ -238,6 +280,12 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>Opens the hover peek for the card the mouse is resting on, if it still is by the time its image is ready.</summary>
     /// <returns>A task completing when the peek is shown or abandoned (failures are logged, never thrown).</returns>
+    /// <remarks>
+    /// "Still is" is asked of Windows' cursor (<see cref="StillOverHoveredCard"/>) when the countdown ends and again right
+    /// before the peek opens, after the image decoded, so a peek never stands where the mouse no longer is. The text peek
+    /// did, after a jump of the mouse out of the panel's window; this one opened none in the same test (its card stops
+    /// waiting on any exit, ImageCard_PointerExited) and asks the same question as a guard (CLAUDE.md §2.56).
+    /// </remarks>
     private async Task ShowPeekAsync()
     {
         try
@@ -247,11 +295,26 @@ public sealed partial class ClipboardFlyout
                 return;
             }
 
+            if (!StillOverHoveredCard(hoverElement))
+            {
+                // The mouse went elsewhere without an exit that stopped the countdown: forget the card, open nothing.
+                ForgetHover();
+                return;
+            }
+
             var bitmap = await GetFullBitmapAsync(card, CancellationToken.None).ConfigureAwait(true) ?? card.Thumbnail as BitmapImage;
 
             // The pointer may have moved to another card (or off the list) while the image decoded.
             if (bitmap is null || hoverCard?.Id != card.Id || !CanShowPeek() || Root.XamlRoot is null)
             {
+                return;
+            }
+
+            // Or left the panel while it decoded: the peek's anchor is where the cursor is when it opens, so a peek opened
+            // now would stay where the mouse went, until the next move.
+            if (!StillOverHoveredCard(hoverElement))
+            {
+                ForgetHover();
                 return;
             }
 
@@ -390,6 +453,11 @@ public sealed partial class ClipboardFlyout
         peekAnchor = null;
         popup.IsOpen = false;
         openPopups = Math.Max(0, openPopups - 1);
+
+        // Closed by a click or a key, the peek would open again by itself half a second later: WinUI reports the pointer
+        // entering the card the peek uncovers. A peek opens again once the mouse moves and rests (MouseMovedSincePanelChanged);
+        // closed by a move, the mouse is moving already. The text peek does the same in its Closed handler.
+        SuspendPointerSelection();
     }
 
     /// <summary>Loads the full image into the cache without blocking the caller (hover preload).</summary>
@@ -472,6 +540,9 @@ public sealed partial class ClipboardFlyout
     /// <returns>A task completing when the image is shown or the load failed (failures are logged).</returns>
     private async Task ShowViewerAsync(ClipItemViewModel card)
     {
+        // Esc closes the viewer: a panel shown without the keyboard takes it now, the usual way (ClipboardFlyout.Focusless.cs).
+        TakeKeyboard("the image viewer");
+
         if (Root.XamlRoot is null)
         {
             return;
@@ -831,6 +902,12 @@ public sealed partial class ClipboardFlyout
         viewerPanning = false;
         viewerLoad?.Cancel();
         viewerLoad = null;
+
+        // The mouse rests where Esc, the X or the backdrop's click left it, often on the card whose eye opened the viewer:
+        // no peek may open there before it moves (MouseMovedSincePanelChanged). Asked now, before the popup goes: WinUI's
+        // "pointer entered" for the uncovered card can come before Popup_Closed does (the text viewer's twin case, found in
+        // the QA; CLAUDE.md §2.56).
+        SuspendPointerSelection();
         popup.IsOpen = false; // raises Closed → Popup_Closed (openPopups--, focus back to the search box)
     }
 }

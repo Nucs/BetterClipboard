@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using BetterClipboard.Core.Localization;
+using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
 using BetterClipboard.Core.Updates;
 
@@ -112,7 +113,8 @@ public sealed class RightToLeftTextTests
     /// Every Hebrew string with right-to-left text in it is embedded exactly once, its two marks at its ends and nowhere
     /// else (the catalog holds none of its own); the others are the few values without a letter of Hebrew, which must
     /// stay as they are: the list separator (embedding it would reorder English items in a list), the date patterns,
-    /// PowerShell's name with its host, and a template of placeholders only.
+    /// PowerShell's name with its host, a template of placeholders only, and the size units KB, MB and GB, which Hebrew
+    /// Windows writes in Latin letters too (bytes are "בתים", so that one is embedded; since 2026-11-16).
     /// </summary>
     [Fact]
     public void HebrewStrings_AreEmbeddedOnce()
@@ -135,7 +137,9 @@ public sealed class RightToLeftTextTests
             plain.Add(key);
         }
 
-        Assert.Equal([", ", "PowerShell ({0})", "d MMM", "d MMM yyyy", "{0}: {1}"], plain.Order(StringComparer.Ordinal));
+        Assert.Equal(
+            [", ", "PowerShell ({0})", "d MMM", "d MMM yyyy", "{0:0.##} GB", "{0:0.#} KB", "{0:0.#} MB", "{0:0.0} MB", "{0}: {1}"],
+            plain.Order(StringComparer.Ordinal));
 
         // A template with no letter of its own asks for the embedding with a leading mark: the phrase and its
         // parenthesis are then ordered right to left as one line.
@@ -205,6 +209,30 @@ public sealed class RightToLeftTextTests
         Assert.Equal($"{Rle}Notepad · לפני 5 דקות{Pdf}", UiText.JoinLine(" · ", ["Notepad", "לפני 5 דקות"], Hebrew));
         Assert.Equal(string.Empty, UiText.JoinLine(" · ", [], Hebrew));
         Assert.Throws<ArgumentNullException>(() => UiText.JoinLine(" · ", null!, Hebrew));
+    }
+
+    /// <summary>
+    /// The forgotten list's title is one line of pieces too (the kind and the count): in Hebrew it is embedded as a whole,
+    /// with each translated piece's own embedding inside, so it reads from the kind at the right. Until 2026-11-16 it was a
+    /// plain interpolation, laid out from the left; English and Chinese stay plain joins.
+    /// </summary>
+    [Fact]
+    public void ForgottenTitle_IsOneLineInHebrew()
+    {
+        var item = new ForgottenItem(1, ClipKind.Text, 23, null, null, null, null, DateTimeOffset.UnixEpoch, 0, null);
+        string previous = UiText.Language;
+        try
+        {
+            UiText.Language = "he";
+            string title = ForgottenText.Title(item, CultureInfo.InvariantCulture);
+            Assert.Equal((Rle, Pdf), (title[0], title[^1]));
+            string inner = title[1..^1];
+            Assert.Equal($"{UiText.Translate("Text")} · {UiText.Plural(CultureInfo.InvariantCulture, 23, $"{23:N0} character", $"{23:N0} characters")}", inner);
+
+            UiText.Language = "en";
+            Assert.Equal("Text · 23 characters", ForgottenText.Title(item, CultureInfo.InvariantCulture));
+        }
+        finally { UiText.Language = previous; }
     }
 
     /// <summary>What a Latin word's trailing signs get (see <see cref="TrailingSigns"/>).</summary>

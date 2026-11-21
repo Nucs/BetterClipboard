@@ -22,24 +22,22 @@ namespace BetterClipboard.Core.Everything;
 /// <para>
 /// <b>Hiding.</b> Deleting a pick cannot delete anything in Everything (the integration only reads), so it hides
 /// the pick instead, until it is opened in Everything again: the hide remembers the pick's last opening, and a
-/// later one shows it again. Hides are kept in the encrypted store (<see cref="HiddenStateName"/>), newest
-/// <see cref="MaxHidden"/>, with exact ticks — a time rounded to milliseconds would compare earlier than the
-/// opening it recorded and un-hide the pick at once.
+/// later one shows it again. Hides are kept in the encrypted store (<see cref="HiddenStateName"/>), as many as Settings
+/// allows (<see cref="Settings.AppSettings.MaxHiddenEverythingPicks"/>: no limit by default; the newest 500 until
+/// 2026-11-21), with exact ticks — a time rounded to milliseconds would compare earlier than the opening it recorded and
+/// un-hide the pick at once.
+/// </para>
+/// <para>
+/// <b>Every row.</b> The tab shows every pick Everything remembers and every stored entry from Everything (CLAUDE.md
+/// §2.62): the panel merges them at once and turns them into cards a page at a time as the list scrolls
+/// (<see cref="Presentation.RowPages{TRow}"/>). Until 2026-11-21 it asked Everything for the 200 newest picks and loaded 200
+/// stored entries (the constants <c>MaxPicks</c> and <c>MaxStoredEntries</c>), and had no paging.
 /// </para>
 /// </remarks>
 public static class EverythingTab
 {
-    /// <summary>Most live picks the tab asks Everything for (the newest openings).</summary>
-    public const int MaxPicks = 200;
-
-    /// <summary>Most stored entries the tab loads (the tab has no paging: two bounded lists are merged instead).</summary>
-    public const int MaxStoredEntries = 200;
-
     /// <summary>Store state name of the hidden picks (<see cref="FormatHidden"/>).</summary>
     public const string HiddenStateName = "everything.hidden";
-
-    /// <summary>Most hides kept; the oldest go first, which can only bring an old pick back.</summary>
-    public const int MaxHidden = 500;
 
     /// <summary>
     /// Merges stored entries and live picks into the tab's rows (see class remarks).
@@ -111,9 +109,13 @@ public static class EverythingTab
     /// <param name="hidden">The current hides (not changed).</param>
     /// <param name="pick">The pick to hide.</param>
     /// <param name="now">Fallback for a pick without an opening date.</param>
-    /// <returns>A new map with the hide, trimmed to the newest <see cref="MaxHidden"/>.</returns>
+    /// <param name="limit">
+    /// Most hides kept (<see cref="Settings.ListLimit"/>: 0 or less = no limit, the default); the oldest go first, which can
+    /// only bring an old pick back. The caller passes <see cref="Settings.AppSettings.MaxHiddenEverythingPicks"/>.
+    /// </param>
+    /// <returns>A new map with the hide, trimmed to the newest <paramref name="limit"/> when one is set.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    public static Dictionary<string, DateTimeOffset> Hide(IReadOnlyDictionary<string, DateTimeOffset> hidden, EverythingPick pick, DateTimeOffset now)
+    public static Dictionary<string, DateTimeOffset> Hide(IReadOnlyDictionary<string, DateTimeOffset> hidden, EverythingPick pick, DateTimeOffset now, int limit = 0)
     {
         ArgumentNullException.ThrowIfNull(hidden);
         ArgumentNullException.ThrowIfNull(pick);
@@ -123,7 +125,7 @@ public static class EverythingTab
             // hide) then shows it again, and clock adjustments cannot hide later openings.
             [pick.FullPath] = pick.LastOpened ?? now,
         };
-        return Trim(next);
+        return Trim(next, limit);
     }
 
     /// <summary>
@@ -166,13 +168,14 @@ public static class EverythingTab
     /// characters in names), so the format needs no escaping.
     /// </summary>
     /// <param name="hidden">The hides.</param>
-    /// <returns>The state value, newest <see cref="MaxHidden"/> only, newest first.</returns>
+    /// <param name="limit">Most hides written, the newest (<see cref="Settings.ListLimit"/>: 0 or less = no limit, the default).</param>
+    /// <returns>The state value, newest first.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="hidden"/> is <see langword="null"/>.</exception>
-    public static string FormatHidden(IReadOnlyDictionary<string, DateTimeOffset> hidden)
+    public static string FormatHidden(IReadOnlyDictionary<string, DateTimeOffset> hidden, int limit = 0)
     {
         ArgumentNullException.ThrowIfNull(hidden);
         var builder = new StringBuilder();
-        foreach (var (path, at) in Trim(hidden).OrderByDescending(p => p.Value))
+        foreach (var (path, at) in Trim(hidden, limit).OrderByDescending(p => p.Value))
         {
             builder.Append(at.UtcTicks.ToString(CultureInfo.InvariantCulture)).Append('\t').Append(path).Append('\n');
         }
@@ -180,13 +183,21 @@ public static class EverythingTab
         return builder.ToString();
     }
 
-    /// <summary>Keeps the newest <see cref="MaxHidden"/> hides.</summary>
-    /// <param name="hidden">The hides.</param>
+    /// <summary>
+    /// The hides under a limit: the newest <paramref name="limit"/> (a lowered setting applies at once,
+    /// <c>AppController.Limits.cs</c>), or all of them when there is none.
+    /// </summary>
+    /// <param name="hidden">The hides (not changed).</param>
+    /// <param name="limit">Most hides kept (<see cref="Settings.ListLimit"/>: 0 or less = no limit).</param>
     /// <returns>A trimmed copy, case-insensitive.</returns>
-    private static Dictionary<string, DateTimeOffset> Trim(IReadOnlyDictionary<string, DateTimeOffset> hidden) =>
-        hidden.OrderByDescending(p => p.Value)
-            .Take(MaxHidden)
+    /// <exception cref="ArgumentNullException"><paramref name="hidden"/> is <see langword="null"/>.</exception>
+    public static Dictionary<string, DateTimeOffset> Trim(IReadOnlyDictionary<string, DateTimeOffset> hidden, int limit)
+    {
+        ArgumentNullException.ThrowIfNull(hidden);
+        return hidden.OrderByDescending(p => p.Value)
+            .Take(Settings.ListLimit.Effective(limit))
             .ToDictionary(p => p.Key, p => p.Value, StringComparer.OrdinalIgnoreCase);
+    }
 }
 
 /// <summary>One row of the Everything tab: a stored entry or a live pick — exactly one of them.</summary>

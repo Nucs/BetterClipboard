@@ -133,7 +133,10 @@ public sealed partial class AppController
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
         {
             AppLog.Warn($"Saving the picture of entry {entry.Id} to the temporary pictures folder failed ({ex.GetType().Name}: {ex.Message}).");
-            return new TempImageSave(null, UiText.Format($"Could not save the picture: {ex.Message}"));
+
+            // Windows' and .NET's reasons are shown as they came; the one BetterClipboard words itself (a folder full of
+            // copies of the name) reads in the interface language.
+            return new TempImageSave(null, UiText.Format($"Could not save the picture: {UiText.TranslateFormatted(ex.Message, TempImageFiles.MessageTemplates)}"));
         }
     }
 

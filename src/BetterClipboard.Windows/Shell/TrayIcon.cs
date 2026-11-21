@@ -46,7 +46,15 @@ public sealed record TrayMenuItem(string Text, Action? Invoke, bool IsChecked = 
 /// </remarks>
 public sealed class TrayIcon : IDisposable
 {
-    private const uint CallbackMessage = WM_APP + 0x40;
+    /// <summary>The message Explorer sends the icon's window for clicks and notification events (internal: tests post it).</summary>
+    internal const uint CallbackMessage = WM_APP + 0x40;
+
+    /// <summary>
+    /// The callback event of a click on a notification the icon showed (<c>NIN_BALLOONUSERCLICK</c>): Windows 10 and 11 send
+    /// it for a click on the toast a <c>NIF_INFO</c> notification becomes (internal: tests post it).
+    /// </summary>
+    internal const uint NotificationClickEvent = WM_USER + 5;
+
     private const uint IconId = 1;
     private const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIM_SETVERSION = 4;
     private const uint NIF_MESSAGE = 0x1, NIF_ICON = 0x2, NIF_TIP = 0x4, NIF_STATE = 0x8, NIF_INFO = 0x10, NIF_SHOWTIP = 0x80;
@@ -95,6 +103,23 @@ public sealed class TrayIcon : IDisposable
     private bool hidden;
 
     /// <summary>
+    /// The tag of the last notification shown (<see cref="ShowNotification"/>), raised by <see cref="NotificationClicked"/>
+    /// when the user clicks it; <see langword="null"/> for a notification without one, and after its click. Tray thread only.
+    /// </summary>
+    /// <remarks>
+    /// Not cleared when a notification times out: Windows reports the timeout of a notification a newer one replaced only
+    /// after the newer one was shown, which would clear the newer one's tag. A notification that timed out cannot be clicked
+    /// (Windows 11 does not keep these in its notification center), so a stale tag does no harm.
+    /// </remarks>
+    private string? shownTag;
+
+    /// <summary>
+    /// A notification that came while the icon was not in the notification area, or hidden: shown the moment it is
+    /// (<see cref="ShowPending"/>). Only the newest one waits. Tray thread only.
+    /// </summary>
+    private (string Title, string Text, string? Tag)? pendingNotification;
+
+    /// <summary>
     /// Creates the tray icon: visible immediately, or registered but hidden (<paramref name="startHidden"/>) for a silent
     /// restart's new process, whose icon the old process reveals when it lets go of its own (<see cref="HandOverTo"/>).
     /// </summary>
@@ -141,6 +166,15 @@ public sealed class TrayIcon : IDisposable
     public event EventHandler? Invoked;
 
     /// <summary>
+    /// Raised on the tray thread when the user clicks a notification shown with a tag (<see cref="ShowNotification"/>), with
+    /// that tag: the history budget's warning opens Settings this way. Marshal to the UI thread inside the handler.
+    /// </summary>
+    public event EventHandler<string>? NotificationClicked;
+
+    /// <summary>The icon's host window (internal: tests post Explorer's callback messages to it).</summary>
+    internal nint HostWindow => window.Handle;
+
+    /// <summary>
     /// Builds the context menu each time it opens (so check marks reflect current state). Called on the tray thread.
     /// </summary>
     public Func<IReadOnlyList<TrayMenuItem>>? MenuProvider { get; set; }
@@ -164,22 +198,25 @@ public sealed class TrayIcon : IDisposable
     /// the user must see although no BetterClipboard window is open, such as "copied, but not pasted".
     /// </summary>
     /// <remarks>
-    /// Nothing appears while the icon is not in the notification area yet (early sign-in), or when the user turned off
-    /// notifications for the app; callers must not depend on it being seen.
+    /// A notification asked for while the icon is not in the notification area yet (early sign-in, Explorer restarting) or
+    /// still hidden (a silent restart's new process) waits, and shows the moment the icon does; only the newest waits.
+    /// Nothing appears when the user turned off notifications for the app, so callers must not depend on it being seen.
     /// </remarks>
     /// <param name="title">The title (truncated to 63 characters).</param>
     /// <param name="text">The message (truncated to 255 characters).</param>
-    public void ShowNotification(string title, string text) => window.Post(() =>
+    /// <param name="tag">
+    /// What a click on it means, handed to <see cref="NotificationClicked"/>; <see langword="null"/> for a notification a
+    /// click does nothing for.
+    /// </param>
+    public void ShowNotification(string title, string text, string? tag = null) => window.Post(() =>
     {
-        if (!added)
+        if (!added || hidden)
         {
+            pendingNotification = (title, text, tag);
             return;
         }
 
-        var data = CreateData(NIF_INFO);
-        data.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
-        SetInfoTexts(ref data, title, text);
-        notify(NIM_MODIFY, data);
+        Show(title, text, tag);
     });
 
     /// <summary>
@@ -202,6 +239,9 @@ public sealed class TrayIcon : IDisposable
             data.dwStateMask = NIS_HIDDEN;
             notify(NIM_MODIFY, data);
         }
+
+        // A notification that waited for the icon to show (a silent restart's new process) goes out now.
+        ShowPending();
     });
 
     /// <summary>
@@ -325,9 +365,44 @@ public sealed class TrayIcon : IDisposable
                 int y = (short)((wParam >> 16) & 0xFFFF);
                 ShowMenu(x, y);
                 return 0;
+            case NotificationClickEvent:
+                // One click, one answer: the tag is spent, so a second click event for the same toast does nothing.
+                var tag = shownTag;
+                shownTag = null;
+                if (tag is not null)
+                {
+                    NotificationClicked?.Invoke(this, tag);
+                }
+
+                return 0;
         }
 
         return 0;
+    }
+
+    /// <summary>Shows a notification now; the icon is in place and visible (tray thread).</summary>
+    /// <param name="title">The title.</param>
+    /// <param name="text">The text.</param>
+    /// <param name="tag">What a click on it means, or <see langword="null"/>.</param>
+    private void Show(string title, string text, string? tag)
+    {
+        var data = CreateData(NIF_INFO);
+        data.dwInfoFlags = NIIF_INFO | NIIF_NOSOUND;
+        SetInfoTexts(ref data, title, text);
+
+        // Set before the call: Windows may report the click before Shell_NotifyIcon returns to this thread's next message.
+        shownTag = tag;
+        notify(NIM_MODIFY, data);
+    }
+
+    /// <summary>Shows the notification that waited for the icon, once the icon is in place and visible (tray thread).</summary>
+    private void ShowPending()
+    {
+        if (pendingNotification is { } waiting && added && !hidden)
+        {
+            pendingNotification = null;
+            Show(waiting.Title, waiting.Text, waiting.Tag);
+        }
     }
 
     /// <summary>Shows the context menu and runs the chosen item.</summary>
@@ -445,6 +520,9 @@ public sealed class TrayIcon : IDisposable
         StopAddRetry();
         data.uTimeoutOrVersion = NOTIFYICON_VERSION_4;
         notify(NIM_SETVERSION, data);
+
+        // A notification asked for while Explorer was not there yet (early at sign-in) goes out now.
+        ShowPending();
     }
 
     /// <summary>Starts or slows the timer that tries a refused add again; logs the first refusal of an outage only.</summary>

@@ -96,6 +96,9 @@ public sealed partial class AppController
         {
             if (await LoadPromptTextAsync(prompt) is not { } text)
             {
+                // Deleted from the archive while its card showed: nothing to paste, and said so (content-free), since a
+                // choice that delivers nothing must leave a line (CLAUDE.md §6, the paste QA of 0.2.12).
+                AppLog.Info("Not pasted: the archived prompt is no longer in the archive.");
                 flyout?.Dismiss(restoreFocus: true);
                 return;
             }

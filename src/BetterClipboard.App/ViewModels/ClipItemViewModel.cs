@@ -59,8 +59,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
             ColorBrush = new SolidColorBrush(global::Windows.UI.Color.FromArgb(argb.A, argb.R, argb.G, argb.B));
         }
 
-        // A preview that is only the start of its text is cut off before any layout says so (ClipItemViewModel.TextView.cs).
-        RefreshCutOff();
+        // The text for the card's lines (Settings › Lines per card); a preview that is only the start of its text is cut off
+        // before any layout says so (ClipItemViewModel.TextView.cs).
+        RefreshCardText();
     }
 
     /// <summary>
@@ -111,8 +112,16 @@ public sealed partial class ClipItemViewModel : ObservableObject
     /// <summary>Entry kind.</summary>
     public ClipKind Kind => Entry.Kind;
 
-    /// <summary>Display text (already truncated by Core).</summary>
-    public string Preview => Entry.Preview;
+    /// <summary>
+    /// Display text (already truncated by Core): what the user copied as it is, and the few previews the app words
+    /// itself ("Formatted content", a file list's "+3 more", a white-space-only text's placeholder, a picture's "Image ·
+    /// W × H") in the interface language (<see cref="PreviewText"/>).
+    /// </summary>
+    /// <remarks>
+    /// Shown text only: logic that reads the stored words (the caption's file count looks for " more") reads
+    /// <see cref="ClipEntry.Preview"/> on <see cref="Entry"/>, which stays English whatever the language.
+    /// </remarks>
+    public string Preview => PreviewText.Display(Entry);
 
     /// <summary>Whether the entry is pinned; changes in place when the user toggles it.</summary>
     [ObservableProperty]
@@ -203,19 +212,33 @@ public sealed partial class ClipItemViewModel : ObservableObject
     public Brush? ColorBrush { get; }
 
     /// <summary>
-    /// Monospace for code-looking text and for text that is nothing but paths; the UI font otherwise — also for a
-    /// pick, whose preview is a file name over its folder, not code. A shell command is always monospace: it is code.
+    /// The card text's font. Every text card is monospace — plain and formatted text, archived prompts, Notepad++ tabs,
+    /// shell commands — so a table's columns line up in its lines as they do in the text viewer. A link stays in the
+    /// UI font, and so does a pick, whose preview is a file name over its folder; any other kind (a file list) is
+    /// monospace only when it looks like code or is nothing but paths, as before.
     /// </summary>
-    public FontFamily BodyFontFamily => Pick is null && (IsShellCommandCard || (Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)))) ? MonoFont : UiFont;
+    /// <remarks>
+    /// The owner's choice (2026-11-16, one HTML question with the panel drawn three ways: "All text cards mono", over
+    /// "Mono for tables" and "Leave the cards"), after the viewer's Formatted view moved to the code font: until then a
+    /// text card was monospace only when <see cref="CodeHeuristics.LooksLikeCode"/> said so, which a box-drawn, PowerShell
+    /// or kubectl table never passes, so its card showed it misaligned. Prose cards now read like a terminal too, and fit
+    /// fewer characters on a line.
+    /// </remarks>
+    public FontFamily BodyFontFamily => Pick is null && (IsShellCommandCard || Kind is ClipKind.Text or ClipKind.RichText || (Kind != ClipKind.Link && (Entry.IsPathText || CodeHeuristics.LooksLikeCode(Preview)))) ? MonoFont : UiFont;
 
     /// <summary>
     /// Accessible name for screen readers: the kind, then the preview, joined the interface language's way (a
-    /// full-width colon in Chinese). The preview is the user's content and goes in as a value, never translated.
+    /// full-width colon in Chinese). The preview goes in as a value: the user's content as it is, the app's own few
+    /// preview words already in the interface language (<see cref="Preview"/>).
     /// </summary>
-    public string AutomationName => UiText.Format($"{KindLabel}: {Preview}");
+    /// <remarks>
+    /// At most the short preview's 1,000 characters (<see cref="ContentClassifier.ShortPreview"/>), as before previews grew
+    /// for longer cards: a screen reader reads the whole name whenever the card is selected, whatever its lines show.
+    /// </remarks>
+    public string AutomationName => UiText.Format($"{KindLabel}: {ContentClassifier.ShortPreview(Preview)}");
 
     /// <summary>
-    /// Replaces the snapshot after an update (pin/recency change) without recreating the card.
+    /// Replaces the snapshot after an update (pin/recency change, or a text replaced in place) without recreating the card.
     /// </summary>
     /// <param name="entry">The fresh snapshot (same id).</param>
     public void Update(ClipEntry entry)
@@ -224,7 +247,9 @@ public sealed partial class ClipItemViewModel : ObservableObject
         IsPinned = entry.IsPinned;
         Caption = BuildCaption();
         (GroupBadges, GroupBadgesTooltip) = BuildGroupBadges();
-        RefreshCutOff();
+
+        // The card's text follows a text replaced in place; an unchanged one is not set again (ClipItemViewModel.TextView.cs).
+        RefreshCardText();
     }
 
     /// <summary>Re-formats the relative time in the caption.</summary>
@@ -333,9 +358,12 @@ public sealed partial class ClipItemViewModel : ObservableObject
         {
             // When it was last opened, and how often: Everything keeps one row per file, not one per opening.
             var times = UiText.Plural(pick.RunCount, $"opened once", $"opened {pick.RunCount:N0} times");
+
+            // One line of pieces, joined like every other caption: in a right-to-left language it reads from
+            // "Everything", at the right (a plain interpolation laid it out from the left; fixed 2026-11-16).
             return pick.LastOpened is { } opened
-                ? $"Everything · {RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow)} · {times}"
-                : $"Everything · {times}";
+                ? UiText.JoinLine(" · ", ["Everything", RelativeTimeFormatter.Format(opened, DateTimeOffset.UtcNow), times])
+                : UiText.JoinLine(" · ", ["Everything", times]);
         }
 
         var parts = new List<string>(4);

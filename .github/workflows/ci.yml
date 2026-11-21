@@ -82,6 +82,12 @@ jobs:
       - name: Microsoft Store listing kit
         run: python tools/release/test-store-listing.py
 
+      # A release's body carries its translations as hidden blocks under an ENG / 简体中文 line, composed when a tag is
+      # published (tools/release/release_notes.py, CLAUDE.md section 2.67). The composer must still refuse what may
+      # not ship, and every translation file in docs/release-notes must be well formed (no network).
+      - name: Release notes in several languages
+        run: python tools/release/test-release-notes.py
+
       # install.ps1's install for every user, for real on this disposable runner: with -AllUsers as the signed-in
       # administrator, and as SYSTEM (a scheduled task), which must pick it by itself (tools/release/test-all-users.ps1).
       - name: Installer for every user (x64)

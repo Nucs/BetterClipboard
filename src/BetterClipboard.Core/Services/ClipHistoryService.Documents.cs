@@ -77,7 +77,7 @@ public sealed partial class ClipHistoryService
 
             if (anyChange)
             {
-                store.Prune(rulesProvider().Retention, time.GetUtcNow());
+                ApplyRetention(rulesProvider().Retention);
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
 
                 // The batch raised no event per entry: a tab that had nothing may have something now.
@@ -158,9 +158,11 @@ public sealed partial class ClipHistoryService
         }
 
         var classified = ContentClassifier.Classify(capture);
-        if (classified?.PlainText is null)
+        if (classified?.PlainText is null || ContentClassifier.IsWhitespaceOnly(classified, capture))
         {
-            // Empty or not text: a document's version is only ever recorded as text.
+            // Empty, not text, or only whitespace (a tab emptied down to a space): a document's version is only ever
+            // recorded as text, and blank text is no more kept from a tab than from a copy (ContentClassifier.IsWhitespaceOnly).
+            // The document keeps its last recorded version; its next real text is compared with that one.
             return TrackedDocumentOutcome.Skipped;
         }
 
@@ -189,7 +191,7 @@ public sealed partial class ClipHistoryService
         if (outcome.IsNewEntry)
         {
             Raise(new ClipChangedEventArgs(ClipChangeKind.Added, entry));
-            if (store.Prune(rules.Retention, time.GetUtcNow()) > 0)
+            if (ApplyRetention(rules.Retention) > 0)
             {
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
             }

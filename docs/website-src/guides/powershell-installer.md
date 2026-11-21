@@ -53,7 +53,9 @@ clipboard is sent.
 | Option | What it does |
 |---|---|
 | `-Version 0.2.11` | Install that release instead of the latest (`v0.2.11` works too). |
-| `-InstallDir <path>` | Install into another folder. Default: `%LOCALAPPDATA%\Programs\BetterClipboard`, or `%ProgramFiles%\BetterClipboard` with `-AllUsers`. A relative path is relative to the folder you run the installer from. |
+| `-InstallDir <path>` | Install into another folder. Default: the folder of the copy you installed before; else `%LOCALAPPDATA%\Programs\BetterClipboard`, or `%ProgramFiles%\BetterClipboard` with `-AllUsers` or `-UIAccess`. A relative path is relative to the folder you run the installer from. Your copy installed into another folder than before moves there: the old folder is removed (the history is elsewhere and stays). |
+| `-UIAccess` | Open the panel above Start and Search, as Windows' own clipboard history does, in PowerShell as administrator (see [Above Start and Search](#above-start-and-search)). Needs 0.2.12 or newer. |
+| `-NoUIAccess` | Take that away again: the panel opens beside Start and Search, and the installer's certificate leaves the PC's trusted ones. |
 | `-NoTakeOverWinV` | Leave Win+V to Windows' own clipboard panel. BetterClipboard then opens with the `-Hotkey` shortcuts, or with Win+Alt+V. If Win+V was released before, Explorer gets it back (one restart). Needs 0.2.6 or newer. |
 | `-Hotkey A, B, …` | The shortcuts that open BetterClipboard, e.g. `-Hotkey Win+Alt+V, Ctrl+Alt+F9`, replacing the ones set before. Win+V stays first unless `-NoTakeOverWinV` is given. A Win+letter or Win+digit shortcut is released from Explorer like Win+V; one that another app owns is intercepted by BetterClipboard's keyboard hook while it runs. Needs 0.2.6 or newer. |
 | `-TakeOverWinV` | The default, kept for older command lines. It adds Win+V back when your shortcuts no longer include it, and on a re-run it takes back a Win+V you gave back to Windows in Settings. |
@@ -74,10 +76,33 @@ Those options are not meant to be typed.
 
 ## Running it again
 
-Running the command again updates BetterClipboard in the same folder; your history is never touched. It keeps what you
-changed in Settings since: *Start with Windows* that you turned off stays off, and a Win+V you gave back to Windows stays
-with Windows (`-TakeOverWinV` takes it again). An install after an uninstall is a fresh one and sets everything up
+Running the command again updates BetterClipboard in the same folder, wherever you installed it; your history is never
+touched. It keeps what you changed in Settings since: *Start with Windows* that you turned off stays off, and a Win+V
+you gave back to Windows stays with Windows (`-TakeOverWinV` takes it again). A copy with UI access keeps it, and needs
+PowerShell as administrator to be updated this way. An install after an uninstall is a fresh one and sets everything up
 again.
+
+## Above Start and Search
+
+Windows draws Start, Search and the notification center above every app window, so BetterClipboard opens its panel
+beside them. Only a program with Windows' *UI access* may open above them, as Windows' own clipboard history and the
+On-Screen Keyboard do. With `-UIAccess`, in PowerShell as administrator, the installer gives BetterClipboard that access:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -UIAccess
+```
+
+- **Program Files:** Windows grants UI access only to a program in a folder only administrators may change, so your copy
+  goes to `%ProgramFiles%\BetterClipboard` (a copy installed elsewhere moves there; the history stays where it is).
+- **A certificate of this PC's own:** Windows also wants the program signed with a certificate the PC trusts. The
+  installer makes one, signs BetterClipboard with it, throws its private key away, and adds the certificate alone to the
+  PC's trusted root certificates (`BetterClipboard UI access (this PC)`). Without its key it can sign nothing else, so it
+  trusts this one program and nothing more. Each update makes a new one and removes the old one.
+- **Normal rights:** BetterClipboard lowers itself to the rights of any app you run the moment it starts, so the programs
+  it opens for you run as usual.
+- **Updates:** its update button asks for administrator rights once per update (Windows' prompt), and keeps the access.
+- **Taking it away:** run the installer again as administrator with `-NoUIAccess`, or uninstall; either removes the
+  certificate too.
 
 ## Offline, or a pinned version
 

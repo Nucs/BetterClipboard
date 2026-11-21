@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using BetterClipboard.Core.Editions;
 using BetterClipboard.Windows.Updates;
@@ -110,6 +111,27 @@ public static class EditionUninstaller
     /// first line, so the uninstall "ended with code 1" and said nothing). Keep it in step with the argument list there.
     /// </summary>
     internal static readonly string[] UninstallParameters = ["Uninstall", "InstallDir", "KeepProcessId", "ResultPath", "LogPath"];
+
+    /// <summary>The detail of a check whose PowerShell never answered (<see cref="EditionUninstallResult.Detail"/>).</summary>
+    public const string NoAnswerDetail = "PowerShell did not answer in time.";
+
+    /// <summary>The detail of a check whose probe script ended with another exit code than its own; {0} = the exit code.</summary>
+    public const string CheckEndedDetail = "The check script ended with code {0}.";
+
+    /// <summary>The detail of an uninstall that failed without a message of its own; {0} = the exit code.</summary>
+    public const string UninstallerEndedDetail = "The uninstaller ended with code {0}.";
+
+    /// <summary>
+    /// The details this class words itself, as <see cref="BetterClipboard.Core.Localization.UiText.TranslateFormatted(string?, IReadOnlyList{string})"/>
+    /// templates: the Store edition's setup window shows a detail after its own sentence, translated when it is one of
+    /// these, and as it came when it is outside text (Windows' error message, the uninstaller's own report).
+    /// </summary>
+    /// <remarks>
+    /// The list is the class's contract with the catalogs (<c>TranslationTemplateTests</c>): a new detail of its own needs
+    /// a constant here, an entry in this list and in every catalog, or it shows in English in every language (as these
+    /// three did until 2026-11-16).
+    /// </remarks>
+    public static IReadOnlyList<string> DetailTemplates { get; } = [NoAnswerDetail, CheckEndedDetail, UninstallerEndedDetail];
 
     /// <summary>
     /// The probe: proves that script files run on this PC, and that this account may change what the uninstall has to
@@ -226,12 +248,12 @@ public static class EditionUninstaller
             var (code, timedOut) = await RunAsync(powerShell, ["-File", probe, "-InstallDir", edition.Directory, "-ResultPath", found], ProbeTimeout, cancellationToken).ConfigureAwait(false);
             if (timedOut)
             {
-                return new EditionUninstallResult(EditionUninstallFailure.ScriptsBlocked, "PowerShell did not answer in time.");
+                return new EditionUninstallResult(EditionUninstallFailure.ScriptsBlocked, NoAnswerDetail);
             }
 
             if (code != ProbeExitCode)
             {
-                return new EditionUninstallResult(EditionUninstallFailure.ScriptsBlocked, $"The check script ended with code {code}.");
+                return new EditionUninstallResult(EditionUninstallFailure.ScriptsBlocked, string.Format(CultureInfo.InvariantCulture, CheckEndedDetail, code));
             }
 
             // The script ran. No result file means it could not even write into the working folder it was given.
@@ -361,7 +383,7 @@ public static class EditionUninstaller
         TryDelete(result);
         if (code != 0 || reported == false)
         {
-            return new EditionUninstallResult(EditionUninstallFailure.Failed, error ?? $"The uninstaller ended with code {code}.");
+            return new EditionUninstallResult(EditionUninstallFailure.Failed, error ?? string.Format(CultureInfo.InvariantCulture, UninstallerEndedDetail, code));
         }
 
         return OtherEditionLocator.IsStillInstalled(edition)

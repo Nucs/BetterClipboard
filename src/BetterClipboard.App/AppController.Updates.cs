@@ -443,6 +443,13 @@ public sealed partial class AppController
         }
 
         var window = EnsureFlyout();
+        if (window.IsOpen)
+        {
+            // A pinned panel may wait behind another app (CLAUDE.md §2.55): it takes the keyboard first, so its dialog opens
+            // in front and keys reach it. A panel already in front is unchanged by this.
+            window.BringForward();
+        }
+
         window.OpenUpdateDialogWhenShown();
         if (window.IsOpen)
         {

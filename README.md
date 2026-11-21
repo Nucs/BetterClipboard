@@ -49,8 +49,10 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
   ([Search](#search)). Win+V has no search.
 - **Made for the keyboard.** <kbd>Enter</kbd> pastes into the app you came from, <kbd>Shift</kbd>+<kbd>Enter</kbd>
   pastes plain text, and the arrow keys walk the items, the tabs and your groups ([Use](#use)).
-- **A panel that fits you.** Move it, resize it, reorder or hide its tabs; it opens in the tab you used last
-  ([Tabs](#tabs)).
+- **Paste one item after another.** Pin the panel and it stays open: each item you click goes into the app you were
+  last in ([Use](#use)).
+- **A panel that fits you.** Move it, resize it, show 1 to 40 lines of each text, reorder or hide its tabs and its
+  buttons; it opens in the tab you used last ([Tabs](#tabs)).
 - **Pins and groups.** Pin what you reuse, and gather things in groups with your own icons. Pinned and grouped items
   outlive every limit ([Groups](#groups)).
 - **Light on memory.** After each use it frees the memory it no longer needs and keeps just what the next Win+V needs
@@ -84,69 +86,48 @@ but it remembers everything, survives restarts, searches instantly, and keeps it
 
 ## Install
 
-Windows 10 version 2004 or newer, or Windows 11, on x64 or ARM64. Nothing else to install: the release is
-self-contained. In PowerShell:
+Windows 10 (version 2004 or newer) or Windows 11, x64 or ARM64.
 
-```powershell
-irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
-```
+- **PowerShell**, no admin rights. It takes over Win+V, so Explorer restarts once:
 
-The installer:
+  ```powershell
+  irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
+  ```
 
-- downloads the latest [release](https://github.com/Nucs/BetterClipboard/releases/latest) for your architecture and
-  **verifies its SHA-256**;
-- installs per user into `%LOCALAPPDATA%\Programs\BetterClipboard` (no admin rights), with a Start menu shortcut and
-  an entry in *Settings › Apps › Installed apps*, and starts BetterClipboard with Windows;
-- **takes over Win+V**: Explorer stops registering it and restarts once (the taskbar blinks, and open folder windows
-  close). See [Taking over Win+V](#taking-over-winv).
-
-Running it again updates in place and keeps what you changed in Settings (*Start with Windows* turned off, Win+V given
-back to Windows), as does the app's own update button ([Updates](#updates)); your history is never touched. It runs
-from any folder, also one you cannot write to, and leaves your PowerShell in that folder when it is done.
-
-At its first start, BetterClipboard asks for your language: English, 简体中文, Русский, Español or עברית, each with its
-flag, with Windows' language already selected. Press the green check (or <kbd>Enter</kbd>) and everything opens in
-that language. If you update from a version that did not ask yet, the first start after the update asks once.
-
-Once a day, the installed app asks GitHub whether a newer release exists. Nothing about you, your PC or your clipboard
-is sent, and nothing is installed without your approval ([Privacy](#privacy)). `-NoUpdateCheck` installs with that
-check off.
+- **Microsoft Store**, signed by Microsoft and updated by the Store:
+  <a href="https://apps.microsoft.com/detail/9PHL574X9BF9"><img src="https://get.microsoft.com/images/en-us%20dark.svg" width="160" alt="Download from the Microsoft Store" align="absmiddle"></a>
+  or `winget install 9PHL574X9BF9 --source msstore`
+- **Portable**: extract the zip from the [latest release](https://github.com/Nucs/BetterClipboard/releases/latest)
+  anywhere and run `BetterClipboard.exe`. Nothing is installed.
 
 <details>
-<summary><b>Installer options:</b> leave Win+V to Windows, choose the shortcuts, install for every user, offline, …</summary>
+<summary><b>Advanced install</b></summary>
 
-Pass them through a script block:
+Pass the installer's options through a script block:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -NoTakeOverWinV -Hotkey Win+Alt+V
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -NoTakeOverWinV
 ```
 
 | Option | Effect |
 |---|---|
-| `-NoTakeOverWinV` | Leave Win+V to Windows. BetterClipboard then opens with the `-Hotkey` shortcuts, or with Win+Alt+V. If Win+V was released before, Explorer gets it back. |
-| `-Hotkey A, B, …` | The shortcuts that open BetterClipboard, e.g. `-Hotkey Win+Alt+V, Ctrl+Alt+F9`. Win+V comes first unless `-NoTakeOverWinV` is given. Each one is taken over the same way as Win+V (see [Taking over Win+V](#taking-over-winv)). |
-| `-TakeOverWinV` | The default. Kept for older command lines; if your shortcuts no longer include Win+V, it adds Win+V back. On a re-run, it also takes back a Win+V you gave back to Windows in Settings. |
-| `-AddToPath` | Put the install folder on your user PATH so terminals can run `bclip` (see [Command line](#command-line-for-scripts-and-ai-agents)). |
-| `-NoUpdateCheck` | Install with the automatic update check off: BetterClipboard then never asks GitHub by itself. *Settings › Updates* has *Check now* and the switch to turn it on again. |
-| `-Version 0.1.0` | Install a specific release instead of the latest. |
-| `-Package <zip>` | Install from a release zip on disk instead of downloading one (an offline install). Put the release's `SHA256SUMS.txt` next to the zip, or give `-PackageSha256 <hash>`, and it is verified first. |
-| `-AllUsers` | Install for every user of this PC (in PowerShell as administrator); see [For every user of a PC](#for-every-user-of-a-pc). |
-| `-InstallDir <path>` | Install somewhere else. |
-| `-NoStartup` / `-NoShortcut` / `-NoLaunch` | Skip starting with Windows / the Start menu shortcut / launching after install. |
-| `-Uninstall [-RemoveData]` | Remove the app (history is kept unless `-RemoveData`, which also deletes the temporary pictures). |
+| `-NoTakeOverWinV` | Leave Win+V to Windows (BetterClipboard then opens with Win+Alt+V, or your `-Hotkey`) |
+| `-Hotkey A, B, …` | Your own shortcuts, e.g. `-Hotkey Win+Alt+V, Ctrl+Alt+F9` |
+| `-AllUsers` | For every user of the PC, as administrator ([below](#for-every-user-of-a-pc)) |
+| `-AddToPath` | Put `bclip` on your PATH |
+| `-NoUpdateCheck` | No daily update check |
+| `-Version X.Y.Z` / `-Package <zip>` | A specific release / a release zip on disk |
+| `-InstallDir <path>` | Another folder |
+| `-NoStartup` / `-NoShortcut` / `-NoLaunch` | No start with Windows / no shortcut / no launch |
+| `-Uninstall [-RemoveData]` | Remove it (`-RemoveData`: the history too) |
+
+A portable download: compare `Get-FileHash .\BetterClipboard-*.zip` with the release's `SHA256SUMS.txt`. Releases are
+not code-signed yet, so if SmartScreen stops it, choose *More info › Run anyway*.
 
 </details>
 
-> [!TIP]
-> The docs site covers every other way to install, each with the files and settings it creates:
-> [the portable zip, for every user, Intune and RMM tools, Chocolatey](https://nucs.github.io/BetterClipboard/docs/ways-to-install.html).
-
-Prefer doing it by hand? Download the zip for your architecture and `SHA256SUMS.txt` from the release, check the hash
-(`Get-FileHash .\BetterClipboard-*.zip`), extract anywhere and run `BetterClipboard.exe`.
-
-> [!NOTE]
-> Releases are not code-signed yet, so Windows may say *Windows protected your PC* for a copy downloaded this way:
-> check the hash, then *More info › Run anyway*. See [Code signing policy](#code-signing-policy).
+Every other way (Intune and RMM tools, Chocolatey):
+[the docs site](https://nucs.github.io/BetterClipboard/docs/ways-to-install.html).
 
 ### For every user of a PC
 
@@ -156,53 +137,15 @@ In PowerShell as administrator:
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AllUsers
 ```
 
-- **What it sets up:** the app in `Program Files\BetterClipboard`, in a folder only administrators may change; a Start
-  menu shortcut, an *Installed apps* entry and "Start with Windows" for every user. Each user who signs in gets
-  BetterClipboard started, with their own encrypted history in their own profile.
-- **Each user decides for themselves:** turning off *Settings › App › Start with Windows* stops the start at sign-in
-  for that user only. A user's own "Start with Windows" entry, if they have one, takes precedence, so BetterClipboard
-  never starts twice.
-- **Picked by itself** when it is not the signed-in user who installs: when the installer runs as SYSTEM (Intune, an
-  RMM tool), or with an administrator's credentials on someone else's desktop. A copy in that account's own profile
-  would serve nobody who signs in at the PC.
-- **What stays per user:** Win+V and the other shortcuts. BetterClipboard takes Win+V over with its keyboard hook for
-  everyone, and each user can release it from Explorer in *Settings › Shortcut*. `-Hotkey` and `-NoTakeOverWinV`
-  apply only when the signed-in user installs. `-AddToPath` puts the folder on the PATH of every user.
-- **Updates:** this copy does not replace itself or check for updates by itself, because its users may not be
-  administrators. An administrator runs the same command again: run as administrator on a PC with a copy for every
-  user, the installer updates that copy. *Settings › Updates › Check now* still tells you whether there is a new
-  version, and the update dialog copies the command.
-
-The [Chocolatey package](packaging/chocolatey) follows the same rule for "Start with Windows". Installed by the
-signed-in user, the entry is theirs. Installed by SYSTEM or another account, or with `/AllUsersStartup`, it is for
-every user.
+Everyone who signs in gets BetterClipboard, with their own history. Run as SYSTEM (Intune, RMM tools), the installer
+does this by itself.
 
 ### Microsoft Store edition
 
-> [!NOTE]
-> **Not in the Store yet.** The edition is built and tested ([docs/microsoft-store.md](docs/microsoft-store.md)), and
-> Microsoft is certifying its first submission.
+<a href="https://apps.microsoft.com/detail/9PHL574X9BF9"><img src="https://get.microsoft.com/images/en-us%20dark.svg" width="160" alt="Download from the Microsoft Store"></a>
 
-- **Installed and updated by the Store.** Microsoft signs the package, so Windows shows no "unknown publisher"
-  warning. The app itself makes no network request at all, because the Store updates it.
-- **It asks first.** The first start asks for your language and then shows a welcome with two switches, *Open with
-  Win+V* and *Start with Windows*. Nothing is recorded and no shortcut is taken until you press *Start*.
-- **Win+V without a system change.** It answers Win+V with the keyboard hook while it runs; quit it and Win+V is
-  Windows' again at once. *Release from Explorer* is not part of this edition.
-- **One history for every kind of install.** The Store edition keeps your history in
-  `%LOCALAPPDATA%\BetterClipboard`, the folder the installer, Chocolatey and a portable copy use, so switching
-  between them keeps your history, pins and settings. It checks once per Windows version that what it writes really
-  lands in that folder; where it doesn't, it keeps its own folder and says so in *Settings › Data folder*.
-- **One copy at a time.** Only one BetterClipboard is meant to be installed. When the Store edition finds a copy you
-  installed with the installer, it says what it will do and checks that it can. *Move to this edition* closes that
-  copy and uninstalls it (which gives Win+V back to Windows); your history stays where it is. (In its own folder, it
-  copies your history and settings first, checks the copy, and removes the old folder last; if a step fails, your
-  history stays where it was.) A copy for every user, or the Chocolatey copy, is for an administrator to remove: the
-  Store edition says how and waits. The installer, in turn, tells you when the Store edition is installed.
-- **`bclip` runs in every terminal** without a PATH entry, once you turn the command line on.
-- **Removing it** keeps your history, like every other uninstall: delete `%LOCALAPPDATA%\BetterClipboard` to remove
-  it for good (*Settings › Data folder › Open* shows it). Only a history in the edition's own folder goes with the
-  app.
+Signed by Microsoft and updated by the Store. It asks before it records anything, answers Win+V while it runs without
+changing a Windows setting, and shares your history with every other kind of install.
 
 ## Updates
 
@@ -267,12 +210,17 @@ when you say so.
 ## Use
 
 Press **Win+V**. The panel appears at once by your text cursor, in the tab you used last, with the search box focused
-— just type. Your newest copy is selected, so <kbd>Enter</kbd> pastes it. Pinned items are listed above it (*Settings › Pasting*
-can list them in time order instead), and <kbd>↑</kbd> reaches them.
+— just type. It opens on your newest copy, at the top and selected, so <kbd>Enter</kbd> pastes it. Your pinned items are
+listed above it, out of view: scroll up or press <kbd>↑</kbd> to see them (*Settings › Pasting* can list them in time order
+instead). A search or a group starts at the top, its pinned items in view.
 
 *Settings › Shortcut › Panel position* opens it next to the mouse instead, or in the middle of a screen: the main one,
 or the one you are typing on (with several monitors, the screen with the window you were in; after a click on the
 desktop, the screen with the mouse).
+
+**The pin** in the panel's header keeps it open after pasting: click item after item, and each goes into the app you
+were last in. It stays pinned, also after a restart, until you click it again. <kbd>Esc</kbd> still closes the panel,
+and <kbd>Win</kbd>+<kbd>V</kbd> brings a pinned panel back to the front where it is.
 
 | Key | Action |
 |---|---|
@@ -299,6 +247,7 @@ desktop, the screen with the mouse).
 | Wheel or drag over the tabs | Scroll the tabs sideways when they don't fit, or click the ‹ › arrows at their ends |
 | Rest the mouse on an image | See it full size; its eye button opens a zoom viewer (see [Image previews](#image-previews)) |
 | Rest the mouse on a long text | Read all of it and scroll it with the wheel (moving the mouse closes it); right-click it to copy it or for the item's menu; its eye button opens the text viewer, which stays (see [Text previews](#text-previews)) |
+| The pin, left of the update button | Keep the panel open after pasting, to paste one item after another; click it again to unpin |
 | The update button, left of Pause | Open the update dialog: the release notes, and *Update and restart* when a newer version exists (the button is highlighted then; see [Updates](#updates)) |
 
 Type and press <kbd>Enter</kbd> as fast as you like: <kbd>Enter</kbd> waits for the search to finish and pastes its best match — the
@@ -314,7 +263,8 @@ type, typos included; <kbd>Esc</kbd> clears it. Its sections:
 
 - **Shortcut:** the keys that open the panel (add as many as you like: click the box and press them, or pick one from
   its menu of suggestions and shortcuts used before), where the panel opens (next to the text cursor, next to the mouse,
-  in the middle of the main screen, or in the middle of the screen you are typing on), and releasing Win+letter
+  in the middle of the main screen, or in the middle of the screen you are typing on), which buttons its header shows
+  (all but Settings can be hidden), how many lines of text each card shows (1 to 40), and releasing Win+letter
   shortcuts from Explorer ([Choosing shortcuts](#choosing-shortcuts)).
 - **History:** how many items, for how many days, how large, what to record, and how long *Save to temp and*'s
   pictures are kept.
@@ -354,15 +304,15 @@ keep working (one pressed in that second opens the panel a moment later), and a 
 | Images | Pictures you copied, and saved screenshots | Always |
 | Links | Copied URLs | Always |
 | Files | Files you copied in Explorer, and text that is nothing but paths | Always |
-| ShareX | Screenshots that ShareX saved, and everything you copied from ShareX | When ShareX is installed |
-| Snipping | Screenshots that Snipping Tool and Win+PrtScn saved | When your history has a screenshot from them |
-| Notepad++ | The text of Notepad++'s unsaved tabs, the files you opened in Notepad++, and what you copied in it | When your history has something from Notepad++ |
-| Run | Commands you ran with Win+R | When your history has a Win+R command |
-| Pwsh | PowerShell's own command history | When PowerShell has a history file |
-| Cmd | Commands typed in Command Prompt windows | Always |
-| Claude | Prompts you sent to Claude Code | When Claude Code has prompts |
-| Codex | Prompts you sent to Codex | When Codex has prompts |
-| Everything | Files you opened in Everything | When Everything is installed or running |
+| [ShareX](#sharex-screenshots) | Screenshots that ShareX saved, and everything you copied from ShareX | When ShareX is installed |
+| [Snipping](#snipping-tool-and-winprtscn) | Screenshots that Snipping Tool and Win+PrtScn saved | When your history has a screenshot from them |
+| [Notepad++](#notepad) | The text of Notepad++'s unsaved tabs, the files you opened in Notepad++, and what you copied in it | When your history has something from Notepad++ |
+| [Run](#winr-history) | Commands you ran with Win+R | When your history has a Win+R command |
+| [Pwsh](#powershell-and-command-prompt) | PowerShell's own command history | When PowerShell has a history file |
+| [Cmd](#powershell-and-command-prompt) | Commands typed in Command Prompt windows | Always |
+| [Claude](#claude-code-and-codex-prompts) | Prompts you sent to Claude Code | When Claude Code has prompts |
+| [Codex](#claude-code-and-codex-prompts) | Prompts you sent to Codex | When Codex has prompts |
+| [Everything](#everything) | Files you opened in Everything | When Everything is installed or running |
 
 Every tab after Files has its own switch in *Settings › Integrations*. All of them are on by default; turn one off
 and its tab goes away. [Tabs for other apps](#tabs-for-other-apps) tells what each one reads.
@@ -409,8 +359,9 @@ and group, except the Everything tab, where Everything itself does the searching
 
 ### Text previews
 
-A card shows the first four lines of a text. When the text is longer, a thin dotted line under them and a small eye
-at the card's corner say so.
+A card shows the first four lines of a text (*Settings › Shortcut › Lines per card* makes it 1 to 40), in a monospace
+font so that tables line up. When the text is longer, a thin dotted line under them and a small eye at the card's
+corner say so.
 
 - **Peek:** rest the mouse on the card's text. After a moment the whole text appears in the middle of the panel,
   colored the way the viewer shows it, and the wheel scrolls it. Moving the mouse closes it, and so does <kbd>Esc</kbd>. A
@@ -419,14 +370,15 @@ at the card's corner say so.
 - **Viewer:** click the eye, press <kbd>F3</kbd>, or choose *View* in the item's menu. The screen dims and the text opens in a
   large card over it:
   - **Markdown** is drawn as a document: headings, lists, tables, quotes, links and code blocks, each code block
-    colored in its own language. Markdown is also what a text is shown as when no language is recognized.
+    colored in its own language. Markdown is also what a text is shown as when no language is recognized. It is
+    drawn in the same monospace font as *As copied*, and every line keeps its own spaces, so ASCII tables line up.
   - **Code** is colored, in C#, Java, Kotlin, JavaScript, TypeScript, Python, Ruby, PHP, Go, Rust, C and C++,
     PowerShell, shell scripts, batch files, SQL, CSS, HTML, XML, JSON, YAML, INI and TOML, and diffs. The language is
     recognized by itself; the language button picks another (the recognized one is marked *(detected)*).
   - **XML and JSON** are re-indented, one element or value per line; *As copied* shows them as they were copied.
-  - **Wrap** breaks long lines at the window's edge (off: they scroll sideways), **Line numbers** numbers the lines
-    of code, and **A−** / **A+** (<kbd>Ctrl</kbd>+<kbd>Minus</kbd>, <kbd>Ctrl</kbd>+<kbd>Plus</kbd>, <kbd>Ctrl</kbd>+<kbd>0</kbd>, or <kbd>Ctrl</kbd> with the wheel) change the text
-    size. All three are remembered.
+  - **Wrap** breaks long lines at the window's edge and fits each table to it, a long cell wrapping inside its own
+    column (off: lines and tables scroll sideways), **Line numbers** numbers the lines of code, and **A−** / **A+**
+    (<kbd>Ctrl</kbd>+<kbd>Minus</kbd>, <kbd>Ctrl</kbd>+<kbd>Plus</kbd>, <kbd>Ctrl</kbd>+<kbd>0</kbd>, or <kbd>Ctrl</kbd> with the wheel) change the text size. All three are remembered.
   - **Megabyte copies** open a page of about 64,000 characters at a time, with ‹ › to turn the pages
     (<kbd>Ctrl</kbd>+<kbd>PageUp</kbd>, <kbd>Ctrl</kbd>+<kbd>PageDown</kbd>); line numbers count on across pages.
   - Select and copy as anywhere. Moving the mouse does not close it: <kbd>Esc</kbd>, its X button, or a click outside the
@@ -684,8 +636,9 @@ if Windows remembers none, with the first one you run.
 
 ### PowerShell and Command Prompt
 
-- **Pwsh** lists PowerShell's own history file: every command you typed in PowerShell 7 or Windows PowerShell,
-  newest first. The search reaches all of them, also the old ones that PowerShell's Up arrow no longer loads.
+- **Pwsh** lists [PowerShell](https://learn.microsoft.com/powershell/)'s own history file: every command you typed
+  in PowerShell 7 or Windows PowerShell, newest first. The search reaches all of them, also the old ones that
+  PowerShell's Up arrow no longer loads.
 - **Cmd** lists the commands typed in your Command Prompt windows. Command Prompt forgets them when its window
   closes, so BetterClipboard reads your open windows every 30 seconds and keeps what it saw. Windows that other
   programs start (build tools, AI agents) are skipped. A window closed within 30 seconds of its last read loses
@@ -901,7 +854,7 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 
 | Source | What BetterClipboard does with it | Default | Setting |
 |---|---|---|---|
-| The clipboard | Keeps every copy, except copies apps mark as private and copies made by *Ignored apps* (password managers, out of the box) | On | *Pause capturing*, *Ignored apps* |
+| The clipboard | Keeps every copy, except copies apps mark as private, copies made by *Ignored apps* (password managers, out of the box), and copies that are only spaces, tabs or empty lines | On | *Pause capturing*, *Ignored apps* |
 | Windows' own clipboard history | Imports what Win+V still remembers, its pinned items included, at each start | On | *Import from Windows › Import automatically every time BetterClipboard starts* |
 | ShareX's screenshot folders | Keeps each screenshot ShareX saves | On, while ShareX is installed | *ShareX screenshots* |
 | Windows' Screenshots folder | Keeps each screenshot Snipping Tool or Win+PrtScn saves there | On | *Snipping Tool and Win+PrtScn* |
@@ -915,6 +868,9 @@ clipboard, it reads a few other places on your PC, each behind its own switch in
 
 - **Nothing private in the logs:** they record what happened (counts, versions, errors), never what you copied,
   ran, typed or sent. They are always in English.
+- **Keys you type while it pastes:** from your Enter until its Ctrl+V is done (a fraction of a second),
+  BetterClipboard holds them back and types them right after the pasted text, so none arrives as Ctrl+key. They are
+  not stored; the log only counts them.
 - **Temporary pictures are plain files:** *Save to temp and* writes a picture as an ordinary PNG into
   `%TEMP%\BetterClipboard\Images`, outside the encrypted history, so that other apps can open it. BetterClipboard
   deletes such pictures when it starts, once they were not used for 30 days (*Settings › History*).

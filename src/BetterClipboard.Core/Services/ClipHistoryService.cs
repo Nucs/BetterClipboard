@@ -176,7 +176,7 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
 
             if (anyChange)
             {
-                store.Prune(rulesProvider().Retention, time.GetUtcNow());
+                ApplyRetention(rulesProvider().Retention);
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
 
                 // The batch raised no event per entry: a tab that had nothing may have something now (the first import
@@ -353,30 +353,21 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// Fingerprints to look up (<see cref="ForgetFingerprint"/>; for a file list its content hash,
     /// <see cref="ContentHasher.ForFiles"/>). Duplicates are fine.
     /// </param>
-    /// <returns>The forgotten ones; empty right away (no per-item lookup) while the list itself is empty.</returns>
+    /// <returns>The forgotten ones; empty right away (no lookup at all) while the list itself is empty.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="fingerprints"/> is <see langword="null"/>.</exception>
     /// <exception cref="Microsoft.Data.Sqlite.SqliteException">Reading the store failed.</exception>
+    /// <remarks>
+    /// One query per 500 fingerprints (<see cref="ClipStore.FindForgotten"/>). Until 2026-11-21 each fingerprint opened a
+    /// connection of its own, which was fine for the at most 700 commands or 200 picks a tab then asked about; the tabs show
+    /// every row since (CLAUDE.md §2.62), thousands for a long PowerShell history.
+    /// </remarks>
     public Task<IReadOnlySet<string>> FindForgottenAsync(IReadOnlyCollection<string> fingerprints)
     {
         ArgumentNullException.ThrowIfNull(fingerprints);
         return Task.Run<IReadOnlySet<string>>(() =>
-        {
-            var forgotten = new HashSet<string>(StringComparer.Ordinal);
-            if (fingerprints.Count == 0 || store.CountForgotten() == 0)
-            {
-                return forgotten;
-            }
-
-            foreach (var fingerprint in fingerprints)
-            {
-                if (!forgotten.Contains(fingerprint) && store.IsForgotten(fingerprint))
-                {
-                    forgotten.Add(fingerprint);
-                }
-            }
-
-            return forgotten;
-        });
+            fingerprints.Count == 0 || store.CountForgotten() == 0
+                ? new HashSet<string>(StringComparer.Ordinal)
+                : store.FindForgotten(fingerprints));
     }
 
     /// <summary>
@@ -435,7 +426,7 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// <exception cref="InvalidOperationException">The service is shutting down.</exception>
     public Task<int> PruneAsync() => EnqueueAsync(() =>
     {
-        int removed = store.Prune(rulesProvider().Retention, time.GetUtcNow());
+        int removed = ApplyRetention(rulesProvider().Retention);
         if (removed > 0)
         {
             Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
@@ -776,8 +767,8 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
     /// an import of Windows' history.
     /// </param>
     /// <returns>
-    /// The upsert result, or <see langword="null"/> when rejected (rules, classification, forgotten, a suppressed import, or
-    /// content of a Windows pin that the ledger leaves as the user keeps it).
+    /// The upsert result, or <see langword="null"/> when rejected (rules, classification, text that is only whitespace,
+    /// forgotten, a suppressed import, or content of a Windows pin that the ledger leaves as the user keeps it).
     /// </returns>
     private async Task<UpsertResult?> StoreAsync(ClipCapture capture, bool raiseEvents, WindowsPinLedger? windowsPins = null)
     {
@@ -815,6 +806,20 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
             (classified.Kind == ClipKind.Image && !rules.CaptureImages) ||
             (classified.Kind == ClipKind.Files && !rules.CaptureFiles))
         {
+            return null;
+        }
+
+        // A copy that is only whitespace (a stray space, a tab, an empty line) is not kept, from any channel: shown as
+        // "(whitespace · 1 char)" it is easy to miss, and once used it sits right under the newest copy, where ↓ lands
+        // (ContentClassifier.IsWhitespaceOnly). It stays on the clipboard. Logged for new events only, content-free:
+        // Windows' history offers the same blank item again at every start.
+        if (ContentClassifier.IsWhitespaceOnly(classified, capture))
+        {
+            if (isNewEvent)
+            {
+                AppLog.Info("Skipped a copy that is only whitespace.");
+            }
+
             return null;
         }
 
@@ -907,7 +912,7 @@ public sealed partial class ClipHistoryService : IAsyncDisposable
         if (result.IsNew)
         {
             Raise(new ClipChangedEventArgs(ClipChangeKind.Added, result.Entry));
-            if (store.Prune(rules.Retention, time.GetUtcNow()) > 0)
+            if (ApplyRetention(rules.Retention) > 0)
             {
                 Raise(new ClipChangedEventArgs(ClipChangeKind.Reset));
             }

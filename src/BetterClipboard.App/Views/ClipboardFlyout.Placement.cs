@@ -6,14 +6,15 @@ using Windows.Graphics;
 namespace BetterClipboard.App.Views;
 
 /// <summary>
-/// Where a summon puts the panel (Settings › Shortcut › Panel position, <see cref="AppSettings.Placement"/>): next to the
-/// text cursor (the default), next to the mouse, or centered on the main screen or on the screen the user is typing on —
-/// and putting it there at exactly the size asked for, also on a monitor with another scale.
+/// Where a summon puts the panel (Settings › Panel › Panel position, <see cref="AppSettings.Placement"/>): next to the
+/// text cursor (the default), next to the mouse, or centered on the main screen or on the screen with the mouse pointer
+/// (the current screen) — and putting it there at exactly the size asked for, also on a monitor with another scale.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Which screen, then where on it.</b> <see cref="FlyoutPositioner.ChooseScreen"/> picks the monitor from the setting
-/// and what the shortcut captured (caret, window, mouse; its remarks have the rule for "the current screen"),
+/// and what the shortcut captured (the caret and the mouse; its remarks have the rule for each choice, and the earlier
+/// rule for "the current screen"),
 /// <see cref="MonitorLookup.FromScreen"/> reads that monitor's work area and scale, and <see cref="FlyoutPositioner.Place"/>
 /// puts the remembered size there: below the caret or the mouse with the groups column added on the left, or centered as
 /// a whole.
@@ -36,9 +37,10 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Where a summon puts the panel, in physical screen pixels: the chosen screen (<see cref="FlyoutPositioner.ChooseScreen"/>),
     /// the remembered size in that screen's pixels with the groups column while it is open, placed next to the caret or the
-    /// mouse or centered (<see cref="FlyoutPositioner.Place"/>), never outside that screen's work area.
+    /// mouse or centered (<see cref="FlyoutPositioner.Place"/>), never outside that screen's work area — or beside Start or
+    /// Search when the shortcut came while one of them was open (<see cref="BesideBounds"/>, CLAUDE.md §2.61).
     /// </summary>
-    /// <param name="context">The caret, mouse and window captured when the shortcut was pressed.</param>
+    /// <param name="context">The caret and the mouse captured when the shortcut was pressed.</param>
     /// <param name="placement">The placement setting.</param>
     /// <param name="centerOnMainScreen">The main-screen setting (only a centered placement reads it).</param>
     /// <param name="groupsColumnOpen">Whether the groups column will show (it widens the panel on its left).</param>
@@ -49,17 +51,24 @@ public sealed partial class ClipboardFlyout
         ArgumentNullException.ThrowIfNull(context);
         var settings = controller.Settings.Current;
 
-        // The window the user was in is described only when the rule can use it (centered on the current screen): a few
-        // calls of microseconds, but nothing a summon next to the caret should pay for.
-        var target = placement == FlyoutPlacement.CenterScreen && !centerOnMainScreen
-            ? MonitorLookup.DescribeTarget(context.TargetWindow)
-            : default;
-        var screen = FlyoutPositioner.ChooseScreen(placement, centerOnMainScreen, context, target);
+        // Beside Start or Search, which no window of an ordinary process can be raised above (CLAUDE.md §2.61): the controller
+        // asked CanOpenBeside before this summon, so there is room; the placement setting has no say there. A copy that runs
+        // with UI access stands above them (CLAUDE.md §2.63), so the placement setting decides as over any app.
+        if (context.Surface.Kind == ShellSurfaceKind.Search && ShouldLeaveFocus(context) && !CanStandAboveShell()
+            && BesideBounds(context, groupsColumnOpen) is { } beside)
+        {
+            return beside;
+        }
+
+        // The screen comes from what the shortcut captured alone (the caret, the mouse): nothing about the window the user
+        // was in is read any more, since the current screen is the mouse's (FlyoutPositioner.ChooseScreen).
+        var screen = FlyoutPositioner.ChooseScreen(placement, centerOnMainScreen, context);
         var (workArea, scale) = MonitorLookup.FromScreen(screen);
 
-        // The size the user last dragged the panel to (without the column, added in whole pixels by Place), in this
-        // monitor's pixels; Place shrinks it to a smaller work area without changing what is remembered.
-        var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
+        // The size the user last dragged the panel to (without the column, added in whole pixels by Place), at least as wide
+        // as the header's buttons need (ClipboardFlyout.KeepOpen.cs), in this monitor's pixels; Place shrinks it to a
+        // smaller work area without changing what is remembered.
+        var (width, height) = FlyoutSizing.ToPixels(PanelWidthDip(settings), settings.FlyoutHeight, scale, extraWidthDip: 0);
         int column = groupsColumnOpen ? (int)Math.Round(GroupsPaneDip * scale) : 0;
         var bounds = FlyoutPositioner.Place(placement, context, workArea, width, height, (int)Math.Round(GapDip * scale), column);
         return new RectInt32(bounds.Left, bounds.Top, bounds.Width, bounds.Height);

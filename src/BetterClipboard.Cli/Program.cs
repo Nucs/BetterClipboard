@@ -224,7 +224,8 @@ internal static class Program
             return CliExitCodes.For(response);
         }
 
-        var text = CliOutput.Render(command, response, DateTimeOffset.Now);
+        // A listing sorted by size shows each item's size: that is what the order is about.
+        var text = CliOutput.Render(command, response, DateTimeOffset.Now, showSizes: invocation.Request?.Sort == "size");
         await stdout.WriteAsync(text).ConfigureAwait(false);
 
         // Content commands print the payload verbatim; add a final newline only for a human's terminal.

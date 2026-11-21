@@ -438,18 +438,34 @@ public sealed class EverythingTabTests
         Assert.Empty(EverythingTab.ParseHidden(string.Empty));
     }
 
-    /// <summary>Only the newest hides are kept (the oldest can only bring an old pick back), newest first.</summary>
+    /// <summary>
+    /// Every hide is kept by default — 600 here, above the 500 kept until 2026-11-21 (CLAUDE.md §2.62) — newest first; under a
+    /// limit only the newest are (the oldest can only bring an old pick back).
+    /// </summary>
     [Fact]
-    public void HiddenState_KeepsTheNewestOnly()
+    public void HiddenState_KeepsEveryHide_OrTheNewestUnderALimit()
     {
-        var many = Enumerable.Range(0, EverythingTab.MaxHidden + 100)
+        var many = Enumerable.Range(0, 600)
             .ToDictionary(i => $@"C:\BC-TEST\{i}.txt", i => Now.AddMinutes(i));
-        var lines = EverythingTab.FormatHidden(many).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        var all = EverythingTab.FormatHidden(many).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(600, all.Length);
+        Assert.EndsWith(@"\599.txt", all[0], StringComparison.Ordinal);
+        Assert.EndsWith(@"\0.txt", all[^1], StringComparison.Ordinal);
+        Assert.Equal(600, EverythingTab.ParseHidden(string.Join('\n', all)).Count);
+        Assert.Equal(601, EverythingTab.Hide(many, Pick(@"C:\BC-TEST\new.txt", Now.AddDays(1)), Now).Count);
 
-        Assert.Equal(EverythingTab.MaxHidden, lines.Length);
-        Assert.EndsWith($@"\{EverythingTab.MaxHidden + 99}.txt", lines[0], StringComparison.Ordinal);
-        Assert.EndsWith(@"\100.txt", lines[^1], StringComparison.Ordinal);
-        Assert.Equal(EverythingTab.MaxHidden, EverythingTab.Hide(many, Pick(@"C:\BC-TEST\new.txt", Now.AddDays(1)), Now).Count);
+        var limited = EverythingTab.FormatHidden(many, limit: 500).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(500, limited.Length);
+        Assert.EndsWith(@"\599.txt", limited[0], StringComparison.Ordinal);
+        Assert.EndsWith(@"\100.txt", limited[^1], StringComparison.Ordinal);
+        var hidden = EverythingTab.Hide(many, Pick(@"C:\BC-TEST\new.txt", Now.AddDays(1)), Now, limit: 500);
+        Assert.Equal(500, hidden.Count);
+        Assert.True(hidden.ContainsKey(@"C:\BC-TEST\new.txt"));
+        Assert.False(hidden.ContainsKey(@"C:\BC-TEST\100.txt"));
+
+        // A lowered limit applied at once (AppController.Limits.cs): the newest stay, also when none is set (0 keeps all).
+        Assert.Equal(new[] { @"C:\BC-TEST\599.txt", @"C:\BC-TEST\598.txt" }, EverythingTab.Trim(many, 2).OrderByDescending(p => p.Value).Select(p => p.Key));
+        Assert.Equal(600, EverythingTab.Trim(many, 0).Count);
     }
 
     /// <summary>A pick as the live query or the saved file reports it.</summary>

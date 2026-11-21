@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 namespace BetterClipboard.Core.Settings;
@@ -19,10 +20,10 @@ public enum FlyoutPlacement
     NearCursor = 1,
 
     /// <summary>
-    /// Centered on a screen's work area: the screen the user is working on, or the main screen when
-    /// <see cref="AppSettings.CenterOnMainScreen"/> is on. The screen the user is working on is the one with the text
-    /// cursor, else the one showing most of the window they were in, else the one with the mouse (nothing active, the
-    /// desktop, the tray); <c>FlyoutPositioner.ChooseScreen</c> in BetterClipboard.Windows has the full rule.
+    /// Centered on a screen's work area: the screen with the mouse pointer (the current screen), or the main screen when
+    /// <see cref="AppSettings.CenterOnMainScreen"/> is on; <c>FlyoutPositioner.ChooseScreen</c> in BetterClipboard.Windows
+    /// has the rule. Until 2026-11-20 the current screen was the one the user was typing on (the text cursor's, else the
+    /// window's); the owner asked for the mouse's instead.
     /// </summary>
     CenterScreen = 2,
 }
@@ -91,22 +92,38 @@ public sealed record AppSettings
     /// The panel's width when nothing was resized yet, in DIPs (Win+V is ~360×450; a little larger shows two more cards).
     /// The outer window's width, frame included, without the groups column.
     /// </summary>
+    /// <remarks>
+    /// Footgun: not always the width a panel opens at. A summon opens it at least as wide as its header's buttons need
+    /// (<see cref="MinFlyoutWidthFor"/>): with all six buttons shown that is 432 DIPs, so a panel left at this default opens
+    /// 432 wide, and hiding two buttons gives the 400 back (CLAUDE.md §2.55).
+    /// </remarks>
     public const int DefaultFlyoutWidth = 400;
 
     /// <summary>The panel's height when nothing was resized yet, in DIPs (the outer window's, frame included).</summary>
     public const int DefaultFlyoutHeight = 560;
 
     /// <summary>
-    /// The narrowest the user can make the panel, in DIPs (without the groups column): the header's logo, "Clipboard", the
-    /// "Paused" chip and its five buttons (updates, pause, groups, clear, settings) still fit side by side, and the search
-    /// box keeps room for text left of its Aa / W / .* toggles. Narrower, the header's title would be cut off. Enforced
-    /// while resizing and when loading.
+    /// The narrowest the panel can ever be, in DIPs (without the groups column): the search box keeps room for text left of
+    /// its Aa / W / .* toggles, and a header of at most four buttons fits with its logo, "Clipboard" and the "Paused" chip.
+    /// Enforced when loading; the narrowest the user can drag a panel to is <see cref="MinFlyoutWidthFor"/> its buttons.
     /// </summary>
     /// <remarks>
-    /// 360 until the update button joined the header (four buttons took 312 of the 322 content DIPs); a fifth button is
-    /// 36 DIPs more. A width saved below this by an older version is raised to it when the settings load.
+    /// 360 until the update button joined the header in 2026-10 (four buttons took 312 of the 322 content DIPs), then 396
+    /// for five buttons, and the floor again since the buttons can be hidden and the minimum follows them (2026-11-20). A
+    /// width saved by an older version stays as it was: the panel opens at least as wide as its header needs anyway.
     /// </remarks>
-    public const int MinFlyoutWidth = 396;
+    public const int MinFlyoutWidth = 360;
+
+    /// <summary>
+    /// The width one more header button needs, in DIPs: the 34-DIP button and the 2-DIP gap before it
+    /// (<c>IconButtonStyle</c> and the header's button row in <c>ClipboardFlyout.xaml</c>).
+    /// </summary>
+    public const int HeaderButtonDip = 36;
+
+    /// <summary>
+    /// How many header buttons fit at <see cref="MinFlyoutWidth"/> next to the logo, "Clipboard" and the "Paused" chip.
+    /// </summary>
+    public const int HeaderButtonsAtMinWidth = 4;
 
     /// <summary>
     /// The lowest the user can make the panel, in DIPs: header, search box, tabs and footer take ~180 of them, so the list
@@ -120,6 +137,26 @@ public sealed record AppSettings
     /// at most as large as the monitor it opens on).
     /// </summary>
     public const int MaxFlyoutSize = 8192;
+
+    /// <summary>
+    /// How many lines of its text a card shows until the user picks another number (<see cref="LinesPerCard"/>): four, what
+    /// every card showed before the number became a setting.
+    /// </summary>
+    public const int DefaultLinesPerCard = 4;
+
+    /// <summary>The fewest lines of text a card shows (<see cref="LinesPerCard"/>): one, for a compact list.</summary>
+    public const int MinLinesPerCard = 1;
+
+    /// <summary>
+    /// The most lines of text a card shows (<see cref="LinesPerCard"/>): forty, the owner's bound (2026-11-20). A stored
+    /// preview holds enough text for that many on a wide screen (<see cref="Content.ContentClassifier.PreviewMaxChars"/>),
+    /// and a file list's preview names that many files (<see cref="Content.ContentClassifier.PreviewMaxFiles"/>).
+    /// </summary>
+    /// <remarks>
+    /// Footgun: raising it needs those two raised with it (a unit test holds them together), or the extra lines of a long
+    /// text or a long file list stay empty.
+    /// </remarks>
+    public const int MaxLinesPerCard = 40;
 
     /// <summary>
     /// The most shortcuts that open the panel (<see cref="OpenHotkey"/> plus <see cref="ExtraOpenHotkeys"/>): a sanity bound
@@ -147,8 +184,49 @@ public sealed record AppSettings
     /// </summary>
     public const string DefaultTab = nameof(Storage.ClipFilter.All);
 
-    /// <summary>Settings file format version, for future migrations.</summary>
-    public int SchemaVersion { get; init; } = 1;
+    /// <summary>
+    /// The settings file format this build writes (<see cref="SchemaVersion"/>): 2 since 2026-11-20, when the retention
+    /// defaults changed and files from before move to the new ones once (<see cref="Normalize"/>).
+    /// </summary>
+    public const int CurrentSchemaVersion = 2;
+
+    /// <summary>
+    /// How many items history keeps apart from pinned and grouped ones until the user picks a number
+    /// (<see cref="MaxItems"/>): no limit. The size budget (<see cref="DefaultMaxTotalSizeMB"/>) is what keeps the history
+    /// in bounds; the owner's choice of 2026-11-20 ("set maximum items to 0 (unlimited) by default").
+    /// </summary>
+    public const int DefaultMaxItems = 0;
+
+    /// <summary>
+    /// The size budget for history apart from pinned and grouped entries until the user picks one
+    /// (<see cref="MaxTotalSizeMB"/>): 16 GB, the owner's choice of 2026-11-20. From 90 % of it the user is warned
+    /// (<see cref="Services.HistoryBudgetWarnings"/>); once it is full the oldest items are removed to make room.
+    /// </summary>
+    public const int DefaultMaxTotalSizeMB = 16_384;
+
+    /// <summary>
+    /// <see cref="MaxItems"/>' default in settings files of format 1 (2026-09-25 to 2026-11-20). A format-1 file that still
+    /// holds it is moved to <see cref="DefaultMaxItems"/> when it is read (<see cref="Normalize"/>).
+    /// </summary>
+    public const int SchemaVersion1DefaultMaxItems = 10_000;
+
+    /// <summary>
+    /// <see cref="MaxTotalSizeMB"/>' default in settings files of format 1 (4 GB). A format-1 file that still holds it is
+    /// moved to <see cref="DefaultMaxTotalSizeMB"/> when it is read (<see cref="Normalize"/>).
+    /// </summary>
+    public const int SchemaVersion1DefaultMaxTotalSizeMB = 4096;
+
+    /// <summary>
+    /// Settings file format version. Written as <see cref="CurrentSchemaVersion"/>; a file with a lower one is migrated in
+    /// <see cref="Normalize"/>.
+    /// </summary>
+    /// <remarks>
+    /// Every version writes this member, so a file that lacks it was written by hand (an administrator's pre-seeded file):
+    /// it reads as the current format and is never migrated. Footgun: a version from before format 2 writes 1 again when it
+    /// saves the file, so going back to such a version and forward again migrates the file a second time (a limit of
+    /// exactly 10,000 items or 4,096 MB set there becomes the new default again).
+    /// </remarks>
+    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
 
     /// <summary>
     /// The main global shortcut that opens the flyout, e.g. <c>Win+V</c> or <c>Ctrl+Shift+V</c>: the first of
@@ -206,8 +284,15 @@ public sealed record AppSettings
     /// </summary>
     public bool UseKeyboardHookFallback { get; init; } = true;
 
-    /// <summary>Maximum entries kept apart from pinned and grouped ones (most recently used win); 0 = unlimited.</summary>
-    public int MaxItems { get; init; } = 10_000;
+    /// <summary>
+    /// Maximum entries kept apart from pinned and grouped ones (most recently used win); 0 = unlimited, the default since
+    /// 2026-11-20 (<see cref="DefaultMaxItems"/>; 10,000 before, and files that still held it were moved to unlimited).
+    /// </summary>
+    /// <remarks>
+    /// Every released version reads 0 as unlimited (the clamp has allowed it since the first one), so going back to an older
+    /// version keeps the history whole.
+    /// </remarks>
+    public int MaxItems { get; init; } = DefaultMaxItems;
 
     /// <summary>Drop entries not used for this many days (pinned and grouped ones never); 0 = keep forever.</summary>
     public int RetentionDays { get; init; }
@@ -215,8 +300,17 @@ public sealed record AppSettings
     /// <summary>Largest single copy recorded, in MB (Win+V caps at 4 MB).</summary>
     public int MaxItemSizeMB { get; init; } = 64;
 
-    /// <summary>Total payload budget for history apart from pinned and grouped entries, in MB; 0 = unlimited.</summary>
-    public int MaxTotalSizeMB { get; init; } = 4096;
+    /// <summary>
+    /// Total payload budget for history apart from pinned and grouped entries, in MB; 0 = unlimited. 16 GB by default since
+    /// 2026-11-20 (<see cref="DefaultMaxTotalSizeMB"/>; 4 GB before, and files that still held it were moved to 16 GB).
+    /// </summary>
+    /// <remarks>
+    /// It counts the stored payload (what was copied), not the database file, whose search index and thumbnails add to it:
+    /// Settings › History shows both. Once the payload passes the budget, retention removes the least recently used items
+    /// until it fits (<see cref="Storage.ClipStore.Prune"/>), and from 90 % on the user is warned
+    /// (<see cref="Services.HistoryBudgetWarnings"/>). Every released version accepts 16,384 (the clamp allows up to 1 TB).
+    /// </remarks>
+    public int MaxTotalSizeMB { get; init; } = DefaultMaxTotalSizeMB;
 
     /// <summary>Record image-only copies (screenshots etc.).</summary>
     public bool CaptureImages { get; init; } = true;
@@ -261,6 +355,131 @@ public sealed record AppSettings
     public bool ShowGroupsPane { get; init; }
 
     /// <summary>
+    /// Whether the panel stays open after a paste (the pin in its header, left of the update button; CLAUDE.md §2.55): the
+    /// item still goes into the app the user was last in, and the panel stays where it is, so items can be clicked and
+    /// pasted one after another. Off by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Remembered until unpinned</b> (the owner's choice, 2026-11-20), like <see cref="ShowGroupsPane"/>: every summon
+    /// opens a pinned panel, also after a restart. Pinned, only the user closes the panel — Esc, the shortcut while the panel
+    /// is in front, Alt+F4, the Settings button; a click elsewhere, a paste, <i>Copy only</i> or opening a file leave it up.
+    /// The shortcut pressed while the pinned panel waits behind another app brings it forward in place
+    /// (<see cref="Presentation.PanelShortcut"/>).
+    /// </para>
+    /// <para>
+    /// In effect only while the pin itself shows (<see cref="PanelStaysOpen"/>): hiding the pin in Settings lets the panel
+    /// close after pasting again, and showing it again restores this. Footgun: a version from before this member drops it
+    /// when it saves the file, and the panel is unpinned again.
+    /// </para>
+    /// </remarks>
+    public bool KeepPanelOpen { get; init; }
+
+    /// <summary>
+    /// The panel header's buttons hidden in Settings › Panel › Buttons in the panel, as <see cref="Presentation.PanelButton"/>
+    /// names. By default only the trash (<see cref="Presentation.PanelButton.Clear"/>) is hidden: Clear history starts
+    /// unticked. An empty list means every button shows. The Settings button is never among them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Hiding a button only takes it off the header: what it does stays in reach elsewhere (<c>Ctrl+G</c> for the groups
+    /// column, the tray menu for pausing and updates, Settings › Privacy › Clear history for clearing it), except the pin,
+    /// whose mode ends with it (<see cref="PanelStaysOpen"/>). Each hidden button lets the panel be 36 DIPs narrower
+    /// (<see cref="MinFlyoutWidthFor"/>), so the default header needs 396 DIPs instead of 432.
+    /// </para>
+    /// <para>
+    /// <b>The trash hidden by default</b> (the owner, 2026-11-21: "Make Clear History unchecked by default"). The default
+    /// reaches every file without this member: new installs, and files written by 0.2.11 and older, whose header always
+    /// showed the trash, so it is gone from their header after the update until it is ticked again. A file that stores an
+    /// empty list keeps every button, also one written by a 0.2.12 development build before this default: no migration,
+    /// since no release ever stored the member (as for the unreleased transparency level the same day, the owner: "its
+    /// unreleased feature.. no migration"). An emptied list is written as <c>[]</c>, so a trash ticked back on stays shown
+    /// across restarts.
+    /// </para>
+    /// <para>
+    /// Names, read leniently (<see cref="Presentation.PanelButtons.TryParse"/>) and kept canonical by
+    /// <see cref="Normalize"/>, never an enum written by name: an unknown name would make an older version set the whole file
+    /// aside. Footgun: a version from before this member drops it when it saves the file; the next newer version then reads
+    /// the default again, with every other button shown and the trash hidden.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> HiddenPanelButtons { get; init; } = [nameof(Presentation.PanelButton.Clear)];
+
+    /// <summary>
+    /// The panel header's buttons in the order the user arranged them (Settings › Panel › Buttons in the panel, the up and
+    /// down arrows; CLAUDE.md §2.58), left to right, as <see cref="Presentation.PanelButton"/> names; empty while they stand
+    /// in the default order. The Settings button is never among them: it always ends the header.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written whole after a move (every button, hidden ones too, which keep their place for when they show again), and empty
+    /// again once the order equals the default (<see cref="Presentation.PanelButtons.ToStored"/>), so a later version's default
+    /// order still reaches users who never moved a button. The panel and Settings complete the list with buttons it lacks
+    /// (<see cref="Presentation.PanelButtons.Arrange"/>), so any list here shows every button once.
+    /// </para>
+    /// <para>
+    /// Names, read leniently like <see cref="HiddenPanelButtons"/> (<see cref="Normalize"/> keeps the known ones, spelled as
+    /// their member, each once, in the stored order). Footgun: a version from before this member drops it when it saves the
+    /// file, and the buttons are back in their default order.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> PanelButtonOrder { get; init; } = [];
+
+    /// <summary>
+    /// Whether the panel stays open after pasting right now: <see cref="KeepPanelOpen"/>, while the pin shows in the header.
+    /// Derived, so it is never written to the file.
+    /// </summary>
+    [JsonIgnore]
+    public bool PanelStaysOpen => KeepPanelOpen && !Presentation.PanelButtons.IsHidden(HiddenPanelButtons, Presentation.PanelButton.KeepOpen);
+
+    /// <summary>
+    /// Opens the panel without taking the keyboard from the app the user types in, the way Windows' own Win+V does: the focus
+    /// stays in that app, so a control that ends its editing when it loses the focus — a rename in File Explorer, its search
+    /// box or address bar, a note's name in Obsidian's file tree — is still there when the item is pasted into it. On by
+    /// default (the owner's choice, 2026-11-20).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// While such a panel shows, a low-level keyboard hook gives it the keys (CLAUDE.md §2.59): the arrow keys, Enter, Esc
+    /// and the panel's shortcuts act as always, and typed characters search, added at the end of the search text
+    /// (<see cref="Presentation.SearchTyping"/>). Off, the panel takes the keyboard when it opens, as before: for screen
+    /// readers, which follow the focus, and for input methods that compose text (Chinese, Japanese, Korean), whose keys a hook
+    /// cannot compose. A click on the search box, Ctrl+F, a viewer or a menu opened from the keyboard give the panel the
+    /// keyboard for that use anyway, and so does a window that runs as administrator (a hook does not see its keys).
+    /// </para>
+    /// <para>
+    /// Footgun: a version from before this member drops it when it saves the file; the next newer version then opens the
+    /// panel without the keyboard again (the default), also for a user who had turned it off.
+    /// </para>
+    /// </remarks>
+    public bool LeaveFocusInApp { get; init; } = true;
+
+    /// <summary>
+    /// Whether the user closed the pin's tip (CLAUDE.md §2.55): the tip that points at the pin and says in a sentence and a
+    /// half how pinning works. Until then it shows whenever the pinned panel is on screen (<see cref="KeepOpenTipDue"/>);
+    /// once closed — with its close button or with Esc — never again. Off by default.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The owner's request (2026-11-20): "Add a tooltip shown once until dismissed when pinned enabled that in 1.5 sentences
+    /// explains how pinning works". Only a close by the user spends it: the panel going away, its window moving, unpinning
+    /// or hiding the pin take the tip off the screen and leave it due, so it comes back with the pinned panel.
+    /// </para>
+    /// <para>
+    /// Footgun: a version from before this member drops it when it saves the file, and the tip shows once more.
+    /// </para>
+    /// </remarks>
+    public bool KeepOpenTipDismissed { get; init; }
+
+    /// <summary>
+    /// Whether the pin's tip should show while the panel is on screen: the panel stays open after pasting
+    /// (<see cref="PanelStaysOpen"/>: pinned, with the pin shown) and the user never closed the tip
+    /// (<see cref="KeepOpenTipDismissed"/>). Derived, so it is never written to the file.
+    /// </summary>
+    [JsonIgnore]
+    public bool KeepOpenTipDue => PanelStaysOpen && !KeepOpenTipDismissed;
+
+    /// <summary>
     /// The panel's width the user last dragged it to, in DIPs (device-independent pixels, 1/96 inch): the outer window,
     /// frame included, without the groups column — which adds its own width on the left while it is open, so opening or
     /// closing the column never changes this.
@@ -268,9 +487,10 @@ public sealed record AppSettings
     /// <remarks>
     /// Saved once when a resize ends (never during the drag), and only for a resize the user made: the panel moving to a
     /// monitor with another scale changes its pixels, not this. Every summon opens the panel at this size next to the
-    /// caret, shrunk to the monitor's work area when larger (the shrunk size is not saved). Kept in
-    /// <see cref="MinFlyoutWidth"/>..<see cref="MaxFlyoutSize"/>; resizing the panel wider shows more of the filter tabs,
-    /// which scroll sideways when they do not all fit.
+    /// caret, shrunk to the monitor's work area when larger (the shrunk size is not saved), and widened to what its
+    /// header's buttons need when narrower (<see cref="MinFlyoutWidthFor"/>; the widened size is not saved either, so hiding
+    /// buttons gives the narrower width back). Kept in <see cref="MinFlyoutWidth"/>..<see cref="MaxFlyoutSize"/>; resizing
+    /// the panel wider shows more of the filter tabs, which scroll sideways when they do not all fit.
     /// </remarks>
     public int FlyoutWidth { get; init; } = DefaultFlyoutWidth;
 
@@ -279,6 +499,25 @@ public sealed record AppSettings
     /// <see cref="FlyoutWidth"/>, kept in <see cref="MinFlyoutHeight"/>..<see cref="MaxFlyoutSize"/>.
     /// </summary>
     public int FlyoutHeight { get; init; } = DefaultFlyoutHeight;
+
+    /// <summary>
+    /// How many lines of its text each card in the panel shows before the rest is cut off with "…" (Settings › Panel ›
+    /// Lines per card), <see cref="MinLinesPerCard"/> to <see cref="MaxLinesPerCard"/>; <see cref="DefaultLinesPerCard"/>
+    /// until the user picks another number. A card that shows less than its whole text still gets the eye, the dotted line
+    /// under its text and the hover peek, which show all of it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The owner's request (2026-11-20): "make the number of lines per card configurable 1-40". Only the text's lines change:
+    /// the caption line above them, a picture's thumbnail and a color's swatch keep their size. Applied to the panel at once,
+    /// also while it shows (<c>ClipboardFlyout.ApplyCardLines</c>); nothing is loaded again, since every card already holds
+    /// a preview long enough for the most lines (CLAUDE.md §2.57).
+    /// </para>
+    /// <para>
+    /// Footgun: a version from before this member drops it when it saves the file, and the cards show four lines again.
+    /// </para>
+    /// </remarks>
+    public int LinesPerCard { get; init; } = DefaultLinesPerCard;
 
     /// <summary>
     /// The panel's tab (All, Pinned, Text, …) the user last chose, as the name of its <see cref="Storage.ClipFilter"/>:
@@ -444,6 +683,17 @@ public sealed record AppSettings
     public bool ImportShareXScreenshots { get; init; } = true;
 
     /// <summary>
+    /// Most ShareX screenshots one catch-up imports — the newest of those saved while BetterClipboard was not watching
+    /// (not running, or the watched folders just changed); 0 = every one of them (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 a catch-up imported at most the 100 newest, so a long absence could not flood the history; the
+    /// owner chose no limit by default, with this number in the ShareX card for whoever wants one back. The screenshots
+    /// left out stay in ShareX's folders, and the catch-up marker moves past them: they are never imported later.
+    /// </remarks>
+    public int MaxShareXCatchUp { get; init; }
+
+    /// <summary>
     /// Add every screenshot Windows' own tools save — Snipping Tool's auto-save (Win+Shift+S, PrtScn) and Win+PrtScn —
     /// to history the moment the file is written into the Screenshots folder, and show the panel's Snipping tab.
     /// </summary>
@@ -456,6 +706,16 @@ public sealed record AppSettings
     /// limit apply; the tab keeps showing Snipping Tool's clipboard copies only while this is on (it is hidden when off).
     /// </remarks>
     public bool ImportWindowsScreenshots { get; init; } = true;
+
+    /// <summary>
+    /// Most screenshots one catch-up of the Screenshots folder imports — the newest of those Snipping Tool and Win+PrtScn
+    /// saved while BetterClipboard was not watching; 0 = every one of them (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 the 100 newest (see <see cref="MaxShareXCatchUp"/>, the same rule for ShareX). The ones left out
+    /// stay in the folder and are never imported later: the catch-up marker moves past them.
+    /// </remarks>
+    public int MaxScreenshotsCatchUp { get; init; }
 
     /// <summary>
     /// Keep every command run with Win+R (the Run dialog) in the history, and show the panel's Run tab.
@@ -483,6 +743,14 @@ public sealed record AppSettings
     public bool ShowEverythingTab { get; init; } = true;
 
     /// <summary>
+    /// Most files and folders the Everything tab keeps hidden (Delete on a pick hides it until it is opened in Everything
+    /// again); the hides made longest ago go first, which shows their picks again. 0 = no limit (the default,
+    /// <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>Until 2026-11-21 the newest 500. A lowered number applies at once (<c>AppController.Limits.cs</c>).</remarks>
+    public int MaxHiddenEverythingPicks { get; init; }
+
+    /// <summary>
     /// Show the panel's Pwsh tab: every command in PowerShell's own history file (PSReadLine's, shared by Windows
     /// PowerShell and PowerShell 7), newest first, searchable beyond the 4,096 PowerShell itself loads.
     /// </summary>
@@ -492,6 +760,13 @@ public sealed record AppSettings
     /// The file is never written. Off hides the tab and stops reading it; commands kept from the tab stay.
     /// </remarks>
     public bool ShowPowerShellTab { get; init; } = true;
+
+    /// <summary>
+    /// Most commands the Pwsh tab keeps hidden (Delete on a command hides it until it is typed again); the hides made
+    /// longest ago go first, which shows their commands again. 0 = no limit (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>Until 2026-11-21 the newest 1,000. A lowered number applies at once (<c>AppController.Limits.cs</c>).</remarks>
+    public int MaxHiddenPowerShellCommands { get; init; }
 
     /// <summary>
     /// Show the panel's Cmd tab: the commands typed in Command Prompt windows. cmd keeps no history file, so
@@ -505,6 +780,24 @@ public sealed record AppSettings
     /// it and forgets the kept list; commands kept from the tab as history entries stay.
     /// </remarks>
     public bool ShowCmdTab { get; init; } = true;
+
+    /// <summary>
+    /// Most Command Prompt commands the Cmd tab keeps after their window closed (the ones seen longest ago go first);
+    /// 0 = no limit (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 the newest 1,000 — the cap the owner asked about ("are there any with a limit like I think Cmd has
+    /// (of 1000)?"). A lowered number applies at once: the oldest kept commands are deleted. Kept commands are not
+    /// clipboard history and count against none of its limits (<see cref="Shells.CmdHistory"/>).
+    /// </remarks>
+    public int MaxKeptCmdCommands { get; init; }
+
+    /// <summary>
+    /// Most commands the Cmd tab keeps hidden (Delete on a command hides it until it is typed again); the hides made
+    /// longest ago go first. 0 = no limit (the default, <see cref="ListLimit"/>).
+    /// </summary>
+    /// <remarks>Until 2026-11-21 the newest 1,000. A lowered number applies at once (<c>AppController.Limits.cs</c>).</remarks>
+    public int MaxHiddenCmdCommands { get; init; }
 
     /// <summary>
     /// Keep every prompt you send to Claude Code in BetterClipboard's encrypted prompt archive, and show the panel's Claude
@@ -579,7 +872,7 @@ public sealed record AppSettings
     public IReadOnlyList<string> SeededIgnoredApps { get; init; } = [];
 
     /// <summary>
-    /// Where the panel appears at every summon (Settings › Shortcut › Panel position): next to the text cursor (the
+    /// Where the panel appears at every summon (Settings › Panel › Panel position): next to the text cursor (the
     /// default, like Win+V), next to the mouse, or centered on a screen (<see cref="CenterOnMainScreen"/> says which).
     /// </summary>
     /// <remarks>
@@ -591,7 +884,7 @@ public sealed record AppSettings
 
     /// <summary>
     /// With <see cref="Placement"/> <see cref="FlyoutPlacement.CenterScreen"/>: center the panel on the main screen (the
-    /// one Windows' display settings call the main display) instead of the screen the user is working on. Off by default;
+    /// one Windows' display settings call the main display) instead of the screen with the mouse pointer. Off by default;
     /// the other placements ignore it.
     /// </summary>
     /// <remarks>
@@ -609,6 +902,25 @@ public sealed record AppSettings
 
     /// <summary>Theme of BetterClipboard's windows.</summary>
     public AppTheme Theme { get; init; } = AppTheme.System;
+
+    /// <summary>
+    /// How much of what lies behind the panel shows through its frosted glass (Settings › Panel › Background transparency,
+    /// CLAUDE.md §2.58): <see cref="Presentation.PanelBackdrop.MinLevel"/> (0, the most frosted) to
+    /// <see cref="Presentation.PanelBackdrop.MaxLevel"/> (100, the clearest); <see cref="Presentation.PanelBackdrop.DefaultLevel"/>
+    /// (50) is Windows' own acrylic, the panel's look before the setting existed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The glass stays blurred at every level (the owner's "it always stays blur"): the level only sets how strongly its frost
+    /// covers the blurred background (<see cref="Presentation.PanelBackdrop.LookFor"/>). Where Windows draws no glass at all
+    /// (transparency effects off, battery saver, a remote session) the panel is a solid color whatever this says.
+    /// </para>
+    /// <para>
+    /// Only the panel's background: Settings keeps Windows' Mica, and the panel's cards, menus and viewers their own colors.
+    /// Footgun: a version from before this member drops it when it saves the file, and the panel is back to Windows' look.
+    /// </para>
+    /// </remarks>
+    public int BackgroundTransparency { get; init; } = Presentation.PanelBackdrop.DefaultLevel;
 
     /// <summary>
     /// Serve the <c>bclip</c> command line (scripts, AI assistants): list, search, read, copy and add
@@ -711,6 +1023,25 @@ public sealed record AppSettings
     /// <returns><see langword="true"/> when they are the same text apart from case and spaces.</returns>
     public static bool SameHotkeyText(string? a, string? b) =>
         string.Equals(CompactHotkeyText(a), CompactHotkeyText(b), StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The narrowest a panel whose header shows <paramref name="headerButtons"/> buttons can be, in DIPs (without the
+    /// groups column): its logo, "Clipboard", the "Paused" chip and those buttons fit side by side, never below
+    /// <see cref="MinFlyoutWidth"/>. 360 for four buttons or fewer, 396 for five, 432 for all six.
+    /// </summary>
+    /// <remarks>
+    /// The panel answers it as the minimum Windows lets the user drag it to, and opens at least this wide whatever width is
+    /// remembered — never saved, so hiding buttons in Settings gives a narrower remembered width back (CLAUDE.md §2.55).
+    /// Linear on purpose: each button and its gap take <see cref="HeaderButtonDip"/>, measured on the five-button header
+    /// (348 of the 358 content DIPs at 396).
+    /// </remarks>
+    /// <param name="headerButtons">
+    /// The buttons in the header's right-hand group, the Settings button included (<see cref="Presentation.PanelButtons.CountShown"/>);
+    /// negative counts as none.
+    /// </param>
+    /// <returns>The minimum width in DIPs.</returns>
+    public static int MinFlyoutWidthFor(int headerButtons) =>
+        MinFlyoutWidth + (HeaderButtonDip * Math.Max(0, headerButtons - HeaderButtonsAtMinWidth));
 
     /// <summary>
     /// Reads a tab name as stored in <see cref="LastTab"/>: the name of a <see cref="Storage.ClipFilter"/> member, ignoring
@@ -842,17 +1173,69 @@ public sealed record AppSettings
         string.Concat((text ?? string.Empty).Where(c => !char.IsWhiteSpace(c)));
 
     /// <summary>
-    /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
-    /// into a broken state (e.g. a negative item cap), and merges catalogued password managers the
-    /// settings have not seen yet into <see cref="IgnoredApps"/> (see <see cref="SeededIgnoredApps"/>).
+    /// Words what <see cref="Normalize"/> changes when it reads a file of an older format, for the log line
+    /// <see cref="SettingsStore.Load"/> writes: content-free, the retention limits only, in English with invariant numbers
+    /// whatever Windows' formats (logs stay English, CLAUDE.md §2.37).
     /// </summary>
     /// <remarks>
+    /// The migration happens in memory at every start until the file is saved, so the line repeats until then (most uses of
+    /// the panel save the file: the remembered tab, a resize).
+    /// </remarks>
+    /// <param name="loaded">The settings as read from the file, before <see cref="Normalize"/>.</param>
+    /// <returns>The sentence, or <see langword="null"/> when the file is of the current format or the migration changes nothing in it.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="loaded"/> is <see langword="null"/>.</exception>
+    public static string? DescribeMigration(AppSettings loaded)
+    {
+        ArgumentNullException.ThrowIfNull(loaded);
+        if (loaded.SchemaVersion >= CurrentSchemaVersion)
+        {
+            return null;
+        }
+
+        var changes = new List<string>(2);
+        if (loaded.MaxItems == SchemaVersion1DefaultMaxItems)
+        {
+            changes.Add(string.Create(CultureInfo.InvariantCulture, $"the item limit {SchemaVersion1DefaultMaxItems:N0} (format {loaded.SchemaVersion}'s default) is now unlimited"));
+        }
+
+        if (loaded.MaxTotalSizeMB == SchemaVersion1DefaultMaxTotalSizeMB)
+        {
+            changes.Add(string.Create(CultureInfo.InvariantCulture, $"the history size budget {SchemaVersion1DefaultMaxTotalSizeMB:N0} MB (format {loaded.SchemaVersion}'s default) is now {DefaultMaxTotalSizeMB:N0} MB"));
+        }
+
+        return changes.Count == 0
+            ? null
+            : string.Create(CultureInfo.InvariantCulture, $"Settings of format {loaded.SchemaVersion} read as format {CurrentSchemaVersion}: {string.Join(", and ", changes)}.");
+    }
+
+    /// <summary>
+    /// Clamps every value into its supported range so a hand-edited or corrupted file cannot put the app
+    /// into a broken state (e.g. a negative item cap), merges catalogued password managers the
+    /// settings have not seen yet into <see cref="IgnoredApps"/> (see <see cref="SeededIgnoredApps"/>), and migrates a file
+    /// of an older format (<see cref="SchemaVersion"/>) to the current one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
     /// Runs on every load and save, so everything here is idempotent. The catalog merge happens in memory
     /// on load and reaches the file with the next save — until then it simply repeats on each start.
+    /// </para>
+    /// <para>
+    /// <b>Format 1 → 2</b> (2026-11-20, the owner's request "set maximum items to 0 (unlimited) by default and for all users
+    /// that had previous default"): a file whose <see cref="MaxItems"/> is still format 1's default (10,000) gets no item
+    /// limit, and one whose <see cref="MaxTotalSizeMB"/> is still format 1's default (4,096 MB) gets the 16 GB budget. A value
+    /// the user picked stays. Like the catalog merge, this happens in memory at every start until the file is saved, which
+    /// gives the same result each time; <see cref="DescribeMigration"/> words it for the log.
+    /// </para>
     /// </remarks>
     /// <returns>A normalized copy.</returns>
     public AppSettings Normalize()
     {
+        // Only a file of format 1 still holding format 1's defaults moves; every later save writes the current format, so a
+        // value picked afterwards (10,000 included) is never touched again.
+        bool formatOne = SchemaVersion < CurrentSchemaVersion;
+        int maxItems = formatOne && MaxItems == SchemaVersion1DefaultMaxItems ? DefaultMaxItems : MaxItems;
+        int maxTotalSizeMB = formatOne && MaxTotalSizeMB == SchemaVersion1DefaultMaxTotalSizeMB ? DefaultMaxTotalSizeMB : MaxTotalSizeMB;
+
         var ignored = (IgnoredApps ?? [])
             .Select(a => a?.Trim() ?? string.Empty)
             .Where(a => a.Length > 0)
@@ -887,7 +1270,7 @@ public sealed record AppSettings
 
         var normalized = this with
         {
-            SchemaVersion = 1,
+            SchemaVersion = CurrentSchemaVersion,
             OpenHotkey = primary,
             ExtraOpenHotkeys = extras.ToArray(),
             HotkeyHistory = NormalizeHotkeyHistory([primary, .. extras], HotkeyHistory),
@@ -899,15 +1282,38 @@ public sealed record AppSettings
             TabOrder = NormalizeTabNames(TabOrder),
             HiddenTabs = hiddenTabs,
             HiddenTabRows = NormalizeTabNames(HiddenTabRows).Where(name => hiddenTabs.Contains(name)).ToArray(),
-            MaxItems = Math.Clamp(MaxItems, 0, 1_000_000),
+
+            // Known buttons only, each once, in the header's order (a hand-edited "pause" becomes "Pause"; "Settings" and
+            // typos are dropped: the Settings button always shows).
+            HiddenPanelButtons = Presentation.PanelButtons.Normalize(HiddenPanelButtons),
+
+            // Known buttons only, each once, in the stored order ("Settings" and typos dropped: it always ends the header);
+            // completed with missing buttons when it is read (PanelButtons.Arrange), never here.
+            PanelButtonOrder = Presentation.PanelButtons.NormalizeOrder(PanelButtonOrder),
+
+            // A hand-edited level outside 0..100 still gives a panel with glass.
+            BackgroundTransparency = Presentation.PanelBackdrop.Normalize(BackgroundTransparency),
+            MaxItems = Math.Clamp(maxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),
-            MaxTotalSizeMB = Math.Clamp(MaxTotalSizeMB, 0, 1_048_576),
+            MaxTotalSizeMB = Math.Clamp(maxTotalSizeMB, 0, 1_048_576),
             TempImageDays = Math.Clamp(TempImageDays, 0, Content.TempImageFiles.MaxKeepDays),
+
+            // The integrations' limits (ListLimit): a hand-edited negative number is "no limit" like 0, and a huge one the
+            // NumberBox's own maximum.
+            MaxShareXCatchUp = ListLimit.Normalize(MaxShareXCatchUp),
+            MaxScreenshotsCatchUp = ListLimit.Normalize(MaxScreenshotsCatchUp),
+            MaxHiddenEverythingPicks = ListLimit.Normalize(MaxHiddenEverythingPicks),
+            MaxHiddenPowerShellCommands = ListLimit.Normalize(MaxHiddenPowerShellCommands),
+            MaxKeptCmdCommands = ListLimit.Normalize(MaxKeptCmdCommands),
+            MaxHiddenCmdCommands = ListLimit.Normalize(MaxHiddenCmdCommands),
 
             // A size from a hand-edited file, or from a version with other limits, must still open a usable panel.
             FlyoutWidth = Math.Clamp(FlyoutWidth, MinFlyoutWidth, MaxFlyoutSize),
             FlyoutHeight = Math.Clamp(FlyoutHeight, MinFlyoutHeight, MaxFlyoutSize),
+
+            // A hand-edited 0 would hide every card's text, and 1,000 lines more than any preview holds.
+            LinesPerCard = Math.Clamp(LinesPerCard, MinLinesPerCard, MaxLinesPerCard),
 
             // The viewer's text size within what its zoom allows; a hand-edited NaN or infinity is 100 %.
             TextViewerTextSize = double.IsFinite(TextViewerTextSize) ? Math.Clamp(TextViewerTextSize, TextView.TextViewStyle.MinScale, TextView.TextViewStyle.MaxScale) : 1,

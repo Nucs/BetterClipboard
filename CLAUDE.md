@@ -248,11 +248,27 @@ so it can map the owner's own app, §2.45),
 [`probe_paste.cs`](tools/probes/probe_paste.cs) (how long a paste from the panel takes, from the Enter to the text in a
 Win32 edit box: when the box's window was activated, took the Ctrl+V and changed; with the app's memory warm, trimmed, or
 trimmed and purged from RAM; injects keys, so it runs only inside a claude-desktops Windows desktop, §2.52),
+[`probe_ctrlv.cs`](tools/probes/probe_ctrlv.cs) (whether an injected Ctrl+V reaches a busy terminal as Ctrl+V or as "v":
+ways of injecting it, and loads that freeze the window, starve its hand-over, slow the keyboard hooks, fill the processors
+or reset its key state; `user` pastes with BetterClipboard itself, Win+V and Enter, and can type on after the Enter;
+injects keys, so it runs only inside a claude-desktops Windows desktop, §2.54),
 [`msix_lab`](tools/probes/msix_lab) (what Windows changes for a program that runs from an MSIX package: registry and
 file redirection, change notifications, child processes, DPAPI, named objects, the startup task, WinRT clipboard
 history, languages, what uninstalling removes, and since 2026-11-14 a folder every edition shares — made by cmd,
 shadowed by a private copy, that copy moved in (`shared`); it registers a package, so it runs only inside a
-claude-desktops Windows desktop, never on the owner's PC, §2.47).
+claude-desktops Windows desktop, never on the owner's PC, §2.47),
+[`backdrop_lab`](tools/probes/backdrop_lab) (a WinUI 3 app: Windows' desktop acrylic values per kind and theme, what
+setting them does, and how much of a striped window shows through the glass at each luminosity and tint; its look
+phase (`--show`) shows its windows for about 20 s, never activated, so on a PC in use it runs only behind a guard
+that waits for the terminal in front and idle, §2.58),
+[`probe_caret.ps1`](tools/probes/probe_caret.ps1) (where the caret of the window in front is by each of Windows' three
+ways of telling — the Win32 caret, MSAA's `OBJID_CARET`, UI Automation's text selection — and where the panel opened;
+positions and class names only; its `msaa` mode starts Firefox's accessibility, and its `summon` mode injects keys, so
+that one runs only inside a claude-desktops Windows desktop, §2.64),
+[`probe_release_notes.py`](tools/probes/probe_release_notes.py) (whether a release body's translation blocks stay hidden:
+it builds the update dialog's Markdown parser exactly as every released version and HEAD have it, compares what each
+draws with and without the blocks, and with `--github` asks GitHub's renderer too, publishing nothing; needs git and
+the .NET SDK, §2.67).
 Run C# probes with `dotnet run tools/probes/<name>.cs`, Python ones with `python tools/probes/<name>.py`, PowerShell
 ones with `pwsh tools/probes/<name>.ps1`.
 
@@ -306,13 +322,13 @@ use it instead of Win+V's mechanism? Findings:
 
 | Project | TFM | Role |
 |---|---|---|
-| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`; what each integration stored, its parts counted and deleted: `Storage/StoredData`, `ClipStore.Stored.cs`, `Services/ClipHistoryService.Stored.cs`, §2.43), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`; whether the Run and Snipping tabs have anything to show, `ClipHistoryService.TabContent.cs`, §2.36; Windows' pins brought over once, `Services/WindowsPinLedger` and `ClipHistoryService.WindowsPins.cs`, §2.7), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, and the tab last chosen, §2.28), logging and the memory planner (`Diagnostics/MemoryReclaim`: when to give memory back, §2.45), the paste's timeline (`Diagnostics/PasteTimeline`: each stage from the key to the Ctrl+V, for the log, §2.52) on the stage timeline the summon's log line uses too (`Diagnostics/StageTimeline`, §2.53) and the silent restart's rules (`Diagnostics/SilentRestart`: when the app replaces itself after Settings closed, §2.46), presentation helpers (incl. `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/SettingsSearch`, Settings' fuzzy search, and `Presentation/StoredText`, the *Delete stored…* dialog's words, §2.43, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/TabArrangement`, the tabs' order and hiding from their right-click menu, §2.40, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, `Presentation/MergedTabOrder`, the time order of the tabs that list kept entries next to another app's items, §2.44, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28 and §2.31, and for the update dialog `Presentation/Markdown`, the release-notes parser, `Presentation/UpdateText` and `Presentation/UpdateDialogLayout`, §2.29), the rule by which a newer copy takes over from an older one (`Startup/InstanceTakeover`, §2.48), the sign-in rules (`Startup/SignInStartup`: the user's own and the all-users "Start with Windows" entry, when a start from the latter steps aside, what the switch shows and changes — §2.34), and the update system (`Updates/`: GitHub's release list, SemVer precedence, which release is offered and which notes are shown, `SHA256SUMS.txt`, the release feed and its download-trust rule, the HTTP client, the update service with its schedule and cache, how a copy was installed, the installer contract, the `--set-update-check` command — §2.29; `Updates/UpdateReminder`, when the panel reminds of a waiting update — §2.30; `Updates/PortableUpdate`, which offers a portable copy installs in its own folder and its helper's command line — §2.48; `Updates/LocalBuildFeed`, the dev-builds folder's development builds read as releases and copied with a checksum check, and the dev rule in `UpdateCatalog` — §2.39), and the interface languages (`Localization/`: one catalog per language and its flag, embedded in the DLL, keyed by the English text; `UiText` finds them, looks strings up, words plurals and decides which languages are translated enough to offer, `UiLanguage`, `PluralRules` (CLDR's rules from each catalog's header), `LanguageChoice` for the language picker, asked until a language is chosen — §2.37), tracked documents (`Documents/`, `Content/TextLoss`, `Storage/ClipStore.Documents.cs`: an editor's unsaved buffer kept as one entry, updated in place or split into a new copy by the text it lost) and Notepad++'s files (`NotepadPlusPlus/`: session, backups, config, command line, the opened-files tracker — §2.41), and the rules for other copies of BetterClipboard on the PC (`Editions/`: `OtherEdition`, `EditionSetupPlan`, which picks the Microsoft Store edition's next setup step, and `EditionDataMigrator`, which copies another edition's history with checksums, proves the copy, and commits or rolls the move back; `AppPaths.ResolveDefault(packageFamilyName, storeDataDirectory)` and `PackagedDataDirectory`, that edition's own data folder; `StoreDataFolder`, which makes the folder every edition shares real for that edition, proves it once per Windows build and falls back to its own folder — §2.47), and a picture's file (`Model/SourceFile`, `Content/ImageFileFormat`, `Content/TempImageFiles`, `Storage/ClipStore.SourceFiles.cs`, `Services/ClipHistoryService.SourceFiles.cs`, `Presentation/SourceFileText`, `Presentation/ByteSizeText` — §2.49), and long texts (`TextView/`: the language detector, the syntax highlighter, the XML and JSON formatter, the RTF writer and its palettes, and the text viewer's sources, views and pages; `Presentation/Markdown`'s parse options — §2.50). **CS1591 = error.** |
-| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Diagnostics/ProcessMemory` (the process's memory counters and page faults, the reclaim, and the working-set trim that nothing asks for since §2.53, §2.45), the silent restart's Windows side (§2.46: `Shell/QuietProcess`, a start without the busy pointer; `Input/UserActivity`, idle time and held keys; the shortcut hold `HotkeyService.HoldWithHookAsync`; the clipboard hand-over `ClipboardMonitor.Start(uint?)`; the tray icon's hidden start and `HandOverTo`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection with its settle wait to the millisecond (`PreciseDelay`, §2.52), placement, the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R, the other BetterClipboard processes and a program's version — `RunningCopies`, `ProgramVersion`, §2.48), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21; Notepad++: the plugin-message client with its owner check (Authenticode, NOTEPAD++ signer), the locator, the unsaved-tabs watcher, the opened-files watcher, life cycle — §2.41), `Updates/` (the Installed-apps record of the running copy, the OS architecture, and `ScriptUpdateInstaller`, which takes `install.ps1` out of a verified package and runs it in update mode — §2.29; `PortableUpdateInstaller` and `PortableUpdateCommand`, which unpack the package and let the new version replace a portable folder's files, all or nothing — §2.48; `LocalBuildsWatcher`, which tells the update service when the dev-builds folder changed — §2.39), and the Microsoft Store edition's Windows side (§2.47: `Packaging/PackageIdentity`, whether the process runs from the Store package, one kernel32 call, also linked into `bclip`; `Packaging/PackagedRestart`, which asks Windows to start the app again after a Store update; `Shell/PackagedStartup`, the package's startup task; `Store/OtherEditionLocator`, the other copies on the PC; `Store/EditionUninstaller`, the checks before and the run of the package's own `install.ps1 -Uninstall` on a copy from the installer; `RunMruWatcher`'s polling mode; `Packaging/StoreDataFolderSetup` and `Packaging/CmdOutsideFileSystem`, the shared data folder's decision and the cmd that makes, moves and looks for it from outside the package), and a picture's file (§2.49: `Shell/FileOnDisk`, whether a file is still there without touching a network path; `Integrations/ScreenshotFileFinder`, the one-time search for earlier screenshots' files; `ImageCodec.ContentHashAsync`). **CS1591 = error.** |
+| [`src/BetterClipboard.Core`](src/BetterClipboard.Core) | `net10.0` | OS-agnostic heart: models (`Model/`), codecs + classifier + hashing + path detector (`Content/`, §2.13), encrypted SQLite store + machine-bound store opener (`Storage/`; what each integration stored, its parts counted and deleted: `Storage/StoredData`, `ClipStore.Stored.cs`, `Services/ClipHistoryService.Stored.cs`, §2.43), key hierarchy (`Security/`: UUIDv5, HKDF machine binding, sealed key vault), capture pipeline (`Services/ClipHistoryService`; whether the Run and Snipping tabs have anything to show, `ClipHistoryService.TabContent.cs`, §2.36; Windows' pins brought over once, `Services/WindowsPinLedger` and `ClipHistoryService.WindowsPins.cs`, §2.7), command line (`Cli/`: protocol, pipe naming + framing, argument grammar, command processor, output — §2.9), Win+R list logic (`Integrations/RunMru`: parse, fingerprints, runs since a snapshot — §2.17), Windows screenshot rules (`Integrations/WindowsScreenshots`: the tool by a file name's shape, fresh writes, completeness from the bytes, Snipping Tool's saving settings — §2.22), Everything tab logic (`Everything/`: IPC wire format, queries, `Run History.csv`, merge and hide rules — §2.14), the prompt archive's logic (`Prompts/`: Claude Code and Codex parsers, keys, the incremental JSONL reader `JsonlTail` — §2.21; its tables in `Storage/ClipStore.Prompts.cs`), settings (incl. the remembered panel size, §2.23, the tab last chosen, §2.28, and the history's limits: the defaults of no item limit and a 16 GB budget and their move from format 1, §2.60), the size budget's warnings and Settings' "Now:" lines (`Services/HistoryBudgetWarnings`, `ClipHistoryService.Budget.cs`, `Presentation/HistoryLimitsText`, §2.60), the integrations' limits (`Settings/ListLimit`: 0 = unlimited, the default of six members of `AppSettings`, §2.62) and the merged tabs' pages (`Presentation/RowPages`, §2.62), logging and the memory planner (`Diagnostics/MemoryReclaim`: when to give memory back, §2.45), the paste's timeline (`Diagnostics/PasteTimeline`: each stage from the key to the Ctrl+V, for the log, §2.52) on the stage timeline the summon's log line uses too (`Diagnostics/StageTimeline`, §2.53) and the silent restart's rules (`Diagnostics/SilentRestart`: when the app replaces itself after Settings closed, §2.46), presentation helpers (incl. `Presentation/CardPreview`, the part of a preview a card of N lines hands its text block, §2.57, `Presentation/ThirdPartyCatalog`, the source of Settings › Third party, §2.20, `Presentation/SettingsSearch`, Settings' fuzzy search, and `Presentation/StoredText`, the *Delete stored…* dialog's words, §2.43, `Presentation/TabStripScroll`, the filter-tab carousel's arithmetic, §2.23, `Presentation/TabArrangement`, the tabs' order and hiding from their right-click menu, §2.40, `Presentation/CollectionPatch`, the panel list's remove/move/insert patching, §2.27, `Presentation/MergedTabOrder`, the time order of the tabs that list kept entries next to another app's items, §2.44, and `Presentation/PanelNavigation` and `Presentation/PointerSelectionGate`, the arrow keys' rules and when the mouse may select a row, §2.28 and §2.31, `Presentation/PanelButtons` and `Presentation/PanelShortcut`, the header's buttons Settings can hide and what the shortcut does to a pinned panel, §2.55, and their order, §2.58, `Presentation/PanelBackdrop`, the luminosity and tint each level of Background transparency gives the panel's glass, §2.58, `Presentation/SearchTyping`, how typed keys edit the search text without a caret while the panel leaves the keyboard with the app, §2.59, `Presentation/PanelFocus`, where the keyboard may go while the panel shows, §2.66, and for the update dialog `Presentation/Markdown`, the release-notes parser, `Presentation/UpdateText` and `Presentation/UpdateDialogLayout`, §2.29), the rule by which a newer copy takes over from an older one (`Startup/InstanceTakeover`, §2.48), the sign-in rules (`Startup/SignInStartup`: the user's own and the all-users "Start with Windows" entry, when a start from the latter steps aside, what the switch shows and changes — §2.34), and the update system (`Updates/`: GitHub's release list, SemVer precedence, which release is offered and which notes are shown, `SHA256SUMS.txt`, the release feed and its download-trust rule, the HTTP client, the update service with its schedule and cache, how a copy was installed, the installer contract, the `--set-update-check` command — §2.29; `Updates/ReleaseNotesLanguages`, a release body's translations hidden under its language line, and that line's links — §2.67; `Updates/UpdateReminder`, when the panel reminds of a waiting update — §2.30; `Updates/PortableUpdate`, which offers a portable copy installs in its own folder and its helper's command line — §2.48; `Updates/LocalBuildFeed`, the dev-builds folder's development builds read as releases and copied with a checksum check, and the dev rule in `UpdateCatalog` — §2.39; `Updates/ElevatedUpdate`, which offers may run their installer as administrator for a copy in Program Files — §2.63), and the interface languages (`Localization/`: one catalog per language and its flag, embedded in the DLL, keyed by the English text; `UiText` finds them, looks strings up, words plurals and decides which languages are translated enough to offer, `UiLanguage`, `PluralRules` (CLDR's rules from each catalog's header), `LanguageChoice` for the language picker, asked until a language is chosen — §2.37), tracked documents (`Documents/`, `Content/TextLoss`, `Storage/ClipStore.Documents.cs`: an editor's unsaved buffer kept as one entry, updated in place or split into a new copy by the text it lost) and Notepad++'s files (`NotepadPlusPlus/`: session, backups, config, command line, the opened-files tracker — §2.41), and the rules for other copies of BetterClipboard on the PC (`Editions/`: `OtherEdition`, `EditionSetupPlan`, which picks the Microsoft Store edition's next setup step, and `EditionDataMigrator`, which copies another edition's history with checksums, proves the copy, and commits or rolls the move back; `AppPaths.ResolveDefault(packageFamilyName, storeDataDirectory)` and `PackagedDataDirectory`, that edition's own data folder; `StoreDataFolder`, which makes the folder every edition shares real for that edition, proves it once per Windows build and falls back to its own folder — §2.47), and a picture's file (`Model/SourceFile`, `Content/ImageFileFormat`, `Content/TempImageFiles`, `Storage/ClipStore.SourceFiles.cs`, `Services/ClipHistoryService.SourceFiles.cs`, `Presentation/SourceFileText`, `Presentation/ByteSizeText` — §2.49), and long texts (`TextView/`: the language detector, the syntax highlighter, the XML and JSON formatter, the RTF writer and its palettes, and the text viewer's sources, views and pages; `Presentation/Markdown`'s parse options — §2.50). **CS1591 = error.** |
+| [`src/BetterClipboard.Windows`](src/BetterClipboard.Windows) | `net10.0-windows10.0.26100.0` | Everything OS: `Interop/` (LibraryImport P/Invoke, `MessageWindowThread`), `Diagnostics/ProcessMemory` (the process's memory counters and page faults, the reclaim, and the working-set trim that nothing asks for since §2.53, §2.45), the silent restart's Windows side (§2.46: `Shell/QuietProcess`, a start without the busy pointer; `Input/UserActivity`, idle time and held keys; the shortcut hold `HotkeyService.HoldWithHookAsync`; the clipboard hand-over `ClipboardMonitor.Start(uint?)`; the tray icon's hidden start and `HandOverTo`), `Clipboard/` (listener/reader/writer, source attribution), `Input/` (hotkeys + WH_KEYBOARD_LL takeover of several shortcuts at once, the installer's `--set-hotkeys` command — §2.25, paste injection with its settle wait to the millisecond (`PreciseDelay`, §2.52), the wait for the window's input thread and the Ctrl held until it took the V (`InputThreadWatch`) and the guard that holds back the keys typed meanwhile (`PasteKeyGuard`, §2.54), the window in front followed for a pinned panel (`ForegroundTracker`, §2.55), the hooks that give the panel its keys while it leaves the keyboard with the app and the rules of which keys they take (`FocuslessPanelInput`, `FocuslessKeyRules`, §2.59), the shell's surfaces above every app window — Start, Search, Quick settings, the notification center, Task View — told by their z-band and closed the way Esc does (`ShellSurfaces`, `GetWindowBand`, §2.61), Windows' UI access read and the integrity level lowered at the start, and the UI-access band above Start (`UiAccess`, `ShellSurfaces.IsInUiAccessBand`, §2.63), placement (with the panel's place beside Start, `FlyoutPositioner.Beside`, §2.61), the caret of apps that keep no Win32 caret, read through accessibility (MSAA) on the UI thread with a deadline (`AccessibleCaret`, `ForegroundContext.CaretQuery` and `WithAccessibleCaret`, §2.64), the panel's remembered size in pixels and DIPs — `FlyoutSizing`, §2.23), `Imaging/` (DIB math + WIC, PNG export for the CLI), `Import/` (DPAPI-NG, pinned store, WinRT history), `Shell/` (tray icon, whose notifications carry a tag that a click on them reports once, §2.60, Run key, Windows clipboard/Explorer settings incl. the `DisabledHotkeys` rules — `ExplorerHotkeys`, §2.25, user PATH, running a command like Win+R and whether Windows can run it as administrator (`ShellShortcut` reads a shortcut's target, §2.17), the other BetterClipboard processes and a program's version — `RunningCopies`, `ProgramVersion`, §2.48), `Security/` (MachineGuid + SID, DPAPI key protector), `Cli/` (ACL'd named-pipe server), `Integrations/` (ShareX: locator, folder-pattern rules, screenshot watcher, integration life cycle — §2.10; Windows' screenshots: Screenshots-folder locator (known folder, Snipping Tool's package and saving settings), a folder watcher that never locks a writer out, integration life cycle — §2.22; Win+R history: `RunMRU` reader, change watch, integration life cycle — §2.17; voidtools Everything: IPC client, owner check (Authenticode, voidtools signer), install locator, integration life cycle — §2.14; the prompt archive's readers: agent folders, file access (shared, lock retries, NTFS file id, zstd), watchers + hot poll + reconcile on a background-mode thread — §2.21; Notepad++: the plugin-message client with its owner check (Authenticode, NOTEPAD++ signer), the locator, the unsaved-tabs watcher, the opened-files watcher, life cycle — §2.41), `Updates/` (the Installed-apps record of the running copy, the OS architecture, and `ScriptUpdateInstaller`, which takes `install.ps1` out of a verified package and runs it in update mode — §2.29, as administrator through the shell for a copy in Program Files — §2.63; `PortableUpdateInstaller` and `PortableUpdateCommand`, which unpack the package and let the new version replace a portable folder's files, all or nothing — §2.48; `LocalBuildsWatcher`, which tells the update service when the dev-builds folder changed — §2.39), and the Microsoft Store edition's Windows side (§2.47: `Packaging/PackageIdentity`, whether the process runs from the Store package, one kernel32 call, also linked into `bclip`; `Packaging/PackagedRestart`, which asks Windows to start the app again after a Store update; `Shell/PackagedStartup`, the package's startup task; `Store/OtherEditionLocator`, the other copies on the PC; `Store/EditionUninstaller`, the checks before and the run of the package's own `install.ps1 -Uninstall` on a copy from the installer; `RunMruWatcher`'s polling mode; `Packaging/StoreDataFolderSetup` and `Packaging/CmdOutsideFileSystem`, the shared data folder's decision and the cmd that makes, moves and looks for it from outside the package), and a picture's file (§2.49: `Shell/FileOnDisk`, whether a file is still there without touching a network path; `Integrations/ScreenshotFileFinder`, the one-time search for earlier screenshots' files; `ImageCodec.ContentHashAsync`). **CS1591 = error.** |
 | [`src/BetterClipboard.Cli`](src/BetterClipboard.Cli) | `net10.0-windows` console | `bclip`: parses arguments, gates on the app's `EnableCommandLine`, talks to the running app over the pipe (starting it if needed), prints text/JSON with exit codes (§2.9). Published self-contained next to `BetterClipboard.exe`; in the Microsoft Store package it is the app's console alias `bclip.exe` (an execution alias with an executable of its own) and reads that edition's data folder (§2.47). **CS1591 = error.** |
-| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root (`AppController.Memory.cs` gives memory back after each use, §2.45; `AppController.SilentRestart.cs` and `RestartBridge` replace the process, unseen, a few seconds after Settings closed, §2.46; `AppController.Paste.cs` and `Views/ClipboardFlyout.Paste.cs` paste with nothing between the Enter and the Ctrl+V, §2.52). Views: `ClipboardFlyout` (acrylic Win+V replacement), `SettingsWindow` (Mica, under Windows' own title bar since 2026-11-12, §2.45), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29), `LanguageWindow` (the language picker, shown until a language is chosen, §2.37; `Localization/TrExtension` and `FlagImages` serve XAML's labels and the flags). The panel's weekly update reminder and its keyboard guard for clicked tooltips are §2.30. The Microsoft Store edition (§2.47): `AppController.Store.cs` (its setup: other copies, the move, the welcome), `StoreSetupWindow` with `StoreSetupView` and `StoreSetupViewModel` (the setup's one window and its pages), `SettingsWindow.Store.cs` and `SettingsViewModel.Store.cs` (the cards that edition keeps), `Program.ContinueStoreEditionInBackground`, and `SingleInstance`'s Store marker and setup claim. A picture's file (§2.49): `AppController.ImageFiles.cs` (copy the path or the file, open it or its folder off the UI thread, *Save to temp and*, the start's clean-up) and `Views/ClipboardFlyout.ImageFiles.cs` (the card menu's items and the image viewer's band). Long texts (§2.50): `Views/ClipboardFlyout.TextPreview.cs` (the hover peek and the text viewer), `Views/TextPreviewPresenter.cs` (their RichEdit surface with its line-number gutter), `AppController.TextView.cs` (a card's whole text) and `ViewModels/ClipItemViewModel.TextView.cs` (when a card is cut off). |
-| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (1,955 tests, one class at a time — §4: the summon's stages (§2.53, 2 cases: `StageTimelineTests` — a summon's stages in order ending at a given moment, a paste's timeline taken as a stage timeline); the paste's timeline (§2.52, 7 cases: `PasteTimelineTests` — each stage's own time adding up to the total, marks out of order, the log's rule, invariant numbers, marks from many threads); Windows' pins brought over once (§2.7, 27 cases: `WindowsPinLedgerTests` — the rule for every mix of ledger and entry, the same pin twice in one import, malformed hashes refused, unreadable ledgers read as a first import, the order and the cap that never drop a pin Windows keeps; through the service, an unpin kept through three imports and a later pin kept too, a delete kept after its tombstone expired also when Windows offers the content unmarked, the first import under the rule leaving existing entries, a new Windows pin applied to content already here, Win+R imports leaving the ledger alone, forgotten content coming over once allowed again); long texts (§2.50, 107 cases: `TextLanguageDetectorTests` 62, `SyntaxHighlighterTests` 19, `StructuredTextFormatterTests` 9, `TextViewRenderingTests` 17 — code recognized without taking prose for it, each language's colors, XML and JSON re-indented with every token kept and no external entity ever resolved, every character through RTF, Markdown drawn, the views, pages); a picture's file (§2.49, 41 cases: `SourceFileTests` — the file kept on insert, replaced whole or kept on a bump, added by a bump after the copy, filled only when missing by an import; the columns added to an older store; the search's candidates and `SetSourceFile` filling only what is missing; the service's events; `bclip`'s `file`; the setting's default, clamp and round trip; the format from the first bytes (17 cases); a file described as read; temporary pictures' folders, names, reuse that never overwrites, expiry by last use and the clean-up; the menu's label and the viewer's facts and dates; sizes like Explorer (6 cases)); the Microsoft Store edition's rules (§2.47, 36 cases: `EditionTests` — the package's data folder and instance scope; the setup plan for every mix of copies, other data and own history; what a move lists, reads and needs; a whole move that brings a history over, proves it and removes the old folder last; a rollback that leaves the original; copies that are no history, or another machine's, refused; the welcome off until given; and the shared data folder, `StoreDataFolderTests` 24: the places, the read-only answer, the record, made and proven once per Windows build, a failed proof remembered, a private copy made real or set aside, a 1.2.11 history moved in with its settings, two histories kept apart, unfinished moves settled); the silent restart's rules (§2.46, 14 cases: `SilentRestartTests` — restart at once when quiet; not wanted without Settings, while exiting, or when a language would be asked; each blocker named in the log's words; the pauses inclusive to the millisecond; the most lasting reason named first; what calls a started restart off, and that input does not); giving memory back (§2.45, 11 cases: `MemoryReclaimTests` — when a reclaim falls due, one reason's burst postponing it within two minutes while other reasons keep their own time, nothing while a window shows, the log's wording, and the one image format a picture's reader asks for, from a real store); the merged tabs' time order (§2.44, 24 cases: `MergedTabOrderTests` 19 — an old kept entry no longer leading, a recent one leading, a twin shown once at the newer time, pins only when asked, ties, pages that place each entry where its time falls and a twin pulling its entry to a later page, items without times, repeats, a deleted entry left out, arguments, and random lists keeping every rule in one page or many; 4 in `ShellTabTests` — the Cmd and Pwsh merges and the live cap; a kept prompt on real archive data in `PromptStoreTests`); Settings' search and *Delete stored…* (§2.43, 57 cases: `SettingsSearchTests` 40 — the query, every kind of match and what it refuses, letters in order never across a space, fuzzy matches only as the fallback, weights, highlights through embeddings and combining marks, the typo measure; `StoredDataTests` 17 — every source's parts, one-pass counting, the newest examples, deletion keeping pins, groups and other tabs and tombstoning, the service's preview, counts and deletion of archives and lists, shortcuts kept on one line); hiding a tab with its clipboard rows (§2.42, 6 cases: the setting's defaults, normalization and round trip; the rows left out of All, the kind tabs, Pinned and searches while grouped entries stay; two tabs at once; entries a filter cannot decide staying listed; the footer's count); the right-to-left languages and the descriptions for translators (§2.37, `RightToLeftTextTests` 44: Hebrew alone right to left, every Hebrew string embedded once or one of the few without Hebrew, values inside the embedding, English fallbacks untouched, `JoinLine`, the header's direction, `AsSentence` (with the ideographic full stop after a Han or kana title), a Latin word's trailing `+` and `#` kept with it (Notepad++ in Hebrew, and no shipped Hebrew string without its mark); every `en.json` row described, and the check itself on small catalogs; group names stored without direction controls); the tabs' arrangement (§2.40, 25 cases: the stored order completed and "All" kept first, moves past tabs that do not show and never past "All", what is stored, the settings' names, the XAML declaring one tab per filter); local dev builds (§2.39, 44 cases: the folder's reader — complete builds only, staging folders, names, checksum lists, architectures, bounds — the verified copy and its refusals, the owner's table of what is offered, release builds and release candidates, the notes of local builds, the words of a local build and of the way back, Chinese, no reminder for a development build, and the service: offered at start without a request, the folder followed, a changed package refused, the way back offered); the translation guards (§2.37, `TranslationCoverageTests` 14: every text and constant the code hands to UiText has a catalog entry and every entry is still used, both read from `src` by `CSharpSourceScanner` (next to `LocalizationTests.CodeAndCatalogsAgree`, below); Core's template lists in the catalogs; group icon names unique in every language; date patterns valid; `TranslateFormatted`, `DateCulture`, dates, the forgotten list, source names, update failures and the sign-in description in Chinese); the panel position (§2.38, 8 cases: `PanelPositionSettingsTests`); the interface languages (§2.37, 111 cases: the shipped languages and their headers, flags Direct2D can draw, English-text keys and hash keys, catalogs well formed with valid placeholders and what each lacks reported, the code and the catalogs agreeing (a lexer over every XAML and C# file), plurals in each language with English fallback, CLDR plural rules in five languages with their samples and broken rules refused, which languages are offered, Windows' language to a catalog with Traditional Chinese kept English, explicit choices, a text in a given language, when a start asks (until a language is chosen, also after an update from a version that never asked), `HasHistory`, relative times and bclip's tables English on request, and no log line built from translated text); the Run and Snipping tabs showing only with something in them (§2.36, 8 cases: the store's lookup of a tab's newest entry and of one entry, the history service through a first and a last run, a first import, Snipping Tool's pictures and text, a picture copied again from Paint, a clear, a start over a store that has both, a prune and Forget forever); Start with Windows for every user (§2.34, 31 cases: the entry formats, which program an entry names, what the switch shows for every mix of the user's entry, the entry for every user and Windows' marks, when a start from the entry for every user steps aside, each flip's change and all 192 flips reaching the asked state, the card's words, the setting, a copy for every user recognized before the per-user records, its update words and command); the weekly update reminder (§2.30, 26 cases: once a week to the second, a clock that was wrong, who is never reminded, the room over the window, the setting); the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: the row every load selects — the newest copy below the pins, only while they lead the list, also on the store's own pages — and Up from it reaching the lowest pin; tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it (§2.31: onto the first group shown or the clipboard icon, as a walk that shows its groups or one that only picks, when Space and Enter pick or go back with the group, when Down leaves from the lowest group, and held keys acting once), one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
-| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, and when its newest command was typed, §2.44; the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), the sign-in entries on scratch keys (§2.34: both entries and both marks read, odd values tolerated, writes that touch only BetterClipboard's values, plan and registry together, the PC's Installed-apps entry), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller), and the dev-builds folder's watcher (§2.39: the folder appearing, a build renamed into it, the folder deleted and created again) (460 tests, all in English whatever Windows' language; a picture's file, §2.49: `ImageFileTests` 4 — `FileOnDisk` on this PC's drives, the content hash equal to the analyzer's, the search matching by time then pixels, a file gone meanwhile — and `ShareXIntegrationTests.EarlierScreenshot_GetsItsFileOnce`, with the watchers' captures carrying their files: `TestLanguage`, §2.37; `TranslationTemplateTests` 6 check the Windows template lists in the catalogs and produce every shortcut problem, registration state and run result; `PanelPlacementTests` 27, §2.38; `ProcessMemoryTests` 2, §2.45: the memory counters, and a reclaim that collects a dropped array and trims, in a collection of its own that runs alone; the silent restart, §2.46: `SilentRestartTests` 4 — a quiet start of a console program and its end, refusals, the idle-time read, the shortcut hold refusing nothing to hold — and two take-over cases in `ClipboardCaptureTests`: a copy made while nobody listened is read at once, an unchanged clipboard is not; the Microsoft Store edition's uninstaller, §2.47: `EditionUninstallerTests` 13 — the check and the uninstall through the real Windows PowerShell against a stand-in `install.ps1` in a folder named with a space, a quote, an ampersand, percent signs and a non-ASCII letter; success proven by the program being gone; failures in their words; a folder this account may not change named; and the real `install.ps1`'s uninstall parameter set; the shared data folder, `StoreDataFolderSetupTests` 13 — `QuietProcess`'s exit code and added variables, cmd making, finding and moving folders named with a space, `100%PATH%`, `a&b`, `x^y`, `bang!`, brackets, accents, Hebrew and `a;b,c=d`, a 1.2.11 history moved in by the real cmd under a `Local App%Data%` folder, and the Windows build's four parts). |
-| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/publish-dev.ps1`](tools/release/publish-dev.ps1) (builds a commit in a temporary worktree and publishes it to this PC's dev-builds folder, where the installed app's update button offers it; `-Install` bootstraps — §2.39, skill `local-dev`), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`release/test-iex.ps1`](tools/release/test-iex.ps1) (checks that `install.ps1`'s param block survives the README's `irm \| iex` in 5.1 and 7 — CI runs it, §3.1), [`release/test-all-users.ps1`](tools/release/test-all-users.ps1) (installs and uninstalls for every user for real, as administrator and as SYSTEM — CI or a disposable VM only, §2.34), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`make_flags.py`](tools/make_flags.py) (the language flags, §2.37), [`localization/`](tools/localization) (`catalog.py`: add (one, or a file of many), add-plural, rename, remove, review and check UI strings, list a language's missing ones, convert hash keys; `smoke-windows.ps1`: the PR's UI smoke test in every language the catalogs hold, CI or a disposable VM only — §2.37), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4; the README's hero animation, [`hero-frames.ps1`](tools/readme/hero-frames.ps1) (resizes the open panel through a series of widths and captures each, in a desktop) and [`hero-gif.py`](tools/readme/hero-gif.py) (the looping GIF), and its gallery under *Features*, [`gallery.py`](tools/readme/gallery.py) (cut from the Store listing's screenshots), §3.4; [`seed-demo.cs`](tools/readme/seed-demo.cs) and [`demo-data.zip`](tools/readme/demo-data.zip), the Store screenshots' data — the owner's own history screened by hand — and its loader, §3.5; and [`check-translations.py`](tools/readme/check-translations.py), which compares each README translation with README.md section by section and through GitHub's renderer, and the Hebrew one's direction marks, §4), [`release/package-msix.ps1`](tools/release/package-msix.ps1) (the Microsoft Store package per architecture, checked after the build; unsigned for the Store, or signed with a test certificate for a test desktop — §3.5), [`release/submit-store.ps1`](tools/release/submit-store.ps1) (sends a release's Store packages to the Microsoft Store with Microsoft's submission API: the release run's last step, §3.5) and [`release/test-submit-store.ps1`](tools/release/test-submit-store.ps1) (that script against a stand-in service on this PC, 45 checks, in CI), [`release/check-store-listing.py`](tools/release/check-store-listing.py) (the listing kit's texts against the Store's limits), [`release/make-store-listing-csv.py`](tools/release/make-store-listing-csv.py) (fills Partner Center's exported listings file from the kit, each caption under its own picture: one import instead of some forty pasted fields per language; with `--check` it says whether an export is what the kit says), [`release/order-store-screenshots.js`](tools/release/order-store-screenshots.js) (puts a listing page's screenshots in order with the page's own drag-and-drop, for the browser tools: an import does not keep their order), [`release/store_listing.py`](tools/release/store_listing.py) (their shared reader of the kit, which also finishes a right-to-left listing's texts) and [`release/test-store-listing.py`](tools/release/test-store-listing.py) (52 checks, in CI), [`readme/screen-shot.py`](tools/readme/screen-shot.py) (rounds a window's corners in a whole-screen capture: the Store listing's pictures, §3.5), [`make_store_assets.py`](tools/make_store_assets.py) (the package's 35 logos and the listing's tile icon, from the app icon's own drawing). |
+| [`src/BetterClipboard.App`](src/BetterClipboard.App) | `net10.0-windows10.0.26100.0` WinUI 3 | Windows App SDK **2.5.1** as component packages (Base/Foundation/InteractiveExperiences/WinUI/DWrite — the metapackage's AI/ML/Search/Widgets add ~57 MB we don't use), unpackaged (`WindowsPackageType=None`), `WindowsAppSDKSelfContained=true`, custom `Program.Main` (single instance + commands). `AppController` = composition root (`AppController.Memory.cs` gives memory back after each use, §2.45; `AppController.SilentRestart.cs` and `RestartBridge` replace the process, unseen, a few seconds after Settings closed, §2.46; `AppController.Paste.cs` and `Views/ClipboardFlyout.Paste.cs` paste with nothing between the Enter and the Ctrl+V, §2.52). Views: `ClipboardFlyout` (acrylic Win+V replacement; `ClipboardFlyout.KeepOpen.cs` keeps it open after pasting while pinned and shows the header's buttons Settings does not hide, and `ClipboardFlyout.KeepOpenTip.cs` the pin's tip, which says how pinning works until it is closed, §2.55), `SettingsWindow` (Mica, under Windows' own title bar since 2026-11-12, §2.45), `UpdateView` in an `UpdateDialog` flyout (the update dialog, §2.29; its notes in the reader's language and the language line's switch, §2.67), `LanguageWindow` (the language picker, shown until a language is chosen, §2.37; `Localization/TrExtension` and `FlagImages` serve XAML's labels and the flags). The panel's weekly update reminder and its keyboard guard for clicked tooltips are §2.30. The Microsoft Store edition (§2.47): `AppController.Store.cs` (its setup: other copies, the move, the welcome), `StoreSetupWindow` with `StoreSetupView` and `StoreSetupViewModel` (the setup's one window and its pages), `SettingsWindow.Store.cs` and `SettingsViewModel.Store.cs` (the cards that edition keeps), `Program.ContinueStoreEditionInBackground`, and `SingleInstance`'s Store marker and setup claim. A picture's file (§2.49): `AppController.ImageFiles.cs` (copy the path or the file, open it or its folder off the UI thread, *Save to temp and*, the start's clean-up) and `Views/ClipboardFlyout.ImageFiles.cs` (the card menu's items and the image viewer's band). Long texts (§2.50): `Views/ClipboardFlyout.TextPreview.cs` (the hover peek and the text viewer), `Views/TextPreviewPresenter.cs` (their RichEdit surface with its line-number gutter), `AppController.TextView.cs` (a card's whole text) and `ViewModels/ClipItemViewModel.TextView.cs` (when a card is cut off). `Views/ClipboardFlyout.Leaving.cs` puts the panel away when the user goes to another window while one of its popups shows, and keeps the peeks from opening over a resting mouse or after the mouse left their card, and from staying shut while WinUI replays the pointer (§2.56). `Views/ClipboardFlyout.Focusless.cs` opens the panel without taking the keyboard from the app the user types in, takes the keys it acts on through a hook, and takes the keyboard the usual way where typing into a control of its own is needed (§2.59). `Views/ClipboardFlyout.SearchFocus.cs` keeps the keyboard in the search box: a click on a tab, a button or a group icon, and the Tab key, no longer take it; only the panel's popups do (§2.66). `Controls/AdjustableAcrylicBackdrop` is the panel's glass, Windows' acrylic set to Background transparency's level and kept as glass while another window has the keyboard, and `Views/ClipboardFlyout.Backdrop.cs` hands it the level; `ViewModels/PanelButtonRowViewModel` is one row of Settings' *Buttons in the panel*, with its up and down arrows (§2.58). `AppController.Budget.cs` turns the size budget's warnings into a notification whose click opens Settings at the budget, and `ViewModels/SettingsViewModel.Retention.cs` words Settings › History's "Now:" lines, the budget's bar and its warning (§2.60). `Views/ClipboardFlyout.ShellSurface.cs` opens the panel beside Start or Search and pastes into its search box, keeps the panel's window always on top while it waits concealed (`EnsureTopmost`), and closes Start when the panel must take the keyboard; `AppController`'s `MustCloseShellSurface` and `CloseShellSurfaceThenSummon` close Quick settings, the notification center, Task View, or a Start without room beside it, before the panel opens (§2.61); for a copy with Windows' UI access `CanStandAboveShell` opens the panel above Start instead, and `Program.Main` first lowers such a copy's integrity level (§2.63). `AppController.Limits.cs` applies a lowered limit of an integration's list at once, and `ViewModels/SettingsViewModel.Limits.cs` holds Settings' six numbers (§2.62). |
+| [`tests/BetterClipboard.Core.Tests`](tests/BetterClipboard.Core.Tests) | `net10.0` | xunit.v3 on Microsoft.Testing.Platform (2,405 tests, one class at a time — §4: release notes in Simplified Chinese (§2.67, 49 cases: `ReleaseNotesLanguagesTests` — the composed body split exactly where the update dialog's parser hides a comment, its drawing unchanged; 13 spans that are no translation; markers with blanks around them; a closed fence, and a fence opened inside a hidden span; Windows line ends; the first block of a language; at most 16; the language shown and its text; 13 links told apart; the pages; 2,000 random bodies); the search box keeping the keyboard (§2.66, 11 cases: `PanelFocusTests` — what becomes of a move for every place, mode and holder, and the rule's invariants over all 24 combinations); the update failures and the reasons BetterClipboard words itself, in every language (§2.37, 2026-11-21, 2 cases: `TranslationCoverageTests.OwnFailureReasons_ReadInTheInterfaceLanguage` — the Windows installer's failures, the portable update's two reasons inside their sentences, and the reasons of *Save to temp* and of the Store edition's history move, in Chinese, a path and the system's reason kept; `UpdateFailures_AreWordedFromTheTemplates` — no update failure typed into its throw, mutation-checked); Windows' UI access (§2.63, 11 cases: `ElevatedUpdateTests` — which offers may run their installer as administrator: every build from 0.2.12-dev.65 on, none before it); the integrations' limits (§2.62, 19 cases: `IntegrationLimitsTests` 17 — the six settings' defaults, round trips and clamps, `ListLimit`'s rule, `RowPages` with 2,000 random runs, `FindForgotten` across chunks; `CmdHistoryTests` 2 — a window seen first keeping its order against what is kept, and the reader's memory: fingerprints with known answers, `NewSinceRead`, its round trip and damaged lines); the history's limits (§2.60, 72 cases: `HistoryLimitsSettingsTests` 13 — the new defaults, a format-1 file moved only at format 1's defaults, a chosen value kept, a file without a format never moved, the log line, idempotence; `HistoryBudgetTests` 33 — the levels, a walk up and down with every rule (a jump warns once, a full budget that keeps removing is told once, a full mark kept down to 88 %, a whole step down re-arms below full), a new budget starting over, what Settings shows, the mark's format with and without its budget, the store's counts and the prune's measure, largest first, many ids deleted and tombstoned, the service warning each level once also across a restart, again after deleting, and from the start under a raised budget, a throwing subscriber and an unreadable mark never failing a copy, temporary pictures measured; `HistoryLimitsTextTests` 19 — every "Now:" line, the warning and the notification in English, percentages rounded down, the full mark in Settings, and every language's title and text within a Windows 11 toast's two and four lines; 7 CLI cases — several ids, `--sort size` with group counts, the status budget, the size column and marks, the protocol's new members); the panel that leaves the keyboard with your app (§2.59, 48 cases: `PanelWithoutFocusTests` — the setting on by default, kept when turned off, a file from before it reading on; typed characters added at the end without control characters; the length limit never cutting a surrogate pair; Backspace taking one whole character (an accent, an emoji, a family of joined emoji, a flag, a Hebrew letter with its marks, a lone surrogate) and Ctrl+Backspace one word; 2,000 random runs of typing and erasing keeping every rule); background transparency and the header buttons' order (§2.58, 27 cases: `PanelBackdropTests` 16 — the default is Windows' own acrylic, the scale never grows more opaque as the level rises, the ends stay glass (never a luminosity of 1, always some), each half steps evenly, every level keeps the theme's colors, clamping, the setting's round trip and name; `PanelButtonOrderTests` 11 — the default order stored empty, a stored order completed, moves both ways, stepping over a button Settings does not list and refusing one not in the order, every one of the 120 orders stored and read back, 2,000 random presses in both editions keeping every button once, lenient reading, the file round trip and name); lines per card (§2.57, 30 cases: `LinesPerCardTests` 28 — the setting's default, round trip and bounds, the bounds holding together, a card's text cut one line past its lines and by characters with surrogate pairs kept whole, 2,000 random previews, previews of 16,000 characters and forty file names, the preview from the indexed text equal to the one from the whole text for nine texts, no lone surrogate at the head's cut, the short preview equal to the old one, old and new cuts recognized, the store's one-time rebuild of texts, file lists and archived prompts, `bclip`'s short preview; `PreviewTextTests` 2 — forty names and a forty-first that is a name, left as they are); the pin and the header's buttons (§2.55, 31 cases: `PanelButtonsTests` — only the trash hidden and the panel not pinned by default, an empty stored list keeping every button across a save, the pin and the hidden buttons through the settings file by name, the pin's tip due while pinned with the pin shown until it is closed, and its closing kept through the file, names read leniently and unknown ones dropped, which names parse, the pinned mode only while its button shows, one button shown or hidden at a time in header order, the minimum width per buttons shown, the shortcut's answer for every mix of open, pinned and in front, the members' names in the file; and `UpdateSettingsTests` — the minimum width per buttons, the floor of 360); the hover rule asked without taking the selection (§2.56, 3 cases: `PointerSelectionGateTests` — `HasMoved` answering like `Observe` and changing nothing, no spot known, agreeing with `Observe` all around the spot and at the coordinates' ends); copies that are only whitespace (§2.3, 15 cases: `ContentTests` — blank text in every whitespace, plain or formatted, never invisible format characters or blank text with a picture; `ClipHistoryServiceTests` — left out from a live copy, Windows' history and its pins, a picture with blank text kept; `ClipStoreTests` — the ones kept before deleted once, pinned, grouped, cut and picture ones kept; and a tab emptied to whitespace skipped in `TrackedDocumentStoreTests`); the interface's own words in every language (§2.37, 2026-11-16, 20 cases: `PreviewTextTests` 16 — the classifier's English words on cards (a picture with and without its size, formatted content without text, a long file list's last line, a text of white space alone) shown in Chinese and with Russian's and Hebrew's plural forms, and 12 copies that read like those words left as they are; a forgotten item's title on one Hebrew line; *Delete stored…*'s examples in the interface language; sizes in Russian, Chinese and Spanish units; the update dialog's release date and progress in Chinese and Russian); the list below the pins (§2.28, 15 cases: `PanelNavigationTests` — out of view only in the plain history; the room a short list gets below its last card: what the rows below lack, asked again unchanged, given back as the list grows, rounded up past a thousandth, none for a list not laid out, 2,000 random lists); the summon's stages (§2.53, 2 cases: `StageTimelineTests` — a summon's stages in order ending at a given moment, a paste's timeline taken as a stage timeline); the paste's timeline (§2.52, §2.54, 8 cases: `PasteTimelineTests` — each stage's own time adding up to the total, marks out of order, the log's rule, invariant numbers, marks from many threads, the hold after the V with the keys held back meanwhile); Windows' pins brought over once (§2.7, 27 cases: `WindowsPinLedgerTests` — the rule for every mix of ledger and entry, the same pin twice in one import, malformed hashes refused, unreadable ledgers read as a first import, the order and the cap that never drop a pin Windows keeps; through the service, an unpin kept through three imports and a later pin kept too, a delete kept after its tombstone expired also when Windows offers the content unmarked, the first import under the rule leaving existing entries, a new Windows pin applied to content already here, Win+R imports leaving the ledger alone, forgotten content coming over once allowed again); long texts (§2.50, 203 cases: `TextLanguageDetectorTests` 62, `SyntaxHighlighterTests` 19, `StructuredTextFormatterTests` 9, `TextViewRenderingTests` 34, `TableLayoutTests` 49, `MarkdownTests`' kept layout 13 and nested blocks 17 — code recognized without taking prose for it, each language's colors, XML and JSON re-indented with every token kept and no external entity ever resolved, every character through RTF, Markdown drawn in the code font, the views, pages; since 2026-11-16 eleven terminal tables and 500 random ones shown as copied in the Formatted view, and the kept layout's indentation, tabs, backslashes and dashed lines; since 2026-11-20 quotes holding tables, headings, lists, fences and quotes, lazy lines, tables and quotes under list items, tables cut out of code blocks without code, the quote's indentation and color in the RTF, numbered markers' room, and 1,000 random nested documents; and tables fitted to the width: natural widths, cut by a level or the data first, cells wrapped, wide characters counted as two, stops at the measured advance, blanks past 32 stops, and 1,000 random tables that never overflow a column or lose a character); a picture's file (§2.49, 41 cases: `SourceFileTests` — the file kept on insert, replaced whole or kept on a bump, added by a bump after the copy, filled only when missing by an import; the columns added to an older store; the search's candidates and `SetSourceFile` filling only what is missing; the service's events; `bclip`'s `file`; the setting's default, clamp and round trip; the format from the first bytes (17 cases); a file described as read; temporary pictures' folders, names, reuse that never overwrites, expiry by last use and the clean-up; the menu's label and the viewer's facts and dates; sizes like Explorer (6 cases)); the Microsoft Store edition's rules (§2.47, 36 cases: `EditionTests` — the package's data folder and instance scope; the setup plan for every mix of copies, other data and own history; what a move lists, reads and needs; a whole move that brings a history over, proves it and removes the old folder last; a rollback that leaves the original; copies that are no history, or another machine's, refused; the welcome off until given; and the shared data folder, `StoreDataFolderTests` 24: the places, the read-only answer, the record, made and proven once per Windows build, a failed proof remembered, a private copy made real or set aside, a 1.2.11 history moved in with its settings, two histories kept apart, unfinished moves settled); the silent restart's rules (§2.46, 14 cases: `SilentRestartTests` — restart at once when quiet; not wanted without Settings, while exiting, or when a language would be asked; each blocker named in the log's words; the pauses inclusive to the millisecond; the most lasting reason named first; what calls a started restart off, and that input does not); giving memory back (§2.45, 11 cases: `MemoryReclaimTests` — when a reclaim falls due, one reason's burst postponing it within two minutes while other reasons keep their own time, nothing while a window shows, the log's wording, and the one image format a picture's reader asks for, from a real store); the merged tabs' time order (§2.44, 24 cases: `MergedTabOrderTests` 19 — an old kept entry no longer leading, a recent one leading, a twin shown once at the newer time, pins only when asked, ties, pages that place each entry where its time falls and a twin pulling its entry to a later page, items without times, repeats, a deleted entry left out, arguments, and random lists keeping every rule in one page or many; 4 in `ShellTabTests` — the Cmd and Pwsh merges and the live cap; a kept prompt on real archive data in `PromptStoreTests`); Settings' search and *Delete stored…* (§2.43, 57 cases: `SettingsSearchTests` 40 — the query, every kind of match and what it refuses, letters in order never across a space, fuzzy matches only as the fallback, weights, highlights through embeddings and combining marks, the typo measure; `StoredDataTests` 17 — every source's parts, one-pass counting, the newest examples, deletion keeping pins, groups and other tabs and tombstoning, the service's preview, counts and deletion of archives and lists, shortcuts kept on one line); hiding a tab with its clipboard rows (§2.42, 6 cases: the setting's defaults, normalization and round trip; the rows left out of All, the kind tabs, Pinned and searches while grouped entries stay; two tabs at once; entries a filter cannot decide staying listed; the footer's count); the right-to-left languages and the descriptions for translators (§2.37, `RightToLeftTextTests` 44: Hebrew alone right to left, every Hebrew string embedded once or one of the few without Hebrew, values inside the embedding, English fallbacks untouched, `JoinLine`, the header's direction, `AsSentence` (with the ideographic full stop after a Han or kana title), a Latin word's trailing `+` and `#` kept with it (Notepad++ in Hebrew, and no shipped Hebrew string without its mark); every `en.json` row described, and the check itself on small catalogs; group names stored without direction controls); the tabs' arrangement (§2.40, 25 cases: the stored order completed and "All" kept first, moves past tabs that do not show and never past "All", what is stored, the settings' names, the XAML declaring one tab per filter); local dev builds (§2.39, 44 cases: the folder's reader — complete builds only, staging folders, names, checksum lists, architectures, bounds — the verified copy and its refusals, the owner's table of what is offered, release builds and release candidates, the notes of local builds, the words of a local build and of the way back, Chinese, no reminder for a development build, and the service: offered at start without a request, the folder followed, a changed package refused, the way back offered); the translation guards (§2.37, `TranslationCoverageTests` 14: every text and constant the code hands to UiText has a catalog entry and every entry is still used, both read from `src` by `CSharpSourceScanner` (next to `LocalizationTests.CodeAndCatalogsAgree`, below); Core's template lists in the catalogs; group icon names unique in every language; date patterns valid; `TranslateFormatted`, `DateCulture`, dates, the forgotten list, source names, update failures and the sign-in description in Chinese); the panel position (§2.38, 8 cases: `PanelPositionSettingsTests`); the interface languages (§2.37, 111 cases: the shipped languages and their headers, flags Direct2D can draw, English-text keys and hash keys, catalogs well formed with valid placeholders and what each lacks reported, the code and the catalogs agreeing (a lexer over every XAML and C# file), plurals in each language with English fallback, CLDR plural rules in five languages with their samples and broken rules refused, which languages are offered, Windows' language to a catalog with Traditional Chinese kept English, explicit choices, a text in a given language, when a start asks (until a language is chosen, also after an update from a version that never asked), `HasHistory`, relative times and bclip's tables English on request, and no log line built from translated text); the Run and Snipping tabs showing only with something in them (§2.36, 8 cases: the store's lookup of a tab's newest entry and of one entry, the history service through a first and a last run, a first import, Snipping Tool's pictures and text, a picture copied again from Paint, a clear, a start over a store that has both, a prune and Forget forever); Start with Windows for every user (§2.34, 31 cases: the entry formats, which program an entry names, what the switch shows for every mix of the user's entry, the entry for every user and Windows' marks, when a start from the entry for every user steps aside, each flip's change and all 192 flips reaching the asked state, the card's words, the setting, a copy for every user recognized before the per-user records, its update words and command); the weekly update reminder (§2.30, 26 cases: once a week to the second, a clock that was wrong, who is never reminded, the room over the window, the setting); the update system (§2.29, 265 tests: SemVer precedence, GitHub's release JSON incl. drafts and hostile input, which release is offered and which notes are shown, `SHA256SUMS.txt`, the download-trust rule and the stand-in feed's rules, how a copy was installed, the settings and `--set-update-check`, the wording of every state, the dialog's placement, the release-notes Markdown parser (80), the HTTP client against a fake handler (headers, entity tags, rate limits, size limits, stalls, partial files), and the service on a manual clock: schedule, cache, backoff, verification, the hand-over to the installer, cancellation, every failure); getting around the panel (§2.28: the row every load selects — the newest copy below the pins, only while they lead the list, also on the store's own pages — and Up from it reaching the lowest pin; tabs in a circle, held keys stopping at the ends, when Left and Right belong to the search text, the walk from the top row into the groups column and through it (§2.31: onto the first group shown or the clipboard icon, as a walk that shows its groups or one that only picks, when Space and Enter pick or go back with the group, when Down leaves from the lowest group, and held keys acting once), one group shown alone without hiding the shown one, the cursor having to leave its spot before the mouse selects, the remembered tab's name read leniently); the panel list's patching (§2.27: no change for an unchanged list, one insert and one remove for a new copy, one move for a re-copy, random reorders); the shortcuts in settings (§2.25: the main one plus extras, normalization, the cap, round trip, files from before the extras; §2.26: the history behind "Used before": order, cleaning, cap, round trip); the tab carousel's arithmetic and the remembered panel size (§2.23: arrow steps tab by tab both ways, order-independence, ends and out-of-range offsets, reveal, wheel and tilt, drag, clamps; defaults, persistence, clamping of a hand-edited size); the Snipping tab (§2.22: file names by shape, localized and right-to-left ones included, freshness, completeness per format, Snipping Tool's settings, the filter, the hybrid merge rules, pause and ignored apps, the "SnippingTool.exe" relabel, the CLI names, the setting); the prompt archive (§2.21: Claude Code and Codex parsers, key known answers, `JsonlTail` for appends, partial lines, truncation, trims, filters, replacement, CRLF, long lines and unseekable streams, the store's merges, Codex twin records in either order, tombstones, rewrites, forget, listing and search, checkpoints, schema on an older store, the service's pause/ignore/size rules and slices, `bclip prompts`/`prompt`); the Third party catalog (link wording, the official-link rule, every restored package credited, both directions of agreement with `THIRD-PARTY-NOTICES.md`); the Pwsh and Cmd tabs (§2.19); the Everything tab (IPC wire format incl. replies that lie about their size, queries, `Run History.csv` incl. a write cut off mid-path, merge and hide rules, the Everything filter and origin, forgetting files by path, pick formats, `-f everything`); Win+R list logic (parse, fingerprint known answers, runs since a snapshot for every kind of list change, planned captures), the run column, Run filter, merge rules and tombstones of both Win+R origins, a store from before the column, pause/ignore/Forget forever for runs, `-f run`; paths copied as text (a 234-case detector corpus: every form, prose, commands, URLs, escapes, whitespace; Files/Text filters; backfill and rules version), content, store, **encryption at rest**, key-hierarchy known-answer tests, CLI grammar/protocol/processor/output, one-time data fix-ups, password-manager catalog seeding, ShareX origin/filter/state semantics, groups: CRUD, membership filter, merged views of several groups (one list in the usual order, paging, search and toggles, the union count), the Ctrl/Shift click rules and their wording, kept-like-pinned retention, reset clock, schema added to an older store, service events, icon catalog; Forget forever: fingerprint normalization, known answers and chunking, the look-alike sweep, list life cycle, blocking across channels, Settings wording; search toggles: match case, VS Code's whole-word rule (punctuation edges, overlaps, runes), regex lines/engines/timeout, the prefilter superset, the SQL function inside real queries: order, paging, filters, groups, failures keeping their type, persisted toggles). |
+| [`tests/BetterClipboard.Windows.Tests`](tests/BetterClipboard.Windows.Tests) | `net10.0-windows…` | Hotkeys, interceptor, placement, DIB/WIC, DPAPI-NG, synthetic pinned store, real DPAPI/MachineGuid, **clipboard capture in a private window station** (bursts, watchdog, echo, delayed rendering), CLI pipe server (real pipes: refusal of a 2nd server, hang-up, malformed input, 124-connection stress: 100 sequential + 24 parallel) + CLI end-to-end through the real monitor, user-PATH rules, flyout drag tracker, ShareX (pattern rules, locator against fake ShareX layouts, screenshot watcher on temp folders, integration marker life cycle over a real history), groups column growing/shrinking on the left, Forget forever end to end (a real copy of forgotten text is read and kept out), opt-in real-clipboard round trip, explicit capture-rate measurement, Win+R history on scratch HKCU keys (reader, settle wait, change watch incl. a key that appears later, integration: first import, live runs, re-runs, restart catch-up, off/on, pause, a missing list, keeping more than Windows' 26, a rescan racing the watch, runs from the panel) and Run-dialog parsing + hidden launches, Everything (the client against a fake IPC window in this process: trust, state, reply matching, latest-wins, deadlines, garbled replies, a hung window, the command line; the integration: live picks, the saved file while gone, loading or garbled, never an impostor; the owner check: other names, unsigned, another publisher; locator hints; quoting checked with `CommandLineToArgvW`; opt-in real Everything), the Pwsh and Cmd tabs (§2.19: the PowerShell source on temp files, and when its newest command was typed, §2.44; the helper's wire format), the prompt archive's readers on temp agent folders (§2.21: first import + watcher, rename-over prune, whose Codex threads, a writer that keeps its file open, archive move + zstd compression, the mandatory lock, pause and off/on, restart, file ids across moves), Windows' screenshots (§2.22: each tool's name, a writer reopening its file while the watcher polls, files copied or moved in, skips, renames, catch-up, a folder created later, the marker's life cycle, a clipboard copy and its file merging for a DIBV5 and a zero-alpha BI_RGB DIB, the locator, the display-name rule), the panel's remembered size (§2.23: pixels to DIPs and back at every Windows scale without drift, the groups column left out of the remembered width, clamping and bad scales, the per-scale minimum), several shortcuts (§2.25: the list parser, one hook for several gestures on one key, Explorer's `DisabledHotkeys` rules and the Settings card's plan, the `--set-hotkeys` command, real registrations of obscure keys and the probe the Settings card waits with), any key as a shortcut (§2.26: every usable code round-trips through its text, 30 spellings, 31 refusals with their reasons, the key kinds, the recorder's decisions), source attribution of owner-less copies (never this process), integrity levels for pasting into elevated windows (§2.5), the sign-in entries on scratch keys (§2.34: both entries and both marks read, odd values tolerated, writes that touch only BetterClipboard's values, plan and registry together, the PC's Installed-apps entry), and the update installer (§2.29: the Installed-apps record read from a scratch key, an isolated instance ignoring it, the installer script taken out of a package and refused when missing, empty, oversized or in a subfolder, the contract command line, and a stand-in installer run through the real Windows PowerShell: every argument whole in a folder name with a space, a quote, an ampersand, percent signs and a non-ASCII letter, the exit code, the temp working folder, and no `PSModulePath` from the caller), and the dev-builds folder's watcher (§2.39: the folder appearing, a build renamed into it, the folder deleted and created again) (673 tests, all in English whatever Windows' language; running as administrator like Windows, §2.17: `RunCommandLauncherTests` 13 new — what Windows can elevate by its file type (a program, a batch file in a folder with a space, a console, a snap-in), what it cannot (a picture, a text file, a file without a type, a folder, web and shell addresses, a missing picture), shortcuts by their target (made and read through `IShellLinkW`: to Notepad, to a picture, to a folder, a damaged one), a name only running resolves left to the run, and the run's rule for every answer and result (8 cases: a 1155 opens normally, a declined prompt or another failure is the result, nothing tries `runas` for what cannot elevate) with its arguments refused; the caret of apps without a Win32 caret, §2.64: `AccessibleCaretTests` 17 — what counts as a caret (13 reports: Edge's, Firefox's and the console's as measured, a hidden one, an empty one, one off the window, numbers that overflow), a window on a monitor left of the main one, real lookups through oleacc and the `IAccessible` vtable against a window of this process that answers `OBJID_CARET` itself, a window whose thread does not answer held to the deadline with one lookup at a time, and what a summon's lookup (`WithAccessibleCaret`) asks and keeps; Windows' UI access, §2.63: `UiAccessTests` 7 — this process keeps its level and does not count as started with UI access, and the start's log line for every kind of start — and `UpdateInstallerTests` 17 new — the elevated start's contract command line through the shell's `runas`, `JoinArguments` for 13 kinds of argument read back whole with `CommandLineToArgvW`, `NeedsAdministrator` only where Windows denies the write (a deny rule for the account's own SID), and an older installer and an isolated instance refused before anything starts — and `ShellSurfaceTests` asking a window of this process whether it is in the UI-access band; the integrations' limits, §2.62: the ShareX and Snipping catch-ups of every screenshot or the newest under a limit (2 cases each) and `CmdHistoryLimitTests` 1 — 1,200 kept commands, a limit of 3 applied, raised again without loss; the panel over Start, Search and the shell's other surfaces, §2.61: `ShellSurfaceTests` 37 — what each z-band means (14 bands) and which hold only the shell's surfaces (11), every band acted on counted as the shell's, the place beside Start: right at its width, narrowed to the room, none without room for the minimum (the 1600-pixel screen), the side with more room, the groups column, inside the work area, none at all, 2,000 random surfaces never overlapped or left — rectangles that share a pixel, contexts not captured naming no surface, and the real band call on a window of this process; the size budget's notification, §2.60: `TrayIconTests` 2 — a notification asked for while the icon is hidden waits and shows with it, and a click on one raises its tag once; the panel that leaves the keyboard with the app, §2.59: `FocuslessPanelInputTests` 68 — which keys its hook takes and which may type, the printable part of what a key typed, and, opt-in outside CI (`BETTERCLIPBOARD_HOOK_TESTS=1`, in a collection that runs alone), the real hook: a key taken with its key-up and handed over once, keys passing again once it stopped taking them, the key-up of a taken key still taken after that with the disengagement waiting for it, a panel that stops answering losing the keys — and `ClipboardCaptureTests.OwnWrite_ChangedWithoutEmptying_IsStillOwn`: a change that leaves BetterClipboard's window the clipboard's owner is never read as a copy; the window a pinned panel pastes into, §2.55: `ForegroundTrackerTests` 23 — the taskbar, the tray, Start, Alt+Tab and the task view never paste targets while other windows are, the WinEvent hook started and stopped repeatedly, a callback required, `ForegroundContext.ForWindow`; the paste's waits and key guard, §2.54: `InputThreadWatchTests` 19 — when the keys go in and when Ctrl comes up, over a fake window and a fake clock, and a real window thread kept busy — and `PasteKeyGuardTests` 12 — which key events are held, the replay's order, scan codes and flags, and, opt-in outside CI (`BETTERCLIPBOARD_HOOK_TESTS=1`), the real hook's engagement, nesting and watchdog; a picture's file, §2.49: `ImageFileTests` 4 — `FileOnDisk` on this PC's drives, the content hash equal to the analyzer's, the search matching by time then pixels, a file gone meanwhile — and `ShareXIntegrationTests.EarlierScreenshot_GetsItsFileOnce`, with the watchers' captures carrying their files: `TestLanguage`, §2.37; `TranslationTemplateTests` 8 check the Windows template lists in the catalogs, produce every shortcut problem, registration state and run result, and translate Everything's reasons, Notepad++'s problems and, since 2026-11-16, the Microsoft Store edition's uninstall details (§2.37); `PanelPlacementTests` 18, §2.38 (27 until the current screen became the mouse's, 2026-11-20); `ProcessMemoryTests` 2, §2.45: the memory counters, and a reclaim that collects a dropped array and trims, in a collection of its own that runs alone; the silent restart, §2.46: `SilentRestartTests` 4 — a quiet start of a console program and its end, refusals, the idle-time read, the shortcut hold refusing nothing to hold — and two take-over cases in `ClipboardCaptureTests`: a copy made while nobody listened is read at once, an unchanged clipboard is not; the Microsoft Store edition's uninstaller, §2.47: `EditionUninstallerTests` 13 — the check and the uninstall through the real Windows PowerShell against a stand-in `install.ps1` in a folder named with a space, a quote, an ampersand, percent signs and a non-ASCII letter; success proven by the program being gone; failures in their words; a folder this account may not change named; and the real `install.ps1`'s uninstall parameter set; the shared data folder, `StoreDataFolderSetupTests` 13 — `QuietProcess`'s exit code and added variables, cmd making, finding and moving folders named with a space, `100%PATH%`, `a&b`, `x^y`, `bang!`, brackets, accents, Hebrew and `a;b,c=d`, a 1.2.11 history moved in by the real cmd under a `Local App%Data%` folder, and the Windows build's four parts). |
+| [`tools/`](tools) | scripts | `probes/` (research), `e2e/` (UI harness — see §4), [`release/package.ps1`](tools/release/package.ps1) (release zips + `.7z` archives + SHA256SUMS, shared with CI), [`release/package-chocolatey.ps1`](tools/release/package-chocolatey.ps1) / [`release/test-chocolatey.ps1`](tools/release/test-chocolatey.ps1) (the Chocolatey package and its real install test, §3.2), [`release/install-local.ps1`](tools/release/install-local.ps1) (installs those zips on this PC with the real installer before a release, §3.1), [`release/publish-dev.ps1`](tools/release/publish-dev.ps1) (builds a commit in a temporary worktree and publishes it to this PC's dev-builds folder, where the installed app's update button offers it; `-Install` bootstraps — §2.39, skill `local-dev`), [`release/test-update.ps1`](tools/release/test-update.ps1) (runs a package's `install.ps1` in update mode with the app's own command line, in scratch folders — CI and the release job run it, §2.29), [`release/test-iex.ps1`](tools/release/test-iex.ps1) (checks that `install.ps1`'s param block survives the README's `irm \| iex` in 5.1 and 7 — CI runs it, §3.1), [`release/release_notes.py`](tools/release/release_notes.py) (composes a release's body from the tag's notes and their translations in `docs/release-notes/<version>/`, and refuses a stale or malformed translation: the release job's first step, §2.67) and [`release/test-release-notes.py`](tools/release/test-release-notes.py) (88 checks, in CI), [`release/test-all-users.ps1`](tools/release/test-all-users.ps1) (installs and uninstalls for every user for real, as administrator and as SYSTEM — CI or a disposable VM only, §2.34), [`launch_dev.py`](tools/launch_dev.py) (runs a copy of the dev build next to the installed app for the user to try, §3), [`make_icon.py`](tools/make_icon.py) (app icon), [`make_flags.py`](tools/make_flags.py) (the language flags, §2.37), [`localization/`](tools/localization) (`catalog.py`: add (one, or a file of many), add-plural, rename, remove, review and check UI strings, list a language's missing ones, convert hash keys; `smoke-windows.ps1`: the PR's UI smoke test in every language the catalogs hold, CI or a disposable VM only — §2.37), [`readme/`](tools/readme) (the README photos: demo data, window capture and finishing, and screen capture and composing for a flyout that leaves its window, for a claude-desktops Windows desktop, §3.4; the README's hero animation, [`hero-frames.ps1`](tools/readme/hero-frames.ps1) (resizes the open panel through a series of widths and captures each, in a desktop) and [`hero-gif.py`](tools/readme/hero-gif.py) (the looping GIF), and its gallery under *Features*, [`gallery.py`](tools/readme/gallery.py) (cut from the Store listing's screenshots), §3.4; [`seed-demo.cs`](tools/readme/seed-demo.cs) and [`demo-data.zip`](tools/readme/demo-data.zip), the Store screenshots' data — the owner's own history screened by hand — and its loader, §3.5; and [`check-translations.py`](tools/readme/check-translations.py), which compares each README translation with README.md section by section and through GitHub's renderer, and the Hebrew one's direction marks, §4), [`release/package-msix.ps1`](tools/release/package-msix.ps1) (the Microsoft Store package per architecture, checked after the build; unsigned for the Store, or signed with a test certificate for a test desktop — §3.5), [`release/submit-store.ps1`](tools/release/submit-store.ps1) (sends a release's Store packages to the Microsoft Store with Microsoft's submission API: the release run's last step, §3.5) and [`release/test-submit-store.ps1`](tools/release/test-submit-store.ps1) (that script against a stand-in service on this PC, 58 checks, in CI), [`release/check-store-listing.py`](tools/release/check-store-listing.py) (the listing kit's texts against the Store's limits), [`release/make-store-listing-csv.py`](tools/release/make-store-listing-csv.py) (fills Partner Center's exported listings file from the kit, each caption under its own picture: one import instead of some forty pasted fields per language; with `--check` it says whether an export is what the kit says), [`release/order-store-screenshots.js`](tools/release/order-store-screenshots.js) (puts a listing page's screenshots in order with the page's own drag-and-drop, for the browser tools: an import does not keep their order), [`release/store_listing.py`](tools/release/store_listing.py) (their shared reader of the kit, which also finishes a right-to-left listing's texts) and [`release/test-store-listing.py`](tools/release/test-store-listing.py) (52 checks, in CI), [`readme/screen-shot.py`](tools/readme/screen-shot.py) (rounds a window's corners in a whole-screen capture: the Store listing's pictures, §3.5), [`make_store_assets.py`](tools/make_store_assets.py) (the package's 35 logos and the listing's tile icon, from the app icon's own drawing). |
 | [`packaging/chocolatey`](packaging/chocolatey) | nuspec / PowerShell | The `betterclipboard` Chocolatey package's template: install, before-modify and uninstall scripts, shared helpers, verification text (§3.2, [`docs/chocolatey.md`](docs/chocolatey.md)). |
 | [`packaging/msix`](packaging/msix) | manifest / JSON / PNG | The Microsoft Store package's template: `Package.appxmanifest` (filled in by the build), `identity.json` (the values Partner Center assigned when the name was reserved, 2026-11-13), `Assets/` (the package's logos), `Listing/` (the listing's tile icon, its eight screenshots, and a pristine listings export that the listing tools are tested with) (§3.5, [`docs/microsoft-store.md`](docs/microsoft-store.md), [`docs/store-listing.md`](docs/store-listing.md)). |
 | [`install.ps1`](install.ps1), [`.github/workflows/`](.github/workflows) | PowerShell / Actions | Installer from GitHub releases (§3.1) · CI (build, test, package, Chocolatey install test, a test-signed Store package, the Store scripts' tests) · release on `v*` tags (+ Chocolatey push, + the Microsoft Store submission, §3.5) · *Chocolatey package*, run by hand: a package-only fix for a released version (§3.2) · *Microsoft Store*, run by hand: check the Store's secrets, or submit a released version again (§3.5). |
@@ -397,7 +413,10 @@ copies bytes then closes the clipboard ASAP; all writes are serialized through t
    Staged producers (formats added in a 2nd session) are harmless: same text ⇒ same hash ⇒ one entry,
    and "latest copy wins" keeps the complete format set.
 2. Skip if the sequence number is unchanged (state already read — counted as **superseded**) or equals our
-   own last write (echo suppression; that number is read after `CloseClipboard`, which bumps it by 2).
+   own last write (echo suppression; that number is read after `CloseClipboard`, which bumps it by 2). Since 2026-11-20
+   also when the clipboard's owner is still the monitor's own window: another program changed what BetterClipboard wrote
+   without emptying the clipboard (File Explorer's rename box does, at every paste into it, §2.59), so the content is
+   still BetterClipboard's own and counts as a self-write.
 3. `OpenClipboard` with timer-based retries (10 ms × 50, then every 100 ms until 10 s after the first failure; a newer
    notification cancels the retry and reads the newest state). Until 2026-11-14 the retry gave up after the 50: Windows'
    own clipboard history service (`cbdhsvc`, an OLE `CLIPBRDWNDCLASS` window in `svchost`) sometimes holds the clipboard
@@ -414,8 +433,34 @@ copies bytes then closes the clipboard ASAP; all writes are serialized through t
    app-private formats only with `PreserveAllFormats`, all under a byte budget checked via `GlobalSize`
    **before** copying. GDI handle formats and synthesized duplicates are never stored.
 5. Worker: rules (pause, ignored apps — pre-seeded with the password-manager catalog, §2.8 — size) → `ContentClassifier` (Files > Text[Link/Color/Rich] > Image
-   > rich-only; text that is nothing but paths also gets a path count, §2.13) → image analysis (dims, 720×400 PNG thumbnail, **pixel hash** — images dedupe by decoded
+   > rich-only; text that is nothing but paths also gets a path count, §2.13) → text that is only whitespace, with no picture, is skipped (since 2026-11-17,
+   below) → image analysis (dims, 720×400 PNG thumbnail, **pixel hash** — images dedupe by decoded
    pixels, so DIB-vs-PNG encodings of one picture merge) → `ClipStore.Upsert` → retention prune.
+
+**Copies that are only whitespace are not kept** (2026-11-17). The owner's report, on the build with the "v" fix (§2.54):
+"it only produces space so i just ctrl + V / It happens only if i pick the non first item in the list".
+- **What it was [verified],** from the owner's history through `bclip list --json` (kinds, sizes and times only; the
+  pasted texts checked for whitespace without printing them): the four pastes that gave a space (20:20:06, 20:20:13,
+  20:20:16 and 20:22:17 local) all put one entry on the clipboard, a single space copied in Notepad++ at 19:40:31. Each
+  entry's last use equals its paste's log line to the millisecond. Each paste moved it to the top (*Move to top when
+  pasted*), so it sat right under the newest copy, where ↓ lands, and its card only reads "(whitespace · 1 char)". The
+  owner, asked, said the row was the whitespace one but they had meant to paste text, and suspected a key that did not
+  register.
+- **The paste itself worked:** in a claude-desktops Windows 11 desktop, Win+V, ↓, Enter pasted the selected item into
+  Windows Terminal, Agentmaster (the owner's Release-B layout) and the real Claude Code 2.1.322 (a dummy API key), with
+  two pins, a keyboard hook slowing every key by 50 ms (the owner's "sent 149–206 ms"), the mouse resting over the
+  panel, and two pastes 1.2 s apart (§5).
+- **The rule** (`ContentClassifier.IsWhitespaceOnly`, applied in `ClipHistoryService.StoreAsync` and to Notepad++'s tab
+  versions, §2.41): text made only of whitespace (`char.IsWhiteSpace`, plain or formatted) that carries no picture is not
+  kept, from any channel: a live copy, Windows' history and its pins, `bclip put`, a tab emptied down to a space. It stays
+  on the clipboard. A blank text next to a picture is still kept (Office and browsers attach one to some copies). New
+  events log "Skipped a copy that is only whitespace." (content-free).
+- **The ones kept before** go once (`ClipStore`'s fix-up `fixup.whitespace_only.v1`), except a pinned or grouped one, one
+  whose text was cut at the search cap, and one that carries a picture. No tombstone: the rule keeps the content out of
+  every later copy and import.
+- **Decided by Claude:** offered "Don't record them (Recommended)", "Keep, never move up" and "Keep as now", the owner
+  answered "The clipboard i tried to paste was text" without choosing; the recommended option was built. Reverting it is
+  the rule's one `if` and the fix-up.
 
 ### 2.4 Win+V takeover (`Input/HotkeyService`)
 
@@ -435,16 +480,29 @@ installer can leave Win+V to Windows (§2.25).
 ### 2.5 Summon & paste flow
 
 Hotkey → `ForegroundContext.Capture()` on the input thread (target HWND + Win32 caret via
-`GetGUIThreadInfo` + cursor + a Stopwatch timestamp, `CapturedAt`) → UI at **High** dispatcher priority: the panel,
-already drawn with its list current while it was cloaked, is moved to the caret (or where *Settings › Shortcut › Panel
+`GetGUIThreadInfo`, or which window to ask for its accessibility caret, §2.64 + cursor + a Stopwatch timestamp,
+`CapturedAt`) → UI at **High** dispatcher priority: for *Next to the text cursor*, an app that keeps no Win32 caret
+(Chromium, Firefox, the console) is asked for its accessibility caret, at most 250 ms (since 2026-11-21, §2.64); the panel,
+already drawn with its list current while it was cloaked, is moved to the caret (or where *Settings › Panel › Panel
 position* says: next to the mouse, or centered on the main or the current screen, §2.38), activated and uncloaked in one
 frame (§2.27; focus to the search box; keystrokes must never leak into the app below); only a list that is not current is
 reloaded afterwards → Enter/click → the item's formats, read while its card was selected → `ReplayFormats.Prepare`
 (plain text strips formats; file lists as plain text become paths; a stored "cut" drop effect is rewritten to "copy") →
 **the panel cloaked, nothing else** → off the UI thread: write the clipboard → **re-activate the target while this process
 still owns the foreground** (hiding the panel first would hand the foreground to whatever Windows picks, and lose the right
-to set it) → 40 ms after the activation, release held modifiers (mask-key first for Win/Alt) → inject Ctrl+V → 150 ms
-later, the rest of putting the panel away (since 2026-11-15, §2.52: before, all of that came before the Ctrl+V).
+to set it) → 40 ms after the activation and once the window's input thread answers a ping, release held modifiers
+(mask-key first for Win/Alt) → inject Ctrl down, V down and V up, and Ctrl up once the window took the V; keys typed from
+the Enter on are held back and typed after the paste (since 2026-11-17, §2.54) → 150 ms later, the rest of putting the
+panel away (since 2026-11-15, §2.52: before, all of that came before the Ctrl+V).
+
+**Since 2026-11-20 the panel leaves the keyboard with the app by default** (§2.59): it is shown and uncloaked without
+being activated, the app keeps the foreground and its editing (a rename in File Explorer), and a hook gives the panel
+the keys it acts on. The paste's re-activation of the target then finds it in front already. *Settings › Panel ›
+Leave the keyboard with your app* brings the way described above back.
+
+**Over Start or Search** (since 2026-11-20, §2.61) the panel opens beside it, Start stays open, and the paste goes into its
+search box: Windows keeps those surfaces above every app window. Over Quick settings, the notification center or Task View,
+and where there is no room beside Start, the surface is closed first, the way Esc closes it.
 
 **The first summon of a session** (fixed 2026-10-09, `0718a9b`, `db9750c`; found in the QA pass).
 - **Typed keys went nowhere.** `ShowAt` focuses the search box before the XAML tree is loaded (a silent no-op), and
@@ -604,8 +662,24 @@ ANDed, trigram index + `LIKE`, no matcher at all).
 **UI** (`ClipboardFlyout`, `FlyoutViewModel`, `App.xaml`).
 - **Inside the box:** the toggles are the `AutoSuggestBox`'s `Description`. `SearchBoxTextBoxStyle` is WinUI
   2.3.9's `AutoSuggestBoxTextBoxStyle` template, copied with one more column between the clear (X) button and
-  the magnifier: `[text][X][Aa][W][.*][🔍]`. The X appears only while there is text, to their left, so the
-  toggles never move. Order as in VS Code and Rider. Keep the copy in step when upgrading WinUI.
+  the query button: `[text][X][Aa][W][.*]`. The X appears only while there is text (and the box has the keyboard), to
+  their left, so the toggles never move. Order as in VS Code and Rider. Keep the copy in step when upgrading WinUI.
+- **No magnifier** (since 2026-11-21; the owner: "the search box should not have a search button as it auto searches
+  when typing. if there are no other functions to it, remove it from view").
+  - **Why it had no function [verified]:** the magnifier was WinUI's query button, shown for a `QueryIcon`. Its click
+    only raises `QuerySubmitted` with the box's text (`AutoSuggestBox::OnTextBoxQueryButtonClick` →
+    `ProgrammaticSubmitQuery` → `SubmitQuery`, microsoft-ui-xaml's `AutoSuggestBox_Partial.cpp`), and nothing in the
+    app handles that event. The list follows the text 120 ms after the last key, and Enter pastes through the panel's
+    own key handling.
+  - **What changed:** the panel's `AutoSuggestBox` sets no `QueryIcon`. WinUI then collapses the button
+    (`SetTextBoxQueryButtonIcon`: `Visibility_Collapsed` without an icon), so its `Auto` column takes no room. The
+    toggles end 4 DIPs from the box's right edge (the template's last column, `AutoSuggestBoxRightButtonMargin`), the
+    same 4 DIPs as above and below them, and the text gains the button's 34 DIPs (32 wide, 2 of margin).
+  - **The button stays in the template copy:** the `Focused` state's storyboard targets `QueryButton` by name.
+  - **Settings' search box keeps its magnifier** (§2.43): asked, the owner chose "Win+V panel only".
+  - **Room** (measured, §5): about 292 DIPs of text at the default width (432: six header buttons), 258 before; the
+    box is the panel's width less 40, the text room the box's width less 100. Claude Code's placeholder (262 px) shows
+    whole at the default width now. The five placeholders' descriptions for translators say so (`en.json`).
 - **`SearchOptionToggleStyle`:** a 24-DIP text toggle. On = accent outline, accent glyph and a subtle fill (VS
   Code's look). `AllowFocusOnInteraction=False` and `IsTabStop=False`, so a click keeps the caret in the box.
 - **Keys:** Alt+C / Alt+W / Alt+E in `Root_PreviewKeyDown` (Visual Studio's keys), Alt without Ctrl: AltGr
@@ -766,15 +840,17 @@ while on, any process running as the user can read the whole history through it 
   detects the client hanging up (Ctrl+C on `bclip wait`) and cancels the handler.
 - **Commands** (`CliCommandProcessor`, pure over `ClipHistoryService` + `IClipboardWriter` + `IImageExporter`, unit-tested):
   `list`/`search` (`QueryAsync`, not pinned-first, 1–1000, `--since` = `UsedSince`; `-f files` also lists
-  text that is nothing but paths: JSON `paths: N`, table kind `path`, §2.13); `grep` (.NET regex,
+  text that is nothing but paths: JSON `paths: N`, table kind `path`, §2.13; `--sort size` the largest first, with a
+  size column, and `+` after the id of an item in a group as `*` after a pinned one's, §2.60); `grep` (.NET regex,
   CultureInvariant, **250 ms match timeout** ⇒ bad_request, newest 10,000 items' search text, full text
   reloaded when the indexed copy hit the 32 K cap, ≤ 20 matches/item, lines cut at 400 chars); `get`
   (auto/text/html = CF_HTML fragment by byte offsets/rtf/files/png = stored PNG or DIB → WIC/formats);
   `copy` (`ReplayFormats.Prepare` like a paste, then MarkUsed when MoveToTopOnPaste); `put` (UnicodeText to
   the clipboard + `AddAsync` with source "bclip"; not recorded while paused); `pin`/`unpin`/`delete`
-  (latest by default; delete needs an id or `-r`); `wait` (`Changed`: Added, or Updated with LastUsed ≥ the
-  start — a re-copy of an existing item; 1–3600 s); `status` (version, counts, capture statistics, archived
-  prompts); `prompts` / `prompt` (the prompt archive, not history items: its own ids, §2.21).
+  (latest by default; delete needs an id or `-r`, and takes up to 1,000 ids in one request and one transaction,
+  §2.60); `wait` (`Changed`: Added, or Updated with LastUsed ≥ the start — a re-copy of an existing item; 1–3600 s);
+  `status` (version, counts, capture statistics, archived prompts, and the size budget with what each limit counts,
+  JSON `budget`, §2.60); `prompts` / `prompt` (the prompt archive, not history items: its own ids, §2.21).
   Ids are the numbers `list` shows, or `-r N`; no `#1` syntax (`#` starts a comment in bash/PowerShell).
 - **Output.** `get`/`wait` print the payload byte-exact (a final newline only for a human's terminal);
   everything else is line-terminated. Images never go to stdout (exit 2 with a hint; `-o file.png`).
@@ -883,7 +959,8 @@ that source]** unless marked.
   order under a lock):
   - first activation: the marker is "now", so no backfill of an archive (the write is awaited, so
     `StartAsync` returns with it stored);
-  - each start: files newer than the marker, **at most the 100 newest**, oldest first;
+  - each start: files newer than the marker, oldest first: every one by default, the newest N under Settings' limit
+    (§2.62; **at most the 100 newest** until 2026-11-21);
   - setting off: the watch stops and the marker is cleared, so switching it on again starts fresh.
     Exiting the app is not "off".
 - **Re-location:** on `*.json` writes in the personal folder (1 s debounce; non-recursive, since backups
@@ -1255,7 +1332,8 @@ fixes. The research it stands on follows below ("Research").
 
 **Design** (`Core/Everything/`, `Windows/Integrations/Everything*`, owned by `AppController`).
 - **A live view; stored only on action.** Everything owns the run history: each load asks it again
-  (`EverythingIntegration.GetPicksAsync`: one `runcount:` query by date run, the 200 newest, 3 s deadline). Only
+  (`EverythingIntegration.GetPicksAsync`: one `runcount:` query by date run, every pick — the 200 newest until
+  2026-11-21, §2.62 —, 3 s deadline). Only
   what the user acts on becomes history: `ClipOrigin.Everything` (6) behaves like a live copy — pause, ignored
   apps ("Everything"), the size limit and Forget forever apply; a duplicate is bumped; it lifts a tombstone (it is
   always an explicit action).
@@ -1268,7 +1346,8 @@ fixes. The research it stands on follows below ("Research").
     shows that time. Until then only the last use counted: a file kept last month and opened again today sorted as
     last month's.
 - **Hide, not delete.** Nothing in Everything is ever changed. Delete on a pick hides it until a later opening:
-  state `everything.hidden` in the encrypted store (UTC ticks + path, newest 500; exact ticks — a rounded time
+  state `everything.hidden` in the encrypted store (UTC ticks + path; every hide by default, the newest 500 until
+  2026-11-21, a limit of the user's own in Settings since, §2.62; exact ticks — a rounded time
   would compare earlier than the opening it recorded and un-hide the pick at once). Delete on a stored file card
   in this tab also hides that file's pick, or the pick would take the card's place at the next load.
 - **Forget forever on a pick** works without storing it, also while paused (`ClipStore.ForgetFiles`: a file
@@ -1329,8 +1408,8 @@ isolated instance.
 - Picks are what Everything keeps: one row per path. A renamed file loses its history; a deleted one drops out of
   the live query (and is dropped from the saved file when it is on a local disk).
 - 1.4: picks made in a search window that is still open are live, but not in the saved file yet.
-- No live update while the tab is open (reopening reloads); no paging (the 200 newest picks + 200 stored); pick
-  cards have no thumbnails.
+- No live update while the tab is open (reopening reloads); pick cards have no thumbnails. (No paging either until
+  2026-11-21: the 200 newest picks and 200 stored; now every one, 60 cards at a time, §2.62.)
 
 **Research** (2026-10-01, before the build).
 
@@ -1710,6 +1789,43 @@ or add to the front; evictions only drop from the end).
   may come to the front; the panel then hides without re-activating the app below. The run is recorded
   (`RecordRunAsync`: a `RunDialog` capture now), moving the command to the top. The command never reaches the
   log ("Ran entry N as a Win+R command: Started.").
+  - **While the panel leaves the keyboard with the app** (§2.59, new in 0.2.12) it is not the foreground window, and a
+    key the hook takes reaches no window, so Windows kept the started program behind the app in front (measured
+    2026-11-21: Ctrl+Enter and Ctrl+Shift+Enter opened Photos and Notepad behind Edge, their taskbar buttons flashing,
+    which reads as "nothing opened"). A click on the card menu's *Run* brought Photos forward: the click is input this
+    process received. Since 2026-11-21 a key that runs a command makes the panel take the keyboard first
+    (`ClipboardFlyout.TakeKeyboardBeforeLaunchAsync`, logged "The panel took the keyboard: Ctrl+Enter runs a Win+R
+    command."); beside Start or Search, Start is closed first and that closing is awaited (`TakeKeyboardPastSurfaceAsync`).
+
+**As administrator, like Windows** (fixed 2026-11-21; `RunCommandLauncher.CanRunAsAdministrator` and `Run`,
+`Shell/ShellShortcut`, `Interop/NativeMethods.Elevation.cs`). The owner's report: "The path to ths image was passed to
+Win+R has Run and Run As Administrator. The run as admin does not work. The image doesn't launch and no UAC appears."
+- **Why [verified]:** a picture has no `runas` verb, so `ShellExecuteEx` with it failed with 1155 (`ERROR_NO_ASSOCIATION`):
+  the footer read "Not run: No app is set to open it.", nothing opened, and no prompt came (the owner's log had it three
+  times; reproduced on 0.2.11 in a test desktop).
+- **What Windows does [verified]** (Windows 11 26200 with UAC on, `guest/probe-runas.ps1` in session 3ddb162b's scratchpad):
+  - Explorer's menu offers *Run as administrator* only for programs: `.exe`, `.bat`, `.cmd`, `.msc`, `.cpl`, app
+    aliases, and shortcuts to them;
+  - Win+R's Ctrl+Shift+Enter on a picture, a folder, a web address or a shortcut to a document opens it normally, with no
+    prompt; a program (`notepad.exe`, a `.cmd`) gets the prompt; `compmgmt.msc` opens through `mmc`, which elevates itself;
+  - BetterClipboard's own `runas` on `https://…` asked to elevate Edge: Edge's `https` association registers a `runas`
+    verb (`--do-not-de-elevate`).
+- **The owner's choice:** "Like Windows (Recommended)", then "Gray out the run as admin when we can't".
+- **The rule** (`CanRunAsAdministrator`, answered on the pool, never on the UI thread: a shortcut on a dead share would
+  block): `true` when the target's file type registers a `runas` verb of its own (`AssocQueryString` with
+  `ASSOCSTR_COMMAND` or `ASSOCSTR_DELEGATEEXECUTE` and "runas", by extension, so the user's chosen app counts); a shortcut
+  by its target (`IShellLinkW`, `ShellShortcut.ReadTarget`); `false` for addresses with a scheme, folders, and an existing
+  file without a type; `null` (unknown) for a name only running can resolve. The catch-all keys (`*`,
+  `AllFilesystemObjects`) are left out on purpose: "Take Ownership" tweaks register `runas` there, and Windows' own
+  *Run as administrator* does not follow them either.
+- **The menu:** *Run as administrator* is grayed where the answer is `false` (asked each time the menu opens,
+  `AppController.CanRunAsAdministratorAsync`; the item is enabled meanwhile and when the answer is unknown).
+- **The run** (`RunCommandLauncher.Run`, pure over two delegates, unit-tested): asked as administrator, a target Windows
+  cannot elevate opens normally without trying `runas` (a web address would otherwise ask to elevate the browser); any
+  other target tries `runas`, and only a 1155 then opens it normally. Every other failure, a declined prompt (1223)
+  included, is the result. A normal open after the ask logs "… asked as administrator: Windows has no administrator mode
+  for it, so it was opened without one, as Win+R's Ctrl+Shift+Enter does." (`RunCommandResult.WithoutAdministrator`).
+- **Not explained:** the owner's log also had two plain runs of the picture 130 ms apart (§6).
 
 **UI and CLI.**
 - Run tab (`RunFilter`, a text tab after ShareX) while the setting is on and, since 2026-11-08, the history holds a command
@@ -1876,7 +1992,8 @@ BetterClipboard). Settings › Integrations › *Pwsh tab* / *Cmd tab* (`AppSett
 **Cmd** (`CmdHistorySource`).
 - **Reading:** every 30 s while on, and when the tab loads (at most every 2 s): a process snapshot, then for each
   *interactive* cmd.exe of this session one helper, `BetterClipboard.exe --read-console-history <pid>`
-  (`Program.Main` runs it before anything else: no lock, no XAML), at most 4 at a time, 3 s each. The helper
+  (`Program.Main` runs it before anything else: no lock, no XAML; a copy with UI access starts it with
+  `__COMPAT_LAYER=RunAsInvoker`, §2.63), at most 4 at a time, 3 s each. The helper
   attaches, reads `GetConsoleCommandHistoryW("cmd.exe")`, detaches, and writes UTF-8 + NUL to the stdout pipe it was
   given. Never in-process: a console closing while attached ends the process (§2.16). Measured on the dev build: the
   helper read 3 BC-TEST commands from a hidden pseudoconsole cmd in 59–61 ms (206 ms cold); a pid without a console
@@ -1885,16 +2002,20 @@ BetterClipboard). Settings › Integrations › *Pwsh tab* / *Cmd tab* (`AppSett
   Windows Terminal, IDEs, terminal emulators, Task Manager and BetterClipboard itself (the Run tab's Ctrl+Enter) count,
   anything else (node, claude, codex, a browser) does not; an exited parent counts. This PC's 158 tool-started cmd.exe
   are skipped (§2.16).
-- **Kept list:** state `cmd.kept` (one line per command: ticks, count, text; newest 1,000), written only when it
+- **Kept list:** state `cmd.kept` (one line per command: ticks, count, text; every command by default, the newest 1,000
+  until 2026-11-21, a limit of the user's own in Settings since, §2.62), written only when it
   changed and never while paused. A window read before is diffed (`NewSince`: eviction from the front, appends, a
   moved command, a cleared history) so a command typed again counts again; a window seen first adds its commands
   without counting known ones again (the app restarted, the window did not). Off stops the timer and deletes the list.
+  Since 2026-11-21 the reader's memory of each open window (`cmd.windows`, fingerprints) outlives a restart, so a window
+  open through one is no window seen first, and one truly seen first is placed by its own order (§2.62).
 - **Limits:** cmd notifies nobody, so a window closed within 30 s of its last read loses what came after. Times are
   when BetterClipboard saw a command, not when it was typed. Clink's own history file is not read (not installed here).
 
 **The tabs** (`ShellTab.Merge`, `FlyoutViewModel.Shells.cs`).
-- Rows: newest first by each row's newest activity, pinned entries on top when that setting asks, the live commands at
-  most 500 (no paging; every stored entry stays). A live command that is also stored shows once, as the entry, at the
+- Rows: newest first by each row's newest activity, pinned entries on top when that setting asks, every live command and
+  every stored entry, 60 cards at a time as the list scrolls (§2.62; until 2026-11-21 the live commands at most 500 and
+  200 stored entries, without paging). A live command that is also stored shows once, as the entry, at the
   newer of the two times; forgotten ones never show (fingerprints via `FindForgottenAsync`); the search box narrows both
   halves with the same toggles (`SearchMatcher`, on the pool).
   - Since 2026-11-11 (§2.44). Until then the stored half came first, whatever its age: a command pasted from the tab once
@@ -1903,7 +2024,8 @@ BetterClipboard). Settings › Integrations › *Pwsh tab* / *Cmd tab* (`AppSett
     order; a kept command shows where PowerShell's history has it, above them all only when it was used after the newest
     command was typed (the history file's last write, `PowerShellHistorySource.LastNewestCommandUtc`).
 - **Delete hides** a live command until it is typed again: state `pwsh.hidden` / `cmd.hidden` = count + content hash
-  (never the text), newest 1,000; a higher count shows it again. Delete on a stored command in its tab hides its live
+  (never the text), every hide by default (the newest 1,000 until 2026-11-21; a limit of the user's own in each card,
+  §2.62); a higher count shows it again. Delete on a stored command in its tab hides its live
   twin too, or it would take the card's place at the next load.
 - Cards: the command-prompt glyph E756 (live and kept ones, everywhere), monospace, label "PowerShell command" /
   "Command Prompt command", caption "PowerShell · typed 3 times" or "Command Prompt · 5 min ago · typed once". Menu:
@@ -2195,7 +2317,8 @@ reaches the history through the clipboard anyway, and the pixel hash merges the 
 - **Dedupe** by size + write time, not the path, so a rename right after the save does not import the file again.
 - **Catch-up marker** `state.screenshots.last_seen_utc`:
   - the first activation starts at now, so the folder's archive is never imported;
-  - each start imports at most the 100 newest files written since;
+  - each start imports every file written since, oldest first (at most the 100 newest until 2026-11-21; Settings' limit,
+    §2.62);
   - off clears the marker; exiting does not.
 - **Locate again:** every 5 minutes, when Settings opens, and when the panel opens while nothing is watched. A folder that
   did not exist is waited for, and the screenshot that created it is caught up.
@@ -2241,7 +2364,8 @@ scroll"); a middle-button drag pulls it too.
   that row for a window without a title bar, so no `InputNonClientPointerSource` region was needed.
 - **Remembered:** `AppSettings.FlyoutWidth` / `FlyoutHeight`.
   - Whole DIPs of the outer window, frame included; the width without the groups column.
-  - Defaults 400 × 560, the old fixed size. `Normalize` clamps them to 396..8192 × 320..8192 (360 until 2026-10-09, §2.29).
+  - Defaults 400 × 560, the old fixed size. `Normalize` clamps them to 360..8192 × 320..8192 (396 from 2026-10-09 to
+    2026-11-20, §2.29); a summon opens the panel at least as wide as its header's buttons need (§2.55).
 - **Applied at every summon:** `FlyoutSizing.ToPixels` at the anchor monitor's scale → `FlyoutPositioner.Compute`
   (which still shrinks the size to the work area, without saving that) → `ExtendLeft` for an open column.
 - **Saved once per resize, and only the user's** (`Interop/WindowSizeHook`, comctl32 `SetWindowSubclass`):
@@ -2251,11 +2375,12 @@ scroll"); a middle-button drag pulls it too.
     move: `SettingsStore.Update` writes the file on every call.
   - Size changes the panel makes itself are never saved: the summon, the groups column, a move to another monitor's
     scale, the work-area shrink.
-- **Minimum:** 396 × 320 DIPs (+44 with the column), answered in `WM_GETMINMAXINFO` from the window's scale at that
-  moment (`FlyoutSizing.MinimumTrackSize`).
-  - 396 is the header: logo, "Clipboard", the "Paused" chip and five buttons take 348 of the 358 content DIPs. It
-    was 360 (four buttons, 312 of 322) until the update button joined them on 2026-10-09 (§2.29); a width saved
-    below 396 is raised when the settings load.
+- **Minimum:** what the header's buttons need × 320 DIPs (+44 with the column), answered in `WM_GETMINMAXINFO` from the
+  window's scale at that moment (`FlyoutSizing.MinimumTrackSize`).
+  - The header: logo, "Clipboard", the "Paused" chip and four buttons take 312 of the 322 content DIPs at 360, and
+    each further button 36 more. It was 360 until the update button joined them on 2026-10-09 (§2.29), then 396 (348
+    of 358) until the pin came; since 2026-11-20 it follows the buttons shown (§2.55): 360 for four or fewer, 396 for
+    five, 432 for all six. A width saved below 360 is raised when the settings load.
   - Not `OverlappedPresenter.PreferredMinimumWidth`: it takes raw pixels and keeps them when the window moves to a
     monitor with another scale (microsoft-ui-xaml issues 10452, 10475).
 - **Gone:** the window no longer grows for the tabs (`MeasureTabsExtraDip`, `WindowFrameDip`, `ApplyTabsWidth`, the
@@ -2291,6 +2416,8 @@ scroll"); a middle-button drag pulls it too.
 - **Bring into view:**
   - A clicked or focused tab raises `BringIntoViewRequested`. `Filters_BringIntoViewRequested` widens the rect by an
     arrow on each side before the outer viewer acts, so the tab ends clear of the arrows.
+  - Since 2026-11-21 a clicked tab takes no keyboard (§2.66), and `ItemsView` brings a tab into view only when it
+    does: `RevealClickedTab` scrolls a tab clicked half under an arrow into view instead.
   - A selection from code (`SelectFilter`) reveals the tab itself (`RevealSelectedTab`).
   - Every summon places the strip for the tab it starts in, without animation (`PlaceTabStripForShow`, since
     2026-10-09, §2.28): at its start when that tab lies in the first screenful, otherwise just far enough to show it.
@@ -2387,7 +2514,8 @@ user chose (AskUserQuestion) **both overlays monitor-wide**, and the viewer with
   `MonitorLookup` so the popup's DIP offset lands on the monitor's work-area origin whatever the caption-less resize border.
 - **Activation footgun:** a windowed popup can deactivate the panel as it appears, and the panel hides on deactivation
   when `openPopups == 0`. So `openPopups` is incremented **before** `IsOpen = true` (not in a `Popup.Opened` handler), for
-  both overlays; the peek balances it in `HidePeek`, the viewer via `Popup_Closed`.
+  both overlays; the peek balances it in `HidePeek`, the viewer via `Popup_Closed`. Measured on 2026-11-20 (§2.56): no
+  popup takes the activation in the WinUI we ship, and a deactivation while one is counted now asks who is in front.
 - **Peek dismissal — by the cursor's position, not by a move event.** The surface covers the monitor and is hit-testable
   (a transparent — but still hit-testable — grid). It receives a *synthetic* `PointerMoved` at the cursor's unchanged spot
   the instant it appears, so dismissing on any move event closed the peek at birth (the symptom the user reported: "it
@@ -2648,9 +2776,9 @@ leaked; 30 ms 1 → 0; 60 and 120 ms 0 → 0. Unchanged: activation takes as lon
   again without activation, so XAML keeps drawing into it. PowerToys' Command Palette hides its window the same way.
 - **Prepared while nobody looks.** `PrepareForNextSummon` (after every conceal) resets what a summon shows: empty search,
   the tab last chosen ("All" until 2026-10-09, §2.28), no group, the strip showing that tab, the groups column as
-  remembered, the newest copy selected with the list at its top (below the pins while they are listed first, since
-  2026-11-08, §2.28). A history change while concealed queues one refresh at Low priority (`ScheduleConcealedRefresh`:
-  an import's burst costs one).
+  remembered, the newest copy selected (below the pins while they are listed first, since 2026-11-08, §2.28) and, since
+  2026-11-15, at the top of the list with the pins above it, out of view (§2.28). A history change while concealed queues
+  one refresh at Low priority (`ScheduleConcealedRefresh`: an import's burst costs one).
 - **Current or not.** `FlyoutViewModel.IsListCurrent` compares the view the shown list was loaded for (`ViewKey`: search,
   tab, groups, toggles, and since 2026-11-08 the "Show pinned items first" order, §2.28) and a history version
   (`MarkHistoryChanged`, bumped by every change, also one applied to a card in place) with now. Only views of stored history qualify; the Everything, shell and prompt tabs always reload. Since a
@@ -2682,7 +2810,9 @@ leaked; 30 ms 1 → 0; 60 and 120 ms 0 → 0. Unchanged: activation takes as lon
   and leave in one frame (also on delete and while searching).
 - **Presenting** (`PresentAsync`): move (still cloaked) → activate → uncloak. A new size (another monitor scale, the
   groups column toggled) and a window never shown before (a summon before the warm-up) wait for two rendered frames
-  (≤ 100 ms), the latter also for its tree to load (≤ 500 ms), already active so keys typed meanwhile reach it.
+  (≤ 100 ms), the latter also for its tree to load (≤ 500 ms), already active so keys typed meanwhile reach it. In the
+  mode that leaves the keyboard with the app (§2.59, the default since 2026-11-20): move → make topmost → uncloak,
+  never activated.
 - **The shortcut runs at High priority** on the UI thread (`AppController`), ahead of a queued refresh.
 - **Logged:** the session's first summon and any slower than 100 ms from the key to the uncloak: "Panel on screen N ms
   after the shortcut, its list ready (first summon)." Content-free.
@@ -2747,6 +2877,9 @@ the categories doesn't select them, only click selects them."
 - **The mouse selects the row it is over.** Tabs and group icons are still selected by a click only.
 - **Since 2026-11-08 every load selects the newest copy:** row 0, or the first row below the pins while they are listed
   first, so Up reaches the lowest pin (see "Where every load puts the selection" below).
+- **Since 2026-11-15 the plain history opens on that copy, with the pins out of view:** Win+V, any tab, a cleared
+  search and a group view left put it at the top of the list and the pins above it, where scrolling up or Up reaches
+  them. A search and a group view start at the top with their pins in view (see "The list opens below the pins" below).
 
 **Decisions where the request left room** (told to the user in the reply; change them here if they ask):
 - **Left / Right against the search box's caret.** The box keeps the focus, so the keys serve two masters. They are the
@@ -2849,8 +2982,9 @@ the categories doesn't select them, only click selects them."
   (`COMException 0x8001010E`, wrong thread). The stopping Cmd reader announced its status, the panel answered with a
   reload, and that load ended after the dispatcher was gone. `FlyoutViewModel.ReloadAsync` now starts no load while
   `AppController.IsExiting`. A panel that opens in the tab last chosen is in such a tab far more often.
-- **After a mouse click on a tab, the keyboard focus is on the tab** (not new): typing then does not reach the search
-  box until Ctrl+F or a click into it. Left / Right move that focus along with the selection (`CycleTab`).
+- ~~**After a mouse click on a tab, the keyboard focus is on the tab** (not new): typing then does not reach the search
+  box until Ctrl+F or a click into it. Left / Right move that focus along with the selection (`CycleTab`).~~ Fixed
+  2026-11-21 (§2.66): no tab takes the keyboard, and Left / Right right after a click on a tab switch tabs.
 - **A closing menu** left the selection to the row under the mouse (the mouse was the active device). `Popup_Closed`
   now suspends the mouse, so the card the menu belonged to stays selected until the mouse moves.
 - **A summon before the warm-up with a far tab remembered:** 481–767 ms to the screen in 4 runs (Cmd 481, 514 and 540;
@@ -2876,7 +3010,8 @@ unpinned should be selected, pressing up after open should to to the lowest pinn
   - only with "Show pinned items first" on: in recency order row 0 is the newest item and stays selected;
   - a pin pasted last (it then heads the pins, being the most recently used item) does not take the selection: the
     request names the unpinned row, and the next copy is what Win+V users paste.
-- **Scrolling** (`ArmCard`, `ScrollToTopShowing` in `ClipboardFlyout.Navigation.cs`; `ResetListPosition`):
+- **Scrolling** (`ArmCard`, `ScrollToTopShowing` in `ClipboardFlyout.Navigation.cs`; `ResetListPosition`), since
+  2026-11-15 only in a search or a group view (the plain history: "The list opens below the pins", below):
   - the list stands at its top while that shows the armed card whole; otherwise just low enough to show it on the
     lower edge, with as many pins above as fit. Row 0 keeps the old path (`SelectIndex(0)`, `ScrollIntoView`);
   - measured, not left to `ScrollIntoView`, which brings a row in from wherever the list stands: after a use that left
@@ -2900,18 +3035,61 @@ unpinned should be selected, pressing up after open should to to the lowest pinn
 - **Limits:** the panel loads 60 rows at a time, so with more pins than that the first page holds no copy and the list
   starts on its top pin. Not checked: whether the first summon of a session — its list never laid out while cloaked —
   shows one frame at the top before the measured scroll (only with more pins than the top shows; not seen in the QA).
-- **Settings says so:** the "Show pinned items first" card's description adds "The panel still selects your newest copy,
-  just below them." It is the localized key `T7ffed93d48ee` in `Core/Localization/en.json` and `zh-Hans.json` (the
-  keys are the first 12 hex digits of the English text's SHA-256; the old sentence's `Tc907e7af7ff5` is gone from both).
-  The change was written before the Simplified Chinese UI landed (`8c5814a`) and rebased onto it: the QA ran the
-  English text from before the catalogs; the Chinese sentence was not seen on screen.
+- **Settings says so:** the "Show pinned items first" card's description added "The panel still selects your newest
+  copy, just below them." (2026-11-08; the hash key `T7ffed93d48ee` it had then became the English text with §2.37's
+  second round). Since 2026-11-15 it reads "… The panel opens on your newest copy, with the pinned items just above it:
+  scroll up or press ↑ to see them." (below).
+
+**The list opens below the pins** (changed 2026-11-15). The owner's request: "When Win+V is pressed, the list of
+clipboard item rows. the scroll should be at the first item that is not pinned. If user wants to see the pinned on open,
+he needs to scroll up with cursor or press up."
+- **Asked, three questions** (two HTML questions with rendered panels, then one plain question; the pages are in
+  session 9472c5dc's scratchpad, `q/`):
+  - **which loads:** the owner chose "Only Win+V" with "And if i move to a tab then also hide in the tab. not groups."
+    — searches keep their pinned matches in view, as the chosen option said;
+  - **a short list** (too few copies below the pins to scroll the newest one to the top): "Always hide the pins
+    (Recommended)": empty room below the last card, so the pins are out of view on open whatever the list's length;
+  - **a cleared search or a group view left:** "Yes, below the pins again (Recommended)". So the rule is the view's,
+    not the way it was reached.
+- **The rule** (`PanelNavigation.PinsOutOfView`, pure, tested): out of view exactly while the list shows the plain
+  history — no search text (white space alone is no search, the panel's own test) and no group. So: every summon, every
+  tab, a cleared search, a group view left, a copy arriving while the panel shows. A search and a group view keep the
+  rule of 2026-11-08 (`ScrollToTopShowing`). The selection is the same either way (`ArmedRow`): Enter pastes the same
+  row. A list that does not start with pins (the Pinned tab, "Show pinned items first" off, a list in the old order)
+  stands at its top as before.
+- **How** (`ClipboardFlyout.ScrollPinsOutOfView`, `SetListRoom`, `ViewModel_ReloadedEmpty`):
+  - `ChangeView(0)`, `UpdateLayout()`, the armed row's top in the scroll viewer's content coordinates, `ChangeView` to it;
+  - **the room** goes into the ListView's bottom `Padding`, which its template hands to the `ItemsPresenter` inside the
+    scroll viewer (WinUI 2.3.9's generic.xaml), so it scrolls below the last card and lengthens the range. How much:
+    `PanelNavigation.RoomBelowRows` — the room in place plus `rowTop + viewport − extent`, never negative, rounded up to
+    a whole DIP past a thousandth (a need of exactly 244 that the sums put at 244.00000000000006 is 244), and measured
+    with the room in place, so asking again gives it back and a list that grew gives its room back. It is taken back by
+    every load the rule does not cover, and by a load that leaves the list empty (`ViewModel_ReloadedEmpty`: no card
+    is armed then, and the AI work's footer empty state (§2.35, stashed since 2026-11-16) could scroll on a stale room);
+  - **up to three passes:** rows below the viewport at offset 0 may not be realized, and the list estimates their
+    heights; once the list stands at the row, every row of a short list's end is in view and measured, so the room is
+    worked out again there. It stops when the room holds (within a DIP: layout rounding) and the offset is reached;
+  - a row not realized at offset 0 (many pins) is brought in with `ScrollIntoView(…, Leading)` first, then measured;
+    without a scroll viewer, or without a container after that (the never-shown cloaked list), `ScrollIntoView(…,
+    Leading)` alone, and the summon positions the list again once it is on screen (`ResetListPosition`).
+- **Why not `ScrollIntoView(item, Leading)` alone:** it can finish on a later layout pass (after the panel's first
+  frame), and it stops where the list ends, short of the top in a short list.
+- **Texts:** Settings' card description (all five catalogs, `catalog.py rename`, then the four translations rewritten
+  and confirmed), and the README's *Use* paragraph and its four translations.
+- **Not changed:** Up from the armed card selects the lowest pin and brings it in at the top edge (`SelectIndex`'s
+  `ScrollIntoView`); the wheel over the list hands the selection to the row under the pointer as before (§2.28's hover
+  rule); a copy arriving while the panel shows keeps the card the user had selected selected (`OnHistoryChanged`);
+  Ctrl+P on the armed copy keeps that card selected and scrolls up to it among the pins.
+- **Limits:** the room is worked out when a load or a summon positions the list, not when the panel is resized: a
+  panel made taller while open may show the lowest pin until the next load or Win+V. In the AI chat mode (§2.35,
+  stashed since 2026-11-16) the list is not armed at all, so neither rule applies there.
 
 **Verified:** see §5.
 
 **Not built / open:**
 - a Settings switch for "always open in All" (not asked for);
 - remembering the groups shown;
-- giving the focus back to the search box after a click on a tab;
+- ~~giving the focus back to the search box after a click on a tab~~ (done 2026-11-21, §2.66: it never leaves);
 - the Menu key in the column opening the group's menu (it opens the card's), and creating a group from the keyboard;
 - an announcement for screen readers when the keys step through the groups (the focus stays in the search box);
 - a tab chosen in a panel that is still open when the app exits is not saved (the queued save no longer runs);
@@ -2952,7 +3130,8 @@ displayed below the buttons of decision."
 - **The installer:** `-NoUpdateCheck` (installs with the check off, through `BetterClipboard.exe --set-update-check off`),
   `-Package <zip>` (an offline install), and a closing note that names the check, both ways to switch it off and the
   privacy section.
-- **The panel's minimum width** is 396 DIPs (360 before): the header has a fifth button (§2.23).
+- **The panel's minimum width** is 396 DIPs (360 before): the header has a fifth button (§2.23). Since 2026-11-20 it
+  follows the buttons shown, and Settings can hide this one (§2.55).
 
 **Who updates how** (`UpdateInstallKind`; `Core/Updates/InstalledCopy`, `Windows/Updates/InstalledCopyLocator`).
 
@@ -2962,6 +3141,7 @@ displayed below the buttons of decision."
 | Extracted by hand | Neither record names its folder | Yes | Since 0.2.11: in its own folder, file by file, when this user may write the folder and the offer is 0.2.11 or later (§2.48). Otherwise *Download page*, *Copy install command*, *Later* |
 | Chocolatey | Its folder ends `\lib\betterclipboard\tools\app` (checked first) | No | No: *Copy command* (`choco upgrade betterclipboard`), *Later* |
 | For every user (`install.ps1 -AllUsers`, since 2026-10-18, §2.34) | The PC's Installed-apps entry (HKLM) names the exe's folder (checked before the per-user records) | No | No: *Copy command* (the install command with `-AllUsers`, for PowerShell as administrator), *Later* |
+| With Windows' UI access (`install.ps1 -UIAccess`, in Program Files, since 2026-11-21, §2.63) | As one installed by `install.ps1` | Yes | Yes, as administrator: one consent prompt per update. Refused before anything changes for an offer older than 0.2.12-dev.65, a standard account and an isolated instance |
 
 - **Why a copy extracted by hand is never swapped as a whole:** an installer's update renames the whole folder aside and
   deletes it. That is safe only for a folder the installer made. The zip ships `install.ps1` next to the exe, so that file
@@ -3064,7 +3244,7 @@ neither, it is installed with a warning that states its hash.
   and turns the events into controller calls. The panel and Settings each own one.
 - **The button's own flyout** (`Button.Flyout`), so a second click closes it. A `Click` handler that called `ShowAt`
   would open it again at once: the click that dismisses the bubble also reaches the button.
-- **Its own window** (`ShouldConstrainToRootBounds = false`): the panel can be 396 × 320 DIPs, no room for release notes.
+- **Its own window** (`ShouldConstrainToRootBounds = false`): the panel can be as small as 360 × 320 DIPs (§2.55), no room for release notes.
 - **Placement** (`Core/Presentation/UpdateDialogLayout`, pure, tested): under the button when that side has 440 DIPs or
   is the larger one, else over it; never taller than the room there (300 to 600 DIPs). The notes scroll, so a shorter
   bubble only shows fewer lines. Decided in the flyout's `Opening` event from `Flyout.Target`. Left to itself, WinUI
@@ -3210,6 +3390,8 @@ fourth summon showed nothing.
     computed 787, 256, 231 × 32 against 784–1020 × 256–287 in a screenshot.
   - It only acts while a tooltip is open, with no popup of ours and no drag: every other way the keyboard moves in
     the panel is as before.
+  - Since 2026-11-21 the search box's own guard refuses that move before it happens, and opens the update dialog
+    for a click on its tooltip itself (§2.66); this repair stays for a move WinUI does not let it refuse.
 
 **Test and dev** (session 3103c128's scratchpad, `tip/`).
 - A build labelled 0.2.6 from the working tree (`package.ps1 -Version 0.2.6`), installed on the test desktop with
@@ -3524,7 +3706,8 @@ copies the RTF is the source that lasts.
 **Proposal, cheapest first** (the owner decides; docs §7):
 1. Show what is stored: a thumbnail and the §2.24 peek and viewer for `RichText` entries that carry a PNG or DIB
    (spreadsheets); plain text from the HTML of HTML-only copies (preview, search, plain paste); no code font for a
-   formatted copy unless it is code; "· 3 pictures · table" in the caption.
+   formatted copy unless it is code (moot since 2026-11-16: every text card is monospace, the owner's choice, §2.50);
+   "· 3 pictures · table" in the caption.
 2. A peek for every card, a viewer for formatted copies: RTF in a read-only `RichEditBox`, prepared with the panel
    (§2.27); HTML through an own HTML → XAML converter (like `MarkdownRenderer`, §2.29); WebView2 only in the viewer, on
    request, with every request blocked; the full text for long text and code, shell thumbnails for files, a large swatch
@@ -3678,7 +3861,10 @@ keys (35 checks, PowerShell 5.1 and 7); `test-update.ps1`; and on a disposable W
 User request (2026-11-08), on the README's Tabs table, whose "Shown" column read "Always" for both: "Run — Commands you
 ran with Win+R — Always - we should now always show but only if there is Run history" and "Snipping — Screenshots that
 Snipping Tool and Win+PrtScn saved — Always - only when there are images from snipping tool." (§2.35 is left to the
-uncommitted AI conversation in the working tree.)
+in-memory AI conversation. It stayed uncommitted in the shared working tree from 2026-10-21 to 2026-11-16, then was
+left out of 0.2.12 and stashed on the owner's word ("Leave it out and stash"): `git stash list` shows "AI conversation
+(CLAUDE.md 2.35), uncommitted since 2026-10-22 …" on base `683ed40`, and its own §2.35 text is in the stash's
+CLAUDE.md. `git stash apply` brings it back; its labels still need catalog entries (§6).)
 
 **What the user gets.**
 - **Run** shows while *Win+R history* is on and the history holds at least one entry with a Win+R run time: imported from
@@ -4035,6 +4221,10 @@ separate file).
   (calibrated on the Russian placeholder the test desktop showed cut: "Поиск по всему, что вы копировал"). Nine
   translations were shortened to fit (Russian 4, Spanish 3, Hebrew 2); English itself is cut in two of them (the
   Everything tab's 238 px, the prompt tabs' 262 px). The six placeholder descriptions now state the room.
+  - That was at the panel's then default width of 400 DIPs. Since the pin (§2.55) the default panel opens 432 wide
+    (258 px of text), and since 2026-11-21 the box has no magnifier (§2.6.2): about 292 px at the default width and
+    about 220 at the narrowest (360). Both English texts fit at the default width now; the five panel placeholders'
+    descriptions were rewritten for that (the shortcut box's is unchanged).
 - **Docs:** [`docs/localization.md`](docs/localization.md) (descriptions, right-to-left, the tool, known gaps), the
   README's language passages and their Chinese translation.
 
@@ -4107,6 +4297,79 @@ user gets a dialog for choosing language / Also should be true for users that ju
 1,695 of 1,695 in the shared tree with the uncommitted AI work; a disposable claude-desktops Windows 11 desktop
 updated from the released 0.2.9 to this change the way the update button does, and showed the picker.
 
+**Every word of the interface checked before 0.2.12 (2026-11-16).** User request: "We want to release and we had a
+bunch of work. See if the entire UI is translated and if not close the gap".
+- **The catalogs were complete** (`catalog.py check`: nothing missing in any language) and the guards green. What
+  showed in English were texts that never reach `UiText`, which no test sees. Two checks found them
+  ([`docs/localization.md`](docs/localization.md), *Checking that nothing bypasses the catalogs*; §5 has the run): a
+  scan of the sources, and a pseudo-translated build (`es.json` wrapped as `⟦English⟧`) read window by window through
+  UI Automation in a test desktop.
+- **Found and fixed:**
+  - **The classifier's words on cards.** `ContentClassifier` stores some previews in its own English words, and the
+    cards showed them as stored: "Image · 1920 × 1080", "Formatted content", the "+3 more" under a file list's first
+    five names, "(whitespace · 4 chars)". They stay stored in English (the search, `bclip` and older versions read
+    them; `RichOnlyPreview` and `ImagePreview` are named constants now). `Core/Presentation/PreviewText.Display`
+    translates them where they are shown, by their shape and only for the kind of entry the classifier gives it, so a
+    text copy that reads "Image" stays as it is: the cards (`ClipItemViewModel.Preview`), their screen-reader names,
+    and *Delete stored…*'s examples (`ClipHistoryService.Stored`). "(whitespace · {0:N0} chars)" is a new plural
+    string.
+  - **Sizes** (`ByteSizeText.Format`: Settings' history figures, *Delete stored…*, a picture's file details in its
+    menu and in the image viewer's band) wrote "B", "KB", "MB" and "GB" in every language. The units are catalog
+    entries now, as each language's File Explorer words them: Russian "байт", КБ, МБ, ГБ; Chinese 字节; Spanish
+    "bytes"; Hebrew בתים (its KB, MB and GB stay Latin and are in `RightToLeftTextTests`' list of Hebrew strings
+    without Hebrew letters). So is the update dialog's progress for a download of unknown size (`{0:0.0} MB`).
+  - **The update dialog's release date** ("0.2.11 · 13 Nov 2026") had English month names in English order.
+    `UpdateText.ReleaseHeading` uses the catalog's `d MMM yyyy` with `UiText.DateCulture` now ("0.2.7 ·
+    2026年10月1日"), and `UiText.JoinLine` for the line.
+  - **Two lines in Hebrew** were joined as plain strings, so their pieces stood left to right: an Everything pick's
+    caption and a forgotten item's title. Both go through `UiText.JoinLine` now.
+  - **The Microsoft Store edition's uninstall details** ("PowerShell did not answer in time.", "The check script ended
+    with code {0}.", "The uninstaller ended with code {0}.") followed a translated sentence in English. They are
+    `EditionUninstaller.DetailTemplates` now, shown through `UiText.TranslateFormatted`; the log keeps the English.
+- **English on purpose, confirmed:** product, tab and key names; the text viewer's names of formats (all but *Plain
+  text* and "(detected)"); release notes from GitHub; WinUI's own text, which follows the language.
+- **Pieces:** `Core/Presentation/PreviewText.cs` (new), `ContentClassifier`, `ByteSizeText`, `UpdateText`,
+  `ForgottenText`, `ClipHistoryService.Stored.cs`, `ClipItemViewModel`, `Windows/Store/EditionUninstaller.cs`,
+  `AppController.Store.cs`; 9 new strings (one of them a plural) in all five catalogs, and new descriptions for
+  "Image", "Image · {0} × {1}", "Formatted content" and "+{0:N0} more", which the cards use now too.
+
+**Verified** (rows in §5): Core 1,990 and Windows 461, 0 failed; a second pseudo-translated build showed the sizes,
+Settings' figures and the release date marked.
+
+**The second audit, after five days of new features (2026-11-21).** User request: "We have had so much work done since,
+I would like you to close the gap again". 57 commits had landed on `release/0.2.12` since the first audit (`16866c7`):
+the pin and its tip, the header's buttons, Lines per card, Background transparency, the panel that leaves the keyboard
+with your app, the history's and the integrations' limits with the budget's notification, Win+V over Start, UI access.
+- **The catalogs:** 58 new strings, every one translated in all four languages, none copied from the English; `catalog.py
+  check` 0 missing, 0 to review.
+- **The sources** (only what was new since the first audit's scan: rows compared by file and text, not line): every new
+  literal was a log line, a key or a name, except **the update failures the Windows installer words**
+  (`ScriptUpdateInstaller`): no installer in the package, an implausible size, larger than it claims, not taken out of
+  the package, Windows PowerShell not found, the installer not started (twice each: plain and elevated), and an isolated
+  instance that cannot elevate. They were typed into their throws, so the update dialog and its notification
+  (`UpdateText.ProblemText`, `TranslateFormatted` over `UpdateMessages.Templates`) showed them in English in every
+  language; three of them since 2026-10-09, missed by the first audit. They are `UpdateMessages` constants now. So are
+  two reasons a portable update puts inside its sentences ("no process", "a folder of that name is in the way"), which
+  translate as fragments of the list, like "the release list".
+- **Exception messages BetterClipboard words itself, shown inside a sentence** (`{ex.Message}`): *Save to temp*'s "The
+  folder already holds 1000 copies …" and the Store edition's two history-move reasons are constants in a template list
+  of their class now (`TempImageFiles.MessageTemplates`, `EditionDataMigrator.MessageTemplates`), and the two sentences
+  translate the message through it; Windows' and .NET's own messages are shown as they came.
+- **A guard:** `TranslationCoverageTests.UpdateFailures_AreWordedFromTheTemplates` fails on a `new UpdateException(…)`
+  whose message is a literal (mutation-checked: one of the eight put back failed it at `ScriptUpdateInstaller.cs:211`).
+- **Runtime** (a pseudo-translated build of `65d8b19`, `0.2.12-l10n.3`, in a worker test desktop): Settings with every new
+  card (the budget's bar and "Now:" lines, Background transparency, Buttons in the panel with their arrows, Lines per
+  card, the integrations' limits), the panel's 14 tab states, the pin and its tip, and the budget's notification
+  ("⟦Clipboard history 92 % full: the oldest items will be deleted⟧"): nothing of the app's unmarked. The only new
+  English is Windows' own ("Non Client Input Sink Window", an automation name of the window's frame).
+- **Pieces:** `UpdateMessages` (10 constants), `ScriptUpdateInstaller`, `PortableUpdateInstaller`, `PortableUpdateCommand`,
+  `TempImageFiles`, `EditionDataMigrator`, `AppController.ImageFiles.cs`, `AppController.Store.cs`; 13 new strings in all
+  five catalogs, and the descriptions of "Could not save the picture: {0}" and "The history could not be copied: {0}
+  Nothing was changed.".
+
+**Verified** (rows in §5): Core 2,345 and Windows 660 (3,005: 2,997 passed, 8 skipped, 0 failed) on `7991bec` plus the
+change.
+
 ### 2.38 Where the panel opens: next to the text cursor, next to the mouse, or centered on the main or the current screen (built 2026-11-08)
 
 User request (2026-11-08): "Add setting that chooses where the BetterClipboard menu will appear 1. Near cursor (like now,
@@ -4120,14 +4383,36 @@ the localization branch, `feat/localization`.)
   the README's Settings list named it beyond "where the panel opens", and the owner did not find it. "Next to the mouse"
   stays: removing a choice someone may use would be a regression.
 
+**The current screen is the mouse's** (changed 2026-11-20). The owner: "'Center of the current screen' option should be
+using the cursor position to pick which screen".
+- **Two questions asked** (`AskUserQuestion`): "cursor" read two ways — the mouse pointer, or the text cursor with the
+  mouse only where an app hides its caret (Chrome, terminals, Electron) — and the README's two sentences about the old
+  rule. The owner chose **"Mouse pointer (Recommended)"** and **"Leave the README alone"**.
+- **The rule** (`FlyoutPositioner.ChooseScreen`): *Center of the current screen* is the monitor under the mouse pointer
+  when the shortcut is pressed (`ForegroundContext.Cursor`), whichever window has the keyboard and wherever its caret is:
+  the monitor *Next to the mouse* uses, centered. The paste still goes to the window that has the keyboard, so with the
+  keyboard on one monitor and the mouse on another the panel opens away from the caret.
+- **What the typing rule needed went with it:** `ChooseScreen`'s window facts (`TargetWindowFacts`),
+  `MonitorLookup.DescribeTarget`, `IsDesktopWindowClass` (with its class list), `PanelScreen.Of` with
+  `PanelScreenKind.Window` (value 1 left unused), and `CaretMiddle`/`Contains`. A summon no longer reads anything about
+  the window it came from to place the panel. The whole rule is in `f97daab`'s `FlyoutPositioner.cs` and
+  `PanelPlacementTests.cs`, should it ever come back (as a fifth choice, say).
+- **The card's description** became "Where the clipboard panel opens. The current screen is the one with the mouse
+  pointer." (`catalog.py rename`, then the four translations rewritten and confirmed: 鼠标指针所在的屏幕, «тот, на
+  котором находится указатель мыши», «aquella en la que está el puntero del mouse», «המסך שבו נמצא סמן העכבר»).
+- **Not changed:** the warm-up (it shows the cloaked panel on the pointer's monitor already, §2.27), the other three
+  choices, and the README with its four translations, which still say "the one you are typing on (with several monitors,
+  the screen with the window you were in; …)" in *Use* and in the Settings list: the owner's choice.
+
 **What the user gets.**
 - **Settings › Shortcut › Panel position**, moved there from *Pasting*, right under the shortcuts: four choices.
   - *Next to the text cursor*: the default, unchanged.
   - *Next to the mouse*: unchanged.
   - *Center of the main screen* (new): the middle of the main display's work area, whatever was in front.
-  - *Center of the current screen*: the screen the user is typing on (the rule below).
-- The card's description says what "current" means: "The current screen is the one you are typing on, or the one with
-  the mouse when you are on the desktop."
+  - *Center of the current screen*: ~~the screen the user is typing on (the rule below)~~ since 2026-11-20 the screen
+    with the mouse pointer (above).
+- The card's description says what "current" means: ~~"The current screen is the one you are typing on, or the one with
+  the mouse when you are on the desktop."~~ since 2026-11-20 "The current screen is the one with the mouse pointer."
 - **A centered panel is centered as a whole, groups column included** (`FlyoutPositioner.Place`). The column opened or
   closed while the panel shows still grows or shrinks it on the left, so the list stays put; the next summon centers it
   again. Before, a centered panel centered the list and hung the column on its left.
@@ -4136,7 +4421,8 @@ the localization branch, `feat/localization`.)
   test desktop).
 - **Every placement keeps the remembered size across monitors with different scales** (the fix below).
 
-**"The current screen", the owner's rule** (`FlyoutPositioner.ChooseScreen`, pure):
+**"The current screen" from 2026-11-08 to 2026-11-20, the owner's first rule** (`FlyoutPositioner.ChooseScreen`, pure;
+replaced by the mouse's monitor, above, and its code removed):
 1. The caret's monitor, while the caret lies inside the window the user was in (its middle point, `CaretMiddle`). Why
    "inside": some apps park their caret in a hidden helper window at the screen's corner, which would pull the panel to
    the main monitor. A caret on the desktop (renaming an icon) counts, because the desktop's window spans every monitor.
@@ -4145,9 +4431,9 @@ the localization branch, `feat/localization`.)
    spans every monitor, and "the monitor showing most of it" was arbitrary: before, a click on the second monitor's
    desktop could put the panel on the first.
 3. Else the mouse's monitor: after a click on the desktop, from the tray, with nothing active.
-- The facts about the window come from `MonitorLookup.DescribeTarget` (`TargetWindowFacts`: bounds, marks a screen), read
-  at the summon only for this placement. The choice is a `PanelScreen` (a point, a window, or the main monitor), looked up
-  by `MonitorLookup.FromScreen`; the main monitor is `MonitorFromPoint((0, 0), MONITOR_DEFAULTTOPRIMARY)`, since its
+- The facts about the window came from `MonitorLookup.DescribeTarget` (`TargetWindowFacts`: bounds, marks a screen), read
+  at the summon only for this placement. The choice is a `PanelScreen` (a point, ~~a window,~~ or the main monitor), looked
+  up by `MonitorLookup.FromScreen`; the main monitor is `MonitorFromPoint((0, 0), MONITOR_DEFAULTTOPRIMARY)`, since its
   top-left corner is the screen origin by definition.
 - Next to the text cursor and next to the mouse keep their old monitor rule exactly (the point below the caret's left
   end, else the mouse).
@@ -4191,9 +4477,10 @@ owner's PC: two monitors at 100 %, one at 125 %).
 
 **Pieces.**
 - Core: `AppSettings.CenterOnMainScreen`, `FlyoutPlacement` remarks (never add a member).
-- Windows: `Input/FlyoutPositioner.ChooseScreen` and `Place`; `PanelScreen`, `PanelScreenKind`, `TargetWindowFacts`;
-  `MonitorLookup.FromScreen`, `Main`, `DescribeTarget`, `IsDesktopWindowClass`; `NativeMethods.IsWindowVisible`,
-  `GetWindowRect`, `GetClassName`.
+- Windows: `Input/FlyoutPositioner.ChooseScreen` and `Place`; `PanelScreen`, `PanelScreenKind`, ~~`TargetWindowFacts`~~;
+  `MonitorLookup.FromScreen`, `Main`, ~~`DescribeTarget`, `IsDesktopWindowClass`~~ (the struck pieces went on 2026-11-20
+  with the typing rule); `NativeMethods.IsWindowVisible`, `GetWindowRect`, `GetClassName` (`GetWindowRect` is unused since
+  then; the declaration stays).
 - App: `Views/ClipboardFlyout.Placement.cs` (new: `SummonBounds`, `MoveAndResizeExactly`); `ShowAt(context, placement,
   centerOnMainScreen)`; `WarmUpBounds`; `PresentAsync`; `AppController.ShowFlyout`; `SettingsViewModel.PlacementIndex`;
   the card in `SettingsWindow.xaml`.
@@ -4205,17 +4492,21 @@ owner's PC: two monitors at 100 %, one at 125 %).
 **Verified** (rows in §5): 35 new tests (Core 8, Windows 27), three mutations caught; the whole suite 1,636 (1,633
 passed, 3 opt-in skipped); a Windows 11 test desktop (one monitor, 1600 × 900) for every choice, the column, the warm-up,
 a restart, the way to 0.2.9 and back, and the Chinese card; the lab and the probe on the owner's three real monitors,
-invisibly.
+invisibly. The mouse's rule (2026-11-20): `PanelPlacementTests` 18 (27 before), with seven cases where the caret or the
+window and the mouse disagree, all chosen by the mouse, and the choice looked up on this PC's three real monitors with the
+caret on another one; a mutation that lets the caret decide again failed 6 of them.
 
 **Limits / not built:**
 - **Not run on several monitors in the app itself:** the test desktops have one monitor, and a summon on the owner's PC
   would have put a panel over their work (they were busy in Chrome). The rule is unit-tested on the owner's layout
   (negative coordinates of the left monitor, the 125 % right one), the real lookups are tested on this PC's three
-  monitors, and the scale fix with the same calls in the lab.
+  monitors, and the scale fix with the same calls in the lab. Also true of the mouse's rule (2026-11-20).
 - A remembered position ("where I last dragged it"), and a choice of a specific monitor, were not asked for.
 - A centered panel whose groups column is toggled while it shows is off-center by the column until the next summon.
-- The tray's *Open clipboard* and `--show-flyout` from a script use the mouse or the foreground window like any summon:
-  centered on the current screen, the tray's panel opens on the mouse's monitor.
+- Every summon centered on the current screen opens on the mouse's monitor since 2026-11-20: the shortcut, the tray's
+  *Open clipboard* and `--show-flyout` from a script alike.
+- The README and its four translations still describe the typing rule (*Use*, and the Settings list): the owner chose to
+  leave them as they are (2026-11-20).
 
 ### 2.39 Local dev builds: the dev-builds folder, `publish-dev.ps1`, and the dev rule (built 2026-11-08)
 
@@ -4372,8 +4663,8 @@ right, Hide, Show all hidden. And the order to be persisted."
     moves before it.
 
 **What the user gets.**
-- **Right-click a tab** (or a touch press-and-hold; or `Menu` / `Shift+F10` while a tab has the keyboard focus, which it
-  has after a click on it): *Move left* (Back `E72B`), *Move right* (Forward `E72A`), a separator, *Hide* (Hide `ED1A`),
+- **Right-click a tab** (or a touch press-and-hold; or `Menu` / `Shift+F10` right after a click on it: since 2026-11-21
+  no tab takes the keyboard, and the panel remembers the tab clicked last, §2.66): *Move left* (Back `E72B`), *Move right* (Forward `E72A`), a separator, *Hide* (Hide `ED1A`),
   *Show all hidden (N)* (View `E890`). All four glyphs checked by rendering.
 - **Right-click the row's empty space:** *Show all hidden (N)* alone.
 - **Grayed out, never left out:** the moves at either end and on "All", *Hide* on "All", and *Show all hidden* while
@@ -4513,6 +4804,8 @@ for interoperability, nothing copied), on this PC's Notepad++ with a structure-o
     shingles (one in eight, chosen by hash).
   - Split when `(lost so far + lost) × 5 > peak`, in integers: exactly a fifth does not split. The old entry keeps the
     text it last held; the new copy starts at lost 0, peak = its length.
+  - A version that is only whitespace (a tab emptied down to a space) is not recorded, since 2026-11-17 (§2.3): the tab
+    keeps its last real version, and its next real text is compared with that one.
 - **Origins** (`ClipOrigin`).
   - `NotepadPlusPlusTab` (12), ShareX's hybrid. A new event: pause (except for the first activation's import), ignored apps
     (`notepad++`), the size limit and Forget forever apply, and a duplicate is bumped. Like an import, it never lifts a
@@ -4662,14 +4955,16 @@ ANYTHING ON THIS PC". Four HTML questions (pages in session b8a49ba2's scratchpa
   the window; spelling checker and text prediction off (`SearchBox_Loaded`: "claude", "sharex" and "pwsh" were underlined
   as misspelled). The count beside it ("4 settings match", "No matches") is a polite live region. Esc clears the search
   and puts the page back at the scroll position it had when the search started; Esc on an empty box gives the keyboard
-  to the page.
+  to the page. It keeps its magnifier (`QueryIcon`), although it filters as you type and nothing handles
+  `QuerySubmitted`: when the panel's went (2026-11-21, §2.6.2), the owner was asked and chose "Win+V panel only".
 - **The filter:** a matching card stays where it is; other cards and sections without a match collapse, the hero hides;
   none: "No setting matches “…”." with a hint. A new query scrolls to the top; a status line that changes while a search
   shows searches again after 250 ms, keeping the position.
 - **What a setting is searched by** (`DocumentOf`): its title and description (the two highlighted fields), its section's
   title, translator-written keywords (`SettingsCard.Keywords`, a catalog string on 41 cards, never shown: "screenshots,
   print screen, PrtScn, snip, Win+Shift+S"), everything else on the card — text blocks, button and option contents, list
-  rows (`ISearchableItem`), tooltips, accessible names, placeholders; never a switch's On/Off or a number box's digits,
+  rows (`ISearchableItem`), tooltips, accessible names, placeholders, a number box's label (since 2026-11-21, §2.62);
+  never a switch's On/Off or a number box's digits,
   which would find every card — and the English of every translated text (`UiText.EnglishOf`, reverse catalogs built on
   first use), so "shortcut" finds 快捷键's card.
 - **Matching** (class remarks are the full spec): texts folded (case, base letters of diacritics, format characters and
@@ -4792,9 +5087,9 @@ row's newest activity, one row per content.
 - **Ties:** the stored entry first.
 - **Items without times** (PowerShell's file keeps none) keep their order. A kept command shows at its command's place in
   the file. It leads only when it was used after the newest command was typed: the history file's last write
-  (`PowerShellHistorySource.LastNewestCommandUtc`, via `AppController.PowerShellNewestCommandUtc`). One with no twin in the
-  700 commands read and used before that goes after the live commands; `ShellTab.CapCommands` keeps every stored row past
-  the 500-command cap.
+  (`PowerShellHistorySource.LastNewestCommandUtc`, via `AppController.PowerShellNewestCommandUtc`). One with no twin among the
+  commands read (every one since 2026-11-21; 700 before) and used before that goes after the live commands. (Until then
+  `ShellTab.CapCommands` kept every stored row past the 500-command cap; both went with the caps, §2.62.)
 - **Paging** (the prompt tabs, 60 texts a page): the order is one object per load (`FlyoutViewModel.promptOrder`).
   - An entry older than every prompt of the loaded pages waits for its page; the last page (fewer than 60 rows) places
     what is left.
@@ -4804,7 +5099,7 @@ row's newest activity, one row per content.
   - The footer's "· N kept" counts the waiting ones too (`WaitingCount`).
 
 **Pieces.**
-- Core: `Presentation/MergedTabOrder.cs` (new), `Shells/ShellTab.Merge` (+ `newestTypedUtc`, `CapCommands`,
+- Core: `Presentation/MergedTabOrder.cs` (new), `Shells/ShellTab.Merge` (+ `newestTypedUtc`, `CapCommands`, gone since §2.62,
   `ShellTabRow.Time`), `Everything/EverythingTab.Merge` (`EverythingTabRow.Time` is now the merge's time).
 - Windows: `PowerShellHistorySource.LastNewestCommandUtc`.
 - App: `FlyoutViewModel.Prompts.cs` (the order, `PromptCards`), `FlyoutViewModel.Shells.cs`, `FlyoutViewModel.cs`
@@ -4817,8 +5112,9 @@ in a Windows 11 test desktop.
 
 **Limits / not built:**
 - A pinned entry's place among the pins follows its last use only (its twin's time may lie on a page not loaded yet).
-- Pwsh: a kept command used before the newest command was typed and no longer among the 700 commands read lands after
-  the live commands, also when it was used a minute before that command.
+- Pwsh: a kept command used before the newest command was typed and no longer in PowerShell's history file (700
+  commands were read until 2026-11-21, every one since, §2.62) lands after the live commands, also when it was used a
+  minute before that command.
 - Cmd's times are when BetterClipboard saw a command (§2.19), so a kept command typed again is placed by that sighting.
 
 ### 2.45 Memory: Settings no longer stays in memory, and memory is given back after every use (built 2026-11-12)
@@ -5008,7 +5304,9 @@ the panel is not open) and **"No switch, always on"**.
 
 **How, in order.**
 1. **The old process starts the new one quietly** (`Windows/Shell/QuietProcess`: `CreateProcessW` with
-   `STARTF_FORCEOFFFEEDBACK`, no inherited handles, the same environment, so an isolated instance comes back as itself):
+   `STARTF_FORCEOFFFEEDBACK`, no inherited handles, the same environment, so an isolated instance comes back as itself;
+   a copy with Windows' UI access through the shell instead, and the new process waits on the old one with
+   `SYNCHRONIZE` only, §2.63):
    `BetterClipboard.exe --background --restart-after pid:startTicks --clipboard-sequence N`.
 2. **The new process prepares the switch before anything else** (`Program.Main`, before COM and XAML): it keeps the
    instance's command events open (`SingleInstance.KeepCommandsAlive`: a `--show-flyout` sent during the switch is kept),
@@ -5259,7 +5557,8 @@ virtualization, `virtualization:ExcludedDirectories`, needs `unvirtualizedResour
   uninstalled."); the log names the decision at every start (`LogStoreDataFolder`); `AppPaths.UsesSharedDataDirectory`.
 - **Policy 10.2.7** (clean uninstall must be communicated): the folder stays like every other edition's, and Settings
   says so. The first submission's certification notes (1.2.11) say "removed with the app", true for that version; the
-  kit (`docs/store-listing.md` §1) has the new text, to be typed into the next submission by hand.
+  kit (`docs/store-listing.md` §1) has the new text: on the product's notes page since 2026-11-20, and in every
+  release's submission (`submit-store.ps1`, §3.5).
 - Full write-up: `docs/microsoft-store.md` §4.4.
 
 **Pieces.**
@@ -5310,9 +5609,10 @@ AppxManifest file".
 **Verified:** see §5.
 
 **Limits / not built:**
-- **Submitted for certification** on 2026-11-13 (1.2.11, §3.5); it failed on one search term ("Win+V") and was
-  resubmitted on 2026-11-15. The shared data folder ships with the next release; its submission needs the kit's new
-  certification notes typed in by hand.
+- **In the Microsoft Store since 2026-11-15, 19:51 UTC** (1.2.11.0, x64 and ARM64; §3.5): submitted on 2026-11-13,
+  failed on one search term ("Win+V"), resubmitted and certified on 2026-11-15. The shared data folder ships with
+  0.2.12; the notes for certification say so since 2026-11-20 (the product's notes page, and each release's
+  submission; §3.5).
 - A copy for every user and a Chocolatey copy are not removed by the Store edition; their two pages were not seen on
   screen (the plan is unit-tested).
 - **Two processes write one log during the move** (the setup and the other copy, both in the shared folder): the live
@@ -5561,7 +5861,8 @@ HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
   invented BC-TEST prompt of the same shape.
 
 **What the user gets.**
-- **A card that shows less than its text says so:** a thin "⋯" line under its four lines and the eye (E7B3, as on
+- **A card that shows less than its text says so:** a thin "⋯" line under its lines (four by default; Settings › Shortcut › Lines per card since
+  2026-11-20, §2.57) and the eye (E7B3, as on
   picture cards) at its corner. `ClipItemViewModel.IsCutOff`: the card's text block reported trimming, or the stored
   preview is itself cut (`ContentClassifier.PreviewMaxChars`), or a file list's preview says "N more". Other cards look
   as before.
@@ -5576,7 +5877,8 @@ HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
   of the work area (at most 1,400 DIPs wide) centered on the panel.
   - A header (the card's kind and caption), a toolbar, the text, and a status line: "N lines · N characters", plus a
     note when the text is limited.
-  - *Formatted* / *As copied*, only when they differ (Markdown, XML, JSON).
+  - *Formatted* / *As copied*, only when they differ (Markdown, XML, JSON). Both in the code font since 2026-11-16
+    (below).
   - *Wrap*, and *Line numbers* in a gutter left of the text (code only).
   - The language button: every language (`TextLanguages.All`: Markdown and plain text first), the recognized one marked
     "(detected)".
@@ -5602,13 +5904,13 @@ HTML questions (pages in session c073d86d's scratchpad, `q/`); the owner chose:
   spelling of numbers). An element with text in it, such as an agent prompt's `<instructions>`, stays exactly as copied.
   DTDs are ignored and nothing is resolved; at most 4,000,000 characters; invalid input is "not formattable".
 - **`RtfWriter` and `SyntaxPalette`:** an RTF document per page, VS Code's Dark+ and Light+ colors for tokens and
-  Windows' text colors for prose. Markdown is drawn as a document; a fenced block is colored in its fence's language
-  (`TextLanguages.FromFenceInfo`). Links are drawn, never live. One character of text is one character of RichEdit, so
-  the gutter maps positions to lines.
+  Windows' text colors for prose. Markdown is drawn as a document, in the code font since 2026-11-16 (below); a fenced
+  block is colored in its fence's language (`TextLanguages.FromFenceInfo`). Links are drawn, never live. One character
+  of text is one character of RichEdit, so the gutter maps positions to lines.
 - **`TextViewSource`** normalizes line breaks to `\n` and cuts the text to the caller's limit at a line break;
   **`TextViewRendering`** is one view of it (a language, formatted or not), with its tokens or blocks and its `Pages`.
-- **`Presentation/Markdown`:** `MarkdownParseOptions` (`KeepLineBreaks`, since a prompt's line breaks are meant, and a
-  larger `MaxLength`), and the fence's info string on `MarkdownCodeBlock.Info`.
+- **`Presentation/Markdown`:** `MarkdownParseOptions` (`KeepLineBreaks`, since a prompt's line breaks are meant, a
+  larger `MaxLength`, and since 2026-11-16 `KeepLayout`, below), and the fence's info string on `MarkdownCodeBlock.Info`.
 
 **Megabyte texts: why pages** (measured 2026-11-13).
 - **The Core work is cheap:** detection, preparation and the RTF of a 6 MB log and of 2.3 MB of C# each took under
@@ -5701,6 +6003,131 @@ where the mouse is then. Until now it used the image peek's 3 pixels (`PeekMoveT
 peek keeps. Physical pixels, like the cursor position it is compared with: 12 DIPs on a monitor at 125 %. Verified: see
 §5.
 
+**Formatted in the code font, every line as typed** (2026-11-16). User request: "Can the format of "Formatted" tab be same
+as of "As copied"? we need mono font so we will see ascii tables formatted by default just because of the font". Read as:
+*Formatted* keeps drawing Markdown, in *As copied*'s font and size. The hover peek shows the same view.
+- **Why the font alone was not enough.** A text in no language is Markdown (the detector's fallback), so a table copied
+  from a terminal opens as a document. A probe of ten table shapes (session 7deffe32's scratchpad, `probe/tables.cs`;
+  BC-TEST data, all ten detected as Markdown) found three that a monospace font alone shows right: box drawing, MySQL,
+  kubectl. The parser changed the other seven:
+  - it trimmed each line's leading blanks: psql, pandas, PowerShell's right-aligned numbers;
+  - it turned a dashes-only line into a 32-character rule: PowerShell's `----  -----`, sqlite's column mode, a dashed
+    border;
+  - it expanded tabs to four columns, where *As copied* draws them at RichEdit's tab stops.
+- **The font:** `TextViewStyle.Default` gives documents the code font at 13 DIPs, *As copied*'s (until now Segoe UI at 14,
+  the panel's body size). Headings stay bold and larger, inline code keeps its background, task boxes keep Segoe UI
+  Symbol. The writer still takes a prose font of its own, so a proportional one is a change of that line.
+- **The layout:** `MarkdownParseOptions.KeepLayout`. The viewer passes it; the release notes' dialog does not, and reads
+  as before.
+  - A paragraph's and a quote's lines, and a list item's further lines, keep their indentation past their block's (a list
+    item's lines are measured from the item's text) and their tabs.
+  - A backslash ending a line stays (CommonMark's break mark otherwise; with every break kept it is the line's own).
+  - A line of three or more `-`, `*` or `_` that touches text is a line of that text: the line of a paragraph right
+    above it, or a line of plain text right below it while no list item or quote is open. Standing between blank lines,
+    or next to a heading, a list item or a quote, it is still a rule.
+- **What stays Markdown inside a table:** a row starting with `- `, `* `, `+ `, `1. `, `# ` or `>` is a list item, a
+  heading or a quote; `*x*`, `_x_`, `~~x~~` and backticks are emphasis or code; a backslash before punctuation is an
+  escape; `&amp;` and its kin and `<br>` are read. *As copied* shows them as typed.
+- **Tabs** are drawn at RichEdit's default stops (every half inch) in both views: rows that all use tabs line up with each
+  other, not with blanks in another row. Blanks that end a line are not drawn.
+- **The cards too** (the same day). The live check showed a box-drawn table's card misaligned in the panel: a card was
+  monospace only when `CodeHeuristics.LooksLikeCode` said so, which box-drawn, PowerShell and kubectl tables never
+  pass (psql's indented rows happen to). Asked with one question, then, on the owner's "Show me in html questions
+  wym", one HTML question with the panel drawn three ways (session 7deffe32's scratchpad, `q/cards-*.html`): the
+  owner chose **"All text cards mono"**, over "Mono for tables" (a table detector) and "Leave the cards".
+  `ClipItemViewModel.BodyFontFamily`: every `Text` and `RichText` card is monospace (archived prompts, Notepad++ tabs
+  and shell commands are `Text` cards); a link and an Everything pick stay in the UI font, a file list keeps the old
+  rule (monospace when it looks like code or is nothing but paths). Prose cards read like a terminal now and fit fewer
+  characters on a line.
+- **Verified:** see §5.
+
+**Keys while the text peek is open** (fixed 2026-11-18, `dffd388`; found by the paste QA of `release/0.2.12`, §5). With
+the text peek open (the mouse had rested on a cut-off card's text), the first key pressed was dropped: Enter, ↑ ↓, Del,
+Esc.
+- **What the user met:** Enter pasted nothing and the panel stayed up. Pressed again, Enter did nothing either: the
+  peek opens again under a resting mouse half a second after a key closes it, so every Enter was lost until the mouse
+  moved. A click on a card worked; so did Ctrl+1…9 and Shift+Enter, whose modifier key-down was the key dropped. Every
+  key worked with the image peek open.
+- **Why:** `Root_PreviewKeyDown` closes any hover peek first (`HidePeek`), then skips a key while `IsPopupKey` still
+  counts an open popup. The image peek gives its count back inside `HidePeek` (§2.24); the text peek gave it back in
+  `Popup_Closed`, which WinUI raises later, so the key that closed it still found the count at 1.
+- **Now:** `HideTextPeek`, the only place that closes the text peek, gives the count back the moment it closes it. The
+  peek's popup has a `Closed` handler of its own (`TextPeekPopup_Closed`) that keeps what `Popup_Closed` did apart from
+  the count: the mouse does not take the selection for the card the peek uncovers, and the keyboard goes to a viewer that
+  is still open, else to the search box. Keys typed into the peek's own text or its menu stay the peek's
+  (`IsTextPeekKey`, unchanged).
+- **One behavior follows the image peek's now:** Esc while a hover-opened text peek shows closes the peek and acts as
+  Esc (clears the search, or closes the panel). Before, it only closed the peek, because it was dropped.
+- In 0.2.11 too: it was released on 2026-11-13 with the same order and count.
+- **Verified:** see §5.
+
+**Tables inside quotes, list items and code blocks** (2026-11-20). User request: "The trasncript in my clipboard has > or
+code block and in them a markdown table. we should be rendering that table too even if its nested or quoted or whatever".
+- **What it was [verified]:** the transcript (the owner's history entry 3242, 89,926 characters copied from the Codex app)
+  quotes every message (a `**❯ …**` or `**● …**` line, then `> ` lines) and holds four Markdown tables, all inside quotes,
+  and no fence. The parser read a quote as one paragraph of its lines, so the viewer showed the tables, and the `##`
+  headings and `-` lists in the quotes, as raw marks: a content-free probe found 85 blocks, 65 of them paragraphs, 0 tables.
+- **Now (the parser, `MarkdownQuote`):** a quote's lines, without one level of marks (`StripQuoteMark`: the mark and the
+  one blank after it, the rest kept as typed), are parsed again as Markdown (`ParseLines`, recursively): headings, lists,
+  tables, fences, rules and nested quotes (`> >`, also `>>`), up to `MarkdownParser.MaxNesting` (12) levels; a deeper mark
+  is text.
+  - CommonMark's lazy lines go on the quote's last paragraph (`ReadQuote`), only after paragraph or list text: a blank
+    line, a block start, or a line under a table row or inside a fence ends the quote; a numbered "2026." line is text.
+  - A quote of only blank lines is left out. A rule-like line right under a quote is a rule (`afterQuote`).
+  - A table or a quote indented to a list item's text stays in that item (`MarkdownTable.Indent`, `MarkdownQuote.Indent`);
+    before, a table always ended the list.
+  - `MarkdownParagraph.IsQuote` is gone: a quoted paragraph is a paragraph inside a quote.
+- **Code blocks without code:** the viewer finds each code block's language once (`TextViewRendering.ResolveCodeBlocks`:
+  the fence's name, else the guess) and cuts the ones in Markdown or plain text at their tables
+  (`MarkdownParser.SplitTables`): the tables are drawn, the other lines stay code. Code in a programming language (a
+  ```` ```python ```` block with a table in a string) is left whole. The owner named code blocks while their transcript
+  has none; the rule (tables are drawn wherever the viewer would not color the block as code) is Claude's.
+- **The look** (`RtfWriter.WriteBlocks`): a quote's blocks one level right per quote (18 DIPs) and in the secondary color;
+  its paragraphs and list items in italics, as a quote's text always was; headings, tables and code keep their own look,
+  code its syntax colors. The release notes' dialog (`MarkdownRenderer`) draws a quote as one bordered panel of its blocks.
+- **Numbered markers with room** (found in the QA, older than this change): since the monospace font (2026-11-16), "1."
+  filled the 16-DIP marker column and its text touched it ("1.Hold the rest."); the column now fits the marker and one
+  character more (`RtfWriter.MarkerWidth`, 0.6 em a character).
+- **On the owner's transcript** (the same probe): 32 quotes holding 34 headings, 515 list items, 180 paragraphs and the 4
+  tables (10×3, 7×5, 12×3 and 7×5, rows × columns), and no raw delimiter row left in the RTF.
+- **Verified:** see §5.
+
+**Tables fitted to the window** (2026-11-20). The owner's report on the same transcript, with a screenshot of its Roadmap
+table: "I want you to review the table, this table seems overflowing to other columns rather than more height per row or
+more with per column".
+- **What it was [verified]:** `RtfWriter.WriteTable` drew a table as a grid of blanks, each column at most 48 characters
+  wide, and wrote a longer cell whole, so the rest of its row moved right, out of line with the rows above and below. The
+  Roadmap's goals are 68 characters. A table wider than the text box was also wrapped by RichEdit as whole lines, its
+  columns landing under other columns.
+- **The width** (`TextViewStyle.TextWidth`, in DIPs): the App passes the width the text is laid out in
+  (`ClipboardFlyout.TextWidthIn`): the frame less its 1-DIP border, its padding and the text box's padding
+  (`TextPreviewPresenter.HorizontalTextPadding`), divided by Windows' text size. The scroll bar takes none: WinUI's
+  ScrollViewer template lays it over the text. The peek's 900 DIPs give 862, the viewer's 1,400 give 1,358 (the QA saw the
+  text from 23 to 1,381).
+- **The fit** (`FitColumns`, `FitColumnsToData`, `WrapCell`): every column keeps its natural width while the table fits. A
+  table that does not is laid out two ways and drawn in whichever takes fewer lines:
+  - its widest columns cut to one common width, never below 6 characters (a water level);
+  - or the data first: every column at least its body's widest line and its header's longest word, so the headers wrap.
+
+  Cells wrap at the last blank that fits, a word wider than its column is cut, and a cell's own `<br>` starts a new line.
+  A row that wraps gets a 4-DIP gap after it, and 1 % of the width is left free (`FitMargin`).
+- **Columns at tab stops:** a line's cells are separated by tabs, and every column after the first starts at a `\tx` of
+  its own. So a column starts in place whatever the glyphs before it are as wide as: an emoji or a Chinese character
+  (drawn from a fallback font) counts as two characters (`CellWidth`), and the two-character gap takes what is left. A
+  copy of a drawn table has tabs between its cells. RichEdit keeps 32 stops a paragraph, so a table of more than 33
+  columns is laid out with blanks.
+- **The code font measured** (`ClipboardFlyout.MeasureCodeAdvance`, `TextViewStyle.CodeAdvanceEm`), found in the live QA:
+  the test desktop has no Cascadia Mono, and drew Consolas at 7.33 DIPs a character where the writer assumed 0.6 em
+  (8.0 DIPs), so every column stood 9 % further right than its text. The App now measures the font once (a XAML
+  `TextBlock` of 200 digits; logged as "Text viewer: Consolas advances 0.5499 em a character."), and the stops stand at
+  that advance.
+- ***Wrap* off:** no width is passed, so every column keeps its natural width and the box scrolls sideways. Toggling
+  *Wrap* draws a document that holds a table again (`TextViewRendering.HasTables`).
+- **On the owner's transcript** (a content-free probe, at Cascadia Mono's 0.586 em): the Roadmap is 99 characters wide in
+  all and now fits both the peek's 106 and the viewer's 169. The first table (172) is wider than both and wraps its two
+  long columns (peek 25, 39 and 38; viewer 25, 57 and 83); the other two fit.
+- **Verified:** see §5.
+
 **Pieces.**
 - Core: `TextView/` (`TextLanguage` and `TextLanguages`, `TextLanguageDetector`, `SyntaxToken`, `SyntaxHighlighter`
   with its `.Code`, `.Markup` and `.Data` parts, `StructuredTextFormatter`, `SyntaxPalette`, `RtfWriter` with
@@ -5726,6 +6153,16 @@ peek keeps. Physical pixels, like the cursor position it is compared with: 12 DI
 - Ctrl+wheel steps once per wheel event, so a high-resolution wheel changes the size quickly.
 - Not run: a real GPU, Narrator, touch and pen, the toolbar in a right-to-left language, a monitor with another scale
   than the panel's.
+- A quote has no bar in the viewer (RichEdit draws no paragraph borders): it is told by its indentation and color. A
+  table cut out of a code block is drawn at the code's margin, off its background.
+- The release notes' dialog's bordered quotes were not seen on screen (no release's notes hold a quote yet).
+- A list item's first line is never a quote (`- > text` keeps its mark as text).
+- A table whose columns do not fit even at 6 characters each (dozens of columns in the peek) is wider than its box, and
+  RichEdit wraps its lines.
+- A wide character's width is an estimate (two characters for Chinese, Japanese, Korean and emoji); a glyph wider than
+  that from another fallback font can push the rest of its line one stop on.
+- Not checked: whether RichEdit's text grows with Windows' text size. The fit divides by it, so at worst a table is
+  narrower than the box allows.
 
 ### 2.51 The documentation site: the README as a docfx site on GitHub Pages (built 2026-11-15)
 
@@ -5874,7 +6311,9 @@ shell commands, archived prompts — share it):
 3. Off the UI thread: the clipboard is written (first, while nothing competes with it), then the target activated (this
    process still owns the foreground, and any of its threads may hand it on; the UI thread handles the panel's
    deactivation meanwhile), then Ctrl+V once the target had 40 ms since its activation (`PasteInjector.SettleTime`, waited
-   with a high-resolution waitable timer: `PreciseDelay`, `NativeMethods.Timer.cs`).
+   with a high-resolution waitable timer: `PreciseDelay`, `NativeMethods.Timer.cs`). Since 2026-11-17 the keys also wait
+   for the window's input thread to answer a ping, Ctrl stays down until it took the V, and keys typed from the Enter on
+   follow the paste (§2.54).
 4. The UI thread stays free for 150 ms (`FinishAfterPaste`); then `FinishPuttingAway` hides and shows the window, resets
    the view for the next summon, saves the tab and lets caches go; then the item's bump (`MarkUsedAsync`) and the keeps of
    picks, commands and prompts.
@@ -5893,6 +6332,19 @@ shell commands, archived prompts — share it):
 - **The log line** (content-free; the session's first paste, and any of 120 ms or more from the key): "Pasted: Ctrl+V sent
   74 ms after the key (search 3 ms, formats 4 ms, panel away 2 ms, clipboard 13 ms, target 8 ms, settle 42 ms, sent 2 ms)
   (first paste)."
+- **A choice that pastes nothing says why** (since 2026-11-18, `c8a4c05`; the owner chose it for 0.2.12 after one lost
+  paste in the QA left no line, §5, §6). At Info, content-free:
+  - "Copied only: no window to paste into was captured when the panel opened (it was opened from the tray, or no window
+    had the foreground at the shortcut)." (`AppController.LogWhyNotPasted`);
+  - "Copied only: "Paste after choosing an item" is off in Settings (said once per session)." (every choice copies by
+    design then);
+  - "Not pasted: the window the panel was opened from is gone. The item is on the clipboard." (`PasteOutcome.NoTarget`,
+    which the injector does not log);
+  - from the Enter (`PasteBestMatchAsync`): "Enter ignored: the previous Enter's paste is still under way." (once per
+    paste: a held Enter repeats), "Not pasted: the panel was put away while its search was settling.", "Not pasted: no
+    card was selected and the list armed none (it was empty).";
+  - "Not pasted: the archived prompt is no longer in the archive." (`PastePromptAsync`).
+  - The injector's own refusals were logged already. *Copy only*, a copy that was meant, logs nothing.
 
 **Unchanged on purpose:** the 40-ms settle (Chromium and Office restore their focused control asynchronously after
 `WM_ACTIVATE`; Edge's textarea, Notepad and Windows Terminal took the paste with it), and the working-set trim after every
@@ -5992,13 +6444,1573 @@ are read ahead only up to 4 MB: "formats 488–794 ms" in the paste's log line f
   as they scroll into view was not tried.
 - "Memory" at rest is higher than with the trim (32–52 MB against 0.2–7 MB in the VM): the owner's choice.
 
+### 2.54 A paste never types "v": Ctrl held until the window took the V, the keys typed meanwhile held back (built 2026-11-17)
+
+User report (2026-11-17): "I tried pasting to a terminal on a overloaded computer and i got 'v' which is probably the
+Ctrl+v attempt. I think maybe Ctrl needs to be held longer / Analyze, think and fix".
+
+**The owner's log** (content-free) had the paste: "Pasted: Ctrl+V sent 672 ms after the key (search 0 ms, formats 0 ms,
+panel away 1 ms, clipboard 4 ms, target 9 ms, settle 311 ms, sent 347 ms) (slow)." The PC was so busy that the 40-ms settle
+wait took 311 ms, and `SendInput` of the four keys took 347 ms (176–409 ms in the owner's other slow lines): about 20
+programs there hook the keyboard, and `SendInput` waits for every low-level hook.
+
+**Why a window typed "v"** **[verified]**, with the new [`probe_ctrlv.cs`](tools/probes/probe_ctrlv.cs) in a
+claude-desktops Windows 11 desktop, against Agentmaster (the owner's Release build: a Windows Terminal fork, with
+PowerShell), Windows Terminal 1.18 with cmd, and a classic console:
+- A window reads Ctrl from its thread's key state, which Windows updates as the thread takes each key message, in order.
+  So the one-call Ctrl+V of before (Ctrl down, V down, V up, Ctrl up) arrived as Ctrl+V however late the window took it:
+  with the window suspended 500 ms before or after its activation, hooks slowed to 100 ms per key event, 8 processors kept
+  busy, a starved hand-over of the foreground — PASTED every time.
+- **The key-state reset.** `AttachThreadInput` resets a thread's key state to the keyboard's current state (Microsoft's page:
+  the key state "is reset after a call to AttachThreadInput"), and programs call it on whatever window comes to the front,
+  to read its focus or caret. With the window busy when the keys arrived and a program attaching to its thread every
+  millisecond: **V 8 of 8**. A reset after the window took the Ctrl and before it took the V copied a Ctrl that was up
+  already: the call had released it. Without the attaches: PASTED 8 of 8. The same through BetterClipboard itself (Win+V and
+  Enter, the build `0.2.12-dev.24.gd35e518`): V 8 of 8.
+- Ctrl held down for 1.5 s instead (`--mode hold:1500`): PASTED 6 of 6 under the same load.
+- The window's key state cannot tell when it took the keys: a watch attached to its thread reported the V taken 2–3 ms after
+  it was sent, to a window whose process was suspended. The other program's reset had copied the keyboard's state into it.
+
+**The fix** (`Windows/Input/InputThreadWatch`, `PasteKeyGuard`, `PasteInjector`, `KeyboardInput`; the class remarks are the
+full design):
+1. **When the keys go in.** After the settle time, the window that has the target thread's keyboard focus is pinged with
+   `WM_NULL` (`SendMessageTimeout`, `SMTO_ABORTIFHUNG`): a thread answers a sent message only from its message loop. The keys
+   go in once it answers, at most a second beyond the settle time (`ReadyCap`); a window still frozen then gets them anyway.
+   - A first rule asked for two answers within 2 ms in a row and made pastes 57–313 ms slower in the test desktop: right
+     after an activation even the classic console answered in 2–86 ms for a while. One answer is enough to know the thread
+     pumps; its round trip is the window's own work, which would have delayed the paste anyway.
+2. **Ctrl held until the window took the V.** Ctrl down, V down and V up in one `SendInput` call (`SendCtrlVHoldingCtrl`);
+   Ctrl up (`ReleaseCtrl`, in a `finally`) once the thread answered three pings in a row within 2 ms, at least 20 ms after
+   its first answer (a first answer can come between two of the keys) — or, while its answers stay slower, after five
+   answers over 200 ms (`HoldFallback`) — at most a second (`HoldCap`).
+3. **The keys typed meanwhile** (`PasteKeyGuard`). Holding Ctrl turns every key that passes meanwhile into Ctrl+key.
+   - Measured: with hooks as slow as the owner's (`--hook-delay 100`), an x typed 200 ms after the Enter reached Windows
+     Terminal as Ctrl+X 4 of 4 with the hold alone — and 3 of 4 with the one-call Ctrl+V of before: Windows let the x in
+     between the events of that one `SendInput` call while the slow hooks ran ("sent 613 ms" for four events).
+   - And a key typed during the wait for a frozen window went in before the paste and was then taken under the held Ctrl,
+     after a reset (X-LOST 4 of 4: Ctrl+X cuts in PowerShell).
+   - The guard: a `WH_KEYBOARD_LL` hook on a thread of its own (Highest priority), engaged from the Enter (before the
+     clipboard write; `DeliverAsync`, and `PasteInjector` joins it) until Ctrl is up again. It holds every key event that
+     is not BetterClipboard's own (`OwnInjectionMarker`) or its own replay (`ReplayMarker`, 0x0B0CC11C) and types the held
+     ones again after the paste, in their order (`TypeAgain`: scan codes and extended flags kept, `VK_PACKET` as Unicode).
+     Keys typed while they go in are held too and follow them. Released on every path, by itself after 5 s
+     (`MaximumEngagement`), at most 512 events. The newest low-level hook is called first, so it sees each key before other
+     programs' hooks and before any window.
+   - A Win+V typed meanwhile still opens the panel: the replay marker is not the one BetterClipboard's own hook skips.
+   - No guard for a target that runs as administrator: the paste into it is refused (§2.5), and Windows would drop the
+     held keys typed into it again (UIPI), where the user's own keys reach it.
+4. **The log line** adds the hold: "… ready 461 ms, sent 4 ms); Ctrl held 106 ms (slow).", "; 2 key events typed meanwhile
+   went in after it" (such a paste is always logged), and "(released before the window took the keys)" when the cap
+   released Ctrl (always logged: the one case left in which a paste may type "v"). Counts only, never which keys.
+- A window that went to the background during the wait gets nothing (`NotForeground`). Asked with
+  `ForegroundHelper.IsAnotherWindowInForeground`, which ignores the moments without any foreground window: a program
+  attaching to the window's thread causes them (the harasser saw mostly 0 while it attached every millisecond).
+
+**Verified** (rows in §5).
+
+**Limits / not built:**
+- A key typed within ~5 ms of the Enter still reaches the panel before the guard engages: an x sent 0 ms after the Enter
+  was lost; from 20 ms on it followed the paste.
+- Mouse buttons and the wheel are not held: during the hold (20–150 ms in the test desktop, at most a second) they are
+  Ctrl+click and Ctrl+wheel.
+- The keys typed meanwhile arrive as injected keys: a program that ignores injected input sees them so, and a window
+  running as administrator that came to the front meanwhile does not get them (logged).
+- The readiness wait adds the window's own work after its activation before the keys go in; on a PC with slow hooks that
+  adds to `SendInput`'s time. The log's "ready" stage will show it on the owner's PC.
+- A window frozen longer than a second after the keys went in lets the cap release Ctrl before it took the V.
+- Windows Terminal 1.18 under a program attaching every 1–20 ms often pasted nothing, old and new builds alike (NOTHING 2–5
+  of 5): its focus was disturbed. Agentmaster and the console were not.
+
+### 2.55 The pin: the panel stays open after pasting, and Settings hides the header's buttons (built 2026-11-20)
+
+User request (2026-11-20): "Before the update icon add a pin icon which keeps window open after pasting and properly
+pastes as if the window would've closed. The point is to be clicking and pasting repeatedly whatever wanted. Additional
+feature: all buttons but settings can be hidden in settings". Two questions; the owner chose:
+- **How long the pin stays on: "Until I unpin it (Recommended)"**, remembered like the groups column, also across
+  restarts: every Win+V opens the panel pinned until the pin is clicked again. Esc still closes it.
+- **Win+V while the pinned panel waits behind the app the user types in: "Bring it forward in place (Recommended)"**: the
+  panel takes the keyboard where it stands, and Enter pastes into that app.
+
+**What the user gets.**
+- **The pin** (Segoe Fluent Icons Pin E718; PinFill E842 on the active style while pinned), left of the update button. Its
+  tooltip and accessible name say what a click does ("Pin: keep the panel open after pasting" / "Unpin: close the panel
+  after pasting"), and the log says "Panel pinned: it stays open after pasting." or "Panel unpinned: …".
+- **Pinned, a paste is the ordinary paste** (a click, Enter, Shift+Enter, Ctrl+1…9, the menu's *Paste*): the clipboard
+  written, the window the user was last in activated, Ctrl+V with §2.54's hold and key guard. Only the panel stays on
+  screen, always on top and no longer active, so that app keeps the keyboard. The paste's log line names the stage
+  "panel kept" instead of "panel away".
+- **Item after item:** the list is not reset between pastes, a pasted card's bump to the top updates it in place (the
+  cards stay where they are under the mouse), and a typed search stays. The next summon shows the new order.
+- **Which app gets the paste:** the last window of another app that had the keyboard while the pinned panel showed (a
+  click into Notepad, then a card: Notepad; into Edge, then a card: Edge). The taskbar, the tray, Start, Alt+Tab, the task
+  view and BetterClipboard's own windows never count.
+- **Every other use keeps it open too:** *Copy only*, a file or folder opened, a command run, a link followed. Its viewers
+  close and the keyboard goes back as before.
+- **Only the user closes it:** Esc (once the search is empty), Win+V while the panel is in front, Alt+F4, and the gear
+  (Settings opens; an always-on-top panel would cover it). The next Win+V opens it pinned again.
+- **Win+V while it waits behind another app** brings it forward where it stands, with the keyboard in its search box
+  (since 2026-11-20, by default, it takes the keys again while the app keeps the keyboard, §2.59); the
+  tray's *Open clipboard* and a second launch do the same. Over Start, beside it when Start leaves it uncovered (pasting
+  into Start's search box), otherwise Start is closed first (§2.61).
+- **Going elsewhere while one of its viewers or peeks shows** (Alt+Tab, the taskbar): those close and the panel stays, the
+  one exception in §2.56's rule.
+- **Settings › Shortcut › Buttons in the panel** (after *Panel position*, glyph E737): five check boxes for the pin,
+  Updates, Pause capturing, Groups and Clear history; the gear cannot be hidden. A hidden button's action stays in reach:
+  Ctrl+G for the groups, the tray menu for pausing and updates, Settings for clearing. The Microsoft Store edition has no
+  Updates box (no update service, §2.47). Since 2026-11-20 each row also has up and down arrows that set the buttons'
+  order, and the gear stays last (§2.58).
+- **Clear history starts unticked** (since 2026-11-21, the owner: "Make Clear History unchecked by default"): the default
+  of `AppSettings.HiddenPanelButtons` is `["Clear"]`, so a new install's header shows the pin, Updates, Pause, Groups and the
+  gear. Every settings file without the member gets the default, which is every file written by 0.2.11 and older: their
+  header always showed the trash, so updating to 0.2.12 takes it away until it is ticked again (Settings › Privacy › Clear
+  history still clears). A stored empty list keeps every button, also one a 0.2.12 development build wrote before this:
+  no migration, the setting never shipped (the owner's answer the same day for the transparency level: "its unreleased
+  feature.. no migration"). An emptied list is written as `[]`, so a trash ticked back on stays.
+- **Hiding the pin ends the pinned mode** (no mode stays on that the panel does not show), and a pinned panel waiting on
+  screen goes away at once. The pin's own state is kept: shown again, the panel is pinned again.
+- **The width follows the buttons** (36 DIPs a button): four or fewer need 360 DIPs, the minimum before the update button
+  came; five 396 (the default since 2026-11-21: the trash hidden); all six 432. A summon opens the panel at its remembered
+  width or what the header needs, whichever is wider, without saving that, so hiding buttons gives the remembered width
+  back. A button shown while a pinned panel is on screen widens it on its left, like the groups column
+  (`FlyoutPositioner.ExtendLeft`).
+- **With the update button hidden,** the tray's *Update to …* (*Install …* on a development build) opens the update dialog
+  under the gear, and the weekly reminder (§2.30) does not show.
+
+**Decided by Claude** (told to the owner; change here if they ask): a hidden pin turns the pinned mode off; every use of an
+item keeps a pinned panel open; the gear closes it; the minimum width per button; a search stays typed after a pinned
+paste; when the user leaves, a pinned panel's viewers and peeks close.
+
+**How** (`Views/ClipboardFlyout.KeepOpen.cs`'s class remarks are the full design):
+- **Settings:** `AppSettings.KeepPanelOpen` (bool); `HiddenPanelButtons`, names (`KeepOpen`, `Updates`, `Pause`, `Groups`,
+  `Clear`) so that a version which does not know one drops it instead of setting the file aside (§2.28), kept known, once
+  and in header order by `PanelButtons.Normalize`; and `PanelStaysOpen` (`[JsonIgnore]`: pinned with the pin shown).
+- **The paste** (`AppController.DeliverAsync`, §2.52's order): `PutAwayForPaste` closes the overlays and the update dialog
+  and keeps a pinned panel presented; `FinishPuttingAway` then finds nothing pending.
+- **Closing:** `Dismiss` (an item was used) keeps a pinned panel (`KeepOpenAfterUse`); `CloseByUser` (Esc, the shortcut,
+  Alt+F4, the gear) puts it away. `OnActivated` leaves a pinned panel up after a deactivation, and with a popup counted
+  runs §2.56's look, which for a pinned panel closes only its viewers, peeks and update dialog
+  (`CloseOverlaysOfPinnedPanel`).
+- **The shortcut** (`AppController.OnHotkey`): `PanelShortcut.Decide(isOpen, staysOpen, inFront)` answers Show,
+  BringForward or Close. `BringPinnedForward` makes the window captured at the key the paste target and activates the
+  panel in place; `ShowFlyout` (the tray, a second launch) does the same for an open pinned panel.
+- **The target:** while a pinned panel is presented, `ForegroundTracker` (a WinEvent hook on `EVENT_SYSTEM_FOREGROUND`,
+  out of context and skipping this process, on the UI thread) reports each window of another app that takes the
+  foreground, shell surfaces left out by class (`Shell_TrayWnd`, `Shell_SecondaryTrayWnd`, `NotifyIconOverflowWindow`,
+  `TopLevelWindowForOverflowXamlIsland`, `Windows.UI.Core.CoreWindow`, `XamlExplorerHostIslandWindow`,
+  `MultitaskingViewFrame`, `TaskSwitcherWnd`, `TaskListThumbnailWnd`, `ForegroundStaging`), and
+  `AppController.NoteForeignForeground` makes it the target (`ForegroundContext.ForWindow`: no caret, the cursor now). A
+  click on a card activates the panel first, so the window the user came from must be known before the click.
+- **Always on top** (`KeepOnTop`): checked before a pinned paste or use hands the foreground on, at each foreground
+  change, and once a second while a pinned panel shows (`WindowInterop.IsTopmost` / `MakeTopmost`, only when the flag is
+  missing, so another app's always-on-top window is never covered again and again). Logged once per session: "The pinned
+  panel was no longer always on top; it was put back on top." In the QA one session's window had lost `WS_EX_TOPMOST` by
+  its first pinned paste, and the panel vanished behind the target while uncloaked; the cause is unknown (§6). A click
+  into the window that already has the keyboard raises it without a foreground event: the timer catches that. Since
+  2026-11-20 `KeepOnTop` checks the flag after asking and sets it through the presenter when the window refuses
+  (`EnsureTopmost`, §2.61: a window that lost the flag refused `SetWindowPos` while it reported success), the likely
+  cause of that loss.
+- **The header** (`ApplyHeaderButtons`, at construction and after every settings change, idempotent): visibility, the
+  pin's look, the tracking, the width (`FitHeaderWhileShown`), and a panel on screen that no longer stays open while
+  another window has the keyboard is concealed. The minimum width, `AppSettings.MinFlyoutWidthFor(PanelButtons.CountShown(…))`,
+  is read by the size hook (`FlyoutSizing.MinimumTrackSize(scale, column, minWidthDip)`), the summon and the warm-up.
+- **The update button** shows while the update system offers a look and Settings does not hide it; the dialog anchors to
+  the gear while it is hidden.
+
+**Pieces:** Core `Presentation/PanelButtons` (`PanelButton`, `TryParse`, `Normalize`, `IsHidden`, `WithShown`,
+`CountShown`), `Presentation/PanelShortcut`, `AppSettings` (`KeepPanelOpen`, `HiddenPanelButtons`, `PanelStaysOpen`,
+`MinFlyoutWidth` 360, `MinFlyoutWidthFor`); Windows `Input/ForegroundTracker`, `Interop/NativeMethods.Foreground.cs`,
+`ForegroundContext.ForWindow`, `MonitorLookup.ClassNameOf` (now internal), `FlyoutSizing.MinimumTrackSize`'s minimum;
+App `Views/ClipboardFlyout.KeepOpen.cs`, and in `ClipboardFlyout.xaml(.cs)`, `.Summon.cs` (`PutAwayForPaste`),
+`.Leaving.cs` (the pinned branch), `.Update.cs`, `.UpdateReminder.cs`, `.Size.cs`, `.Placement.cs`, `AppController.cs`
+(`OnHotkey`, `BringPinnedForward`, `NoteForeignForeground`, `ShowFlyout`), `AppController.Paste.cs`,
+`AppController.Updates.cs`, `Interop/WindowInterop` (`IsTopmost`, `MakeTopmost`), `SettingsViewModel` (five
+`Show…Button` properties), `SettingsWindow.xaml` (the card), `SettingsWindow.Store.cs`. Strings: six new ("Buttons in the
+panel", its description and search keywords, the pin's three texts) in all five catalogs, and new descriptions for
+"Updates", "Pause capturing", "Groups" and "Clear history". README: a *Features* bullet, a paragraph and a keys-table row
+under *Use*, and the Settings list, in all five languages.
+
+**The pin's tip** (added 2026-11-20, later). User request: "Add a tooltip shown once until dismissed when pinned enabled
+that in 1.5 sentences explains how pinning works".
+- **What the user gets:** 300 ms after the pin is turned on, a teaching tip over the panel, its tail on the pin: "The panel
+  now stays open after pasting: click item after item, and each goes into the app you were last in. Click the pin again to
+  unpin." It shows at every summon of a pinned panel until the user closes it, with its X or with Esc, and then never again
+  (`AppSettings.KeepOpenTipDismissed`). It stays through pastes, while another app has the keyboard and while the panel is
+  dragged or resized. The panel going away, unpinning and hiding the pin take it off the screen without spending it.
+- **Decided by Claude** (told to the owner; change here if they ask):
+  - a teaching tip with a close button, not a tooltip: a tooltip has no X and goes away by itself;
+  - "shown once until dismissed" read as "shown until dismissed", at every summon of a pinned panel;
+  - the first Esc closes the tip, as it closes a viewer before it clears the search or closes the panel;
+  - over the panel, where the owner chose to put the update reminder (§2.30); else left of the pin over the title; else
+    below it;
+  - no README change.
+- **How** (`Views/ClipboardFlyout.KeepOpenTip.cs`; its class remarks are the full design):
+  - **The control:** a `TeachingTip` in the panel's XAML, with its target (the pin) set in code,
+    `ShouldConstrainToRootBounds` off and light dismiss off, so it takes no keyboard when it opens. It is not counted in
+    `openPopups`, so the key model, a paste and a pinned panel's deactivation work as they do without it.
+  - **When it should show:** `AppSettings.KeepOpenTipDue` = `PanelStaysOpen && !KeepOpenTipDismissed`.
+    `UpdateKeepOpenTip` asks after every settings change (`ApplyHeaderButtons`), at the end of a summon, and when a pinned
+    panel is brought forward. `PutAway` closes the tip.
+  - **One check opens and closes it** (`ReconcileKeepOpenTip`). It runs 300 ms after a request, then 200 ms after each
+    change it makes, until what shows is what is wanted. WinUI refuses a change of `IsOpen` while the tip's open or close
+    animation plays, and an open waits while the panel is dragged.
+  - **The room** (`ChooseKeepOpenTipPlacement`): the subtitle is measured at the width it wraps to (282 DIPs), plus 34 for
+    the border, padding and tail and a gap of 4. The tip goes over the panel when the work area above the pin has that
+    room; else left, with 348 DIPs left of the pin; else below.
+  - **It follows the window:** each move or resize (`AppWindow.Changed`) toggles `PlacementMargin` between 0 and 0.01 DIP,
+    or changes the placement. That makes WinUI place the tip again, at its target's current place.
+  - **While it shows:**
+    - a press on an inactive panel brings it forward (`Root_PointerPressedUnderKeepOpenTip`);
+    - the weekly update reminder gives way (`CanShowUpdateReminder`);
+    - the pin's own tooltip opens below the button instead of over the tip's tail.
+  - **A guard:** if the keyboard is ever found inside the tip, the search box takes it back
+    (`GiveKeyboardBackFromKeepOpenTip`). It never acted in the QA.
+- **Found in the live QA, fixed** (§5):
+  - **Moves** (the first build closed the tip at every move and opened it again):
+    - a drag of the panel ended after its first step (the panel moved 7 px), because closing the tip's window during the
+      drag took the mouse capture away;
+    - an open asked for while the close animation played was refused, and the tip stayed away;
+    - after a second drag the keyboard was outside the panel's content, and typed keys went nowhere;
+    - fixed: the tip is now placed again, never closed, and the check tries again.
+  - **A click on the pin of a waiting pinned panel:** it unpinned the panel without bringing it forward, and the panel
+    went away. The tip's window has about 18 px of transparent rows over the header, and a press there does not activate
+    the panel's window. The panel now activates itself.
+- **Pieces:**
+  - Core: `AppSettings.KeepOpenTipDismissed` and `KeepOpenTipDue`.
+  - App: `Views/ClipboardFlyout.KeepOpenTip.cs`; the tip in `ClipboardFlyout.xaml`, wired into `.xaml.cs` (the
+    constructor, `ShowAt`, the exit, Esc in `Root_PreviewKeyDown`), `.Summon.cs` (`PutAway`), `.UpdateReminder.cs` and
+    `.KeepOpen.cs` (`ApplyHeaderButtons`, `BringForward`).
+  - Strings: one new string in all five catalogs, the tip's text, used as its subtitle and as its accessible name.
+- **Limits:**
+  - nothing shows the tip again once it is closed: delete `KeepOpenTipDismissed` from `settings.json`;
+  - not run: a real GPU, several monitors, Narrator, touch.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- No key and no menu item for the pin: a click only.
+- While a pinned panel shows, the memory reclaim (§2.45) and the silent restart after Settings (§2.46) wait: both run only
+  while the panel is not on screen. A panel pinned all day gives its memory back once it is closed (§6).
+- A pinned panel opened from the tray has no window to paste into until the user goes to one ("Copied only: no window to
+  paste into was captured …", §2.52).
+- A peek opened by hovering an inactive pinned panel stays until the mouse moves: keys go to the app the user types in.
+- Not run: a real GPU, several monitors, touch and pen, a standard user account, Narrator, the Store edition.
+
+### 2.56 Leaving the panel closes it, also while a viewer, a peek or a menu shows; a peek never opens over a resting mouse (fixed 2026-11-20)
+
+A pinned panel (§2.55) is the one exception: it stays up when the user leaves, and the look closes only its viewers,
+peeks and update dialog (`CloseOverlaysOfPinnedPanel`).
+
+User report (2026-11-20): "Clipboard window closes when user focuses out of it / But if you open "View whole text" eye
+icon (maybe for image too) then the window doesn't close after we closed the viewing panel that opened. / It should've
+closed. / Manual QA, proving this bug and figuring other view not closing bugs. maybe due to other windows like settings
+although settings shouldnt cause a close".
+
+**What it was** **[verified]** in a claude-desktops Windows 11 desktop, with real input (`SendInput`) and the panel's
+state read from Windows and UI Automation after each step (§5):
+- `OnActivated` conceals the panel on deactivation only while none of its own popups is counted (`openPopups`): a popup
+  that took the activation must not conceal its own panel (§2.24's activation footgun).
+- **In the WinUI we ship, no popup takes the activation.** The panel stays the foreground window while a viewer, a peek, a
+  menu, a flyout or the update dialog shows, and the popups' windows (`Microsoft.UI.Content.PopupWindowSiteBridge`) are
+  owned by the panel's window. So a deactivation while one of them showed was always the user going elsewhere, and it was
+  ignored.
+- **The panel then stayed on top of the window the user went to, for good.** A menu closed by itself (light dismiss), a
+  viewer stayed and kept dimming the monitor, and the panel was no longer active, so no later click elsewhere could
+  deactivate it: only the shortcut pressed again put it away. Reproduced with the text viewer and Notepad from the
+  taskbar, the image viewer likewise, Alt+Tab, a card's menu or a tab's menu and a click on Notepad, the clear
+  confirmation, the text viewer's language menu, *View* from the card menu, and Settings from the taskbar.
+- The update dialog was not affected: it has looked at the foreground when it closes since §2.29.
+- **Settings is a window like any other.** With nothing of the panel open, a click on Settings conceals the panel (Settings
+  is not owned by the panel); the gear button closes the panel by design. With a viewer open, going to Settings left the
+  panel stuck like any other window did.
+
+**Now** (`Views/ClipboardFlyout.Leaving.cs`):
+- A deactivation while a popup is counted, and the last counted popup closing, ask who is in front once Windows has
+  finished the switch (`ConcealIfUserLeft`): 80 ms after (the update dialog's settle time), and while Windows names no
+  foreground window, up to 500 ms more, every 50 ms. The panel, or a window it owns (its popups), keeps everything as it
+  is. Any other window closes the viewers, the peeks and the update dialog and conceals the panel, Settings included.
+- Logged, content-free: "The panel went away: the user went to another window while the text viewer showed." (or the
+  image viewer, a peek, the update dialog, a menu or flyout).
+- **The keyboard after a popup** (`GiveKeyboardBackAfterPopup`): a popup that closes gives the keyboard to a viewer still
+  open, or to the search box, only while the panel shows and is in front. A menu also closes because the user went
+  elsewhere, and Settings runs on the panel's thread, where Win32's `SetFocus` activates the window that receives the
+  focus. A precaution, not a finding.
+
+**A peek that opened by itself** (found by this QA, older than it) **[verified]**:
+- Esc or the X closed the text viewer while the mouse still rested where the eye had been, and 0.65–0.73 s later the text
+  peek opened with the same text, so the viewer looked as if Esc had not closed it (4 of 4 rounds on the unchanged
+  build). The image viewer's Esc reopened the image peek the same way (3 of 3), and a text peek closed by a key opened
+  again 0.9 s later (3 of 3).
+- Why: the peeks start their countdown on WinUI's "pointer entered" and "pointer moved", which also come for a card that a
+  closing popup uncovers under a mouse lying still (§4, a pointer event is not proof that the mouse moved).
+- Now a countdown starts only once the mouse really moved since the panel last changed under it
+  (`MouseMovedSincePanelChanged`: the hover selection's rule, `PointerSelectionGate.HasMoved`, asked without taking the
+  selection). Closing a viewer or a peek suspends the rule at once (`CloseTextViewer`, `CloseViewer`, `HidePeek`,
+  `HideTextPeek`), not only in the popup's `Closed` handler: WinUI reports the card's "pointer entered" first.
+- Afterwards nothing reopened (3 + 3 + 3 rounds). What shows about 1 s after such an Esc is the eye button's own tooltip
+  ("View the whole text (F3)", 158 × 41 px against the peek's whole monitor), which a first reading of the QA took for the
+  peek.
+
+**Replays are not moves: no peek while Settings was open** (found by this QA, older than it; fixed the same day, the
+owner's "Fix it now"):
+- With Settings open and the mouse having been over it, the hover peeks never opened in the first test desktop (text
+  0 of 3, image 0 of 3, the unchanged build too). A diagnostic build's log (never committed) showed why: WinUI replayed
+  "pointer exited" and "pointer entered" to the card under the resting mouse every 493–514 ms, the exit's own position
+  outside the card, and each exit stopped the 450-ms countdown.
+- Now a replayed exit (`PointerRoutedEventArgs.IsGenerated`) while Windows' own cursor is still over the card or the text
+  peek is ignored (`IsReplayedExitOver`; `CursorIsOver` compares the element's rectangle in screen pixels, the update
+  reminder's arithmetic, §2.30). A real exit still ends the hover, also one with the cursor inside the rectangle: then
+  something covered the card.
+- A replayed event may start a countdown but never restarts one that runs (`RestartTextHoverTimer`, `RestartHoverTimer`):
+  restarted at every replay, the countdown had a few dozen milliseconds left to end in. In a fresh test desktop the
+  unchanged build's peeks came 459–1,041 ms after the mouse came to rest (7 of 23 rounds after more than 600 ms), this
+  fix's 466–560 ms (12 of 12) **[inferred: replays had postponed them]**.
+- **The trigger itself was not seen fixed live:** the fresh test desktop did not bring it back in six tries with the
+  unchanged build (Settings opened by a click, from the taskbar and by the gear; a 3 MB text; Notepad and Settings where
+  they stood in the first desktop; Settings' search box holding the keyboard). The fix rests on the first desktop's log;
+  the second desktop proved that nothing else changed (§5).
+
+**A peek where the mouse no longer is** (found by the Lines per card QA, §2.57, older than it; fixed the same day, the
+owner's "Fix it now on #7"):
+- After a move that jumped from a card's text straight out of the panel's window (one real mouse move), the text peek
+  still opened with the mouse elsewhere, 496–613 ms after the jump whatever the wait before it (100, 250 or 400 ms;
+  12 of 12), and stayed until the mouse moved 15 px: its anchor is where the cursor is when it opens. So no exit stopped
+  its countdown, and an event at the jump started it again. Most likely the text area took the exit for one inside it,
+  which it ignores (crossing onto the card's eye raises one) **[inferred]**. The image peek opened none after the same
+  jumps (0 of 12): its card stops waiting on any exit.
+- Now a countdown that ends asks Windows' cursor, and asks again right before the peek opens (after the text was read or
+  the picture decoded): it must still lie over the card the countdown started on and over the list's visible area
+  (`StillOverHoveredCard`; the list's rectangle too, because a card of up to 40 lines, §2.57, runs past it). Otherwise
+  the card is forgotten (`ForgetTextHover`, `ForgetHover`) and nothing opens until the mouse enters a card again. Both
+  peeks follow it; for the image peek it is a guard.
+- Afterwards: no text peek after a jump (0 of 18), and every one opened while the mouse rested (6 of 6, 511–528 ms).
+- It may also be §6's "130 px" case of the pin's QA: a peek that opens just after the mouse moved away looks like one
+  that stayed open while it moved.
+
+**Found on the way, not changed** (§6):
+- §6's "panel opened by `--show-flyout` that does not get the foreground" was not reproduced: such a summon from a script
+  got the foreground in the test desktop.
+
+**Pieces:** Core `Presentation/PointerSelectionGate.HasMoved`; App `Views/ClipboardFlyout.Leaving.cs` (`ConcealIfUserLeft`,
+`DescribeOpenPopups`, `MouseMovedSincePanelChanged`, `IsReplayedExitOver`, `CursorIsOver`, `StillOverHoveredCard`,
+`GiveKeyboardBackAfterPopup`), and in `ClipboardFlyout.xaml.cs` (`OnActivated`, `Popup_Closed`),
+`ClipboardFlyout.TextPreview.cs` (`RestartTextHoverTimer`, `TextCard_PointerExited`, `ShowTextPeekAsync`,
+`ForgetTextHover`, `TextPeek_PointerExited`, `HideTextPeek`, `TextPeekPopup_Closed`, `CloseTextViewer`) and
+`ClipboardFlyout.ImagePreview.cs` (`RestartHoverTimer`, `ImageCard_PointerExited`, `ShowPeekAsync`, `ForgetHover`,
+`HidePeek`, `CloseViewer`).
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- Esc, the X and a click on a viewer's dim backdrop close only the viewer, as before; a click elsewhere then conceals the
+  panel.
+- A locked screen or a secure desktop while a popup shows: no foreground window for 500 ms counts as left.
+- Not run: a real GPU, several monitors, touch and pen, a real mouse flicked out of the panel (the QA's jumps were one
+  move each), the owner's PC.
+
+### 2.57 Lines per card: 1 to 40 lines of text on each card, and previews long enough for them (built 2026-11-20)
+
+User request (2026-11-20): "We show N lines in the clipboard row, make the number of lines per card configurable 1-40".
+One question (`AskUserQuestion`): each entry's stored preview was capped at 1,000 characters and a file list's at five
+names, so at a high line count a long text would stop after some twenty lines; should previews grow? The owner answered
+in their own words: "The text viewer is supposed to contain the full text so keep as long as needed", read as: previews
+as long as a card's lines can need, since the whole text is the viewer's (§2.50).
+
+**What the user gets.**
+- **Settings › Shortcut › Lines per card** (after *Buttons in the panel*; glyph E8E4, three lines of text, checked by
+  rendering): a number box, 1 to 40, four by default. It applies to the panel at once, also while it shows; nothing is
+  loaded again.
+- Each card's text block shows that many lines (its `MaxLines`). The caption line above it, a picture's 128-DIP thumbnail
+  and a color's swatch keep their size.
+- A card that shows less than its text keeps the dotted line, the eye and the hover peek (§2.50).
+- A file list's card names up to forty files (five before), and its caption counts them ("12 files") up to forty; "many
+  files" only beyond.
+- The README's *Features*, its Settings list and *Text previews* say so, in all five languages.
+
+**Previews long enough for forty lines** (`ContentClassifier`).
+- `PreviewMaxChars` 1,000 → 16,000: forty lines of 400 characters, a monospace line over 3,000 DIPs wide. Only a text
+  longer than 1,000 characters stores more than before; its indexed text (≤ 32 K) still weighs more.
+- **Why 16,000:** twice it stays below `SearchMaxChars` by more than one character. `BuildTextPreview` looks at twice the
+  cap, and the indexed text holds the first 32,768 characters (32,767 when a surrogate pair straddles the cut), so a
+  preview built from the indexed text equals the one built from the whole text. Unit-tested with emoji across both cuts,
+  CRLF texts and 20,000 leading blank lines.
+- `BuildTextPreview`'s head is now cut with `Truncate`, never inside a surrogate pair. A head that normalized to almost
+  nothing (thousands of blank lines) and ended halfway through an emoji left a lone high surrogate before the "…", which
+  SQLite stores as U+FFFD (older than this change; found writing the exactness test).
+- `PreviewMaxFiles` = 40 (`DescribeFiles`), `LegacyPreviewFiles` = 5: `PreviewText` (§2.37) translates the "+N more"
+  line after forty names, or after five (an entry an older version stores keeps that shape).
+- `ShortPreviewChars` = 1,000 and `ShortPreview`: what a preview was before, for a card's name for screen readers (read
+  whole at every selection) and `bclip`'s JSON (`list`, `prompts`: scripts read every item, and `bclip get` gives the
+  whole text). A file list's JSON preview names up to forty files now, within those 1,000 characters (807 for forty
+  names and "+3 more" in the QA, §5).
+- `IsCutPreview(kind, preview)`, moved from the card: "…" at 999 characters or more (old and new cuts alike), or a file
+  list's "+N more" line. Asked of the stored English preview: the shown one translates the file list's last line.
+
+**The one-time rebuild** (`ClipStore.RebuildShortPreviews`, flag `fixup.long_previews.v1`, at `Initialize` after the
+other fix-ups).
+- Texts, formatted texts and links whose preview ends with "…": rebuilt from `substr(search_text, 1, 32001)`. File lists
+  whose preview ends with "more": from their own `CF_HDROP`, since the indexed paths may stop mid-path. Archived prompts
+  ending with "…": from `substr(text, 1, 32001)`.
+- A row is written only when its rebuilt preview differs. Ids are listed first and each row is read and written alone,
+  so a large archive is never held in memory. The full-text triggers fire on `search_text` only: no index is rebuilt.
+  One transaction with its flag.
+- Logged once, content-free: "Rebuilt N preview(s) that earlier versions cut short, so cards set to show many lines fill
+  them." (`ClipStore.RebuiltPreviews`, read by `AppController.NoteStoreOpened`).
+- Footgun: rows a version older than this one stores afterwards keep 1,000 characters (the flag is set); their cards
+  still count as cut and show what those previews hold.
+
+**What a card hands its text block** (`Core/Presentation/CardPreview`, pure). The preview's first `lines + 1` lines,
+and at most `(lines + 1) × 500` characters of them, never splitting a surrogate pair.
+- The extra line keeps the text block's own trimming: "…" on its last line, and `IsTextTrimmed`, which the eye follows.
+- `CardPreviewPart.IsCut` covers the one case the text block cannot see: a cut by characters on a panel so wide that the
+  characters kept fill fewer lines than it shows.
+- So a card of four lines lays out about what it did with the 1,000-character previews, whatever the stored length.
+
+**The card** (`ClipItemViewModel.TextView.cs`).
+- `CardLines` and `CardText` are observable, and the template binds `MaxLines` and `Text` one way. Until now the text was
+  bound once (`{x:Bind Preview}`, OneTime): an entry updated in place (a Notepad++ tab edited while its card shows,
+  §2.41) kept its old text until its container was recycled. It now follows.
+- `DefaultCardLines` (static): the lines every card made from now on shows. Cards are made in five places, and there is
+  one panel per process. `FlyoutViewModel.ApplyLinesPerCard` sets it and tells the listed cards (an unchanged count raises
+  nothing); `ClipboardFlyout.ApplyCardLines` runs it after every settings change (`AppController.OnSettingsChanged`), the
+  view model's constructor at the start.
+- `IsCutOff` = the text block trims, or the card's text was cut, or the stored preview is cut.
+- `AutomationName` takes the short preview.
+
+**Settings.** `AppSettings.LinesPerCard` (`DefaultLinesPerCard` 4, `MinLinesPerCard` 1, `MaxLinesPerCard` 40; `Normalize`
+clamps a hand-edited number). Footgun: a version from before this member drops it when it saves the file, and cards show
+four lines again. `SettingsViewModel.LinesPerCard` is a double (the number box's value); a box cleared by hand reports NaN,
+which keeps the saved value. Three strings in all five catalogs, each with its description: the title, the description,
+search keywords.
+
+**Decided by Claude** (told to the owner; change here if they ask): the setting's place (Shortcut, next to the header's
+buttons: both are how the panel looks); a number box like Settings' other numbers; 16,000 characters as "as long as
+needed"; file lists to forty names; pictures and colors unchanged; `bclip` and screen readers keeping the short preview.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- Pictures keep their 128-DIP thumbnail at any line count.
+- A panel with more than ~3,200 DIPs of text width, at forty lines of dense prose, runs out of preview before its lines;
+  the eye still shows the rest.
+- Not run: a real GPU, several monitors, Narrator.
+
+### 2.58 Background transparency, and the header buttons' order (built 2026-11-20)
+
+User request (2026-11-20): "Add to settings "Background Transparency" slider, right now it is slightly blur transparent.
+so it always stays blur but theres either more blurred or less blurred. Also add to settings 'Buttons in the panel"
+Order up/down arrows to resort the buttons and have them shown in the sorted and also have the settings stationary".
+No question was asked; the readings below were told to the owner in the reply. Mid-task the owner wrote "Undo any
+README changes": README.md and its four translations are as they were, and this feature has no README lines.
+
+**Decided by Claude** (change here if the owner asks):
+- **"More blurred or less blurred"**: Windows' acrylic has no blur radius to set (`DesktopAcrylicController` offers a
+  kind, a tint and a luminosity layer, no radius). So the slider sets how strongly the frost covers the blurred
+  background: 0 the most frosted, 100 the clearest, 50 (the default) Windows' own look. The blur stays at every level,
+  and no level is a solid panel or bare glass.
+- **"Settings stationary"**, read both ways at once: the Settings button stays put, last in the header, with no box and
+  no arrows ("Always shown, always last"); and the Settings page stays still, since the rows are fixed places whose
+  content swaps, with the keyboard following the moved button.
+- **A pinned panel keeps its glass while another app has the keyboard.** Windows draws an inactive window's acrylic
+  as a solid color (the stock backdrop did so for the pinned panel, §2.55); the panel's backdrop keeps input active
+  for good. A one-line revert (`AdjustableAcrylicBackdrop.configuration`) if the owner prefers the solid look.
+
+**What the user gets.**
+- **Settings › App › Background transparency** (after *Theme*; glyph E7A1, a half-filled circle, checked by
+  rendering): a slider, 0 to 100 in steps of 5 (the arrow keys move it 5, Home and End to its ends), ticks at 0, 50
+  and 100. The panel takes each step at once, also while it shows; the level is saved once the slider rested 400 ms, and
+  when Settings closes before that (`AppSettings.BackgroundTransparency`, default 50).
+- **Settings › Shortcut › Buttons in the panel**, now in the header's order: the list runs top to bottom as the
+  header runs left to right. Each row has its box (shown or hidden, as since §2.55), the button's icon and label, and
+  an up and a down arrow (E74A, E74B; tooltips "Move up: further left in the panel", "Move down: further right in the
+  panel"; accessible names "Move up: Groups"). The first row's up and the last row's down are disabled. The Settings
+  row comes last, ticked and disabled.
+- **A move** swaps the button with its neighbor in the list, saves at once (`AppSettings.PanelButtonOrder`), and the
+  header follows at once, also while the panel shows. The page does not scroll, and the keyboard goes to the same arrow
+  in the button's new row, or to its other arrow when the button reached the end (`FocusPanelButtonArrow`), so Space
+  or Enter can be pressed again. A hidden button keeps its place and can be moved; shown again, it appears there.
+- **Logged** (content-free): "The panel's header buttons, left to right: Updates, KeepOpen, Pause, Groups, Clear,
+  then Settings." at each change.
+
+**Background transparency: how** (`Core/Presentation/PanelBackdrop`, `App/Controls/AdjustableAcrylicBackdrop`).
+- **The backdrop** is a `SystemBackdrop` of BetterClipboard's own that owns the same `DesktopAcrylicController` the
+  stock `DesktopAcrylicBackdrop` creates (which has no property to change). It is created when the window connects its
+  target and disposed when the target goes; the panel sets it once in `ConfigureChrome` and changes only its `Level`
+  (never replaces it: the lab crashed doing that, below).
+- **Its configuration** mirrors the tracked one's theme and high-contrast colors
+  (`OnDefaultSystemBackdropConfigurationChanged`) with `IsInputActive` always true.
+- **At 50** it calls `ResetProperties()`: Windows chooses every value, so a panel left at the default looks exactly as
+  before, also on a later Windows whose acrylic differs. **At any other level** it sets all four values, the theme's
+  colors included (`PanelBackdrop.LookFor`): once one value is set, the controller stops following the theme for all of
+  them, and a dark panel got the light tint (measured).
+- **The scale** (`PanelBackdrop`): the level drives the luminosity layer's opacity in a straight line on each side of
+  the default, from 0.99 at 0 to Windows' value at 50 (dark 0.96, light 0.85) to 0.1 at 100; the tint keeps Windows'
+  opacity on the frosted side (dark 0.15, light 0) and fades to none on the clear side.
+  - Why luminosity: the lab measured what shows through falling in a straight line with it (below), the same in both
+    themes, and the tint opacity changing nothing measurable; a straight line in luminosity is even steps in what shows.
+  - Why 0.99 and 0.1: at 1 the glass was a solid color, which "it always stays blur" rules out; at 0.1 about 60 % of
+    the background shows, and the little frost left keeps the panel's text readable over a busy background.
+- **The slider's save** (`SettingsViewModel.OnBackgroundTransparencyChanged`): each change previews through
+  `AppController.PreviewBackgroundTransparency` (the panel's `PreviewBackdropLevel`) and restarts a 400-ms
+  `DispatcherQueueTimer`, whose tick saves once; `SettingsViewModel.Close` (from the window's `Closed`) saves a pending
+  value and detaches the tick (§4: a handler on a timer keeps a closed window). A settings reload does not move the
+  thumb while a value waits to be saved.
+- **A theme switched while the app runs gets a new controller** (fixed 2026-11-21, `AdjustableAcrylicBackdrop.Renew`;
+  found by the QA of §2.6.2's magnifier removal, the owner chose "Fix it now in #7").
+  - **The fault [verified]:** in a test desktop (no GPU, so the glass shows its fallback color), with the app started
+    in the light theme, Windows switched to dark: the panel's text turned light while its glass stayed light, so the
+    panel was unreadable until BetterClipboard restarted (twice; a summon did not help). The released 0.2.11, its stock
+    `DesktopAcrylicBackdrop`, recolored on the same switch, and a restart in dark drew it right.
+  - **Why [inferred]:** on a switch the mirrored theme reached the controller and `Apply` called `ResetProperties()`,
+    which most likely ran before the controller had taken in the new theme and reset to the old theme's values. The stock
+    backdrop hands the controller WinUI's tracked configuration and never resets it.
+  - **Now:** when the mirrored theme or high contrast changes, the backdrop replaces its controller with one set up
+    afresh for the configuration as it is (what a start does) and applies the level to it. An activation alone mirrors
+    nothing and renews nothing. Logged, content-free: "The panel's glass was set up again for the dark theme: the theme
+    changed while BetterClipboard ran." ("for high contrast" in a contrast theme).
+  - **Verified** (§5): light→dark and dark→light at 50 and light→dark at 80; Settings › App › Theme set to Light under
+    Windows' dark, and back to "Use Windows setting"; a pinned panel on screen during the switch (it recolored in place);
+    into and out of High Contrast Black. Windows' switch and Settings' both arrive through the panel's content changing
+    its actual theme, which the tracked configuration follows.
+
+**The order: how** (`Core/Presentation/PanelButtons`, `ClipboardFlyout.KeepOpen.cs`, `SettingsViewModel`,
+`SettingsWindow.xaml(.cs)`).
+- **Stored** as `AppSettings.PanelButtonOrder`, `PanelButton` names left to right (read leniently, kept known and once
+  by `PanelButtons.NormalizeOrder`), and **empty while the order is the default** (`ToStored`), so a later version's
+  default (a new button) reaches users who never moved one. Names, not numbers (§2.28: a version that does not know an
+  enum name must not set the file aside).
+- **`PanelButtons.Arrange`** completes a stored order: a button it lacks (an older file, a new button) goes right after
+  its default predecessor. **`CanMove` / `Move`** step over buttons Settings does not list (`isListed`: the Updates
+  button in the Microsoft Store edition, which has no update service, §2.47) and refuse a button not listed.
+- **The header** (`ApplyHeaderOrder`) puts the `HeaderButtons` panel's children in that order with
+  `UIElementCollection.Move`, Settings last; no button is rebuilt, so tooltips, flyouts and the update dialog's anchor
+  stay. The pin's tip (§2.55) is placed again when its button moved.
+- **The rows** (`PanelButtonRowViewModel`) are fixed places: a move assigns each row its new button
+  (`RefreshPanelButtonRows`), so the page's layout and scroll position never change. The five `Show…Button`
+  properties of §2.55 became the rows' `IsShown`.
+
+**The backdrop lab** ([`tools/probes/backdrop_lab`](tools/probes/backdrop_lab), new): a WinUI 3 app with three
+phases. The values phase (never on screen: a cloaked window) logs the controller's values per kind and theme; the
+steps phase (cloaked) replays theme changes and backdrop swaps; the look phase (`--show`, visible for about 20 s at the
+bottom-left of the main monitor, never activated) measures from the screen how much of a striped window behind the
+glass shows through, at Windows' values and at a series of luminosity and tint opacities. Run on this PC's GPU
+(NVIDIA, Windows 11 26200) behind the terminal guard (`guarded_show.py`, session bf22767a's scratchpad):
+- **Windows' own looks** (as `ResetProperties` leaves them; the panel's defaults, pinned in `PanelBackdropTests`):
+  Default dark tint #2C2C2C at 0.15, luminosity 0.96, fallback #2C2C2C; light #FCFCFC at 0, 0.85, fallback #F9F9F9.
+  Base: dark #202020 at 0.5, 0.96; light #F3F3F3 at 0, 0.9. Thin: dark #545454 at 0, 0.64; light #D3D3D3 at 0, 0.44.
+- **Setting one value** (tint opacity 0.3, luminosity 0.4 in the dark theme) left the controller with the light
+  theme's tint and fallback colors; `ResetProperties` brought the theme's values back.
+- **An inactive window's acrylic is solid**: the stock backdrop and a tracked configuration with input inactive gave
+  state `Fallback` and none of the stripes (0.0 %); input active gave the glass.
+- **What shows through** (run 1, the stripes behind): 68.4 % with no luminosity layer, 51.3 % at 0.25, 34.3 % at 0.5,
+  17.3 % at 0.75, 4.0 % at 0.96 (Windows' dark look: 3.7 %); a straight line, about 68.4 − 67 × luminosity. Tint
+  opacities 0, 0.15 and 0.5 at luminosity 0.96 gave the same 4.0 %; luminosity 1 gave 0.2 %, a solid color to the eye.
+  Runs 2 to 5 measured over other windows (below) and repeated the straight line in both themes, through 0.15, 0.85,
+  0.93 and 0.98, with 0.99 at 0.0 to 0.1 % and 1 at 0.0 to 0.1 %.
+- **Replacing a shown window's backdrop** right after its theme changed ended the first visible run in WinUI
+  (0xC000027B, a stowed E_INVALIDARG from combase; the dump's managed stack held only `Application.Start`). Invisible
+  repeats of every step passed. The look phase now uses a fresh window per setting, and the app never replaces its
+  backdrop.
+- **Found on the way:** a WinUI 3 app whose last window closes ends (`DispatcherShutdownMode.OnLastWindowClose`): the
+  lab's visible run wrote nothing until it set `OnExplicitShutdown`. And in runs 2 to 5 the striped window was not
+  topmost when measured (`topmost False`, its own pixels right) and stood under the maximized terminal, Word,
+  Notepad++ and Explorer, although its presenter and a `SetWindowPos(HWND_TOPMOST)` asked for topmost; the glass
+  windows, made the same way, were on top. Not explained (§6).
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- The blur radius itself cannot change (no API); the slider changes the frost over a fixed blur.
+- In the dark theme the frosted half changes little: Windows' default already lets only about 4 % through, and the
+  most frosted level about 1 %. The clear half changes much more (to about 60 %).
+- Not seen in the app on a real GPU: the look was measured with the lab's controller, the same API the backdrop uses;
+  the test desktop has no GPU and draws the fallback color at every level.
+- Not run: the Store edition's list (unit-tested), a right-to-left language's card, touch and pen, Narrator.
+- No README lines (the owner's "Undo any README changes").
+
+---
+
+### 2.59 The panel leaves the keyboard with your app, like Windows' own Win+V (built 2026-11-20)
+
+The owner's request (2026-11-20, forwarding a user's): "Could BetterClipboard offer a mode that opens the panel without
+taking focus from the current app, similar to Windows' built-in Win+V? / Some controls end their editing session as soon
+as they lose focus. When I open BetterClipboard in these controls, I lose the place where I wanted to paste. I've run into
+this in the following cases: / Renaming a file or folder with F2 in Windows File Explorer. / Typing in Explorer's search
+box or editing its address bar. / Renaming a note in Obsidian's file tree." Then: "Please fix this while maintaining the
+closing logic we have". Two questions (AskUserQuestion); the owner chose:
+- **"On by default, switchable (Recommended)"**: a switch in *Settings › Shortcut* brings the old way back, for screen
+  readers (they follow the keyboard focus) and for input methods that compose text.
+- **"Type to search (Recommended)"**: letters, digits and Backspace go to the panel's search box, added at its end, with
+  no caret; an input method that composes text needs a click into the search box, which gives the panel the keyboard.
+
+**What the user gets.**
+- `Win+V` opens the panel on top without taking the keyboard: the app keeps the foreground and its caret, so a rename in
+  File Explorer (F2), Explorer's search box or address bar, or a note's name in Obsidian's file tree stays open, and the
+  paste goes straight into it.
+- The panel's keys act as before: ↑ ↓ Page Up Page Down through the list, ← → through the tabs (always: there is no
+  caret to move), Enter and Shift+Enter, Ctrl+1…9, Ctrl+P, Del (with Shift, or with an empty search), Ctrl+G, F3,
+  Alt+C/W/E, Space to pick a group while the arrow keys walk the column, Esc (clears the search, then closes).
+- **Typing searches:** characters are added at the end of the search text; Backspace takes the last character (a whole
+  one: an emoji, an accented letter), Ctrl+Backspace the last word. Every other key (Tab, Home, End, Ctrl+A, Ctrl+C, the
+  function keys) is taken and dropped, so it never lands in the control the user wants to paste into: F5 would refresh
+  File Explorer and end the rename.
+- **The closing logic is unchanged:** Esc, the shortcut again, a click outside the panel, another window coming to the
+  front (Alt+Tab, the taskbar), another desktop (the lock screen, a UAC prompt) and every use of an item close it; a
+  pinned panel stays and leaves the keys to the app until `Win+V` brings it forward again (§2.55).
+- **The panel takes the keyboard the usual way** where typing into a control of its own is needed — a click into the
+  search box (a caret, an input method's composition), Ctrl+F, a viewer (F3, the eye), a group's name box, the menu key
+  or Shift+F10 — which ends the app's editing, as before. Since 2026-11-21 also a key that runs a Win+R command
+  (Ctrl+Enter, Ctrl+Shift+Enter): without the keyboard the program opened behind the app (§2.17). Menus opened with the
+  mouse stay without the keyboard: Esc closes them, and other keys are dropped while one shows.
+- **It opens the usual way** when the switch is off, when there is no window to type into (the tray, a second launch),
+  over BetterClipboard's own windows, and over a window that runs as administrator (a hook of a process that is not
+  elevated sees no keys typed there).
+- **Over Start or Search** (since 2026-11-20, §2.61) it opens beside it in this mode, Start stays open, and the paste goes
+  into Start's search box; taking the keyboard closes Start first.
+- **Settings › Shortcut › Leave the keyboard with your app** (glyph E765, a keyboard), after *Panel position*: on by
+  default; it applies at the next summon, without a restart. The log says once per session "The panel opens without
+  taking the keyboard: …", and "The panel took the keyboard: {why}." whenever it does (content-free).
+
+**How** (`Views/ClipboardFlyout.Focusless.cs`; its class remarks are the full design).
+- **The window:** `WS_EX_NOACTIVATE` (`WindowInterop.SetNoActivate`), set or cleared by every summon before the panel
+  shows (`BeginSummonMode`). `PresentAsync` makes it topmost (`WindowInterop.MakeTopmost`), moves and uncloaks it without
+  activating it. The paste's activation of its target finds the target in front already.
+- **The keys** (`Windows/Input/FocuslessPanelInput`): a `WH_KEYBOARD_LL` hook on a thread of its own (Highest priority)
+  takes the keys the panel acts on (`FocuslessKeyRules.Takes`: nearly everything; never the modifiers, anything with Win,
+  Alt+Tab and Windows' other switches, the lock keys, Print Screen, Sleep, the media, volume, browser and launch keys, an
+  input method's keys, the mask key), and takes their key-ups too. It asks the keyboard layout of the app in front what a
+  key types (`ToUnicodeEx` on the hook's own thread, so a dead key waits there, never in the app; Caps Lock read once per
+  engagement and then followed; AltGr is Ctrl+Alt), taps the mask key when it takes a key while Alt is held (the app's
+  menu bar would open and end a rename), and hands the key to the panel: `HandleKeyWithoutFocus`, on the UI thread at
+  High priority, the same keyboard model as `Root_PreviewKeyDown`. BetterClipboard's own injected keys pass.
+- **The leaves:** a `WH_MOUSE_LL` hook reports a button pressed outside the panel and the windows it owns
+  (`GA_ROOTOWNER`); WinEvent hooks report another window coming to the front (`EVENT_SYSTEM_FOREGROUND`, out of context,
+  skipping this process) and a desktop switch. `HandleLeave` does what a deactivation does to a panel with the keyboard:
+  unpinned, it closes with its viewers, peeks and dialog; pinned, it stays, closes those, and leaves the keys to the app.
+- **Safety:** the hooks are installed only while such a panel shows, and stop taking keys the moment it goes away
+  (`StopTaking`, then `DisengageAsync`, which keeps the hooks at most 2 s for the key-ups of taken keys: the app never
+  sees half a key). When the panel's thread takes none of its keys for 2 s, the keys pass again
+  (`FocuslessLeave.Unresponsive`). A key or a leave queued under an earlier engagement is dropped
+  (`focuslessGeneration`); a callback never throws into user32; a hook that cannot be installed makes the panel take the
+  keyboard the usual way.
+- **Modifiers of a click** (`IsKeyDown`): without the keyboard the panel's thread never sees the keys, so its own key
+  state would read Shift as up for a Shift+click on a card; it reads the keyboard's own state then
+  (`FocuslessPanelInput.IsPhysicallyDown`, `GetAsyncKeyState`).
+- **"In front"** for the shortcut and the header (`IsInFront`): the panel's window in front, or the panel taking the
+  keys without the focus (`TakesKeysWithoutFocus`). The shortcut pressed again closes it, as with the keyboard.
+- **`Core/Presentation/SearchTyping`** (pure): the search text without a caret — `Append` (control characters left
+  out, at most 4,000 characters, never half a surrogate pair), `EraseLast` (one text element, `StringInfo`),
+  `EraseLastWord` (white space, then a run of word characters or of other symbols).
+
+**Found on the way** **[verified]**:
+- **x:Bind of a WinUI `Window` starts at the window's first activation** (the generated code subscribes to
+  `Activated`), which never comes while the panel leaves the keyboard with the app: the first build showed the panel's
+  unbound defaults — the "Paused" chip, no cards, *Start Everything*. `BeginSummonMode` and the warm-up call
+  `Bindings.Initialize()` (idempotent). The warm-up's call should also end §6's first frame of unbound defaults.
+- **The panel was not topmost at its first summon:** the activation had put it above the app; without it the panel
+  stood behind File Explorer. `PresentAsync` makes it topmost itself.
+- **File Explorer's rename box changes the clipboard at every paste into it:** one more sequence number, the owner and
+  the formats unchanged (a clipboard listener in the test desktop: BetterClipboard's write was 85, the rename box made it
+  86 at the Ctrl+V 40 ms later; an owner-less copy pasted by hand went 91 → 92). With BetterClipboard's own paste on the
+  clipboard the owner is its monitor's window, so the item was read again as a copy *by BetterClipboard*: its source
+  changed, and its use count rose twice per paste. `ClipboardMonitor.CaptureNow` now counts a change that leaves its own
+  window the owner as its own (§2.3): only its own write makes that window the owner, so such a change did not empty the
+  clipboard. Explorer's search box, its address bar and Notepad do not change the clipboard on a paste.
+- A hook of a process that is not elevated sees no keys typed into a window that runs as administrator (the same limit
+  PowerToys documents for its Keyboard Manager): such a target gets the usual way (`ProcessIntegrity.IsAboveCurrent`).
+
+**Pieces.**
+- Core: `Presentation/SearchTyping`, `AppSettings.LeaveFocusInApp`.
+- Windows: `Input/FocuslessPanelInput` (with `PanelKey` and `FocuslessLeave`), `Input/FocuslessKeyRules`,
+  `Interop/NativeMethods.Focusless.cs`, and the owner rule in `Clipboard/ClipboardMonitor.CaptureNow`.
+- App: `Views/ClipboardFlyout.Focusless.cs`; changes in `ClipboardFlyout.xaml.cs` (`ShowAt`, `OnActivated`, `IsKeyDown`,
+  the warm-up, the group name boxes), `.Summon.cs` (`PresentAsync`, `PutAway`, `PutAwayForPaste`), `.KeepOpen.cs`
+  (`BringForward`, `CloseByUser`, `ApplyHeaderButtons`), `.KeepOpenTip.cs`, `.Leaving.cs`, `.Update.cs`,
+  `.TextPreview.cs` and `.ImagePreview.cs` (the viewers take the keyboard), `AppController.cs` (the shortcut's "in front",
+  `BringPinnedForward`), `Interop/WindowInterop.SetNoActivate`, the card in `SettingsWindow.xaml`,
+  `SettingsViewModel.LeaveFocusInApp`.
+- Strings: the card's title, description and search keywords in all five catalogs, each with its description.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- Input methods that compose text (Chinese, Japanese, Korean): the hook sees keys, not the composition, so their Latin
+  letters go into the search until a click into the search box gives the panel the keyboard.
+- Screen readers follow the keyboard focus, which stays in the app: the switch is the way for them, and nothing
+  announces the panel in this mode.
+- A pinned panel that waits behind the app shows its search box with the focused look (its focus stays from the pin's
+  click) although typing goes to the app; the panel with the keyboard looks the same there.
+- Not run: the real Obsidian (its stand-in was a web page that ends its editing on blur), a real GPU, Narrator, an input
+  method that composes text, touch and pen, the owner's PC.
+- No README lines yet: since the owner's "Undo any README changes" (2026-11-20) a feature reaches the README only when
+  they ask; the reply named the lines it would get.
+
+### 2.60 The history's limits: no item limit and a 16 GB budget by default, warnings from 90 % of the budget, and what each limit counts now (built 2026-11-20)
+
+User request (2026-11-20): "Can you set maximum items to 0 (unlimited) by default and for all users that had previous
+default (migrate old default to new). Increase the history size budget 16GB (Also migrate the default to 16GB) and when we
+get close to 90% of the budget start notifying the user every 2% change (92%, 94% and so on) that the memory is running
+out and oldest items will start to be removed to clear space which means that the storage of BetterClipboard will stop
+being permanent. Please visit settings and consider your next move. You can use AI assistant with bclip to do a cleanup
+and clear some storage. Also show in History in settings the current number for each configurable, for example current
+number of items in Maximum items and % used. This way user can also see how and plan right values."
+- **One question asked** (bclip's part): the owner chose **"Budget + biggest + multi (Recommended)"**: `bclip status`
+  shows the budget and how full it is, `bclip list --sort size` lists the largest items first, and `bclip delete` takes
+  several ids.
+
+**What the user gets.**
+- **No item limit and a 16 GB budget by default** (`AppSettings.DefaultMaxItems` 0, `DefaultMaxTotalSizeMB` 16,384; they
+  were 10,000 and 4,096). A user who still had the old defaults moves to the new ones; a value someone chose stays (below).
+- **A notification from 90 % of the budget**: at 90, 92, 94, 96 and 98 % and once full, each once.
+  - Title "Clipboard history 92 % full: the oldest items will be deleted", or "Clipboard history is full: the oldest
+    items are being deleted".
+  - Text "When it fills up, your history stops being permanent. Click for Settings, or let an AI assistant clean up with
+    bclip.", or "The 16 GB budget is full, so your history is no longer permanent. Click for Settings, or let an AI
+    assistant clean up with bclip."
+  - A click opens Settings at the budget's card.
+- **Settings › History: a "Now:" line under every limit.**
+  - Maximum items: "Now: 3,214 items · 64 % of the limit · 12 pinned or in groups, not counted".
+  - Keep items for: "Now: the oldest item was last used 40 days ago".
+  - Largest item: "Now: the largest item is 37.2 MB".
+  - History size budget: "Now: 14.7 GB of 16 GB used (91 %) · the history file takes 18.2 GB on disk · pinned and
+    grouped items (300 MB) are not counted".
+  - Keep temporary pictures: "Now: 3 pictures, 12 MB".
+  - Under the budget: a bar (the accent color; amber from 90 %; red once full) and, from 90 %, a warning that lists every
+    way to keep the history: a larger budget, deleting, or an AI assistant such as Claude Code or Codex with bclip (turn
+    on Command line, then ask it to free space; `bclip status`, `bclip list --sort size` and `bclip delete` named).
+- **bclip:** `status` (Budget, Counted, Largest and On disk lines; JSON `budget`); `list` and `search` with `--sort size`
+  (the largest first, with a size column; `+` after the id of an item in a group, as `*` after a pinned one's); `delete`
+  with several ids (up to 1,000, `CliArguments.MaxDeleteIds`; one request, one transaction; it says how much was freed and
+  which ids were not there). Its help says how to free space.
+
+**Decided by Claude** (told to the owner; change here if they ask):
+- the levels round down (91.9 % is the 90 % level); full is a usage of 99.5 % or more, or any prune that had to remove
+  items for the budget;
+- each level once; a jump warns about the level it reached, not those it passed;
+- only the size budget warns: the item and age limits remove items as before, without a word;
+- the notification's title carries the level and what follows, because a Windows 11 toast shows only four short lines of
+  the text (below);
+- a click on the notification opens Settings at the budget's card; the warning under the card lists every option;
+- "Now:" lines on every History card, the temporary pictures' included; `+` for a grouped item in bclip's table.
+
+**The move of the old defaults** (`AppSettings.Normalize`, `SchemaVersion`).
+- The settings file's format is 2 now (`CurrentSchemaVersion`). Every earlier version wrote format 1. A format-1 file
+  whose `MaxItems` is still 10,000 gets 0, and whose `MaxTotalSizeMB` is still 4,096 gets 16,384; any other value stays. A
+  file without `SchemaVersion` (written by hand) is never moved.
+- The move happens in memory at every load until the next save writes format 2, like the password-manager seeding.
+  `SettingsStore.Load` logs it once per start, content-free (`AppSettings.DescribeMigration`).
+- Going back works: every released version reads 0 items and 16,384 MB (their clamps allowed both).
+- **Footgun** (documented on `SchemaVersion`): an older version writes format 1 again, so a later update moves a limit set
+  to exactly 10,000 or 4,096 once more.
+
+**The warnings** (`Core/Services/HistoryBudgetWarnings`, `ClipHistoryService.Budget.cs`).
+- **Measured by every prune** the history worker runs anyway: after every copy, import and Notepad++ version, at start,
+  and when a limit changes. `ClipStore.PruneAndMeasure` returns the bytes the budget counts after its size step and how
+  many entries it removed for the budget (`PruneResult`), from the sum `PruneBySize` computes anyway: no extra query per
+  copy.
+- **The mark:** the highest level warned about, with the budget it was reached under (`StoredBudgetMark`), kept in the
+  store's state `history_budget.warned` as "level@budget" ("100@17179869184"). So neither a restart, nor the silent
+  restart after Settings, nor an update warns about the same level again.
+  - It is stored before the warning goes out: a warning whose mark could not be stored would come again at every copy.
+  - Nothing in the check can fail the copy whose prune measured (a failure is logged as a warning).
+  - A plain level (what the feature's first build stored; never released) reads with an unknown budget, which counts as
+    the budget in effect.
+- **Re-arming.**
+  - Below full, a fall of more than one step (2 points) brings the mark down to the usage's level, so climbing back warns
+    again; a smaller dip does not (one delete near a boundary and a new copy must not repeat a warning).
+  - A full mark comes down only once the usage is under 88 % (`RearmPercent`) without a removal. With large items (a
+    1 MB copy in a 10 MB budget) the prune's own removals leave the usage several per cent under full, and the first
+    build's step rule then warned 96 % and full again at every refill (§5). With the defaults (16 GB, items of at most
+    64 MB) a removal leaves at least 99.6 %.
+- **A new budget starts over.** When the budget is another one than the mark's (the user raised or lowered it; a changed
+  limit prunes at once, `AppController.OnSettingsChanged` → `PruneAsync`), the mark comes down to the level the usage is
+  at under it, whatever the distance; a lowered budget warns about the level reached, as any climb does. Logged,
+  content-free: "History size budget changed (10,485,760 to 11,534,336 bytes): its warnings start over from below
+  90 %." Without it a full budget raised a little (91 % of the new one, above 88 %) would stay full and never warn again.
+- **Settings says what the notification said:** `HistoryBudgetWarnings.ShownLevel` shows full while the history
+  service's mark (`ClipHistoryService.BudgetMark`) is full and the usage is at 88 % or more. A mark reached under another
+  budget is left out (`HistoryLimitsText.BudgetLevel`).
+- The log rounds the percentage down to a tenth, as Settings and bclip do ("History size budget at 95.4 % (10,000,000
+  of 10,485,760 bytes): the user is told (the 94 % level).").
+
+**The notification** (`AppController.Budget.cs`, `Windows/Shell/TrayIcon`, `HistoryLimitsText`).
+- A tray notification (`NIF_INFO`). `TrayIcon.ShowNotification` takes a tag, and a click on the notification
+  (`NIN_BALLOONUSERCLICK`, with the version-4 callback) raises `NotificationClicked` with it once. The budget's tag opens
+  Settings scrolled to its card (`SettingsWindow.ShowHistoryBudget`; a search is cleared first).
+- A notification asked for while the icon is not in the notification area yet, or still hidden (a silent restart's new
+  process), waits and shows with the icon: the start's prune can warn before the tray exists.
+- **What Windows shows** **[verified]**: Windows takes 63 characters of title and 255 of text, but a Windows 11 toast
+  shows the title on two lines of about 37 characters and the text on four lines of about 41, and cuts the rest. The first
+  wording lost its last sentence ("… Click to open Settings, or let"). `HistoryLimitsTextTests.EveryLanguage_FitsTheNotification`
+  wraps every language's title and text like a toast (greedy by words; Chinese, Japanese and Korean characters count two
+  and break anywhere; direction marks take no room) within two lines of 35 and four lines of 38.
+- **Windows holds a toast on screen while nobody uses the PC** **[verified]**: a second warning waits behind the first
+  and shows once the first goes (in the test desktop the 94 % toast stayed 40 s without input; after a mouse move the full
+  one showed whole).
+
+**Settings** (`ViewModels/SettingsViewModel.Retention.cs`, `Views/SettingsWindow.xaml`, `HistoryLimitsText`).
+- The numbers (`ClipStore.GetRetentionStats`: one pass over the entries, plus `page_count × page_size` for the file) are
+  read on the pool when Settings is presented and 2 s after the history last changed, never per copy; a changed limit
+  rewords the lines at once from the numbers read last.
+- Percentages are rounded down (89.9 never reads 90 while no warning shows), with one decimal below 10 %.
+- **The bar is three bars, one per color, at most one shown.** WinUI's own warning looks (`ShowPaused` for the amber,
+  `ShowError` for the red) make UI Automation, and so a screen reader, read the bar as "PausedHistory size budget used"
+  and "ErrorHistory size budget used" (`ProgressBarAutomationPeer` puts its status in front of the name; seen in the live
+  check). The caution and critical colors come from the theme's `SystemFillColorCautionBrush` and
+  `SystemFillColorCriticalBrush` instead.
+
+**Pieces.** Core `Settings/AppSettings` (the defaults, format 2, the move), `Settings/SettingsStore` (its log line),
+`Services/HistoryBudgetWarnings` (`LevelOf`, `Decide`, `ShownLevel`, `StoredBudgetMark`, the mark's format),
+`Services/ClipHistoryService.Budget.cs` (the watch, `BudgetWarning`, `BudgetMark`, `GetRetentionStatsAsync`,
+`DeleteManyAsync`), `Storage/ClipStore` (`PruneAndMeasure`, `PruneResult`, `GetRetentionStats`, `RetentionStats`,
+`DeleteMany`), `Storage/ClipQuery.LargestFirst`, `Presentation/HistoryLimitsText` (every line, the notification and the
+warning), `Content/TempImageFiles.Measure`, `Cli/` (`CliArguments`, `CliCommandProcessor`, `CliOutput`, `CliProtocol`'s
+`CliBudget`); Windows `Shell/TrayIcon` (tags, clicks, waiting for the icon); App `AppController.Budget.cs`,
+`ViewModels/SettingsViewModel.Retention.cs`, `Views/SettingsWindow.xaml(.cs)` (`ShowHistoryBudget`). Strings: 20 new
+strings and 3 plural strings in all five catalogs, each with its description (Russian, Spanish, Hebrew and Chinese by
+Claude, like the catalogs' other strings), and the budget card's description renamed with `catalog.py`.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- The README still says "10,000 items of up to 64 MB each by default" (*Features*, and the four translations): since the
+  owner's "Undo any README changes" (2026-11-20) a feature reaches the README only when they ask (§6 names the lines).
+- Only the size budget warns. A full budget's warnings start over only under 88 % or with another budget: deleting down to
+  89 % and filling the same budget again warns about nothing.
+- Not run: a real GPU, Narrator (the bar's name was read through UI Automation), the owner's PC, a 16 GB history (the live
+  check used 1, 10 and 11 MB budgets).
+
+### 2.61 Win+V over Start, Search and the shell's other surfaces: beside Start, pasting into its search box (built 2026-11-20)
+
+User report (2026-11-20): "I pressed Win to open start menu and then Win+V and the BetterClipboard menu has shown behind the
+win start menu."
+- **One question asked** (`AskUserQuestion`): close Start and paste into the app below it, or close Start, reopen it and
+  paste into its search box. The owner chose neither: "Has to be another way to seemlessly have access". Built: the panel
+  opens **beside** Start, Start stays open, and the paste goes into Start's search box, as Windows' own Win+V does.
+
+**Why the panel was behind Start** **[verified]** in a claude-desktops Windows 11 desktop (Tiny11 25H2, 26200):
+- Windows keeps its shell's surfaces in z-order bands above the band of app windows, always-on-top ones included.
+  `GetWindowBand` (an undocumented user32 export, there since Windows 8) read:
+
+  | Windows | Band |
+  |---|---|
+  | App windows, the desktop's `Progman`, the taskbar while Start is closed | 1 |
+  | The wallpaper's `WorkerW` (below the app windows) | 12 |
+  | Start (`SearchHost`'s `Windows.UI.Core.CoreWindow`), and the taskbar while Start is open | 6 |
+  | Search (Win+S, the taskbar's search box) | 13 |
+  | Quick settings (`ShellHost`'s `ControlCenterWindow`) and the notification center | 4 |
+  | Task View (`XamlExplorerHostIslandWindow`) | 5 |
+
+  The ids match the names public research of user32 gives them (`ZBID_DESKTOP` 1, `ZBID_UIACCESS` 2,
+  `ZBID_IMMERSIVE_NOTIFICATION` 4, `ZBID_IMMERSIVE_APPCHROME` 5, `ZBID_IMMERSIVE_MOGO` 6, `ZBID_IMMERSIVE_BACKGROUND` 12,
+  `ZBID_IMMERSIVE_SEARCH` 13). A walk of the desktop's z-order (`GetTopWindow`, `EnumWindows`) does not show the bands.
+- No window of an ordinary process can be raised into those bands, and none can take the keyboard or the activation from
+  Start while it is open: the panel shown the usual way, with the keyboard, ended up behind Start and behind the app below
+  it.
+- A topmost window that never activates (`WS_EX_NOACTIVATE`) beside Start stays visible and takes clicks, and Start stays
+  open (`noact.ps1`).
+- Esc closes each of those surfaces in 14 to 45 ms, also with Win still held, and Windows gives the foreground back to the
+  window the user was in before (Notepad).
+- Start draws 16 pixels past its window's rectangle on each side (window 560–1360, visible 544–1376 at 1920 × 1080, 100 %):
+  hence the 24-DIP gap beside it.
+
+**What the user gets.**
+- **Win, then Win+V** (or Win+S, then Win+V): the panel opens beside Start (or Search) on the side with more room, 24 DIPs
+  from it, its top level with Start's window, at its remembered width or narrower to fit, never narrower than its header
+  needs. Start stays open with whatever was typed in its search box.
+- The panel shows the way it does over any app since §2.59, without the keyboard: arrows, typing, Enter and Esc act on it,
+  and Enter, a click on a card or Ctrl+1…9 paste into Start's search box (Start's window is the paste target).
+- Esc and Win+V close only the panel; Start stays open.
+- **Taking the keyboard** (a click into the panel's search box, Ctrl+F, F3 or the eye, a group's name box, the menu key):
+  nothing takes the keyboard from Start, so Start is closed first, and the next paste goes into the window that had the
+  keyboard before Start opened. Logged: "The panel took the keyboard: …; Start or Search was closed first (nothing takes
+  the keyboard from it)."
+- **No hover peeks** beside Start: they cover the monitor, and Start would hide most of them. The groups column grows away
+  from Start, never under it.
+- **When the panel cannot stand beside it,** the surface is closed first, the way Esc closes it, and the panel opens over
+  the window in front then (without the keyboard, or the usual way with the switch off):
+  - no room beside Start for the panel's minimum width (the 1600 × 900 test desktop: 392 pixels beside Start's 800, under
+    the 432 a header of six buttons needs; at 1920 × 1080 there is room);
+  - *Leave the keyboard with your app* switched off (the panel would take the keyboard, which Start refuses);
+  - a pinned panel that Start covers (§2.55);
+  - Quick settings, the notification center or Task View (nothing to paste into there).
+
+  Logged: "Closed Start or Search in 23 ms (the way Esc does) to show the panel over the window in front then." (or
+  "Closed Quick settings, the notification center or Task View in …"); a surface still in front 500 ms after the Esc:
+  "… did not close within N ms of an Esc; the panel may show under it."
+- **A pinned panel** (§2.55): Win+V over Start brings it forward where it stands when Start leaves it uncovered; it then
+  takes the keys, pastes into Start's search box and stays up.
+- **Quick settings is never the pinned panel's paste target:** its `ControlCenterWindow` is in no class list, and the
+  tracker now also leaves out any window in a band of the shell's (`ShellSurfaces.IsShellWindow`).
+
+**Always on top, checked** (found while testing beside Start):
+- Windows ignores `SetWindowPos(HWND_TOPMOST)` while Start is open. The summon's own request came too late, and the panel
+  showed beside Start but under the app window last in front (a maximized Edge), visible only where nothing covered it.
+- And once the panel's window had lost `WS_EX_TOPMOST` (it was off right after the warm-up), it refused the plain request
+  for good: `SetWindowPos` reported success and the flag stayed off, from this process and from another, with Start open
+  and with Notepad in front, while a plain WinForms window took the same request in every state (`toptest.ps1`). The
+  presenter's `IsAlwaysOnTop` kept answering true meanwhile; turned off and on, WinUI applied it anew.
+- `ClipboardFlyout.EnsureTopmost` asks the plain way, checks, then turns the presenter's setting off and on, and checks
+  again. It runs after the warm-up and after each use while the panel is concealed (`KeepTopmostWhileConcealed`: a
+  concealed window is invisible, so the flag costs nothing until a summon), in `PresentAsync` when the flag is off, and in
+  the pinned panel's `KeepOnTop` (§2.55), whose log line no longer says "put back on top" when Windows refused. Logged once
+  per session: "The panel's window refused always-on-top; its presenter set it again." (at every start in the test
+  desktop).
+- **[inferred]** The likely cause of the pinned panel's lost always-on-top flag (§2.55, §6) and of the backdrop lab's
+  stripes window that was not topmost (§2.58, §6).
+
+**How** (the remarks of `ShellSurfaces` and `ClipboardFlyout.ShellSurface.cs` are the full design):
+- `ForegroundContext.Capture` describes the window in front (`ShellSurfaces.Describe`: its band, then its kind and bounds;
+  two user32 calls on the shortcut's thread) as `ForegroundContext.Surface`. A context made any other way (the tray, the
+  tracker, tests) names no surface.
+- `ShellSurfaces.KindOfBand`: Start's and Search's bands are `Search`, the notification band and Task View's are `Other`,
+  every other band (UIAccess, the lock screen's, unknown ones) `None`, an app window as before. `IsShellBand` is broader
+  (every band above the app windows but UIAccess's) and decides only what is never a paste target.
+- `AppController.ShowFlyout` and `BringPinnedForward` ask `MustCloseShellSurface` (a surface in front, and
+  `ClipboardFlyout.CanOpenBeside` says no). Then `CloseShellSurfaceThenSummon`: `ShellSurfaces.CloseAsync` (only while the
+  surface is still in front: held modifiers released with the mask key, Esc sent with BetterClipboard's own marker
+  (`KeyboardInput.SendEscape`), the foreground polled every 10 ms for up to 500 ms), then the summon again with the context
+  of the window in front, its surface cleared, so nothing is closed twice.
+- `CanOpenBeside`: Start or Search, the switch on (`ShouldLeaveFocus`), and room (`FlyoutPositioner.Beside`); for a pinned
+  panel brought forward, one that waits without the keyboard and that Start leaves uncovered (`ScreenRect.Intersects`).
+- `FlyoutPositioner.Beside` (pure): the side with more room inside the work area (a tie goes right), a gap away, the top
+  level with the surface's and kept inside the work area, as wide as the remembered width allows in that room, never below
+  the minimum plus the groups column; nothing when neither side has that room.
+- `SummonBounds` takes `BesideBounds` over the placement setting; `BeginSummonMode` and `BringForwardWithoutFocus` mark the
+  panel as standing beside the surface (`SetBesideSurface`); `TakeKeyboard` beside it goes through
+  `TakeKeyboardPastSurface` (the mode ends, `AppController.CloseShellSurfaceForKeyboardAsync` closes Start and makes the
+  window in front then the paste target, then the panel is activated).
+
+**Pieces.** Windows `Interop/NativeMethods.ShellSurface.cs` (`GetWindowBand`), `Input/ShellSurfaces.cs`
+(`ShellSurfaceKind`, `ShellSurface`, `ShellSurfaces`), `ForegroundContext.Surface`, `ScreenRect.Intersects`,
+`FlyoutPositioner.Beside`, `KeyboardInput.SendEscape`, `ForegroundTracker` (by band too); App
+`Views/ClipboardFlyout.ShellSurface.cs`, and changes in `AppController.cs`, `ClipboardFlyout.Placement.cs`, `.Focusless.cs`,
+`.Summon.cs`, `.KeepOpen.cs`, `.xaml.cs`, `.ImagePreview.cs` and `.TextPreview.cs`. No new strings.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- Not run: Windows 10, monitors at 125 % or more (less room beside Start's 800 DIPs: Start is then closed first), several
+  monitors, a real GPU, Narrator, the owner's PC.
+- **Above Start** instead of beside it, for a copy installed with `install.ps1 -UIAccess`: §2.63 (2026-11-21).
+- Only the measured bands are acted on: a surface in another band (a UIAccess window such as the On-Screen Keyboard, the
+  lock screen's, one a later Windows adds) is treated as an app window, and the panel may still open under it.
+- The panel's top is level with Start's window rectangle, which need not be Start's visible top.
+- A groups column opened beside Start, on its right, grows rightward, and closing it takes the column back from the left
+  (`ShrinkLeft`, older), so the panel then stands a column further from Start until the next summon.
+- No README lines (the owner's "Undo any README changes", 2026-11-20); the reply named them.
+
+### 2.62 The integrations' limits: what the other apps' tabs keep and show, unlimited by default, each limit a number in its Settings card (built 2026-11-21)
+
+User request (2026-11-21): "Out of all of our integrations, are there any with a limit like I think Cmd has (of 1000)? We
+should set and migrate all to default unlimited". Three questions (`AskUserQuestion`); the owner chose:
+- **"Settings, 0 = unlimited"**: a number per limit in its integration's card, 0 by default.
+- **"Unlimited, as asked"** for the ShareX and Snipping catch-ups too.
+- **"Yes, load as you scroll (Recommended)"**: every row of the Pwsh, Cmd, Everything and prompt tabs reachable, turned
+  into cards 60 at a time as the list scrolls, so `Win+V` stays as fast as before.
+
+**What had a limit** (all in code, none in `settings.json`: nothing needed migrating; the new members read 0 when
+missing):
+
+| Where | Until 2026-11-21 | Now |
+|---|---|---|
+| Cmd tab: commands kept from Command Prompt windows (`cmd.kept`) | newest 1,000 | `MaxKeptCmdCommands`, 0 = every one |
+| Cmd tab: commands hidden with Delete (`cmd.hidden`) | newest 1,000 | `MaxHiddenCmdCommands` |
+| Pwsh tab: commands hidden with Delete (`pwsh.hidden`) | newest 1,000 | `MaxHiddenPowerShellCommands` |
+| Everything tab: picks hidden with Delete (`everything.hidden`) | newest 500 | `MaxHiddenEverythingPicks` |
+| ShareX: screenshots saved while BetterClipboard was not running, imported at start | newest 100 | `MaxShareXCatchUp` |
+| Snipping Tool and Win+PrtScn: the same catch-up | newest 100 | `MaxScreenshotsCatchUp` |
+| Pwsh and Cmd tabs: live commands / stored entries shown | 500 / 200 | every one, paged |
+| Everything tab: picks / stored entries shown | 200 / 200 | every one, paged |
+| Claude and Codex tabs: kept prompts merged in | the 200 most recently used | every one |
+
+A cap on a list of the user's own choices brought the oldest back once it was passed (§4): the 1,001st hide of a Pwsh
+command showed the first one again.
+
+**Not changed, on purpose** (they guard a read, not a list of the user's): PowerShell's history file read from its end
+past 32 MB; Everything's `Run History.csv` up to 16 MB; Notepad++'s session up to 16 MB; `JsonlTail`'s 64-MB lines;
+`ScreenshotFileFinder`'s 256-MB files; `WindowsPinLedger`'s 1,000 pins; Win+R's 26 (Windows' own list); dedupe sets of
+5,000 paths; the history's own limits (§2.60).
+
+**The rule** (`Core/Settings/ListLimit`): 0 or less = unlimited (`Effective` gives `int.MaxValue`); `Normalize` clamps a
+hand-edited value to 0..1,000,000. Under a limit the newest are kept.
+- **A lowered limit applies at once:** `AppController.Limits.cs` compares the four list limits after each settings change
+  and trims what is stored now — Cmd's kept list (`CmdHistorySource.ApplyLimitAsync`, under its gate, also while paused),
+  Pwsh's and Cmd's hidden lists, Everything's hidden picks — logged content-free ("The PowerShell tab's hidden commands
+  follow their new limit: 2 shown again, 1 still hidden."), each raising its status event so Settings and the panel follow.
+- A raised limit loses nothing: reading never trims. A hidden list longer than its limit after a hand edit of the settings
+  file follows the limit at its next hide.
+- The catch-up limits are read at each start (`ShareXIntegration.CatchUpLimit`, `WindowsScreenshotsIntegration.CatchUpLimit`).
+
+**Every row, a page at a time** (`Core/Presentation/RowPages`).
+- The merges (`ShellTab.Merge`, `EverythingTab.Merge`, `MergedTabOrder` for the prompt tabs) take every row: every command
+  the shell remembers, every stored entry of the tab (`FlyoutViewModel.QueryEveryEntryAsync`: 1,000 per query, the
+  store's own limit), every pick Everything has.
+- The panel turns them into cards 60 at a time, as the stored history always did, when the list nears its end
+  (`LoadMoreAsync`; `LoadMoreShellRows` and the Everything branch).
+- Footers count the rows not carded yet too ("1,197 of 1,200 commands in PowerShell's history"); a row deleted or hidden
+  before its page came is forgotten (`RowPages.Forget`), so it never comes back with its page.
+- The forgotten-forever lookup of a whole tab is one query per 500 fingerprints (`ClipStore.FindForgotten`): it opened a
+  connection per fingerprint, fine for the at most 700 a tab asked about before.
+
+**Settings.** Six numbers in five cards' footers (`SettingsViewModel.Limits.cs`; a box cleared by hand keeps the saved
+value), each a 140-DIP box under its label:
+- ShareX screenshots, and Snipping Tool and Win+PrtScn: "Maximum screenshots imported at start, of those saved while
+  BetterClipboard was not running (0 = unlimited)";
+- Everything: "Maximum files and folders hidden with Delete (0 = unlimited)";
+- Pwsh tab and Cmd tab: "Maximum commands hidden with Delete (0 = unlimited)";
+- Cmd tab: "Maximum commands kept (0 = unlimited)". Its status reads "N commands kept." without a limit and "N commands
+  kept (newest L)." with one (it read "(newest 1,000)" always).
+- The label is a text block above the box, not the box's Header: a header made each box as wide as its label (seen in
+  the live check).
+- **Settings' search skipped every number box whole;** it now gathers a box's accessible name and header
+  (`SettingsWindow.Search.CollectTexts`), never its value, and the labels as any text block: "unlimited" finds seven
+  settings, "maximum screenshots" two.
+- Strings: the four labels and the Cmd status's plural in all five catalogs, each with its description.
+
+**The Cmd tab's reader, fixed on the way** (found in the live check):
+1. Under a lowered limit the tab showed an open window's older commands instead of the kept newest, and the silent restart
+   after Settings closed stored them. A new process read every open window as one seen for the first time, and
+   `CmdHistory.Remember` gave each command the list did not keep a time near now, above the kept newest.
+2. Older, since 0.2.11 (the silent restart, §2.46, met *Delete stored…*, §2.43): after *Delete stored…* on the Cmd card,
+   the silent restart kept the open window's commands again — a deletion undone by an automatic process (§4).
+- **The reader's memory** (`CmdHistory.WindowsStateName` = `cmd.windows`): each open window's last read as fingerprints
+  (`CmdHistory.Fingerprint`: the first 8 bytes of SHA-256 over the UTF-8, exact), by process id and start time. Written
+  when it changed, also while paused (fingerprints only, like the Win+R snapshot, §2.17), loaded at a process's first read,
+  deleted with the list when the tab is switched off. A window open through a restart is a window read before
+  (`CmdHistory.NewSinceRead`: `NewSince` over fingerprints, given back as this read's texts).
+- **A window truly seen first** (opened while BetterClipboard did not read) is placed by its own order (`Remember` with
+  `typedAgain` false): walking from its newest command back, each command the list does not keep goes a millisecond below
+  the next newer command of the window. So a trim holds, a command typed after the kept ones still comes first, and after
+  *Delete stored…* a command typed since stays above the window's older ones (it was listed below them). A window whose
+  newest command was kept long ago puts its other commands below that old time: the order holds, the guess is early.
+- The tab's view of open windows walks each window separately (`openWindowCommands`).
+
+**Pieces.**
+- Core: `Settings/ListLimit`, `AppSettings` (six members, `Normalize`), `Presentation/RowPages`, `Shells/CmdHistory`
+  (`Trim`, `Fingerprint`, `NewSinceRead`, `FormatWindows`, `ParseWindows`, the limit on `Remember` and `FormatKept`, the
+  first-seen placement; `MaxKept` gone), `Shells/ShellTab` (`Hide`, `Trim`, `FormatHidden` with a limit; `MaxCommands`,
+  `MaxStoredEntries`, `MaxHidden`, `CapCommands` gone), `Everything/EverythingTab` (the same; `MaxPicks`,
+  `MaxStoredEntries`, `MaxHidden` gone), `Storage/ClipStore.FindForgotten`, `ClipHistoryService.FindForgottenAsync`.
+- Windows: `CmdHistorySource` (`KeptLimit`, `ApplyLimitAsync`, the reader's memory, `openWindowCommands`),
+  `ShareXIntegration` and `WindowsScreenshotsIntegration` (`CatchUpLimit`; `MaxCatchUpFiles` gone).
+- App: `AppController.Limits.cs`, `ViewModels/SettingsViewModel.Limits.cs`, `FlyoutViewModel` (`QueryEveryEntryAsync`,
+  the pages of Everything and the shells, every kept prompt), the five cards in `SettingsWindow.xaml`,
+  `SettingsWindow.Search.cs`.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- The README's ShareX and Snipping sections (and the four translations') still say "up to the 100 newest": since the
+  owner's "Undo any README changes" (2026-11-20) a feature reaches the README only when they ask.
+- The prompt tabs' archived prompts had no cap (60 a page already); only their kept prompts did.
+- A Cmd window closed within one read interval of its last command still loses what came after that read (§2.19); commands
+  typed in the last read interval before *Delete stored…* are kept at the next read.
+- No limit for the Claude and Codex archives themselves (they were never capped).
+
+### 2.63 Above Start and Search with Windows' UI access: `install.ps1 -UIAccess` (built 2026-11-21)
+
+User request (2026-11-21), after §2.61's design: "Check how window's Win+V stays above start menu / Because currently it
+stays behind". One question (`AskUserQuestion`) offered beside Start as built (recommended), above Start through UI
+access, or closing Start first; the owner chose **"Above Start, like Windows"**: "UIAccess: the panel goes above Start
+like the On-Screen Keyboard. Only for a copy installed in Program Files and signed with a certificate your PC trusts (I
+can set up a self-signed one for your PC; releases would need real code signing first). Per-user copies keep 'beside'."
+
+**How Windows' own Win+V stays above Start** **[verified]** in a claude-desktops Windows 11 desktop (Tiny11 25H2, 26200,
+UAC on), the bands read with `GetWindowBand` (§2.61):
+- Explorer makes the frame, not the clipboard panel's own process: an `ApplicationFrameWindow` in band 3
+  (`ZBID_IMMERSIVE_IHM`), topmost and never activated, that hosts `TextInputHost`'s content, and a full-screen
+  `Shell_LightDismissOverlay` in the same band that closes the panel at a click elsewhere. Start keeps the foreground
+  and the keyboard. `TextInputHost` itself has no UI access, no app container, and the Medium level.
+- Bands 2 and 3 are drawn above Start's band 6, and band 2 above Search's 13: the bands' order is not their numbers.
+- Only Explorer makes windows in band 3 **[inferred: public research of user32's `CreateWindowInBand`, which asks for
+  the shell's own key; not tried]**.
+- **The one band above Start a program can reach is the UI-access band** (2, `ZBID_UIACCESS`): a program Windows starts
+  with UI access has its always-on-top windows there. The On-Screen Keyboard stood above an open Start, and so did
+  BetterClipboard's own WinUI panel once its program asked for UI access (`WinUIDesktopWin32WindowClass … band=2` over
+  `StartMenuExperienceHost … band=6`).
+- `EnumWindows` does not list the windows of other bands; `FindWindowEx` with a null title does (PowerShell must pass
+  `[NullString]::Value`, never `$null`).
+
+**What Windows asks of a program with UI access** **[verified]** (the same desktop):
+- its manifest asks for it: `<requestedExecutionLevel level="asInvoker" uiAccess="true"/>`;
+- it lies in a secure folder: with the default *Only elevate UIAccess applications that are installed in secure
+  locations* (`EnableSecureUIAPaths` 1), Program Files (64- or 32-bit) or System32;
+- its Authenticode signature chains to a root this PC trusts (`Cert:\LocalMachine\Root` alone was enough). Unsigned, its
+  start failed with "A referral was returned from the server", and no process ran;
+- `CreateProcess` refuses it (740, `ERROR_ELEVATION_REQUIRED`) from any process, one with UI access and an elevated one
+  included: only the shell starts it, through the AppInfo service;
+- for an administrator's account (a split token while UAC is on) the process gets the **High** integrity level (0x3000,
+  elevation type 3), and a program it starts inherits High and UI access (Notepad, measured).
+
+**What the user gets.**
+- **`install.ps1 -UIAccess`, in PowerShell as administrator** (`irm | iex` passes no options: the script-block form,
+  `& ([scriptblock]::Create((irm …/install.ps1))) -UIAccess`): BetterClipboard goes to `%ProgramFiles%\BetterClipboard`
+  (a copy installed elsewhere moves there; the history stays in the data folder), its program asks for UI access and is
+  signed with a certificate made for this PC alone, and `Win+V` over Start or Search opens the panel **above** it, where
+  the placement setting puts it, as over any app.
+- **Over Start, the rest is as beside it** (§2.61): Start stays open and keeps the keyboard, typing and the arrows act
+  on the panel, the paste goes into Start's search box, Esc and Win+V close only the panel, taking the keyboard closes
+  Start first, and no hover peek opens. Room beside Start no longer matters, and nothing covers a pinned panel.
+- **Updates keep it:** the update button asks for administrator rights once per update (Windows' consent prompt), and
+  the new version runs again with UI access and the user's normal rights.
+- **`-NoUIAccess`** (as administrator) takes it away: the panel stands beside Start again, and the certificate leaves
+  the trusted roots. The uninstall removes it too.
+- `-AllUsers -UIAccess` gives the copy for every user UI access. Per-user copies, the portable zip, Chocolatey and the
+  Store edition keep §2.61's beside Start.
+- **Logged** (content-free) at the start: "This copy runs with Windows' UI access: its panel can open above Start and
+  Search (its integrity level lowered from High to Medium, so programs it starts run as usual).", and once per session
+  "The panel opens above Start or Search: this copy runs with Windows' UI access."
+
+**The certificate** (`install.ps1`: `New-UiAccessCertificate`, `Grant-UiAccess`, `Get-UiAccessSigner`,
+`Remove-UiAccessCertificate`):
+- self-signed, RSA 3072, for code signing only, no certificate authority, valid 50 years (a signature without a
+  timestamp lasts as long as its certificate); subject `CN=BetterClipboard UI access (this PC)`, friendly name
+  *BetterClipboard UI access*;
+- its private key exists only in the installer's memory (`RSACng` and `CertificateRequest`; never a store, never a file)
+  and is disposed once the program is signed: trusting the certificate trusts this one program and nothing more;
+- **on a copy of the program, next to it:** its manifest (RT_MANIFEST #1, rewritten with `BeginUpdateResource` by a
+  small `Add-Type` helper, `Initialize-ManifestResource`; every other resource and the code untouched; an older manifest
+  without `requestedExecutionLevel` gets one) asks for UI access, the certificate's public part goes into
+  `Cert:\LocalMachine\Root`, the copy is signed (`Set-AuthenticodeSignature -IncludeChain All`: the certificate travels
+  in the signature) and checked `Valid`, then moved over the program. A failure leaves the program as it was and takes
+  the certificate out again;
+- **one per signing:** an update or a re-run makes a new one and removes the one of the program it replaced, named by
+  the thumbprint in that program's signature and only with this subject, so no other copy's certificate is ever removed;
+- the app's own manifest declares `asInvoker` with `uiAccess="false"` (`app.manifest`), so the installer changes one
+  value.
+
+**Lowered at once** (`Windows/Input/UiAccess.LowerIntegrityIfGranted`, the first statement of `Program.Main`): a process
+started with UI access above the Medium level sets its token to Medium (`SetTokenInformation(TokenIntegrityLevel)`;
+lowering needs no privilege). Measured: Windows clears the token's UI-access flag with it, and the always-on-top windows
+stay in band 2, also those made afterwards. So the programs it starts run as ordinary programs, its named objects (the
+command events, `bclip`'s pipe) carry no High label, and a paste into a window that runs as administrator stays a copy,
+as without UI access (§2.5). A standard user's copy starts at Medium and has nothing to lower.
+
+**What UI access changes for BetterClipboard's own starts:**
+- **The silent restart** (§2.46) starts the next process through the shell (`QuietProcess.StartThroughShell`), which
+  hands it to AppInfo and so gives it UI access again. The shell takes no `STARTF_FORCEOFFFEEDBACK`. Measured: a start
+  from a process that was not in front showed no busy pointer while the new process went 3 s without a message; one from
+  the process in front showed it. The restart runs only while BetterClipboard has nothing in front.
+- **Its wait for the old process had a bug, found in the test desktop:** the old process's object keeps the High label
+  it was made with, although its token was lowered, so the new process (Medium) gets only `SYNCHRONIZE` and limited
+  query rights on it. `Process.Handle` asks for every right and failed; the new process took the old one for gone, met
+  it still holding the single-instance lock, and ended. After Settings closed, no BetterClipboard ran. It now opens the
+  old process for waiting only (`Shell/ProcessExitWait.Open`).
+- **The Cmd tab's helper** (§2.19, `--read-console-history`) is started with `__COMPAT_LAYER=RunAsInvoker`, which makes
+  Windows ignore the manifest's request. Measured: it started with neither UI access nor the High level.
+
+**Updates as administrator** (`Windows/Updates/ScriptUpdateInstaller`, `Core/Updates/ElevatedUpdate`):
+- **When:** this process may not create a file next to the copy's folder (`NeedsAdministrator`: a probe file opened with
+  `DeleteOnClose`; only `UnauthorizedAccessException` counts). That is Program Files.
+- **How:** the same contract command line (§2.29), started by the shell with the `runas` verb, hidden, from the temp
+  folder, its arguments joined with the quoting rules of `ProcessStartInfo.ArgumentList` (`JoinArguments`). One consent
+  prompt. Windows gives the elevated installer its account's own environment, never the app's, so no `PSModulePath` of
+  PowerShell 7 reaches it either.
+- **Refused before anything changes:**
+  - an offer older than `ElevatedUpdate.MinimumVersion` (0.2.12-dev.65, this change's own commit count): its installer
+    would start BetterClipboard as administrator and without UI access. The way back from a development build to 0.2.11
+    says "BetterClipboard 0.2.11 cannot update a copy in a folder only administrators may change. Install it with the
+    installer command, in PowerShell as administrator. The installed version is unchanged.";
+  - an isolated instance (`BETTERCLIPBOARD_DATA_DIR`): the elevated installer would not see its data folder, and its
+    `--exit` and records would reach the regular instance;
+  - an account that cannot elevate with consent (`UiAccess.CanElevateWithConsent`: not an administrator's limited
+    token): "This copy is in a folder only administrators may change: an administrator installs the update with the
+    installer command, in PowerShell as administrator. …";
+  - a declined prompt (`ERROR_CANCELLED`): "The update needs administrator rights for this copy's folder, and Windows
+    did not get them (the prompt was declined). …".
+
+  The three messages are `UpdateMessages` templates, translated in the five catalogs.
+- **The installer's side** (`install.ps1 -Update`): it gives the new program UI access again before it starts it
+  (`Update-UiAccess`, after every step that runs the new program directly — `--set-hotkeys`, `--set-update-check` —
+  which Windows refuses with 740 once the manifest asks for UI access), and while it runs elevated with UAC on it starts
+  BetterClipboard through Explorer (`Start-AppAfterUpdate` → `Start-AppThroughExplorer`, a temporary shortcut that
+  carries `--background`): the user's normal rights, and UI access through the shell.
+- The consent prompt runs on the secure desktop: the panel goes away when it shows (another window has the foreground,
+  §2.56); a failure stays in the update dialog (`InstallProblem`, §2.29) for when it opens again.
+
+**The installer's other changes** (`install.ps1`):
+- **`-UIAccess` and `-NoUIAccess`**, two switches because under `irm | iex` nothing tells `-UIAccess:$false` from not
+  given. Both are refused with `-Update`. `-UIAccess` needs an elevated run, a folder in Program Files
+  (`Test-UiAccessFolder`) and a release from 0.2.12 on (`$UiAccessMinimumVersion`); with neither, a re-run keeps what
+  the copy had (`Test-UiAccessProgram`: the program's own manifest is the record) and installs a release older than
+  0.2.12 without it, with a warning.
+- **A run without `-InstallDir` goes to the copy recorded before** (`Get-RecordedCopy`: `installer.json`'s `installDir`,
+  else the Installed-apps entry's `InstallLocation`, when its folder holds the program). Until 2026-11-21 it always used
+  `%LOCALAPPDATA%\Programs`, so a copy installed with `-InstallDir` elsewhere got a second copy next to it.
+- **A run into another folder moves the copy:** after the swap the recorded copy's folder is removed (history and
+  settings stay in the data folder), its PATH entry moves to the new folder, and its certificate goes. The re-run rules
+  (§3.1: Start with Windows and a given-back Win+V kept) treat a move as a re-run.
+- **A copy only administrators may change** (Program Files) is installed, updated and uninstalled by PowerShell as
+  administrator: without it a run stops before anything changes (`Test-FolderWritable`), and the Installed-apps
+  uninstall (Settings › Apps starts it with normal rights) runs itself again as administrator
+  (`Invoke-ElevatedUninstall`), as the copy for every user's does (§2.34).
+- Both uninstalls take the copy's certificate out of the trusted roots. The elevated-run warning ("BetterClipboard
+  installs per user; a normal PowerShell is recommended") is not shown for `-UIAccess` or for a copy that has UI access.
+
+**Pieces.**
+- Windows: `Input/UiAccess.cs` (`UiAccess`, `UiAccessStart`), `Interop/NativeMethods.UiAccess.cs`,
+  `ProcessIntegrity.OfToken`, `ShellSurfaces.IsInUiAccessBand`, `Shell/QuietProcess.StartThroughShell`,
+  `Shell/ProcessExitWait`, `CmdHistorySource` (the compatibility layer), `Updates/ScriptUpdateInstaller`
+  (`NeedsAdministrator`, `CreateElevatedStartInfo`, `ContractArguments`, `JoinArguments`, `StartElevated`).
+- Core: `Updates/ElevatedUpdate`; three `UpdateMessages`.
+- App: `Program.Main` (the first statement, and the silent restart's wait), `AppController` (the start's log line),
+  `AppController.SilentRestart.cs`, `ClipboardFlyout.ShellSurface.cs` (`CanStandAboveShell`, `CanOpenBeside`'s first
+  branch), `ClipboardFlyout.Placement.cs`, `app.manifest` (`trustInfo`).
+- `install.ps1`: the two switches, `$UiAccessMinimumVersion`, `$UiAccessCertificateSubject`, `Test-ElevatedOverUac`,
+  `Test-FolderWritable`, `Test-UiAccessFolder`, `Initialize-ManifestResource`, `Test-UiAccessProgram`,
+  `Set-UiAccessRequest`, `New-UiAccessCertificate`, `Get-UiAccessSigner`, `Remove-UiAccessCertificate`,
+  `Grant-UiAccess`, `Get-RecordedCopy`, `Start-AppThroughExplorer`, `Start-AppAfterUpdate`, `Update-UiAccess`; the
+  default `-InstallDir`, the move, and the uninstalls' certificate.
+- Guides: *The PowerShell installer* (`-UIAccess`, `-NoUIAccess`, *Above Start and Search*, the re-run), *What it
+  changes on your PC*.
+- Strings: the three update messages in all five catalogs, each with its description.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- **Releases are not code-signed** (§3.3), so every PC trusts a certificate of its own that its installer made. A
+  release signed through SignPath would chain to a public root, and `-UIAccess` would need no certificate of its own.
+- **The consent prompt was never clicked in a test:** it runs on the secure desktop, and Windows keeps an agent's
+  injected input from `consent.exe` (UIPI) also with `PromptOnSecureDesktop` 0. The updates as administrator ran with
+  `ConsentPromptBehaviorAdmin` 0 (elevate without asking). A declined prompt was stood in for by ending `consent.exe`,
+  which Windows reports as "Incorrect function" (logged as "The installer could not be started"), not `ERROR_CANCELLED`.
+- Not run: a standard user's account, the owner's PC, a real GPU, several monitors, ARM64, Windows 10.
+- The update dialog does not say beforehand that the update will ask for administrator rights.
+- `$UiAccessMinimumVersion` compares release numbers only: a development build of 0.2.12 from before this change,
+  installed by hand with `-Package -UIAccess`, would get UI access without lowering its level.
+- No README lines (the owner's "Undo any README changes", 2026-11-20); the reply named them.
+- Why the panel stayed behind Start on the owner's PC with §2.61's design is not known: a read-only watcher there
+  (2026-11-21) caught no summon over Start.
+
+### 2.64 Next to the text cursor in browsers, Electron apps and the console: the accessibility caret (built 2026-11-21)
+
+Issue #10 (2026-11-21, by Staenly): with *Panel position* on "Next to the text cursor", "the panel's position still
+changes depending on where the mouse pointer is, even when the text caret stays in the same place". The owner: "see if
+this feature even works on a desktops machine". Asked (`AskUserQuestion`), they chose **"MSAA caret fallback
+(Recommended)"**, for 0.2.12 (#7).
+
+**What it was** **[verified]** in a claude-desktops Windows 11 desktop with the released 0.2.11 and
+[`probe_caret.ps1`](tools/probes/probe_caret.ps1) (positions and class names only):
+- `ForegroundContext.Capture` read only the Win32 caret (`GetGUIThreadInfo`). Notepad, the Run box, Explorer's rename
+  box, WinForms and WPF keep one: there the panel opened at the caret wherever the mouse was.
+- Chromium never keeps one (Edge, Chrome, VS Code and other Electron apps). Firefox keeps one only while its
+  accessibility runs. The classic console's window reports cmd.exe's thread, and `GetGUIThreadInfo` refuses it (error
+  87). In all of them the panel followed the mouse. The old remark in `ForegroundContext` said Chromium and Firefox
+  kept a Win32 caret.
+- **Microsoft Active Accessibility reports theirs:** `AccessibleObjectFromWindow(OBJID_CARET)`, then `accLocation`.
+  - Chromium's window answers with its IME caret, 1 pixel wide, in a textarea, an input, a contenteditable box and the
+    address bar. With no text field focused it reports a caret 0 wide, flagged invisible. `edge://accessibility` kept
+    "Web accessibility" off: the query turns none of it on, unlike a UI Automation client's first question.
+  - Firefox reports the right caret, flagged invisible. The first query starts Firefox's accessibility service, and
+    Firefox then keeps a hidden Win32 caret too.
+  - The console's cursor cell, flagged invisible, comes through oleacc's own caret object.
+  - Windows Terminal and XAML/WinUI text boxes (Explorer's address bar, the Settings app) report all zeros. Only UI
+    Automation knows their caret; its first call takes about a second and turns on accessibility in the app.
+
+**Now** (`Windows/Input/AccessibleCaret`, `ForegroundContext.CaretQuery` and `WithAccessibleCaret`,
+`AppController.ShowFlyout`):
+- **`Capture`**, on the shortcut's input thread, still reads the Win32 caret. Without one it only records which window to
+  ask (`CaretQuery`: the focus window, else the window in front, with the window's bounds). It records nothing for
+  Start, Search and BetterClipboard's own windows.
+- **`ShowFlyout`**, on the UI thread, asks before the panel shows (`WithAccessibleCaret`), for "Next to the text cursor"
+  only (`PlacesByCaret`). The other placements never ask: no wait, and Firefox's accessibility stays off. Closing the
+  panel and bringing a pinned one forward ask nothing either.
+- **`AccessibleCaret.Read`** makes the query on a thread of its own, in the multithreaded apartment, and the UI thread
+  waits with a plain `WaitForSingleObject`: no pumping, so WinUI never re-enters. It waits 250 ms at most
+  (`DefaultDeadline`). A lookup that outlives the deadline is left to finish, and no other lookup starts until it has: a
+  hung app holds one summon, and the next ones go to the mouse at once.
+- **The rule** (`Accept`): a rectangle with a width and a height, on the window in front. The MSAA state is not read:
+  Firefox's and the console's real carets are flagged invisible, while Chromium's hidden one is 0 wide and oleacc's empty
+  one all zeros.
+- `accLocation` is called through the `IAccessible` vtable (slot 22, with a VARIANT passed by value); the source-generated
+  COM interop takes no `IDispatch` interface.
+- **Logged** once a session, content-free: "Next to the text cursor: found the caret of a window that keeps no Win32
+  caret through accessibility (MSAA) in N ms", "A window did not report its accessibility caret within 250 ms; the
+  panel opened next to the mouse", and a warning if a lookup failed.
+
+**The first version waited on the wrong thread** (found the same day in the live QA, before it shipped). `Capture` made
+the lookup itself, on the input thread, which also runs the `WH_KEYBOARD_LL` hook that takes a shortcut over from
+Explorer (§2.4). A hook's callback cannot run while its thread waits, so every key on the PC waited for the lookup, and
+Windows silently removes a hook that keeps it waiting (§2.2's rule). Measured against an app that does not answer, with
+Ctrl+Win+V (Windows owns it, so it goes through the hook): the shortcut's own keys took 118 ms to go through with the
+first version (the lookup ended "LATE" at 110 ms, on the input thread), and 6.4 ms with the lookup on the UI thread.
+
+**The deadline** **[verified]**, measured with a timing build (never committed) in the test desktop (no GPU, 4 cores):
+- The first lookup into a process takes longest, while COM connects the two processes. Chrome took 70 and 107 ms
+  (`AccessibleObjectFromWindow` 67 ms, the first `accLocation` 30 ms), and twice missed the first version's 100 ms,
+  opening at the mouse. VS Code took 144 ms (105 + 28 ms). Edge took 20–45 ms, Firefox 10 ms (it starts its
+  accessibility then), the console 6–9 ms. Later lookups took 1–10 ms; Windows Terminal answered "no caret" in 2 ms.
+- Not Chrome being busy: its UI thread answered pings within 16–35 ms meanwhile. A first lookup from PowerShell into a
+  fresh Chrome took 14–32 ms.
+- 250 ms covers the slowest with room. It costs only when an app answers late or never.
+
+**Verified:** see §5.
+
+**Limits:**
+- Windows Terminal, Explorer's address bar and the Settings app (XAML) still follow the mouse (§6).
+- The first Win+V into a freshly started Chrome or Electron app waits for its first lookup (70–144 ms in the test
+  desktop); later ones do not.
+- With "Next to the text cursor", the first Win+V over Firefox starts Firefox's accessibility service for the rest of
+  that Firefox's life, as screen readers, password managers and Windows' own features do.
+- Not run: the owner's PC, a real GPU, several monitors, Narrator running.
+
+### 2.65 Settings regrouped: the Panel and Capture sections (2026-11-21)
+
+User request (2026-11-21): "Look at the settings and settings rows we have, we developed a bunch of settings and they are
+now all scattered around / Provide me in a dash-list current and then the suggested and i'll approve
+reordering/regrouping". Claude listed the nine sections with their cards and suggested eleven, with three optional flips
+(Theme stays in App; Pause capturing stays first in Privacy; Command line stays in App). The owner: "Reorder and
+translate if any text added/changed." — the suggestion as it stood, no flip.
+
+**The page now** (`SettingsWindow.xaml`, top to bottom; 47 cards, the Updates section holding one per edition):
+
+| Section | Cards |
+|---|---|
+| Shortcut | Open BetterClipboard, Take over shortcuts owned by Windows, Release from Explorer |
+| **Panel** (new) | Panel position, Leave the keyboard with your app, Show pinned items first, Lines per card, Buttons in the panel, Theme, Background transparency |
+| Pasting | Paste after choosing an item, Move pasted items to the top |
+| **Capture** (new) | Pause capturing, Record images, Record copied files, Preserve app-specific formats, Capture reliability |
+| History | Maximum items, Keep items for (days), Largest item (MB), History size budget (MB), Keep temporary pictures for (days) |
+| Privacy | Ignored apps, Forgotten forever, Encrypted history, Command line (bclip), Clear history |
+| Windows clipboard | Windows' own clipboard history, Import from Windows |
+| Integrations | ShareX screenshots, Snipping Tool and Win+PrtScn, Notepad++ unsaved tabs, Files opened in Notepad++, Win+R history, Pwsh tab, Cmd tab, Claude Code prompts, Codex prompts, Everything |
+| App | Language, Start with Windows, Data folder, About BetterClipboard |
+| Updates | Check for updates automatically (the Microsoft Store edition: Updates from the Microsoft Store) |
+| Third party | Works with, Built with |
+
+**What moved:**
+- To Panel: Panel position, Leave the keyboard with your app, Buttons in the panel and Lines per card from Shortcut;
+  Show pinned items first from Pasting; Theme and Background transparency from App. The theme also colors Settings and
+  the other windows; it stands with the panel's other looks (the first flip, not taken).
+- To Capture: Pause capturing and Capture reliability from Privacy; Record images, Record copied files and Preserve
+  app-specific formats from History, which keeps only its limits and the temporary pictures' days.
+- To Privacy: Command line (bclip) from App: while it is on, any program running as the user can read the history.
+- Within their sections: Take over shortcuts owned by Windows right under Open BetterClipboard (its state line "Turn on
+  the takeover below" now points at the very next card), and Everything last in Integrations, in the order of the
+  panel's tabs.
+
+**How:**
+- The page's XAML only. Every card element is the same byte for byte, with the comments above it (a scratch script
+  compared each card's element before and after); the section titles and their comments are new or rewritten, and one
+  card comment's words about its place changed (Panel position). Nothing in the code depends on the order: the search
+  reads the sections from the page (`SettingsWindow.Search.cs`), the Microsoft Store edition removes its cards by name
+  (`SettingsWindow.Store.cs`), and the budget's notification scrolls to `HistoryBudgetCard` by name.
+- Two new strings, the section titles "Panel" and "Capture", in all five catalogs with their descriptions: 面板, Панель,
+  Panel, חלונית and 采集, Запись, Captura, קליטה, the words the catalogs already used for the panel ("Panel position")
+  and for capturing ("Pause capturing", "Capture reliability").
+- 63 translator descriptions in `en.json` name their card's new place, and the History, Privacy and App titles'
+  descriptions list their new contents. No translation changed.
+- Code comments and one log line name the new places ("… the panel takes the keys it acts on (Settings › Panel).").
+- No card was renamed, so the texts that send people to a card by its name ("Settings › Forgotten forever", "Settings ›
+  Release from Explorer") still lead there.
+
+**The notes and the Store:** the 0.2.12 notes name the new paths and gain a paragraph, **Settings regrouped.** Its first
+sentence had to stay short: the Store's "What's new" is 1,499 of 1,500 characters with it, and the first wording made
+`ConvertTo-StoreNotes` fall back to the lead-ins alone (275 characters). A paragraph added to the notes from now on must
+shorten another, or the Store gets lead-ins only.
+
+**Not changed** (the owner's rule on the README since 2026-11-20): README.md's Settings list under *Use*, which describes
+the nine sections of before, its three paths to moved cards (*Settings › Pasting* for the pinned order, *Settings ›
+Shortcut › Panel position*, *Settings › Shortcut › Lines per card*), and the same lines of the four translations. The
+website's guides name only cards that did not move.
+
+**Earlier sections** name the places of their time; the table above maps them.
+
+**Verified:** see §5.
+
+### 2.66 The search box keeps the keyboard; only popups take it (fixed 2026-11-21)
+
+User report (2026-11-21): "In the Win+V panel, We are not supposed to lose focus from the search box (unless a panel/modal
+opens)". Built as asked, no question: a popup (a menu, a flyout, a dialog, a viewer, a peek) may take the keyboard and gives
+it back when it closes; nothing else in the panel takes it.
+
+**What it was [verified]**, in a claude-desktops Windows 11 desktop with the unchanged build `0.2.12-dev.76.g59687eb`,
+*Leave the keyboard with your app* off (the panel takes the keyboard at Win+V), real clicks and keys, UI Automation's focused
+element read after each step:
+- A click on a tab gave the keyboard to the tab, a click on Pause to the button, and the Tab key moved it to the groups
+  toggle. Each next typed letter went nowhere: 3 of 7 letters were lost in one sequence (the search read "aefg" where the
+  fixed build read "abcdefg").
+- The header's other buttons and the group icons are the same kind of control, and take the keyboard the same way
+  **[inferred]**; the Tab key moved the keyboard on to the next of them. Only some paths gave it back by hand: a drag of
+  the background (`EndDrag`), a popup closing (`GiveKeyboardBackAfterPopup`), the tooltip repair (§2.30), the pin's own
+  click (§2.55).
+- In the default mode the same happened once a click into the search box had given the panel the keyboard (§2.59).
+
+**The rule** (`Core/Presentation/PanelFocus.Decide`, pure): while the panel shows, a move of the keyboard to an element of
+its surface (anything under `Root` but the search box) is refused: cancelled when the panel leaves the keyboard with the app
+(a move there would activate the window behind the user's back) or when the search box has it already, otherwise redirected
+to the search box. Moves into the search box, into a popup and into another window (Settings) are left alone, and so is
+everything while the panel is concealed.
+
+**How** (`Views/ClipboardFlyout.SearchFocus.cs`; its class remarks are the full design):
+- **One guard:** a handler on WinUI's static `FocusManager.GettingFocus` event, which WinUI raises for every move in every
+  window of the UI thread (Settings too), before it happens. `TryCancel` or `TrySetNewFocusedElement` refuses the move; a move
+  WinUI does not let a handler change (both answer false) gets a queued repair (`RepairSearchFocus`) that gives the search box
+  the keyboard back.
+- **Where an element is** (`FocusTargetOf`): a walk up the visual tree. The search box and its inner text box: allowed. A
+  `Popup` on the way: elsewhere (a menu or flyout is parented to its placement target, inside `Root`). `Root`, or one of its
+  own ancestors (the scroll viewer around the window content, where WinUI parks the keyboard after a click on something that
+  takes none, a tooltip for one): the surface.
+- **Logged** once a session, content-free: "The search box keeps the keyboard: a SelectorBarItem did not take it (Pointer;
+  logged once a session)." Programmatic moves meet it too: a `ListViewItem` at the first summon, a `Button` at another
+  (WinUI's own first focus of a window), both refused.
+- **The tooltip click** (§2.30): the guard refuses the move to that scroll viewer, and opens the update dialog when the
+  click was on the update button's tooltip (`OpenUpdateDialogIfItsToolTipWasClicked`). `RecoverKeyboardFromToolTip` stays
+  for a move WinUI does not let the guard refuse.
+
+**What a tab's focus gave, kept** (the focus had carried it):
+- The Menu key and Shift+F10 right after a click on a tab open that tab's menu (§2.40), with the keyboard taken and through
+  the hook (`HandleKeyWithoutFocus`). The panel remembers the clicked tab (`clickedTab`: `NoteTabPressed`,
+  `TakeClickedTabForKey`) until another key, a press elsewhere, a pull of the strip or the next summon; Left and Right move it
+  with the selection.
+- Left and Right right after a click on a tab switch tabs, also with text in the search box: the click counts as the panel
+  being steered (§2.28's `arrowNavigating`), until something is typed.
+- A clicked tab half under the strip's arrow is scrolled into view (`RevealClickedTab`): WinUI's `ItemsView` brings a tab
+  into view only when it takes the keyboard.
+
+**Decided by Claude** (told to the owner; change here if they ask):
+- Tab and Shift+Tab do nothing in the panel (they walked through the header's buttons and the tabs); every action keeps its
+  own key or click.
+- The keyboard cannot rest on a header button or a tab any more. Screen readers invoke them through UI Automation, which
+  takes no focus **[inferred: Narrator not run]**.
+- A card or group icon clicked half out of view is not scrolled into view (WinUI did that for the element taking the
+  keyboard).
+
+**Pieces:** Core `Presentation/PanelFocus` (`PanelFocusTarget`, `PanelFocusAction`, `Decide`); App
+`Views/ClipboardFlyout.SearchFocus.cs` (new), and changes in `ClipboardFlyout.xaml.cs` (the guard started and stopped; Tab
+and the Menu key in `Root_PreviewKeyDown`; `Filters_SelectionChanged`), `.Focusless.cs` (the Menu key), `.TabArrangement.cs`
+(`ShowTabMenu` returns its menu), `.TabStrip.cs` (`NoteTabPressed`, `RevealClickedTab`, `EndTabPan`), `.Navigation.cs`
+(`ResetViewForShow`, `CycleTab`), `.ToolTipKeyboard.cs` and `.KeepOpen.cs` (comments). No new strings. README unchanged: its
+"Right-click a tab (or <kbd>Menu</kbd> on a tab you clicked)" stays true.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- Not run: a real GPU, Narrator, touch and pen, the Microsoft Store edition, the owner's PC.
+- A control that must take typed text outside a popup is refused like any other (§4): it goes into a popup, or
+  `PanelFocus` learns it.
+
+### 2.67 Release notes in Simplified Chinese: a language line on top, the translation hidden in the release body (built 2026-11-21)
+
+User request (2026-11-21): "Prepare to release a new version, read previous release notes and produce similar release
+notes / Also do a feature for this release: Can the release notes have a on first rows a En/Cn but in chinese and when
+clicked the release notes are replaces with your translation". Three questions (`AskUserQuestion`); the owner chose:
+- **"ENG / 简体中文 (Recommended)"**, the README's own language line, and asked "You are using "zh-hans" right?": yes,
+  `zh-Hans`, the tag of the app's catalog and of the Store's `zh-hans` listing;
+- **"The app's language (Recommended)"**: the update dialog opens a release's notes in the interface language when the
+  release has them, else in English;
+- **"Yes, in 0.2.12"**: the Store's Chinese listing gets them in its "What's new".
+
+The design is an earlier study's, never acted on until now (2026-11-16, another session's):
+[`docs/release-notes-languages.md`](docs/release-notes-languages.md), whose §5 records what was built and where it differs.
+
+**What a reader gets.**
+- **The release page:** its first row is `**ENG** / [简体中文](…)`. 简体中文 opens `docs/release-notes/<version>/zh-Hans.md`
+  at the release's tag, which GitHub draws as a page of its own; that page's first row, `[ENG](the release page) /
+  **简体中文**`, leads back.
+- **The update dialog of 0.2.12 and later:** each release in the interface language when it has it, else in English. A
+  click (or Enter) on the line's other language swaps every release on screen to that language, in place, for as long as
+  the app runs; the keyboard follows to the new line's link; *View on GitHub* opens the page of the language shown.
+- **Installed copies (0.2.6–0.2.11) and GitHub's page** draw the English with the line as links and the translation
+  hidden: their readers open the Chinese page in the browser.
+- **The Microsoft Store:** the `zh-hans` listing's "What's new" comes from the Chinese notes (602 characters for 0.2.12),
+  `en-us` keeps the English (1,440).
+
+**The body** (`tools/release/release_notes.py compose`, run by `release.yml` before anything is built):
+
+```text
+**ENG** / [简体中文](https://github.com/Nucs/BetterClipboard/blob/v0.2.12/docs/release-notes/0.2.12/zh-Hans.md)
+
+<the annotated tag's message: the English notes>
+
+---
+
+**Code signing policy:** … (the footer; the composer writes it now, release.yml did until 0.2.12)
+
+<!-- release-notes zh-Hans
+[ENG](https://github.com/Nucs/BetterClipboard/releases/tag/v0.2.12) / **简体中文**
+
+<the Chinese notes, a "---" line and the Chinese footer>
+-->
+```
+
+- **Why a hidden block [verified]:** every update dialog since 0.2.6 draws the whole body of each newer release, HTML as
+  text, and its parser skips from a line that starts with `<!--` to the first line holding `-->`; GitHub's page drops
+  such a block too. [`probe_release_notes.py`](tools/probes/probe_release_notes.py) (the study's) builds each released
+  version's own `Markdown.cs`, asks GitHub's renderer, and compares a body with and without its blocks.
+- **A release without translation files** gets exactly the body it always had: the notes, a rule, the footer.
+
+**A translation file** (`docs/release-notes/<version>/<tag>.md`, `<tag>` a catalog's: `zh-Hans`, `ru`, `es`, `he`):
+- its first row is its language line, its second its stamp, `<!-- source sha256:<hex> -->` (hidden on GitHub): the
+  SHA-256 of the English it was translated from, normalized as `git tag --cleanup=whitespace` leaves a tag's message;
+- then the notes, a `---` line and the translated footer (it must link the README's `#code-signing-policy`);
+- one line per paragraph and per list item: GitHub's file pages join wrapped lines with a space, which Chinese text must
+  not get (the English stays wrapped at 117 columns, §3.1);
+- links to the Chinese README's sections (`docs/translations/README.zh-CN.md#<the English anchor>`), and the app's own
+  Chinese words for its labels (`zh-Hans.json`: 面板, 采集, 更新说明, 速览, 大小上限, …).
+
+**The composer refuses** (exit 1, saying what to do; nothing written): a stale stamp (the notes changed after the
+translation, as each commit's new draft does); another language line; `-->`, `--!>` or `<!--` in a file; no `---` line, no
+footer link, no notes; a right-to-left language (the dialog does not draw right-to-left notes yet); a file of no catalog's
+name; English notes that leave a code fence or an HTML comment open (found while testing: an open fence would show the
+footer and every hidden block as code to every reader, every installed dialog included); a body over GitHub's 125,000
+characters. `stamp` prints a file's stamp line for a draft; `check` runs everything the release job runs.
+
+**The app** (`Core/Updates/ReleaseNotesLanguages`, pure; `Views/UpdateView.xaml.cs`):
+- **`Split`** finds a block exactly where the parser hides a comment: fences first (`MarkdownParser.TryReadFence` and
+  `IsClosingFence`, internal now), then a span from a line starting with `<!--` to the first line holding `-->`, skipped
+  whole. A span is a translation only with the opening line `<!-- release-notes <tag>`, the closing line `-->` alone, some
+  text, and a tag other than `en`; the first block of a language wins; at most 16. The English is never touched: the
+  parser hides the blocks by itself, as every older version does.
+- **`ShownLanguage`, `TextFor`, `PageFor`** choose; **`LanguageOfLink`** tells the line's links from ordinary ones: the
+  release's own page (`html_url`; case, a trailing slash and a query ignored) is English, a github.com
+  `…/blob/<ref>/docs/release-notes/<version>/<tag>.md` of a translation the release has is that language, and any other
+  link opens the browser as before.
+- **`UpdateView`:** the wanted language is the one picked on a line (`pickedNotesLanguage`: static, so the panel's and
+  Settings' dialogs agree; not saved) or the interface language. `RenderNotes` redraws when it changed (its "same notes"
+  shortcut compares the language too). A click queues the redraw, which removes the clicked text block, and gives the
+  focus to the new line's link in the clicked link's own focus state: a keyboard focus keeps its rectangle, a mouse
+  click shows none. The split is cached per notes string (`ConditionalWeakTable`).
+
+**The Store** (`submit-store.ps1 -TranslatedNotesDirectory`, `ConvertTo-StoreNotes -Language`): each listing with a
+translation gets its own "What's new"; in Chinese a sentence also ends at `。`, `！` and `？`, the fixes' lead-in is "修复"
+and their count "共 N 项。"; listings without a translation are emptied as before; a translation without a listing is a
+warning. `store.yml` composes only when the tag has the composer, so an older tag sends English only.
+
+**0.2.12's own notes:** the newest draft (`622a324`'s) with the regroup's paths, edited: "Room for everything" and "Paste
+one item after another" became a lead-in with bullets; four first sentences were shortened, because the Store keeps the
+first sentence of every paragraph (1,499 of its 1,500 characters before, 1,440 after); the paragraph "Release notes in
+Chinese." comes before **Fixed**. The Chinese file follows it to the bullet: 36 list items in both, 15 bold lead-ins, the
+table.
+
+**Pieces:** Core `Updates/ReleaseNotesLanguages.cs` (new), `Presentation/Markdown.cs` (two methods internal); App
+`Views/UpdateView.xaml.cs`; tools `release/release_notes.py` and `release/test-release-notes.py` (new),
+`release/submit-store.ps1`, `release/test-submit-store.ps1`, `probes/probe_release_notes.py` (the study's, now reading
+quotes' blocks, §2.50); workflows `release.yml` (the composer; `gh release create` takes its body; the Store gets the
+translations), `store.yml`, `ci.yml` (the composer's tests); `docs/release-notes/0.2.12/zh-Hans.md`;
+`docs/release-notes-languages.md` (the study, its §5 filled in). No new UI strings.
+
+**Verified:** see §5.
+
+**Limits / not built:**
+- Only Simplified Chinese. Russian and Spanish files would compose today; Hebrew is refused until the dialog draws
+  right-to-left notes.
+- An older release in a Chinese dialog is simply English: no line says it has no translation.
+- The composer does not compare a translation's structure with the English; for 0.2.12 the counts were compared by hand.
+- The README and its translations do not mention the feature (the owner's rule since 2026-11-20).
+- The live check ran before §2.66's focus guard landed. By the guard's code a text link counts as "elsewhere", which it
+  leaves alone, so the dialog's keyboard path is unchanged; not run with it.
+
 ---
 
 ## 3. Build · run · test
 
 ```bash
 dotnet build BetterClipboard.sln                               # everything (App builds win-x64)
-dotnet test --solution BetterClipboard.sln                     # 2,338 tests (Core 1,893, Windows 445; opt-in tests + 1 explicit measurement skipped)
+dotnet test --solution BetterClipboard.sln                     # 3,078 tests (Core 2,405, Windows 673; opt-in tests + 1 explicit measurement skipped)
+python tools/release/release_notes.py check --version X.Y.Z NOTES.md   # a release's translations against its notes
+                                                               # (stamp, format, body size): before tagging (§2.67)
+python tools/release/test-release-notes.py                     # the composer's own tests (88 checks; CI runs them)
 pwsh tools/release/test-update.ps1 -Version X.Y.Z -PackageDirectory artifacts/release   # install.ps1's update mode
                                                                # against a package; scratch folders only (§2.29)
 pwsh tools/release/test-iex.ps1                                # install.ps1's param block survives `irm | iex`
@@ -6157,7 +8169,10 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   (sha256sum format, LF, all four files). The same script runs in CI and in the release job.
 - **Release:** push an **annotated** tag `vX.Y.Z` whose message is the release notes (`git tag -a vX.Y.Z -F
   notes.md`) → [`.github/workflows/release.yml`](.github/workflows/release.yml):
-  1. builds the notes first ("Release notes from the tag": the tag's message plus a "Code signing policy" footer, §3.3);
+  1. builds the notes first ("Release notes from the tag"): `tools/release/release_notes.py compose` writes the body
+     from the tag's message, a "Code signing policy" footer (§3.3) and, since 0.2.12, each translation in
+     `docs/release-notes/X.Y.Z/` as a hidden block under an "ENG / 简体中文" line (§2.67); a translation of other notes
+     than the tag's message stops the run here;
   2. tests and packages, then updates to the x64 zip once with the app's own command line
      (`tools/release/test-update.ps1`, §2.29);
   3. builds and tests the Chocolatey package (stable tags only, §3.2);
@@ -6211,6 +8226,10 @@ Snipping tab (2026-10-01), with a copy of the dev build:
        (`git rev-parse`): a guessed one was refused with "Head branch was modified", and nothing changed.
     3. Wait for CI on the merge commit, then tag the merge commit with the anchored lookup's draft (`git log -1
        --grep='^RELEASE NOTES (draft…' --format=%B <merge commit>`: GitHub's merge message has no marker line).
+       **Since 0.2.12 the notes have translations** (§2.67): before tagging, extract the draft into a file and run
+       `python tools/release/release_notes.py check --version X.Y.Z <file>`. A translation of an older draft fails
+       there; translate what changed, put the new `stamp` line under its language line, commit it, and only then tag.
+       The tag's message must be the very notes the files were stamped from (`--cleanup=whitespace` keeps the stamp).
     4. Afterwards fast-forward local `main` (`git merge --ff-only origin/main`: the merge commit has the same tree,
        so no file of the shared tree changes) and delete the release branch on GitHub.
 - **Installer** ([`install.ps1`](install.ps1), Windows PowerShell 5.1 and PowerShell 7, StrictMode 3):
@@ -6305,6 +8324,11 @@ Snipping tab (2026-10-01), with a copy of the dev build:
     - Not the update button's `-Update` (it never touched either), nor the install for every user.
     - Verified: 12 checks of the two functions on a scratch key, in PowerShell 5.1 and 7, and a real run in a
       claude-desktops Windows desktop (§5).
+  - **Since 2026-11-21: above Start, and the copy where it is** (§2.63). `-UIAccess` (as administrator: Program Files,
+    a certificate of this PC's own in the trusted roots, the program signed) and `-NoUIAccess`; a run without
+    `-InstallDir` goes to the copy recorded before (`Get-RecordedCopy`), and one into another folder moves that copy;
+    a copy in Program Files is installed, updated and uninstalled by PowerShell as administrator (the uninstall asks
+    for it itself); `-Update` started as administrator starts the app through Explorer.
   - **A Chocolatey copy** (`lib\betterclipboard\tools\app`, §3.2) is respected:
     - install warns about it and leaves a startup entry that starts it;
     - `-Uninstall` keeps a startup entry that starts that copy; its own entry or a stale one goes, or, while that copy
@@ -6372,12 +8396,30 @@ Snipping tab (2026-10-01), with a copy of the dev build:
   - **The notes follow the earlier releases' format, minus anything about older versions** (the owner, 2026-11-08:
     "Go over our last 10 releases, follow their format", then, after editing the v0.2.10 draft themselves: "Also no
     mentions of older versions"): the title line `BetterClipboard X.Y.Z` alone (the owner's edit cut its summary);
-    the install command; one bold lead-in paragraph per feature, with bullets; **Fixed**; the files table; the
+    the install command; one bold lead-in paragraph per feature, with bullets; **Fixed**; the downloads table; the
     code-signing note. Nothing that names an older release: no "You have 0.2.x" lines, no "What came in X.Y.Z …"
     pointer, no "An older BetterClipboard can still open your history", and no "since an earlier update" in a fix.
     No headings and no summary list. Wrapped at 117 columns like the earlier notes, never inside a link, a code span
     or an emphasis: GitHub shows a line break at each wrap (v0.2.9's `body_html`), which every release page has, and
     the update dialog follows CommonMark and joins the lines.
+  - **The downloads table, since 0.2.12** (the owner chose "By need, with links" from four rendered options,
+    2026-11-16): two columns, `| Download | For |`, in the order people need them: the Microsoft Store (its page);
+    `install.ps1`, whose second cell is the install command alone (the owner's "In install ps1, 2nd line put the
+    … command"; its bar written `\|`); the zips (`x64 zip · ARM64 zip`, "Portable: …"); the .7z archives;
+    `SHA256SUMS.txt`; the Chocolatey package. Each name links to its asset under `releases/download/vX.Y.Z/`. Until
+    0.2.11 it was `| File | What |`, the names in code without links.
+    - **Two columns,** because the update dialog shows the notes too: 402 px for the whole table, every column equal
+      (`MarkdownRenderer.CreateTable`), and a name wider than its column breaks mid-word there.
+    - **Nothing around it but the signing note:** `ConvertTo-StoreNotes` (`submit-store.ps1`) leaves tables and that
+      note out of the Store's *What's new*, and would pass any other paragraph on. No `<details>` and no `<br>`:
+      the app's Markdown reader shows HTML as text.
+    - **Every published page has it too** (2026-11-16, the owner's "and all other releases"): `gh release edit`
+      gave v0.1.0–v0.2.11 the same table, built from the files each release has, and named the Store edition in
+      their signing notes (v0.2.1 has none); the rest of each body stayed byte for byte. Their tags keep the old
+      table: tags are never rewritten, and each old body was its tag's message plus the footer, so it can be
+      rebuilt from the tag. v0.2.5 and older link `install.ps1` to main's script, because their own `install.ps1`
+      empties the Run key (§2.25); v0.2.5's Chocolatey package is named without a link and with a warning; the
+      checksum row names the update button only from 0.2.6, the first release with one.
   - **An outside contributor is thanked in one line, right after the title line**, naming what they brought and
     their bare `@login` (the owner, 2026-11-08, of a five-line paragraph and a language section: "Horrible, simplify
     and minimize the language addition to a single line"). Keep that line within the 117 columns, so GitHub never
@@ -6674,8 +8716,8 @@ the alternatives, what was verified, and the sources.
 User request (2026-10-03): "Install current on dev and orchestrate two photos plus one settings photo for the
 README.md". The README shows four photos, made on a claude-desktops Windows desktop with invented demo data, never on
 this PC (§4):
-- `docs/images/panel.png`, the hero until 2026-11-15, and still the translations': the All tab with the groups
-  column (692×947).
+- `docs/images/panel.png`, the hero until 2026-11-15 and the translations' until 2026-11-20; no README shows it
+  since: the All tab with the groups column (692×947).
 - `docs/images/prompts.png`, under *Tabs for other apps*: the Claude tab, the strip scrolled to the other apps' tabs
   (626×947).
 - `docs/images/settings.png`, after the Settings list under *Use*: the top of Settings (1388×1307).
@@ -6767,8 +8809,8 @@ chose "B · Scannable + gallery" from three rendered pages, with "The picture ab
 version expands to large, few sec and reverse and repeat"; §4 has the README's layout).
 - `docs/images/hero.gif` is README.md's hero now: the panel at its own width with the groups column open, widening
   until every tab shows, held 2.6 s, narrowing, held 1.6 s, and again; centered, so it grows to both sides (960 × 643,
-  46 frames, 6.4 s a loop, 3.8 MB). It shows 0.2.11 with the owner's screened demo data (§3.5). `panel.png` stays for
-  the four translations until they follow (§6).
+  46 frames, 6.4 s a loop, 3.8 MB). It shows 0.2.11 with the owner's screened demo data (§3.5). The four translations
+  show it too since 2026-11-20, with the gallery below (§4).
 - `docs/images/gallery/` holds the five pictures under *Features*: a regular-expression search, a group's view, the
   Claude tab, the text viewer and the image viewer. [`gallery.py`](tools/readme/gallery.py) cuts them from the Store
   listing's screenshots (§3.5) and rounds the panel crops' corners; retaken screenshots need its boxes measured again.
@@ -6886,6 +8928,11 @@ texts for Partner Center are [`docs/store-listing.md`](docs/store-listing.md), a
   (one HTML question), and "You resubmit" ("you, assistant doing it all"). The kit has the terms and the rule
   (`docs/store-listing.md`); the import put them in, `--check` matched all five languages, and *Resubmit for
   certification* brought back "In certification" (`docs/microsoft-store.md` §8).
+- **Certified and published on 2026-11-15 at 19:51 UTC** (found 2026-11-16 in Microsoft's public catalog,
+  `https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds=9PHL574X9BF9&market=US&languages=en-US`: one product,
+  publisher Nucs, packages `Nucs.BetterClipboard_1.2.11.0_x64__mgez7y7xa0my4` and `…_arm64__…`,
+  `OriginalReleaseDate` 2026-11-15T19:51:52Z). The page: https://apps.microsoft.com/detail/9PHL574X9BF9. The README
+  and its four translations link it since `release/0.2.12` (2026-11-16).
 
 **Facts about Partner Center** **[verified 2026-11-13]**:
 - **Keywords change only through the import** (2026-11-15). The listing page's Keywords box (chips with *Remove*, a
@@ -6903,7 +8950,13 @@ texts for Partner Center are [`docs/store-listing.md`](docs/store-listing.md), a
 - **The `runFullTrust` justification holds at most 500 characters**: "The justification must be 500 characters or
   fewer", in red under the box, and the page saves nothing. The kit's first text had 993.
 - **The notes for certification** have a page of their own (*Supplemental info › Additional Testing Information*)
-  with its own *Save description* link.
+  with its own *Save description* link. **It is a product page, outside every submission** (read 2026-11-20): it
+  sits in the product's left navigation next to *Product management*, at
+  `/products/<id>/suppinfo/additionaltestinginfo`, headed "Notes for Certification", one text box
+  (`certificationNotesDescription`, at most 6,000 characters). Saving it starts no submission, every later
+  submission's testers read it, and the Store's API does not show it: the published submission's
+  `notesForCertification` read empty while the page held the notes. Submission options' own "Notes for
+  certification" heading has no text box, only a pointer to this page.
 - **Utilities + tools has two subcategories** (*Backup + manage*, *File managers*); none is required.
 - **The age ratings** are saved only with a tick: "I agree to the IARC Terms of Use and I am the age of majority".
 - **Listings can be exported and imported** (the overview's *Export listings* and *Import listings*): a `.csv` with
@@ -7022,8 +9075,11 @@ change visibly. The README photos' way (§3.4), with these differences:
 **The release pipeline** (`docs/microsoft-store.md` §7 has it in full).
 - **In the release run:** `package-msix.ps1 -ForStore` before anything is published (the artifact `store-packages`),
   and `submit-store.ps1` as the last step: a new submission made from the published one, the two new packages,
-  "What's new" from the tag's notes (1,500 characters at most), the commit, and the status followed into
-  certification.
+  "What's new" from the tag's notes (1,500 characters at most; since 0.2.12 also each listing that has a translation
+  of them, from `-TranslatedNotesDirectory`, §2.67), the kit's notes for certification in place of the
+  published version's (since 2026-11-20: `-ListingKit`, default `docs/store-listing.md`; at most 2,000 characters
+  with every line break counted as two, checked before anything is sent; `-KeepCertificationNotes` keeps the
+  published ones), the commit, and the status followed into certification.
 - **Exit codes:** 0 submitted; 1 the Store refused, or the commit failed; 2 wrong packages or arguments; 3 the
   `PARTNER_CENTER_*` secrets are not set; 4 the product has no published submission yet. The release run warns for
   3 and 4 and is red for the others.
@@ -7052,7 +9108,7 @@ change visibly. The README photos' way (§3.4), with these differences:
     second factor ("it has"; the Azure CLI's token cannot read it).
 - **Why a script of our own and not Microsoft's `msstore` CLI:** its `publish` takes one package file, and this
   edition ships one per architecture without a bundle.
-- **Tested without the service** (`test-submit-store.ps1`, 45 checks, in CI): a stand-in on this PC answers like the
+- **Tested without the service** (`test-submit-store.ps1`, 58 checks, in CI): a stand-in on this PC answers like the
   documented API and records every request. Since `8939afe` it also runs the script in its own PowerShell, the way
   the workflows do: the first real *check* (run 43719040350) signed in and read the app, and still went red with
   "exit code " (the Check mode's `return` left `$LASTEXITCODE` unset; every ending is an `exit` now, §4).
@@ -7095,11 +9151,29 @@ kit by a scratch generator, session 66cdd808):
    2026-11-13: eight scenes, uploaded once in English, copied into every language by one import, ordered, and
    `--check --screenshots 8` passed.
 3. ~~The IARC tick and *Submit for certification*.~~ Done 2026-11-13, about 22:53 local: "In certification".
-4. **Certification**: the first report failed one search term, "Win+V" (policy 10.1.3); fixed and resubmitted on
-   2026-11-15 ("a few hours, but in some cases can take up to 3 business days"). It publishes itself when certified.
+4. ~~**Certification**~~: the first report failed one search term, "Win+V" (policy 10.1.3); fixed and resubmitted
+   on 2026-11-15, certified and published the same day at 19:51 UTC (above).
 5. ~~The pipeline's connection~~: done 2026-11-14 and 15 (above, "Connected since 2026-11-15"); *check* is green.
-   Submitting through it works once the first submission is published.
-6. After approval: the Store link in the README and in the installer's warning.
+   Since the first submission is published, every stable tag's release run submits by itself.
+6. The Store link: in the README and its four translations since `release/0.2.12` (2026-11-16). Not in the
+   installer's warning, which only shows to someone who has the Store edition installed already.
+7. ~~**Before the 0.2.12 tag: the notes for certification.**~~ Done 2026-11-20 (the owner: "We should be live,
+   also we have a PR and all changes go there", then "do it all in browser instead of me"), in two places:
+   - **The page the testers read**: *Supplemental info › Additional Testing Information*, a product page outside
+     every submission (below, "Facts about Partner Center"). It held exactly the v0.2.11 kit's notes ("Uninstall:
+     the history is in the package's own data folder, which Windows removes with the app.", true for 1.2.11; 0.2.12
+     keeps the history in `%LOCALAPPDATA%\BetterClipboard`, which stays, policy 10.2.7). It holds the 0.2.12 kit's
+     text since 2026-11-20, typed in the owner's Chrome and read back after a reload (1,966 characters, SHA-256
+     `e2af5006…b0b1ce`, equal to the kit). Saving it started no submission.
+   - **The submission's own field**: on `release/0.2.12`, `submit-store.ps1` sets `notesForCertification` from the
+     kit (the submission resource's field, "Contains notes for certification for your app" **[docs]**); before, the
+     release's submission was a copy of the published one with only the packages and "What's new" set. The API
+     does not show the page: *check* read the published submission's field as empty (0 characters) before and after
+     the page was changed (runs 44729126650, 44735367700). What the testers see of this field is not known.
+   - Partner Center's limit for the notes, 2,000 characters, is not documented: developers who publish there report
+     it (public pull requests; one went over it), one unsure whether a line break counts once or twice, so the
+     script and `check-store-listing.py` count every line break as two (the kit: 1,966 characters, 1,978 counted
+     so). The page's own text box takes 6,000. Never edit a submission the API made before it is committed (§4).
 
 ---
 
@@ -7329,10 +9403,105 @@ kit by a scratch generator, session 66cdd808):
   the `presented` flag — `AppWindow.IsVisible` is
   true all the time once the warm-up ran. New code that hides or shows the panel's window directly breaks the instant
   summon; new code that asks "is the panel up?" asks `IsOpen`.
+- **A deactivation while one of the panel's popups shows is the user leaving** (§2.56). In the WinUI we ship no popup
+  takes the activation, and the popups' windows are owned by the panel's. So:
+  - a new popup of the panel is counted in `openPopups` from its opening and gives the count back on its closing
+    (`Popup_Opened` / `Popup_Closed`, or by hand like the peeks), and `ConcealIfUserLeft` must be able to close it: a
+    window of its own goes into `CloseImageOverlays` (or `CloseUpdateDialog`'s like), or it stays on screen without its
+    panel;
+  - focus given back after a popup goes through `GiveKeyboardBackAfterPopup` (only while the panel is in front), never a
+    bare `Focus` call;
+  - a hover action that opens something by itself (a peek) starts only when `MouseMovedSincePanelChanged()` says so, and
+    whatever uncovers the list under a resting mouse calls `SuspendPointerSelection()` before it goes, not only in a
+    `Closed` handler.
+- **When the QA counts the panel's popups by their windows, it also counts tooltips.** A WinUI tooltip is a windowed
+  popup of the same process; the eye button's showed 1 s after the mouse came to rest on it, and was first taken for a
+  reopened peek (§2.56). Tell them apart by size (a peek or a viewer covers the monitor) or by UI Automation's
+  `ToolTip` control type.
+  - UI Automation also lists a button's tooltip under the button's own name, with the place it last showed (above the
+    panel), also after it closed. A search by name alone found the pin's tooltip before the pin, and its clicks hit
+    empty space above the panel (2026-11-20). Search a button by name and the `Button` control type.
+- **The panel may show without the keyboard: ask `focusless` and `IsInFront`** (§2.59). By default the panel's window is
+  never active while it shows; the app the user types in keeps the focus, and a hook hands the panel its keys. So:
+  - a new key the panel acts on goes into `HandleKeyWithoutFocus` as well as `Root_PreviewKeyDown`, and into
+    `FocuslessKeyRules` when the rules would let it pass;
+  - code that focuses one of the panel's controls does nothing in this mode, or calls `TakeKeyboard(reason)` first when
+    the user must type into that control: a XAML focus call does not give the panel Windows' keyboard, and the keys keep
+    going to the app;
+  - "is the panel in front?" is `IsInFront` (its window in front, or taking the keys without the focus), never
+    `ForegroundHelper.IsForeground(hwnd)` alone; a deactivation tells nothing in this mode, the hooks report the leaves
+    (`HandleLeave`);
+  - a modifier of a click is `IsKeyDown` (the keyboard's own state in this mode), never `InputKeyboardSource` directly;
+  - a key that starts a program awaits `TakeKeyboardBeforeLaunchAsync` first: a key the hook took reaches no window, so
+    the process may not bring the program's window forward, and Windows opens it behind the app (§2.17, 2026-11-21). A
+    click on the panel is input the process received, which is enough.
+- **No element of the panel's surface takes the keyboard; only the search box and the panel's popups do** (§2.66). A
+  guard on `FocusManager.GettingFocus` (`ClipboardFlyout.SearchFocus.cs`) refuses every move to an element under `Root`
+  but the search box while the panel shows. So:
+  - a new button, tab, icon or list needs nothing, and a `Focus` call on one of them does nothing;
+  - a new control the user must type into goes into a popup (a flyout, a menu, a dialog), which may take the keyboard and
+    gives it back when it closes, or `PanelFocus` learns it;
+  - something a control's focus used to carry (bringing it into view, its keys) is done another way, as the tabs'
+    Menu key, Left/Right and reveal are (`clickedTab`, `RevealClickedTab`).
+- **x:Bind of a WinUI `Window` starts at the window's first activation** (the generated code subscribes to
+  `Activated`): a window shown without being activated shows its unbound defaults until `Bindings.Initialize()` is called
+  (idempotent; §2.59).
+- **A clipboard change that keeps the monitor's own window the owner is BetterClipboard's own** (§2.3, §2.59): only its
+  own write makes that window the owner. Code that writes the clipboard goes through `ClipboardMonitor.WriteAsync`, so
+  its writes are owned by that window and never come back as copies.
+- **Nothing goes over Start, Search, Quick settings, the notification center or Task View** (§2.61): Windows keeps them in
+  z-order bands above every app window, always-on-top ones included, and refuses an ordinary process the activation while
+  Start is open. A new way of showing the panel (or another window over the user's work) asks `ForegroundContext.Surface`,
+  or `ShellSurfaces.Describe` for a window it got another way, and then stands beside the surface or closes it the way Esc
+  does (`ShellSurfaces.CloseAsync`), never over it. Act only on the bands measured (`KindOfBand`): an Esc that reaches an
+  app cancels its dialog or its rename.
+- **`SetWindowPos(HWND_TOPMOST)` can report success and leave a WinUI window not topmost** (§2.61): once the panel's window
+  had lost the flag, it refused the plain request for good, also while nothing was open. Check `WindowInterop.IsTopmost`
+  after asking, and set the flag through the presenter turned off and on (`ClipboardFlyout.EnsureTopmost`); a log line that
+  says "put back on top" without that check can be wrong.
+- **A copy may run with Windows' UI access** (§2.63, `install.ps1 -UIAccess`). `CreateProcess` refuses its program (740)
+  from any process: a start of `BetterClipboard.exe` that must keep UI access goes through the shell
+  (`QuietProcess.StartThroughShell`), one that needs the program only sets `__COMPAT_LAYER=RunAsInvoker` (the Cmd
+  helper). Never ask for every right on another BetterClipboard process (`Process.Handle`): one started with UI access
+  keeps the High label of its start, and a Medium process gets only `SYNCHRONIZE` and limited query rights on it
+  (`ProcessExitWait.Open`).
+- **`install.ps1` runs the new program directly only before `Update-UiAccess`** (`--validate`, `--set-hotkeys`,
+  `--set-update-check`): once its manifest asks for UI access, Windows refuses it to `&` and `Start-Process` (740), and
+  only the shell or Explorer start it (`Start-AppThroughExplorer`).
+- **Never add a certificate to the owner's trusted roots, or install with `-UIAccess` on their PC, without their word:**
+  like registering a package (§4), it belongs in a test desktop.
+- **Restore a mutation check with `cp` or `touch`, never by `mv` of a copy made before the mutation:** the copy keeps its
+  older time, MSBuild finds the mutated build output newer than the restored source, and the next build and test run keep
+  the mutated binary (2026-11-20: the full suite then failed the very test the mutation was for, §5).
+- **The panel may stay open after use: ask `StaysOpen`** (§2.55). A pinned panel stays on screen, always on top and not
+  active, while the user works in another app. So:
+  - code that ends a use of an item (a paste, a copy, an opened file, a command run, a link) calls `Dismiss` or
+    `PutAwayForPaste`, which keep a pinned panel; only the user's own close (Esc, the shortcut while the panel is in
+    front, Alt+F4, the gear) calls `CloseByUser`;
+  - a deactivation is no reason to conceal a pinned panel: new deactivation or leave logic checks `StaysOpen`, as
+    `OnActivated`, `ConcealIfUserLeft` and `UpdateDialog_Closed` do;
+  - the paste target is `AppController.PasteTargetWindow`, which follows the foreground while pinned
+    (`NoteForeignForeground`): never assume it is still the window captured at the shortcut;
+  - a new header button that can be hidden joins `PanelButton` (in header order), the *Buttons in the panel* card and
+    `ApplyHeaderButtons`, and so counts in `PanelButtons.CountShown`, which sets the minimum width (36 DIPs a button); one
+    that cannot be hidden raises `CountShown`'s count of those always shown (today the gear alone).
 - **Nothing goes between a paste's Enter and its Ctrl+V** (§2.52). New work a paste causes — storing, bumping, resetting
   the panel, saving a setting — goes after the Ctrl+V (after `DeliverAsync`, or into `FinishPuttingAway`), and the UI
   thread stays free for `FinishAfterPaste` (150 ms) after it: the target's activation waits on the panel's thread, and a
   layout pass there held a paste back by its length. The app's log names a slow paste's stages ("Pasted: Ctrl+V sent …").
+- **A modifier BetterClipboard injects stays down until the window took the key it modifies** (§2.54). One `SendInput`
+  call that releases the modifier at its end is not enough: another program's `AttachThreadInput` resets the window's key
+  state to the keyboard's, and a window that takes the keys late then sees the key without its modifier ("v" for Ctrl+V).
+  Hold it (`SendCtrlVHoldingCtrl`, `InputThreadWatch.WaitUntilTaken`, the release in a `finally`), and hold the user's own
+  keys back meanwhile (`PasteKeyGuard`), or each of them arrives as modifier+key.
+- **Never judge what another thread took from its key state** (`AttachThreadInput`, then `GetKeyState`): the attach is a
+  reset itself, and other programs' resets copy the keyboard's state into it — the probe saw a V "taken" by a suspended
+  window. Ping one of its windows instead (`WM_NULL` with `SendMessageTimeout`): only its message loop answers.
+- **One `SendInput` call is not atomic while other programs' keyboard hooks are slow.** Microsoft says its events are not
+  interspersed with other input, yet with a hook that took 100 ms per event, a key another program sent meanwhile landed
+  between them (§2.54).
+- **A test that installs a real low-level keyboard hook is opt-in outside CI** (`BETTERCLIPBOARD_HOOK_TESTS=1`; CI runs it
+  by `GITHUB_ACTIONS`): on a developer's PC it holds back the keys typed meanwhile.
 - **WinUI list controls animate every change by default.** ListView's `ItemContainerTransitions` (AddDelete, Content,
   Reorder, Entrance) play on every insert, remove and reload: after a summon they kept cards sliding in for ~0.3 s. Where
   a list must show at once, give it an empty `TransitionCollection`, and patch the collection (`CollectionPatch`) instead of
@@ -7426,6 +9595,10 @@ kit by a scratch generator, session 66cdd808):
     (`PointerSelectionGate`, the peek's `PeekCursorMoved`). Without that, the keyboard's selection jumps back to the
     row under the mouse, and Enter after a typed search pastes that row.
   - New code that sets the list's selection without the mouse calls `SuspendPointerSelection()`.
+  - Nor is an exit proof that the mouse left (§2.56): while Settings was open, WinUI replayed "pointer exited" to the card
+    under a resting mouse every half second, with a position outside the card. A hover that ends on `PointerExited`
+    ignores a generated exit while the cursor is still over the element (`IsReplayedExitOver`), and a generated event
+    never restarts a countdown that runs.
 - **Hovering never scrolls a list.** A hover that brings its row into view moves the next row under the cursor, which is
   then hovered in turn. `SelectByPointer` sets `SelectedItem` only; `SelectIndex` (which scrolls) is for the keyboard.
 - **To select a `SelectorBar` tab from code before the bar has loaded, set the tabs' `IsSelected` flags too** (§2.28).
@@ -7496,7 +9669,14 @@ kit by a scratch generator, session 66cdd808):
     2026-11-15 (below) each bullet is one or two lines that name the feature and link the section with its details,
     and the list stays tight: one item with a second paragraph (a blank line inside the list) makes GitHub space
     every item apart;
-  - a new tab: the *Use › Tabs* table, plus a subsection under *Tabs for other apps*;
+  - a new tab: the *Use › Tabs* table, plus a subsection under *Tabs for other apps*. Since 2026-11-20 (the owner:
+    "hyperlinked to its section, in there it has link to official project/website") a tab of another program has
+    its name in the table's Tab column linked to that subsection (`[Everything](#everything)`; tabs that share a
+    subsection share its anchor, Pwsh and Cmd, Claude and Codex). The subsection links the program's own site at
+    its first mention, with the link Settings › Third party uses (`ThirdPartyCatalog`). Windows' own tools
+    (Snipping Tool, the Run dialog, Command Prompt) get the subsection link only. The translations link the same
+    anchors (`check-translations.py` compares link targets), and the Hebrew one keeps a trailing sign's mark after
+    the link: `[Notepad++](#notepad)&lrm;`;
   - a new key or gesture: the keys table under *Use*;
   - a new menu entry: the keys table's menu row;
   - a new `bclip` command or filter: the *Command line* table;
@@ -7506,8 +9686,8 @@ kit by a scratch generator, session 66cdd808):
   `docs/code-signing.md`) and `#readme`. README.md's pictures: the hero animation `docs/images/hero.gif` and the
   gallery under *Features* (`docs/images/gallery/`), both of 0.2.11 with the owner's screened demo data (2026-11-15,
   §3.4), and three photos of `7d7df8d` with invented demo data (2026-10-09): `prompts.png`, `settings.png` and
-  `update.png`. The translations still show `panel.png` instead of the animation (§6). All come from claude-desktops
-  Windows desktops, never the user's screen.
+  `update.png`. The translations show the same pictures (since 2026-11-20). All come from claude-desktops Windows
+  desktops, never the user's screen.
   When a change makes one of them wrong, retake it the same way (§3.4).
   The title carries the app icon, `src/BetterClipboard.App/Assets/AppIcon.png` (256 px, from `tools/make_icon.py`; the
   Chocolatey `iconUrl` loads the same file, so keep it there). At 40 px with `align="top"` it sits within 2 px of the
@@ -7527,18 +9707,22 @@ kit by a scratch generator, session 66cdd808):
   - Checked with GitHub's own renderer (`gh api markdown`, mode `markdown`, the way README files render: the `align`
     survived and the Markdown inside was read), then drawn with github-markdown-css in a headless Chrome.
   - **The restyle of 2026-11-15** (the owner: "Now make the README.md neat and attractive", then "B · Scannable +
-    gallery" from three rendered pages, and "English first": the translations follow later, §6):
+    gallery" from three rendered pages, and "English first": the translations followed on 2026-11-20, below):
     - the gallery: two tables under the *Features* list (three panel pictures, then the two viewers), each picture with
       a `<sub>` caption. Picture names stay unique among all the README's pictures: the docs site copies them into one
       folder (§2.51), and two different `prompts.png` failed its build;
     - keys as `<kbd>` from *Use* to *Command line* (`<kbd>Win</kbd>+<kbd>V</kbd>`); a key written there gets them too;
     - long side matters folded into `<details>` whose `<summary>` says what is inside: the installer's options, and
       the other kinds of copies under *Updates*;
-    - warnings and hints as GitHub alerts: `> [!NOTE]` (unsigned releases; the Store edition not published yet),
-      `> [!TIP]` (every way to install, on the docs site; `BETTERCLIPBOARD_DATA_DIR`), `> [!IMPORTANT]` (`bclip` is
-      off by default). GitHub's `/markdown` API draws alerts only in mode `gfm`, which also turns every line break
-      into `<br>`; in mode `markdown`, the way README files render, they come back as plain quotes, while the README
-      page on github.com draws them. So preview in mode `markdown` and expect the alerts as quotes there;
+    - warnings and hints as GitHub alerts: `> [!NOTE]` (unsigned releases), `> [!TIP]` (every way to install, on
+      the docs site; the Store edition's Store page, since 2026-11-16; `BETTERCLIPBOARD_DATA_DIR`),
+      `> [!IMPORTANT]` (`bclip` is off by default). GitHub's `/markdown` API draws alerts only in mode `gfm`, which
+      also turns every line break into `<br>`; in mode `markdown`, the way README files render, they come back as
+      plain quotes, while the README page on github.com draws them. So preview in mode `markdown` and expect the
+      alerts as quotes there. **An alert is drawn as a box only where no HTML element holds it:** inside an open
+      `<div>` or `<details>` (a centered `<div>`, a fold, the Hebrew README's `<div dir="rtl">`) it stays a plain
+      quote that shows `[!IMPORTANT]` as text (found 2026-11-20 on the Hebrew README, below; `check-translations.py`
+      catches it in the translations);
     - no heading changed, so every anchor and every page of the docs site stayed.
 - **The docs site is cut from README.md** (§2.51). Each `##` heading is a page and each `###` a child page, named by its
   GitHub anchor, so renaming a heading renames its page and changes its address.
@@ -7572,6 +9756,21 @@ kit by a scratch generator, session 66cdd808):
     the tabs filter by them. Show them with `SourceNames.Display`, and add a new made-up name to `SourceNames.Templates`.
   - **Dates** go through `RelativeTimeFormatter` (day and month names follow `UiText.DateCulture`); a new date pattern
     is a catalog entry like `d MMM`.
+  - **A word BetterClipboard stores for a copy is translated where it is shown, never where it is stored** (§2.37,
+    2026-11-16): `ContentClassifier`'s previews ("Image · 1920 × 1080", "Formatted content", a file list's "+3 more")
+    stay English in the store, which the search, `bclip` and older versions read, and `PreviewText.Display` translates
+    them by their shape where they are shown. A new preview the classifier words itself needs its shape there too, or
+    it shows in English in every language; `PreviewTextTests` runs the classifier's own output through it.
+  - **Sizes go through `ByteSizeText.Format`** (its units come from the catalogs), and a release's date through the
+    catalog's `d MMM yyyy`: never `$"{n} MB"` or a date pattern written in the code.
+  - **Before a release, look for text that bypasses the catalogs** ([`docs/localization.md`](docs/localization.md),
+    *Checking that nothing bypasses the catalogs*): the guards see only text that reaches `UiText` or `{loc:Tr …}`,
+    and every gap of 2026-11-16 reached neither.
+  - **An update failure is always an `UpdateMessages` constant** (2026-11-21): the update dialog translates a failure
+    only through `UpdateMessages.Templates`, so a message typed into `new UpdateException(…)` shows in English in every
+    language (`UpdateFailures_AreWordedFromTheTemplates` fails on one). A message BetterClipboard words itself that a
+    sentence shows as `{ex.Message}` is a constant in its class's template list, translated where it is shown
+    (`TempImageFiles.MessageTemplates`, `EditionDataMigrator.MessageTemplates`).
   - **Every new string comes with its description** (2026-11-09): `catalog.py add "…" -d "…"`. It says where the string
     shows, what each `{0}` holds, how much room there is and which words to keep; `check` and
     `LocalizationTests.EnglishCatalog_EveryRowHasItsDescription` fail on a row without one. A new string also needs
@@ -7590,7 +9789,7 @@ kit by a scratch generator, session 66cdd808):
     the Write tool both put the raw, invisible character into a file again that day.
   - **A translation must fit the room its description names.** Measure, don't guess: Pillow's
     `ImageFont.truetype(r"C:\Windows\Fonts\segoeui.ttf", 14).getlength(text)` against the English (the search box
-    shows about 222 px of text).
+    shows about 292 px of text at the panel's default width and about 220 at its narrowest, §2.6.2).
 - **Logs and `bclip` stay English** (§2.37). Never pass `UiText` output to `AppLog`: when a text is both shown and
   logged, build it twice. `bclip` pins English in `Main`, and its tables call `RelativeTimeFormatter` with
   `localized: false`. `LocalizationTests.NoLogLineIsBuiltFromTranslatedText` sees only a log call that names `UiText`
@@ -7605,9 +9804,15 @@ kit by a scratch generator, session 66cdd808):
     `git rev-list --no-merges <branch point>..HEAD -- README.md`, then `git show --name-only` for each.
   - **Check them with `python tools/readme/check-translations.py`** (every translation, or the files named). Section
     by section (the translation's `<a id>` equals the English heading's anchor) it compares list items per depth,
-    table rows, paragraphs, images, link targets and the commands in code blocks (comments are translated); then
-    GitHub's rendering of each whole file (the REST API's `/markdown`, nothing published; `--offline` skips it): the
-    same tables with the same rows, list items and code blocks, nothing left as raw `**` or `](`.
+    table rows, paragraphs, images, link targets, the commands in code blocks (comments are translated), and since
+    2026-11-20 the keys written as `<kbd>`, the alert boxes in order and the `<details>` folds (a translation shows
+    Microsoft's Store badge in its own language: `get.microsoft.com/images/<language>%20dark.svg` counts as the
+    English one); then GitHub's rendering of each whole file (the REST API's `/markdown`, nothing published;
+    `--offline` skips it): the same tables with the same rows, list items and code blocks, nothing left as raw `**` or
+    `](`. In every file it also checks that no alert box stands inside an open `<div>` or `<details>`, where GitHub
+    draws it as a plain quote (since 2026-11-20; the rendering in README mode draws no box at all, so it cannot tell).
+    - Until 2026-11-20 it saw neither keys, alerts nor folds: after the restyle it reported 12 differences per
+      translation, but none for the missing *Updates* fold or the 134 keys still written as code.
     - It asks with gh's stored sign-in (`gh auth token`, with `GH_TOKEN`/`GITHUB_TOKEN` hidden), else anonymously:
       60 requests an hour per address, which a few runs used up on 2026-11-13 (HTTP 403 "rate limit exceeded").
     - A README.md that holds another session's unstaged text makes every translation differ (on 2026-11-13 the AI
@@ -7624,13 +9829,33 @@ kit by a scratch generator, session 66cdd808):
     - a block that starts with a Latin word, a code span or `&lrm;` starts with `&rlm;`; a list takes its direction
       from its first item, a nested list from its own;
     - every inline code span has `&lrm;` on both sides, or `-NoTakeOverWinV` shows as `NoTakeOverWinV-`;
+    - every key combination too (`&lrm;<kbd>Ctrl</kbd>+<kbd>P</kbd>&lrm;`): GitHub's stylesheet makes `<kbd>` an
+      inline block, which the bidirectional algorithm treats as a neutral sign, so without the marks the combination
+      shows as P+Ctrl (measured 2026-11-20 in Chrome with GitHub's HTML and stylesheet: 3 of 3 unmarked combinations
+      mirrored, 0 of 55 marked ones). A single key needs no mark; the README keeps the marks its code spans had;
     - a `+` or `#` that ends a Latin word gets `&lrm;` after it when Hebrew or the end of its block (a table cell ends
       at its `|`) comes next: `Notepad++&lrm;`, `Win+&lrm;אות`. The app marks its own texts the same way (§2.37);
     - the marks are written as the entities `&rlm;` and `&lrm;`, never as raw U+200F and U+200E, which no editor or
-      diff shows.
+      diff shows;
+    - **an alert box stands outside the `<div dir="rtl">`:** close the `<div>` right before `> [!IMPORTANT]` and
+      open it again right after the quote. Inside it, GitHub drew both boxes as plain quotes showing `[!IMPORTANT]`
+      and `[!TIP]` as text (GitHub's own HTML of the file pushed in `e560272`, 2026-11-20; the sync's first version).
+      Outside it, the box lays out left to right (the title "Important" on the left, the bar on the left) and its
+      text right to left: the box's paragraphs have `dir="auto"` of their own (drawn in Chrome, 2026-11-20);
+    - **a loose list lays out left to right** (bullets on the left; each item's text still reads right to left). In
+      a loose list (a blank line between items, or between two blocks of one item) every item's text is a paragraph
+      with its own `dir="auto"`, which the list's `dir="auto"` skips, so the list finds no letter and falls back to
+      left to right (measured 2026-11-20 on GitHub's own HTML of the page, `gh api -H "Accept:
+      application/vnd.github.html" repos/…/contents/<file>`: 3 loose lists, all left to right). Keep a list tight where
+      the structure allows: the *Install* list has no blank lines around its code block (a fenced block may follow a
+      line of text directly). The ShareX *Where it looks* list and the *Code signing policy* list cannot be tight: a
+      paragraph follows a nested list there (§6).
 
-    `check-translations.py` checks all four (the last in every translation). The page was also drawn with
-    github-markdown-css in a headless Chrome and each character's position measured.
+    `check-translations.py` checks all of these but the loose lists (the entities rule in every translation, not only
+    the Hebrew one). The page was also drawn
+    with github-markdown-css in a headless Chrome and each character's position measured. The API's HTML lacks the
+    `dir="auto"` that github.com adds to paragraphs, headings, lists and code blocks: a preview must add it, or code
+    blocks come out scrambled right to left.
 - **Every third party gets its entry in `Core/Presentation/ThirdPartyCatalog`** (Settings › Third party, §2.20).
   - A package that ships: credit it in a component's `Packages`, or add a component plus its
     `THIRD-PARTY-NOTICES.md` row (same name, same license text). `ThirdPartyCatalogTests` fail until both agree.
@@ -7758,6 +9983,9 @@ kit by a scratch generator, session 66cdd808):
   - Keep `-Update` to one copy: its install folder, the records that name that folder, and the programs that run from
     it. No shortcut, Run value, PATH or Explorer change.
   - The result file's members (`version`, `ok`, `error`, `finishedUtc`) belong to the contract: the old app reads them.
+  - The command line also runs as administrator (§2.63: the shell's `runas`, for a copy in Program Files): Windows gives
+    it the account's own environment, never the app's, and the arguments as `JoinArguments` joined them. Nothing in
+    `-Update` may depend on the caller's environment variables.
   - [`tools/release/test-update.ps1`](tools/release/test-update.ps1) runs the command line against the packaged zip in CI
     and in the release job. It is safe on this PC too (scratch folders; it proves that nothing else changed).
 - **`BetterClipboard.exe --apply-portable-update …` is a contract too** (§2.48): a portable copy starts the *new*
@@ -7848,6 +10076,37 @@ kit by a scratch generator, session 66cdd808):
   that code signing asks for (§3.3): what is requested, from whom, what the request shows, and how to switch it off. A
   new request (telemetry, a crash report, a second update source) needs its paragraph there, a Settings switch, an
   installer option and a line in the installer's closing note before it ships. Log everyday network failures at Info.
+- **Windows' acrylic (`DesktopAcrylicController`) stops following the theme for every value once one is set**
+  (§2.58): a dark window that set only its tint and luminosity opacities got the light theme's tint and fallback
+  colors. Set all four (tint color, tint opacity, luminosity opacity, fallback color) for the theme in effect, or
+  call `ResetProperties()` to give them back to Windows. An inactive window's acrylic is a solid color (state
+  `Fallback`); a backdrop that must stay glass while another window has the keyboard gives the controller a
+  configuration of its own with `IsInputActive` true.
+- **Never replace a shown window's `SystemBackdrop`**: in the backdrop lab, swapping it right after the content's
+  theme changed ended the process inside WinUI (0xC000027B, a stowed E_INVALIDARG; §2.58). Set a backdrop once and
+  change its own properties (`AdjustableAcrylicBackdrop.Level`), or close the window and make a new one.
+- **A WinUI 3 app ends when its last window closes** (`DispatcherShutdownMode.OnLastWindowClose`, the default): a
+  tool that closes one window before it opens the next sets `DispatcherShutdownMode.OnExplicitShutdown` and calls
+  `Exit()` itself (the backdrop lab's visible run wrote nothing until it did).
+- **The Write and Edit tools can turn `\uXXXX` escapes into raw characters** again (2026-11-20: the glyphs of
+  `PanelButtonRowViewModel.GlyphOf`); sweep new C# files for private-use characters before committing (§4,
+  Glyphs).
+- **A WinUI `TeachingTip` in a window of its own** (`ShouldConstrainToRootBounds = false`; the pin's tip, §2.55)
+  **[verified from microsoft-ui-xaml's `TeachingTip.cpp` and live, 2026-11-20]**:
+  - **It checks no room:** it takes `PreferredPlacement` as given (`DetermineEffectivePlacement`), so measure the room
+    yourself.
+  - **It does not follow its window:** WinUI places it from its target's place inside the window, and only when it opens or
+    when `PreferredPlacement` or `PlacementMargin` change. After a move, toggle `PlacementMargin` by a hundredth of a DIP.
+  - **It refuses `IsOpen` changes while it animates:** during its open or close animation it sets `IsOpen` back a frame
+    later (`OnIsOpenChanged`). Check again after a change (`ReconcileKeepOpenTip`).
+  - **Never close it to move it:** closing its window during a drag of its owner takes the mouse capture away, and the
+    drag ends.
+  - **It catches clicks without activating its owner:** its window keeps transparent rows over its target (the tail's
+    margin, about 18 px at 100 %). A press there still reaches the control below, but Windows does not activate the
+    owner window.
+  - **Keyboard and accessible name:** with light dismiss off it takes no keyboard when it opens. Its popup's
+    UI Automation name is the tip's `Name`, else its `Title`, so a tip with only a `Subtitle` needs
+    `AutomationProperties.Name`.
 - **A flyout that leaves the panel's window** (`ShouldConstrainToRootBounds = false`, §2.29):
   - Count it in `openPopups` from its `Opening` event, not `Opened`: its window can take the activation first, and a
     panel that is deactivated with no popup counted conceals itself.
@@ -8070,6 +10329,17 @@ kit by a scratch generator, session 66cdd808):
     not be another product's title, "Win+V" included (policy 10.1.3; the first certification failed on it).
 - **A submission the Store's API made must not be edited in Partner Center before it is committed**: the API can then
   no longer commit it. `submit-store.ps1` deletes a pending submission first, for the same reason.
+- **A new notes draft is a change to its translations** (§2.67). Once `docs/release-notes/X.Y.Z/<tag>.md` exists, every
+  commit that carries a new draft must update the translation and its stamp too, or the release run stops at its first
+  step ("translated from other English notes"). `python tools/release/release_notes.py check --version X.Y.Z <draft>`
+  says whether they agree, and `stamp <draft>` prints the line that goes under the language line. In a translation file:
+  - one line per paragraph and per list item: GitHub's file pages join wrapped lines with a space, which Chinese must
+    not get;
+  - no `-->`, `--!>` or `<!--` (write an arrow as →): they would end the hidden block early, or open another;
+  - a blank after the closing `**` of a lead-in that ends in Chinese punctuation (`**上架 Microsoft Store。** Better…`):
+    CommonMark closes no emphasis between such punctuation and a letter (GitHub's renderer then drew all 15 lead-ins
+    bold);
+  - the app's own words for its labels (`zh-Hans.json`), and links to the translated README's sections.
 - **The listing kit is the source of what the Store shows.** Change `docs/store-listing.md`, run
   `python tools/release/test-store-listing.py`, and import the generated file (`store-listing.md` §4). A text edited
   only in Partner Center is overwritten by the next import and was in no review.
@@ -8082,9 +10352,13 @@ kit by a scratch generator, session 66cdd808):
   - **A right-to-left listing is checked in a right-to-left render** before it is imported: signs after a Latin
     word, numbers and brackets move.
 - **When a release changes what the Store edition does** (a new data source, anything sent over the network, text
-  written by an AI model): the description, the certification notes, the age-rating answers ("content that is not
-  part of the download", "generated AI content") and the *generative AI* declaration under Properties change in that
-  release's submission, by hand, before it is committed. The pipeline carries all of them over unchanged.
+  written by an AI model): the notes for certification change in the kit (`docs/store-listing.md` §1) before the tag,
+  because the release run sends the kit's (since 2026-11-20; at most 2,000 characters with every line break counted
+  as two), **and on the product's *Additional Testing Information* page, by hand**: that page is what the testers
+  read, it lives outside every submission, and the API does not reach it (§3.5). The description goes through the
+  kit and an import. The age-rating answers ("content that is not part
+  of the download", "generated AI content") and the *generative AI* declaration under Properties change by hand in
+  Partner Center, before that release's submission: the pipeline carries those over unchanged.
 - **claude-desktops Windows desktops, lessons of the Store work (2026-11-13):**
   - `Add-AppxPackage` and `Remove-AppxPackage` from `run_command` can outlast the call: start a script with
     `start "" /min powershell … -File <script>` that writes a log, and read the log.
@@ -8112,6 +10386,15 @@ kit by a scratch generator, session 66cdd808):
     `list_windows` (title "… - Photos") and close them with the `window` tool, so the next test starts Photos cold.
   - The first `explorer.exe /select,"<file>"` after the installer restarted Explorer opened the folder without selecting
     the file; every later one selected it (seen once; Explorer's, not the app's).
+- **claude-desktops Windows desktops, lessons of the paste work (2026-11-17, §2.54):**
+  - **`launch` of a console program opens a terminal window that takes the foreground**: a paste meant for the window
+    under test then goes there. A probe that must keep a window busy while BetterClipboard pastes into it does that in its
+    own process (`probe_ctrlv.cs`'s `user` mode with `--load` and `--attacher`), not as a second launched program.
+  - **A probe's clipboard owner window needs a thread that pumps messages**: the next program that writes the clipboard
+    sends it `WM_DESTROYCLIPBOARD` and waits (BetterClipboard's write took 2.5 s).
+  - **While a program attaches to the foreground window's thread every millisecond, `GetForegroundWindow` mostly answers
+    0**: compare the foreground by process, and skip the zeros.
+  - **Copying a probe's DLL over the running probe fails** (the file is in use): end it first (`Stop-Process`).
 - **Nothing automatic may undo a choice the user made** (2026-11-14: "I unpinned this copy 3 times in few days. it keeps
   'reviving'", then "Investigate more bugs like this"). Anything that runs again by itself must check that it doesn't
   quietly overrule an explicit action. That covers an import at every start, a catch-up, a re-run of the installer, a
@@ -8124,7 +10407,8 @@ kit by a scratch generator, session 66cdd808):
     `Test-Reinstall`, §3.1).
   - The ways to handle it: record the user's choice where the automatic process can see it (a ledger, a marker, a
     record that names the folder), or apply a default only once. Remember that a cap on a list of the user's choices
-    (the hidden Everything picks, newest 500; hidden shell commands, newest 1,000) brings the oldest back.
+    brings the oldest back: the hidden Everything picks (newest 500) and hidden shell commands (newest 1,000) had one
+    until 2026-11-21; since, such lists keep everything unless the user sets a limit (§2.62).
 - Commits: per the user's global rules (message file in scratchpad, `git add` + `git commit` in one
   command, extensive messages, never amend).
 
@@ -8134,15 +10418,69 @@ kit by a scratch generator, session 66cdd808):
 
 | Feature | How | Result |
 |---|---|---|
+| **The last pass before the 0.2.12 release** (2026-11-21; the owner: "One last pass, completing the release notes and changelog and translations (also code translations confirm) / And then you have a green light to push, merge and release next version"). **The notes** (this project's changelog; it has no CHANGELOG file): every commit since v0.2.11 that changes more than CLAUDE.md, compared with the draft in `ba32947`'s message: every user-visible change is in it (the Store's demo data, the Store pipeline and the docs commits are not the app's), so the draft stands unchanged. **Their Chinese:** 15 lead-ins and 20 Fixed items, as in the English; `release_notes.py check` "translated from these notes" (7,704 characters; a release body of 22,630); the 20 UI names the notes italicize are the zh-Hans catalog's own words (scratch `ui_names_zh.py`). **The READMEs:** `main`'s `360a107` (the Tabs table's program tabs linked to their sections, PowerShell linked at its first mention, in all five READMEs: the owner's request of 2026-11-20) was still on local `main` only; applied to the release without a conflict; `check-translations.py` ok for the four translations, GitHub's rendering included; `build.ps1 -Strict` 0 warnings. **The app's catalogs:** `catalog.py check` 0 missing and 0 to review in es, he, ru and zh-Hans; on the rebuilt final tree the guards pass, Core 188 (`LocalizationTests`, `TranslationCoverageTests`, `RightToLeftTextTests`, `PluralRulesTests`) and Windows 8 (`TranslationTemplateTests`). **What local `main` has that the release lacks,** by a merge in memory (`git merge-tree --write-tree`): its code conflicts are older versions of lines the release's translation audit rewrote; apart from `360a107`, only the cloud backup's design (`5d6936a`, `e2cdc3d`: a docs page and two probes, which its session keeps on `main` for a pull request of its own) and `main`'s own CLAUDE.md records | `git cherry`, `git merge-tree`, the tools named | ✅ |
+| **Release notes in Simplified Chinese, live** (2026-11-21, §2.67; the owner: "Can the release notes have a on first rows a En/Cn but in chinese and when clicked the release notes are replaces with your translation"). A claude-desktops Windows 11 desktop on the worker (`bc-notes-lang`, 1600×900; the worker's drive 2 at a 19 % full I/O stall; ready in 79 s; deleted afterwards with its persist folder), a package of the change (`0.2.11-qa`, before the rebase onto §2.66's focus guard) run as an isolated instance with a stand-in feed: an `HttpListener` on 127.0.0.1 serving the composed 0.2.12 body and GitHub's own v0.2.11 record. *Check now* asked the feed once ("BetterClipboard 0.2.12 is available (running 0.2.11-qa)"). **English interface:** Settings' update dialog drew "**ENG** / 简体中文" as the 0.2.12 notes' first row; a click on 简体中文 swapped them to Chinese in place (the first screenshot, taken at once, still showed English: the GPU-less desktop drew the redraw a moment later), with "[ENG] / **简体中文**", the code block, bullets, bold lead-ins and italics; below, 0.2.11's notes stayed English; the end showed the Chinese footer. *View on GitHub* opened `…/blob/v0.2.12/docs/release-notes/0.2.12/zh-Hans.md` in Edge (read from its address bar through UI Automation; "File not found" until the tag exists). The dialog opened again kept Chinese; ENG swapped back. After the mouse click the focus stayed on the popup (UI Automation: `Window`, no rectangle). **Keyboard:** Tab ×5 reached the `Hyperlink` 简体中文 (first *Update and restart*, then *Later*, *Skip this version*, *View on GitHub*); Enter swapped to Chinese and the focus was on the new line's `Hyperlink` ENG with its rectangle (and its tooltip); Enter again swapped back, the focus on 简体中文; Esc closed the dialog. **Chinese interface** (`InterfaceLanguage` zh-Hans, restarted): Settings in Chinese with its 面板 section; Win+V, the lit update button: the panel's dialog opened 0.2.12 in Chinese ("BetterClipboard 0.2.12 已发布", "ENG / **简体中文**") and ENG swapped it to English. The app's log: 41 lines, 0 WRN/ERR; the feed's log: three requests, the app's with `BetterClipboard/0.2.11-qa`. GitHub's renderer on `zh-Hans.md` (mode `markdown`, a file page): 15 bold lead-ins all closed, 36 list items (the English's count), the table, the code block, 19 links, no raw Markdown, the stamp hidden | claude-desktops MCP tools (`launch`, `click`, `press_keys`, `type_text`, `scroll`, region screenshots, `run_command`); guest scripts `feed.ps1`, `start.cmd`, `focus.ps1` (UI Automation's focused element) and `make_feed.py` (session ab736e05's scratchpad, `qa-feed/`); `gh api markdown` | ✅ Not run: §2.66's focus guard together with the switch (it landed during this work; by its code a text link counts as "elsewhere", which it leaves alone), a real GPU, Narrator, the owner's PC |
+| Release notes in Simplified Chinese, tests (2026-11-21, §2.67): Core `ReleaseNotesLanguagesTests` 49 (new). Ten mutations of `ReleaseNotesLanguages` each caught — fences not tracked, the closing line not checked, an English block accepted, the last block of a language winning, the release page not recognized, any host's page, the hidden span not skipped, no cap, an empty translation accepted, an unknown language shown; the second and the seventh survived the first run and got their cases (a closing line that holds text; a fence opened inside a hidden span). The composer: `test-release-notes.py` 88 checks; nine mutations each caught (the English not checked, a stale stamp accepted, comment markers accepted, a fence never closing, any fence closing any fence, a comment's end not looked for, no footer link needed, right-to-left accepted, no size limit). `test-submit-store.ps1` 70 of 70. `release_notes.py check --version 0.2.12` on the final notes: the Chinese file translated from them, 7,704 characters; the body 22,630 of GitHub's 125,000. `probe_release_notes.py` on the composed body with `--github`: the block hidden in the dialogs of v0.2.6–v0.2.10 (parser `9fb869bbf663`), v0.2.11 (`c9c02529aeca`) and HEAD (55 blocks drawn, as without it), and on GitHub. The Store's "What's new": 1,440 characters in English (1,499 before the notes' edits), 602 in Chinese. The whole suite on the rebased tree (`622a324` plus the change): 3,078 = 3,069 passed + 8 opt-in skipped + 1 failed, `ClipboardCaptureTests.QuickSuccessiveCopies_AreAllCaptured` (24 of 25 copies; 3 of 3 alone at 54 % load, and 2 of 2 with the main tree's older build: the busy PC, §6). A `--no-incremental` build: 0 errors, 0 documentation warnings, no warning in a changed file. **In 0.2.12** (merge request #7, where every change goes while it is open): `ba32947` on `release/0.2.12`, rebased onto another session's `906e945`, its message carrying the newest notes draft (extracted from it, the notes pass `release_notes.py check`: the stamp matches); #7's description replaced with those notes, `Refs #10` kept (read back equal); CI 44936391825 green (3,078 tests: 3,073 passed, 5 skipped, 0 failed; the new step "Release notes in several languages": 88 checks), Docs 44936391819 green, #7 mergeable. Not on local `main` (the release branch takes the changes) and no dev build: a dev build shows nothing of it until a release carries translations | the test executables, `dotnet test --solution`, `mutate_notes.py`, `mutate_composer.py`, `whatsnew.ps1` (session ab736e05's scratchpad, `tools/`) | ✅ |
+| **Run as administrator like Windows, live** (2026-11-21, §2.17; the owner: "The path to ths image was passed to Win+R has Run and Run As Administrator. The run as admin does not work. The image doesn't launch and no UAC appears.", then "Like Windows (Recommended)" and "Gray out the run as admin when we can't"). A claude-desktops Windows 11 desktop on the worker (`bc-runas`, Tiny11 25H2, 1600×900, UAC turned on with `PromptOnSecureDesktop` 0; deleted afterwards with its persist folder), BC-TEST files only, the Win+R entries made through the real Run dialog: a picture (`console-1403.png`), a text file, a folder with a space, a shortcut to Notepad, `https://example.com/`, `compmgmt.msc`, `notepad`. **Before** (the released 0.2.11, from GitHub): *Run as administrator* on the picture logged "No app is set to open it.", nothing opened, no prompt (the owner's line). **Windows' own** (`probe-runas.ps1`): Explorer's menu offers *Run as administrator* for programs only; Win+R's Ctrl+Shift+Enter opened the picture, the folder, the address and a shortcut to a document normally, with no prompt; `notepad.exe` and a `.cmd` got the prompt. **The change** (`0.2.12-dev.runas1`, then `runas2` with the key-path fix, each installed with its `install.ps1 -Package`): the card menu's *Run as administrator* grayed for the picture, the text file, the folder and the address, enabled for `notepad`, `compmgmt.msc` and the shortcut to Notepad (screenshots); Ctrl+Shift+Enter on the picture opened Photos with no prompt ("… asked as administrator: Windows has no administrator mode for it, so it was opened without one, as Win+R's Ctrl+Shift+Enter does. Started."); Ctrl+Shift+Enter on `notepad` brought the consent prompt to the front (Notepad, Microsoft Corporation); ending `consent.exe` (an agent's clicks never reach it, §2.63) left the footer "Not run: Windows could not run it (error -1)." and no Notepad: no fallback. **Found and fixed on the way:** with the panel leaving the keyboard with Edge (§2.59), Ctrl+Enter and Ctrl+Shift+Enter opened Photos and Notepad behind Edge, their taskbar buttons flashing, on `runas1`'s plain *Run* too (code that build does not change); with the panel holding the keyboard (a click into its search box), and after a click on the menu's *Run*, Photos came to the front. `runas2`: Ctrl+Shift+Enter on the picture and Ctrl+Enter on `notepad` brought Photos and Notepad to the front ("The panel took the keyboard: Ctrl+Shift+Enter runs a Win+R command."); a plain Enter still pasted into Notepad without taking the keyboard; at 1920×1080 beside Start, Ctrl+Shift+Enter closed Start in 35 ms, then Photos came to the front. **The owner's double run** (two plain runs of the picture 130 ms apart in their log) was not reproduced: a double click on the menu's *Run*, two real clicks 60 ms apart, and *Run* with the panel holding the keyboard each ran once (§6). The app's log over 0.2.11 and both builds: 150 lines, 0 WRN/ERR | claude-desktops MCP tools (`press_keys`, `click`, `list_windows`, `set_resolution`, screenshots, `run_command`); guest scripts `probe-runas.ps1`, `install-dev2.ps1` (session 3ddb162b's scratchpad, `guest/`) | ✅ Not run: a consent prompt answered by hand (UIPI), a standard user, the owner's PC |
+| Run as administrator like Windows, tests (2026-11-21, §2.17): Windows `RunCommandLauncherTests` 23 (13 new, the §2.1 row). Five mutations each caught (`mutate_runas.py`): addresses judged like files (1 failing), shortcuts not followed (1), `runas` tried on what cannot elevate (1), no fallback after 1155 (2), folders judged by their type (2); the source restored byte for byte and touched, then 23 of 23. The whole suite in a private worktree of `3b8e62a` plus the change: 3,018 = 3,010 passed + 8 opt-in skipped, 0 failed (Core 2,345, Windows 673); a solution build with no warning in a changed file; the hook's documentation checker 0 gaps and no invisible or private-use character in the changed lines (`doc_gaps.py`). **In 0.2.12** (merge request #7, where every change goes while it is open): rebased onto another session's `81154f7` (the search box keeping the keyboard, §2.66; only CLAUDE.md conflicted, merged by hand) as `622a324`, with the newest notes draft (a twentieth **Fixed** bullet; GitHub's renderer: 4 lists, 28 items, one table, one code block, 17 links, no Markdown left as text; the Store's "What's new" unchanged at 1,499 of 1,500, "Fixed: 20 fixes."); the suite on `622a324`: 3,029 = 3,021 passed + 8 opt-in skipped, 0 failed (Core 2,356, Windows 673); `0.2.12-dev.runas3` (the rebased commit) in the same desktop: the picture's item grayed, Ctrl+Shift+Enter on the picture and Ctrl+Enter on `notepad` brought Photos and Notepad to the front, 0 WRN/ERR. Pushed `81154f7..622a324` as a fast-forward, #7's description replaced with the new notes and its `Refs #10` kept (read back equal); CI 44934112974 failed at its first attempt on §6's racy `PromptArchiveTests.Claude_PruneByRenameOver_StoresNothingTwice` ("Access to the path is denied" on its own rename) and passed at its second (3,024 passed, 5 skipped, 0 failed); Docs 44934112994 green. On local `main` as `cca29db` (CLAUDE.md's counts merged by hand: Core 2,332, Windows 672): the suite 3,004 = 2,996 passed + 8 opt-in skipped, 0 failed. Dev build `0.2.12-dev.80.gcca29db` in the dev-builds folder (a scratch feed seeded with dev.78's `build.json`, so its notes start after it; moved in, nothing pruned); the installed dev.76 logged it as offered | the test executables, `dotnet test --solution`, `mutate_runas.py`, `doc_gaps.py` (session 3ddb162b's scratchpad) | ✅ |
+| **The search box keeps the keyboard, live** (2026-11-21, §2.66; the owner: "In the Win+V panel, We are not supposed to lose focus from the search box (unless a panel/modal opens)"). A claude-desktops Windows 11 desktop on the worker (`bc-focus`, 1600×900; deleted afterwards with its persist folder), a package of the change (`0.2.12-dev.focus1`, built on `18c5235`) installed with `install.ps1 -Package`, 21 BC-TEST items through `bclip`, a Win+PrtScn picture, Notepad as the app; real clicks and keys (SendInput), and UI Automation's focused element and the search text read after each step. **Default mode** (the panel leaves the keyboard with Notepad): "bc" typed, a click on the Text tab and on Pinned, "test" and "a" typed: the search read "bctesta", Notepad kept the foreground and its text stayed empty; "charlie", a click on the Text tab and Enter pasted "BC-TEST charlie three" into Notepad. **After a click into the search box** (the panel takes the keyboard): the search box kept it after a click on a tab, on Pause (on and off), the groups toggle, the logo, the title, a group icon, the list's empty area and its scroll bar's track, after Tab and Shift+Tab, after a drag of a card onto a group (it joined the group), and after a pinned paste and Win+V bringing the panel forward; a letter typed after each step reached the search box. Popups took the keyboard and gave it back: the new-group picker (its name box typed "work", the star made the group), the card menu (Esc), the image viewer from the eye (Esc), the text peek's menu (*Select all*, Ctrl+C copied its 40 lines, Esc), the group's *Rename…* box ("home", Enter), the update dialog (Esc), and the tab menu from the Menu key and from Shift+F10 right after a click on a tab (Esc); after typing, the Menu key opened the card menu. A click on Pause's tooltip kept the keyboard in the search box. A tab half under the strip's arrow (Snipping at 499–548, the arrow at 548) was scrolled whole into view by its click (452–525); Left and Right right after it switched tabs with "bc" in the search box, and after typing Left moved the caret. **Classic mode** (*Leave the keyboard with your app* off): Win+V, then a letter typed after each of a click on a tab, two clicks on Pause, Tab, a click on the title, two clicks on the groups toggle and the tab menu (Menu key, Esc): the search read "abcdefg". **The unchanged build** (`0.2.12-dev.76.g59687eb`, from this PC's dev-builds folder) in the same desktop, the same steps: the keyboard went to the Text tab, to the Pause button and, with Tab, to the groups toggle; "b", "c" and "d" were lost (the search read "aefg"). The fixed build's log over three starts: "The search box keeps the keyboard: a ListViewItem / SelectorBarItem / Button did not take it (…; logged once a session)", 0 WRN/ERR | claude-desktops MCP tools; guest scripts `qa.ps1` (steps with SendInput and UI Automation), `setup.ps1`, `seed.ps1`, `mode.ps1` (session 61bd6c49's scratchpad, `qa/`) | ✅ Not run: a real GPU, Narrator, touch and pen, the Store edition |
+| The search box keeps the keyboard, tests (2026-11-21, §2.66): `PanelFocusTests` 11 (10 rows, and the invariants over all 24 combinations). Three mutations of `PanelFocus.Decide` each caught: the surface allowed while the panel shows (5 failed), a redirect where the panel leaves the keyboard with the app (2), the guard also while the panel is concealed (3); restored, 11 of 11. The whole suite on `3dfef62` plus the change, in a private worktree: 2,991 = 2,982 passed + 8 opt-in skipped + 1 failed, `ClipboardCaptureTests.QuickSuccessiveCopies_AreAllCaptured` (20 of 25 copies captured, 5 superseded), also 3 of 3 alone while this PC's CPU stood at 100 % (a QEMU VM, a compiler server, Python processes): §6's load-dependent timing test, in code the change does not touch. The documentation checker 0 gaps on every added C# line; no private-use or invisible character. **In 0.2.12** (merge request #7, where every change goes while it is open): cherry-picked onto `release/0.2.12` as `9441d10` (CLAUDE.md's three conflicts resolved with the branch's counts: Core 2,356, Windows 660), and the commit after it adds the notes' nineteenth **Fixed** bullet (GitHub's renderer: 4 lists, 27 items, one table, one code block, 17 links, no Markdown left as text; the Store's "What's new" unchanged at 1,499 of 1,500, "Fixed: 19 fixes."). The branch's suite on `9441d10`: 3,016 = 3,008 passed + 8 opt-in skipped, 0 failed | the test executables, `dotnet test --solution`, `doc_gaps.py`, `whatsnew.ps1` (session 61bd6c49's scratchpad), `gh api markdown` | ✅ |
+| **Settings regrouped, live** (2026-11-21, §2.65; the owner: "Reorder and translate if any text added/changed."). A claude-desktops Windows 11 desktop on the worker (`bc-regroup`, 1920×1080; deleted afterwards with its persist folder), a package of `ad6feb0` (`0.2.12-dev.regroup`) unpacked and started with a settings file naming English. UI Automation, scrolling the page through its ScrollPattern: the eleven sections in the new order, every card in its new place (Shortcut's three; Panel's seven; Capture's five, Pause capturing first; Privacy ending with Command line and Clear history; Integrations ending with Everything; App's four; Updates; Third party), and screenshots of the top, Capture and Privacy. In Hebrew: the titles חלונית and קליטה, and the Panel section's cards in order; a search for קליטה found 11 settings, the whole Capture section among them. The app's log: 35 lines, 0 WRN/ERR. Locally: the whole suite in the worktree, 3,005 = 2,996 passed + 8 opt-in skipped + 1 failed, `PromptArchiveTests.Claude_ImportsThenFollowsAppends` (§6's timing test, 3 of 3 alone); `LocalizationTests` 77, `TranslationCoverageTests` 16, `SettingsSearchTests` 40; `catalog.py check` 0 missing and 0 to review in every language; every card element the same byte for byte (47 of 47); the notes' Store "What's new" 1,499 of 1,500 characters | claude-desktops MCP tools; guest scripts `sections.ps1` and `scrollto.ps1` (gone with the desktop); `verify_reorder.py`, `regroup_descriptions.py` (session 38c4d2a7's scratchpad) | ✅ Not run: the Microsoft Store edition's page (its cards are still removed by name), Chinese, Russian and Spanish on screen |
+| **The second translation audit before 0.2.12** (2026-11-21, §2.37; the owner: "We have had so much work done since, I would like you to close the gap again"), on `release/0.2.12` after 57 commits since `16866c7`. **The catalogs:** 58 new strings, all translated in zh-Hans, ru, es and he, none equal to the English; `catalog.py check` 0 missing and 0 to review. **The sources:** the XAML scan's 16 findings all names and keys; the C# scan's new rows (App 30, Core 58, Windows 16, compared by file and text) were log lines, `bclip`'s English, SQL and RTF, except the Windows installer's eight update failures typed into their throws and three reasons the app words itself inside shown sentences (both fixed). **A pseudo-translated build** of `65d8b19` (`0.2.12-l10n.3`, `es.json` wrapped as `⟦English⟧` and put back byte for byte after packaging) in a worker claude-desktops Windows 11 desktop (`bc-l10n2`, 1600×900; deleted afterwards with its persist folder), Spanish chosen, BC-TEST data through `bclip`, `seed-extra.ps1`, Win+PrtScn, Win+R and a Command Prompt window, read through UI Automation: Settings with every new card (311 texts; the unmarked ones names, a path, the password managers' list, links and licence names, WinUI's "Buscar"), the panel in All and its 14 tab states (only BC-TEST content, `/compact`, `Get-Date`, names and keys unmarked), the pin and its tip ("⟦The panel now stays open after pasting …⟧", "⟦Unpin: close the panel after pasting⟧"; WinUI's "Cerrar"), and the budget's notification after the budget was set to 1, then 2 MB through UI Automation ("⟦Clipboard history 92 % full: the oldest items will be deleted⟧" with its marked body). **Tests:** Core 2,345 (2 new) and Windows 660: 3,005 = 2,997 passed + 8 skipped, 0 failed, on `7991bec` plus the change; the new guard failed with one installer message put back and passed again; an earlier run on `65d8b19` failed only `PromptArchiveTests.Claude_ImportsThenFollowsAppends` (the known load-dependent test, §6; 3 of 3 alone) | `scan_xaml.py`, `scan_cs.py`, `scan_diff.py`, `new_catalog_rows.py`, `make_pseudo.py`, guest scripts `uiadump.ps1`, `unmarked.ps1`, `keys.ps1`, `invoke.ps1`, `setbudget.ps1` (session 08299f81's scratchpad); `dotnet test --solution` | ✅ Not seen at runtime (the code only): an update that fails to install, *Save to temp* with 1000 copies, the Store edition's setup window, the hover peek's menu, the language picker |
+| Clear history unticked by default (2026-11-21, §2.55; the owner: "Make Clear History unchecked by default"): `AppSettings.HiddenPanelButtons` defaults to `["Clear"]`. A new settings object and a file without the member (what 0.2.11 and older write) hide the trash alone, every other button shows, the header counts five buttons and needs 396 DIPs; a stored empty list (what a 0.2.12 development build wrote before) keeps every button, no migration; a trash ticked back on is written as `[]` and stays shown through a save and a load; the default is written out at the first save. `PanelButtonsTests` 31 (1 new, 1 renamed); the old empty default fails both. The whole suite on `9d1ece9` plus the change: 2,980 = 2,969 passed + 8 opt-in skipped + 3 failed, the ShareX watcher's and two prompt-archive timing tests that §6 lists, 17 of 17 twice when run alone. **In 0.2.12** (merge request #7, where every change goes while it is open): cherry-picked onto `release/0.2.12` as `146d1c9` (CLAUDE.md's two count conflicts resolved with the branch's counts plus this test), and the notes' **Paste one item after another.** paragraph gains a sentence: "The trash that clears your history now starts hidden; tick *Clear history* there to bring it back." (GitHub's renderer: 4 lists, 26 items, one table, one code block, 17 links, no Markdown left as text, as before; the Store's "What's new" unchanged at 1,429 of 1,500). The branch's suite on `146d1c9`: 3,003 = 2,994 passed + 8 opt-in skipped + 1 failed, `SecurityTests.MachineBoundStore_WithRealDpapi_Persists` (`ObjectDisposedException` on a pooled SQLite connection, §6), 3 of 3 alone | the test executables, `dotnet test --solution`, `gh api markdown`, submit-store.ps1's `ConvertTo-StoreNotes` | ✅ |
+| **"Next to the text cursor" in browsers, Electron apps and the console, live** (2026-11-21, §2.64; issue #10; the owner chose "MSAA caret fallback (Recommended)"). A claude-desktops Windows 11 desktop on this PC (`bc-caret2`, Tiny11 25H2, 1920 × 1080, no GPU; deleted afterwards with its persist folder), with Chrome, VS Code 1.147 and Firefox installed silently next to Edge 156, BC-TEST text only; packages of a private worktree installed with `install.ps1 -Package`; each Win+V sent with the mouse far from the caret. **Before** (the released 0.2.11): Notepad, the Run box and Explorer's rename box at the caret wherever the mouse was; Edge (textarea, input, contenteditable, address bar), Firefox, the console, Windows Terminal, Explorer's address bar and the Settings app at the mouse. **The first version** (`0.2.12-dev.caret1`, the lookup on the input thread, 100 ms): Notepad at (240,161) three times, unchanged; Edge at the caret (169,242) three times; Chrome's first Win+V after a fresh start at the mouse 2 of 2 ("did not report … within 100 ms", queued 118–120 ms), the later ones at the caret. **A timing build** (`0.2.12-dev.diag`, every lookup logged, never committed): the first lookup into a process: Chrome 70 and 107 ms, VS Code 144 ms (at the mouse), Edge 20 ms, Firefox 10 ms; later ones 1–10 ms; the console 6–9 ms, the panel under its prompt; Windows Terminal "no caret" in 1.6 ms, at the mouse. Ctrl+Win+V (through the keyboard hook) over a C# window frozen 8 s on a trigger: the shortcut's own keys took 118 ms to go through (the lookup "LATE" at 110 ms on the input thread `[16]`). **The final build** (`0.2.12-dev.caret2`): a fresh Chrome 3 of 3 at the caret (165,249), the first lookup 57.7 ms, logged from the UI thread `[ 2]`; Win+E through the keyboard hook over a fresh Chrome: at the caret, the shortcut sent in 6.6 ms, keys right after it 9.6 ms at most; over the frozen window: the shortcut's keys 6.4 ms, keys after it 4 ms at most, the panel at the mouse after the 250-ms deadline (265 ms, "did not report … within 250 ms" from `[ 2]`), and a second shortcut during the freeze 4 ms (one lookup at a time); a fresh Firefox, its accessibility off: at the caret, a hidden Win32 caret afterwards; "Next to the mouse": at the mouse, nothing asked (queued 6 ms) and Firefox's accessibility still off; at 125 %: Edge at the caret (MSAA (229,250) 1×30, the panel right under it) and Notepad at the caret. The final build's log: 114 lines, 0 WRN/ERR | claude-desktops MCP tools; `probe_caret.ps1` (`summon`, `msaa`, `panel`); guest scripts `fresh.ps1`, `hookdelay.ps1`, `hung2.ps1`, `hungdelay.ps1`, `twopress.ps1`, `hungquery2.ps1`, `scale.ps1` (session 75b82f59's scratchpad, `issue10/guest/`) | ✅ Not run: the owner's PC, a real GPU, several monitors, Narrator |
+| "Next to the text cursor" through accessibility, tests (2026-11-21, §2.64): `AccessibleCaretTests` 17 (3 of 3 runs green). Mutation checks: the one-lookup-at-a-time gate removed, and a summon's lookup that keeps its query, each failed a test; a width of 0 accepted survived, because no rectangle 0 wide intersects a window (kept as a guard for clarity). The whole suite in the worktree: 3,002 = 2,994 passed + 8 opt-in skipped, 0 failed (Core 2,342, Windows 660); a `--no-incremental` build: 0 errors, only CS0108 and the xUnit analyzers' warnings; the documentation checker 0 gaps in the six changed files; no invisible or private-use character. **In 0.2.12** (merge request #7, where every change goes while it is open): built on `release/0.2.12` as `354ccec`, and the commit after it adds the notes' eighteenth **Fixed** bullet (GitHub's renderer: 4 lists, 26 items, one table, one code block, 17 links, no Markdown left as text; the Store's "What's new" unchanged at 1,429 of 1,500, "Fixed: 18 fixes.") | the test executables, `dotnet test --solution`, `doc_gaps.py`, `whatsnew.ps1` (session 75b82f59's scratchpad), `gh api markdown` | ✅ |
+| **The panel's glass after a theme switch: a regression of the 0.2.12 candidate, found and fixed** (2026-11-21, §2.58; found by the next row's QA; the owner chose "Fix it now in #7"). The same desktop. **The fault:** `0.2.12-dev.nomag` (the candidate's backdrop) started in the light theme; Windows switched to dark (`dark.theme`): the panel's text turned light while its glass stayed light, unreadable, also after Esc and Win+V again; twice. The released 0.2.11 (from GitHub, its digest checked; isolated, its stock backdrop) started in light and recolored on the same switch; a restart in dark drew the candidate right. **The fix** (`nomag2`, then the final code as `nomag3`): light→dark and dark→light at the default level; light→dark at 80 (set in the settings file while stopped); Settings › App › Theme set to Light while Windows was dark (light glass, dark text) and back to "Use Windows setting" (dark); a pinned panel left on screen over Windows' Settings during a switch to light (it recolored in place); into High Contrast Black (black glass, the contrast colors) and out of it (light). Each was drawn right, with one log line per switch ("The panel's glass was set up again for the dark theme: …"; two lines 0.8 s apart on entering high contrast, which raises two configuration changes) and none from summons; the final build's log: 21 lines, 0 WRN/ERR. The suite on the final code: 2,950 = 2,942 passed + 8 opt-in skipped, 0 failed | claude-desktops MCP tools; guest scripts `settheme.ps1` (UI Automation on Settings' Theme box), `rects.ps1` (session c480bc1d's scratchpad, `guest/`) | ✅ Not run: a real GPU (the desktop draws the fallback color), Windows' automatic dark mode by schedule (the same switch) |
+| **The search box without its magnifier, live** (2026-11-21, §2.6.2; the owner: "the search box should not have a search button as it auto searches when typing. if there are no other functions to it, remove it from view"; asked, they chose "Win+V panel only" for Settings' box). First WinUI's own code (microsoft-ui-xaml's `AutoSuggestBox_Partial.cpp`, read through the GitHub API): the query button's click only raises `QuerySubmitted`, which nothing in the app handles, and without a `QueryIcon` WinUI collapses the button. A claude-desktops Windows 11 desktop on this PC (`bc-nomag`, 1600×900; the worker's drive 2 was at a 35 % full I/O stall; deleted afterwards with its persist folder), packages of a private worktree of `release/0.2.12` (`0.2.12-dev.nomag`; later `nomag2` and `nomag3` with the row above's fix) installed with their own `install.ps1 -Package`, BC-TEST copies through `bclip` and a BC-TEST Claude Code history. UI Automation at the default width (432 DIPs): the box 392 wide; the toggles at 390, 416 and 442, 24 wide; the `.*` toggle's right edge 4 DIPs from the box's, as their 4 above and below; the text's room 292 DIPs (258 with the magnifier). Screenshots, light and dark: `[text][Aa][W][.*]`, no magnifier; the Claude tab's "Search prompts you sent to Claude Code…" whole (cut before, §2.37). Typing "bravo" while the app kept the keyboard filtered the list to its card; a click into the box gave the panel the keyboard and showed the X left of the toggles; the X cleared the text; a click on Aa and Alt+W turned them on, with their outlines; with both off again, "delta" and Enter pasted "BC-TEST delta four" into Notepad. The released 0.2.11, run isolated in the same desktop, showed the magnifier at the box's right end (the before). The app's log: 0 WRN/ERR. The suite on the worktree: 2,950 = 2,942 passed + 8 opt-in skipped, 0 failed; `catalog.py check` 0 missing and 0 to review in every language | claude-desktops MCP tools; guest scripts `setup.ps1`, `rects.ps1` (session c480bc1d's scratchpad, `guest/`); Pillow for the placeholders' widths | ✅ |
+| **Above Start with Windows' UI access, live** (2026-11-21, §2.63; the owner chose "Above Start, like Windows"). A claude-desktops Windows 11 desktop on this PC (`bc-winv`, Tiny11 25H2, 26200, 1920 × 1080; UAC turned on, the administrator "Docker" with a split token; deleted afterwards with its persist folder). **Investigation:** Windows' own Win+V frame (Explorer's `ApplicationFrameWindow`, band 3) over Start (band 6); the On-Screen Keyboard in band 2 above an open Start; a copy of BetterClipboard's program patched to ask for UI access: unsigned in Program Files, "A referral was returned from the server" and no process; signed with a certificate in `LocalMachine\Root`, it ran with UI access at High (0x3000) and its panel stood in band 2 over Start; `CreateProcess` of it answered 740. **The change**, as packages `0.2.12-dev.65.uia1` and `0.2.12-dev.66.uia2` (the second with the silent restart's fix) installed with their own `install.ps1 -Package`, BC-TEST items only: **(1)** a per-user copy in `%LOCALAPPDATA%\Programs`, then `-UIAccess` as administrator: moved to `C:\Program Files\BetterClipboard`, the old folder gone, the history kept, the program signed and its certificate in the trusted roots; started through Explorer, it ran at Medium with the token's UI-access flag cleared (elevation type 3) and logged the UI-access line. **(2)** Win, then Win+V: the panel above Start in band 2, where the placement setting put it, Start still open; Win+S, then Win+V: above Search; Enter pasted into Start's search box; Esc closed only the panel. **(3)** Settings closed: with uia1 no BetterClipboard ran afterwards (the wait's bug, §2.63); with uia2 the new process logged "restarted silently after Settings" and the UI-access line. **(4)** The Cmd tab read an open Command Prompt's commands (the helper with `RunAsInvoker`). **(5)** The update button from uia1 to uia2: with the consent prompt showing, ending `consent.exe` (an agent cannot click it) left the app running with "The installer could not be started (… Incorrect function.)"; with `ConsentPromptBehaviorAdmin` 0 the update ran as administrator, 14 s from the approval to the new version running with UI access, started through Explorer, the old certificate replaced by a new one. **(6)** The installer run again without administrator rights stopped before anything changed, with the new message. **(7)** Run again as administrator without options: UI access kept, the certificate replaced. **(8)** `-NoUIAccess`: the manifest asks for none, the certificate left the trusted roots, the panel stood beside Start again. **(9)** The uninstall from Settings › Apps (normal rights) asked for administrator rights itself and removed the copy, its records and its certificate. **(10)** `-AllUsers -UIAccess`, then `-Uninstall -AllUsers`, the certificate removed with it. **(11)** On a copy with UI access, *Check now* offered 0.2.11 as the way back; *Install and restart* downloaded and verified it, then refused with "BetterClipboard 0.2.11 cannot update a copy in a folder only administrators may change. …" in the dialog's error bar and the log, the app running on | claude-desktops MCP tools (`press_keys`, `click`, screenshots, `run_command`); guest scripts `bcstate.ps1`, `start-bg.ps1`, `elevation.ps1`, `launch-medium.ps1`, `publish-local.ps1` (session dc5a1e72's scratchpad) | ✅ Not run: a standard user, a consent prompt clicked or declined by hand, the owner's PC, a real GPU |
+| Above Start with Windows' UI access, tests (2026-11-21, §2.63): Core `ElevatedUpdateTests` 11; Windows `UiAccessTests` 7, `UpdateInstallerTests` 17 new, `ShellSurfaceTests`' band check. The whole suite on `cacb5cf` plus the change, in a private worktree: 2,962 = 2,954 passed + 8 opt-in skipped, 0 failed (Core 2,320, Windows 642); the documentation checker 0 gaps in the 20 changed code files; no invisible or private-use character; `catalog.py check` 0 missing and 0 to review; `build.ps1 -Strict` 0 warnings; `test-iex.ps1` passes in PowerShell 7.5.8 and 5.1; `install.ps1`'s UI-access helpers on a scratch folder and key (`uiaccess-harness.ps1`: the manifest read and rewritten both ways with the version resource kept, an older build's manifest given the element, the folder rules, a write probe that leaves nothing, the copy recorded in `installer.json` or the Installed-apps entry): 25 of 25 in PowerShell 7.5.8 and 5.1. **In 0.2.12** (merge request #7, where every change goes while it is open): cherry-picked onto `release/0.2.12` as `dcd74d3` (the code the same patch as `d83b263`'s; CLAUDE.md's two conflicts resolved with the branch's counts, Core 2,342 and Windows 643), and the commit after it closes the notes' fourteenth **Fixed** bullet with `-UIAccess` and adds a sixteenth for the installer's re-run (GitHub's renderer: 4 lists, 24 items, one table, one code block, 17 links, no Markdown left as text; the Store's "What's new" unchanged at 1,429 of 1,500, "Fixed: 16 fixes."). The branch's suite on `dcd74d3`: 2,985 = 2,977 passed + 8 opt-in skipped, 0 failed | the test executables, `dotnet test --solution`, `doc_gaps.py`, `scan_invisible.py`, `harness/uiaccess-harness.ps1` (session dc5a1e72's scratchpad) | ✅ |
+| **The integrations' limits, live** (2026-11-21, §2.62; the owner: "Out of all of our integrations, are there any with a limit like I think Cmd has (of 1000)? We should set and migrate all to default unlimited"). A claude-desktops Windows 11 desktop on the worker (`bc-limits`, 1600×900; deleted afterwards with its persist folder), packages of a private worktree (`0.2.12-dev.limits` to `limits4`) installed over each other with `install.ps1 -Package`, BC-TEST data only. **Catch-up:** 120 screenshots written while the app was stopped all imported at its next start ("Imported 120 screenshots saved while BetterClipboard was not watching."; the old cap was 100); with the Snipping limit set to 5 in Settings, 10 more written while it was stopped: "Imported 5 …", the newest five (126–130), 125 entries. **Pwsh:** a 1,200-command history scrolled to its oldest command (the old cap was 500); three hidden with Del ("1,199 of 1,200" after the limit), the hide limit lowered to 1: "The PowerShell tab's hidden commands follow their new limit: 2 shown again, 1 still hidden.", the newest hide still hidden; the limit kept through an update. **Settings:** the six boxes, every one 140 DIPs once the label left the box's header (they came out at their labels' widths: fixed); "unlimited" found seven settings and "maximum screenshots" two once number boxes were searched (none before: fixed); the Cmd status "0 commands kept (newest 50).". **Cmd** (one Command Prompt window started through Explorer, BC-TEST commands): six kept; the limit lowered to 2: "4 deleted, 2 kept." — but the tab then showed cmd 4 and cmd 3, and the silent restart after Settings closed stored them (limits2: the first-seen fault, fixed); with the fix (limits3) the stored pair read back as cmd 6 and cmd 5, then cmd 7 and cmd 6 after a new command, unchanged through the silent restart (times kept: 1 and 2 min ago). *Delete stored…* then the silent restart: limits3 kept the window's commands again (the bug since 0.2.11), limits4 nothing; a command typed then: "1 command(s) kept"; the tab showed it with cmd 7 from the still-open window; the window closed: it alone ("1 Command Prompt command"). The app's log over limits2–4: 257 lines, 0 WRN/ERR | claude-desktops MCP tools; guest scripts `shots.ps1`, `pwsh-history.ps1`, `wheel.ps1`, `state.ps1` (session 18ea5068's scratchpad, `guest-limits/`) | ✅ after the three faults it found (box widths, the search, the Cmd reader) |
+| The integrations' limits, tests (2026-11-21, §2.62): Core `IntegrationLimitsTests` 17 (the six settings' defaults, round trips and clamps, `ListLimit`, `RowPages` with 2,000 random runs, `FindForgotten` across chunks), `CmdHistoryTests` 2 new (a window seen first keeps its order against what is kept; the reader's memory: fingerprints with known answers from Python's hashlib, `NewSinceRead`, the round trip, damaged lines), `EverythingTests` and `ShellHistoryTests` updated (every hide kept by default — 600 and 1,200 here — and the newest under a limit; 3,000 Cmd commands merged); Windows: the ShareX and Snipping catch-ups of every screenshot or the newest under a limit (2 cases each), `CmdHistoryLimitTests` 1. Eleven mutations each caught (ten of the limits — `ListLimit`'s rule, `RowPages`' `Forget` and counts, the trims, the catch-ups, `FindForgotten`'s chunks, the Cmd limit's apply — and the old first-seen rule put back). The whole suite on `release/0.2.12` (`03c94aa`) plus the two commits: 2,950 = 2,942 passed + 8 opt-in skipped, 0 failed (Core 2,331, Windows 619); the solution builds with only the known CS0108; the documentation checker 0 gaps; `catalog.py check` 0 missing and 0 to review | the test executables, `dotnet test --solution`, `mutate_limits.py`, `mutate_cmd_order.py`, `doc_gaps.py` (session 18ea5068's scratchpad) | ✅ |
+| **Win+V over Start, Search and the shell's other surfaces, live** (2026-11-20, §2.61; the owner: "I pressed Win to open start menu and then Win+V and the BetterClipboard menu has shown behind the win start menu", then "Has to be another way to seemlessly have access"). A claude-desktops Windows 11 desktop on this PC (`bc-start`, Tiny11 25H2, 26200, at 1600 × 900 and 1920 × 1080; deleted afterwards with its persist folder), packages of a private worktree (`0.2.12-dev.start0` to `start3`) installed with `install.ps1 -Package`, BC-TEST copies only; guest scripts read every window's band, the panel's styles and bounds and the window in front after each step. **Measured first:** the bands of §2.61's table; Esc closed Start, Search, Quick settings, the notification center and Task View in 14–45 ms and gave the foreground back to Notepad; a topmost window that never activates took a click beside Start, and Start stayed open; the panel shown with the keyboard ended behind Start and behind Notepad. **At 1600 × 900** (no room beside Start's 800 pixels): Win, then Win+V closed Start in 28 ms, the panel opened over Notepad, and Enter pasted into Notepad. **At 1920 × 1080, by default:** Win, then Win+V: the panel beside Start, on its right, Start open; Enter and a click on a card pasted into Start's search box; Win+S, then Win+V: beside Search, the same; Esc and Win+V closed only the panel; no hover peek beside Start; Ctrl+G grew the groups column away from Start; a click into the panel's search box closed Start in 14 ms ("The panel took the keyboard: a click into the search box; Start or Search was closed first …") and the next paste went into Notepad. **Quick settings, the notification center and Task View:** closed in 30, 35 and 36 ms, the panel over Notepad. **Pinned:** beside Start it pasted into Start's search box and stayed up ("panel kept"); a pinned panel Start covered: Start closed in 38 ms, the panel brought forward over Notepad, and a paste into Notepad. **Always on top:** before `start3` the panel could show beside Start under the app window last in front (a maximized Edge), its window not topmost although asked; a plain WinForms window took the flag in every state (`toptest.ps1`); `start3` logged "The panel's window refused always-on-top; its presenter set it again." after its warm-up, and its panel stood above the maximized Edge. **The switch off:** Start closed in 23 ms, the panel opened with the keyboard over Notepad, and Enter pasted into Notepad. The app's log over the four builds: 0 WRN/ERR | claude-desktops MCP tools (`press_keys`, `click`, `screenshot`, `run_command`); guest scripts `zstate.ps1`, `surfaces.ps1`, `bands.ps1`, `escstart.ps1`, `reopen.ps1`, `noact.ps1`, `toptest.ps1`, `st.ps1` (session dc5a1e72's scratchpad, `start-guest/`) | ✅ Not run: Windows 10, 125 % or more, several monitors, a real GPU, Narrator, the owner's PC |
+| Win+V over Start, tests (2026-11-20, §2.61): Windows `ShellSurfaceTests` 37 (14 bands' meanings, 11 bands' shell membership, every band acted on counted as the shell's, eight cases of the place beside Start with 2,000 random surfaces among them, rectangles that share a pixel, contexts not captured naming no surface, the real band call on a window of this process). Six mutations each caught: the work-area clamp removed, Start read as a surface to close, a tie going left, touching edges intersecting, the UIAccess band read as the shell's, the groups column left out of the minimum; the class passed again after the restore. The whole suite on `9e30a16` plus the change, in a private worktree: 2,903 = 2,895 passed + 8 opt-in skipped, 0 failed (Core 2,290, Windows 613); no warning in a changed file; the documentation checker 0 gaps in the 16 changed code files; no invisible or private-use character | the test executables, `dotnet test --solution`, `mutate_start.py`, `doc_gaps.py` (session dc5a1e72's scratchpad) | ✅ |
+| **The history's limits, live** (2026-11-20, §2.60; the owner: "Can you set maximum items to 0 (unlimited) by default … Increase the history size budget 16GB … start notifying the user every 2% change … show in History in settings the current number for each configurable"). A claude-desktops Windows 11 desktop on this PC (`bc-budget`, Tiny11 25H2, 1600×900; deleted afterwards with its persist folder), BC-TEST texts through `bclip put` only. **First pass** (`0.2.12-dev.budget`, `d6819ef`, through its own `install.ps1 -Update` over the released 0.2.11): 0.2.11's settings file (format 1, the item limit at 10,000, a budget of 2,048 MB chosen) moved to no item limit and kept 2,048 MB, with its log line; Settings' "Now:" lines; the number box saved format 2; with a 1 MB budget and copies of 50 to 100 KB, toasts at 90, 92, 96 (a jump) and full, each once; a click on a toast opened Settings at the budget's card (Settings open and closed); a silent restart kept the mark. **Found:** the toast's text cut after four lines ("… Click to open Settings, or let"); after full, a small copy re-armed the mark and each refill warned 96 % and full again; Settings said "at 90 % of its size budget" while the notification had said full. **Second pass** (`budget2` = `2abc248`, then `budget3` = `080b2b9`, each through `install.ps1 -Update`, 14 and 16 s): the 14 items deleted with one `bclip delete` ("Deleted 14 items (993.4 KB)."); the budget set from 1 to 10 MB in the file while the app was stopped: "History size budget changed (1,048,576 to 10,485,760 bytes): its warnings start over from below 90 %." at the next start; ten copies of 1,000,000 bytes: the 94 % toast at the tenth (95.4 %), its title on two lines and its text whole; the eleventh removed the oldest: the full toast, held behind the 94 % one while the desktop had no input and shown whole after a mouse move; three rounds of a small copy and a 1 MB refill on the full budget: no warning; Settings "Now: 9.5 MB of 10 MB used (95 %)" with "Clipboard history is full", also at 98.2 %; raised to 11 MB in Settings (the number box's range value through UI Automation): "… changed (10,485,760 to 11,534,336 bytes): its warnings start over from below 90 %.", "Now: 9.8 MB of 11 MB used (89 %)" and no warning; the next 1 MB copy: the 96 % toast and "Clipboard history at 96 % of its size budget"; the next: full again; the bar amber, then red, named "History size budget used" in both states (`budget2` read "PausedHistory size budget used" and "ErrorHistory size budget used"); the log "97.9 %" (`budget2` wrote "98 %" next to "the 96 % level"); `bclip list --sort size -n 3` the 1 MB copies first; a restart at 98 % with the full mark: quiet; `bclip delete 38 37 35`: 98 % to 72 %. The second pass's log: no warning or error. | claude-desktops MCP tools (`run_command`, `launch`, `press_keys`, `type_text`, `move_mouse`, `screenshot`); guest scripts `put.ps1`, `state.ps1`, `settings-texts.ps1`, `set-budget.ps1` (session 18ea5068's scratchpad, `guest/`, and the desktop) | ✅ after the four fixes it found. Not run: a real GPU, Narrator, the owner's PC, a 16 GB history |
+| The history's limits, tests (2026-11-20, §2.60): Core 72 new — `HistoryLimitsSettingsTests` 13, `HistoryBudgetTests` 33, `HistoryLimitsTextTests` 19, 7 CLI cases — and Windows `TrayIconTests` 2. Mutation checks, each mutation built and its class run (scratch `mutate.py`): 12 of 12 caught — the move applied to every format; a level re-arming just below its mark; no full rule; a removal not counted as full; Settings ignoring the full mark (in `ShownLevel`, and `BudgetLevel` passing none); the budget rule off; the service keeping the mark with the old budget; Settings using another budget's mark; `BudgetMark` always null; the mark never read back from the store; the tray never forgetting a dismissed notification. The "a removal never re-arms" guard is implied by the full level (its mutation survived, so it now targets `LevelOf`). The whole suite: 2,889 = 2,881 passed + 8 opt-in skipped, 0 failed (Core 2,312, Windows 577); a `--no-incremental` build with only the known CS0108; the documentation checker 0 gaps; `catalog.py check` 0 missing and 0 to review in every language | the test executables, `dotnet test --solution`, `mutate.py`, `doc_gaps.py` (session 18ea5068's scratchpad) | ✅ |
+| **"Center of the current screen" is the mouse's screen** (2026-11-20, §2.38; the owner: "'Center of the current screen' option should be using the cursor position to pick which screen"; asked, they chose "Mouse pointer" over "Text cursor, else mouse", and "Leave the README alone"). In a private worktree of `f97daab`: `PanelPlacementTests` 18 of 18 — seven cases where the caret or the window and the mouse disagree (typing on another monitor, the mouse on the 125 % monitor, a window without a caret, a caret parked at the screen's corner, a caret on the desktop, the mouse on the taskbar, opened from the tray), all chosen by the mouse, and `Lookup_TheCurrentScreenIsTheMousesRealMonitor`, the choice looked up on this PC's three real monitors with the caret on another monitor each time. A mutation that lets the caret decide again failed 6 of the 18; restored with `cp` and `touch`, 18 of 18. The whole suite: 2,792 = 2,784 passed + 8 opt-in skipped, 0 failed (Core 2,218, Windows 574); a `--no-incremental` build with only the known CS0108; `catalog.py check` 0 missing and 0 to review in every language; the documentation checker 0 gaps in the four changed code files; no private-use or invisible character in them | the test executables, `dotnet test --solution`, `catalog.py`, `doc_gaps.py` (session 211c5423's scratchpad) | ✅ Not run live: the test desktops have one monitor, and a summon on the owner's PC would show the panel over their work |
+| **The panel leaves the keyboard with your app, live** (2026-11-20, §2.59; the owner: "Please fix this while maintaining the closing logic we have"). A claude-desktops Windows 11 desktop on this PC (`bc-nofocus`, Tiny11 25H2, 1600×900; deleted afterwards with its persist folder), packages of a private worktree (`0.2.12-dev.focus1` to `focus4`) installed with `install.ps1 -Package`, BC-TEST data only; a guest script read after each step whether the panel showed, its no-activate and topmost styles, its search text and selected row, the foreground window, and the focused control with its text and caret. **File Explorer's rename (F2):** Win+V opened the panel on top while the rename box kept the focus and its text; "older" typed searched the panel and left the rename untouched; Backspace twice left "old"; Enter pasted the selected item into the rename box, and Enter there renamed the file. **Explorer's search box and address bar** kept editing, and Enter or a click on a card pasted into them. **A text box that ends its editing when it loses the focus** (Obsidian's stand-in: a page in Edge whose input turns into "ENDED" on blur): it kept editing, and Down and Enter pasted into it; with the switch off, Win+V ended it. **Closing:** Esc (the rename stayed), Win+V again, a click on another window, Alt+Tab. **Typing:** Caps Lock turned on before and during, Shift+G, Ctrl+Backspace. **The mouse:** the hover peek opened and Down closed it while the input kept the focus; a card's right-click menu opened without taking the focus, its *Paste* pasted into the input, Esc closed only the menu and a second Esc the panel. **Taking the keyboard:** Ctrl+F, a click into the search box and F3 gave the panel the keyboard (logged "The panel took the keyboard: …"; the input's editing ended, as designed); Esc closed the viewer, then the panel, and Edge was in front again. **Pinned:** the pin's click took no focus, Enter pasted and the panel stayed, typing went back to the app, Win+V brought it forward with the keys taken again, Win+V again closed it, and unpinning kept it up. **Found and fixed:** the first build's panel stood behind File Explorer (no topmost flag at its first summon) and showed unbound defaults (x:Bind waits for an activation). **Rebased onto `10492ec`** (`focus3`): the rename again; the switch off made Win+V take the keyboard (the panel in front), on again (after the silent restart) Win+V left it with Notepad and Enter pasted; the pinned flow, the pin's tip closed by Esc, the hover peek; the three real-hook tests in the desktop, 68 of 68 in their class (`BETTERCLIPBOARD_HOOK_TESTS=1`, the Windows tests published self-contained). The app's log over every build: 154 lines, 0 WRN/ERR. | claude-desktops MCP tools (`press_keys`, `type_text`, `click`, `move_mouse`, `window`, `clipboard`, screenshots, `run_command`); guest scripts `nf-state.ps1`, `nf-clip.ps1`, `cbwatch.ps1` (session dc5a1e72's scratchpad, gone with the desktop) | ✅ Not run: the real Obsidian, a real GPU, Narrator, an input method that composes text, touch and pen, the owner's PC |
+| **File Explorer's rename box changes the clipboard at every paste into it** (2026-11-20, §2.59, §2.3; found by the QA above). A clipboard listener in the test desktop (`cbwatch.ps1`: numbers, owners and format names only): BetterClipboard's paste set sequence 85 (the owner its monitor's window), and 40 ms later, at the Ctrl+V, the rename box made it 86 with the owner and the formats unchanged; an owner-less copy pasted by hand went 91 → 92 the same way. Before the fix `bclip list` showed the items pasted that way with the source "BetterClipboard" and a use count rising by two per paste (12 for one item after the QA). With the owner rule (`focus4`): the item pasted into a rename kept its source ("Windows Explorer", an owner-less copy) and a use count of 2, the copy and the paste. A hand-made paste of another app's copy still reads it again (use count 2; §6). `ClipboardCaptureTests.OwnWrite_ChangedWithoutEmptying_IsStillOwn` (a producer replacing BetterClipboard's text without emptying the clipboard): 3 of 3 runs, the class 11 of 11; without the owner rule it fails ("Timed out. Captured 1"). | `cbwatch.ps1`, `bclip list --json` in the guest; the test executable | ✅ |
+| The panel without the keyboard, tests and the suite (2026-11-20, §2.59): Core `PanelWithoutFocusTests` 48, Windows `FocuslessPanelInputTests` 68 (3 of them opt-in real-hook tests, run in the test desktop above) and the capture test. The whole suite on `10492ec` plus the change: 2,801 = 2,793 passed + 8 opt-in skipped, 0 failed (Core 2,218, Windows 583); a solution build with only the known CS0108; the documentation checker 0 gaps in the 22 changed code files; `catalog.py check` 0 missing and 0 to review in every language; no raw invisible character in the changed files. One full run before it failed the capture test: the mutation check's restore (`mv` of a copy made before the mutation) had left MSBuild the mutated binary (§4); touched and rebuilt, it passed. | the test executables, `dotnet test --solution`, `doc_gaps.py` (session dc5a1e72's scratchpad) | ✅ |
+| **A peek never opens where the mouse no longer is** (2026-11-20, §2.56; found by the Lines per card QA, whose row is further down; the owner chose "Fix it now on #7"). A claude-desktops Windows 11 desktop on the worker (`bc-peek-jump`, 1600×900; deleted afterwards with its persist folder, and the worker's gateway checked up), x64 packages of `release/0.2.12` with `945fb25`, built at `8a72292` before the background transparency (§2.58) joined the branch (rebased onto it since), without the fix (`0.2.12-dev.57.g8a72292`) and with it (`0.2.12-dev.peekfix`), installed over each other with their own `install.ps1 -Package`; a 30-line BC-TEST text and a Win+PrtScn picture. `jumppeek.ps1` glided the mouse onto a cut-off card in eight real moves (`SendInput`), waited 100, 250 or 400 ms (inside the 450-ms countdown), jumped out of the panel in one move, and sampled the app's windows every 25 ms for 1.5 s; control rounds rested on the card first. **Text peek, without the fix:** it opened after the jump 12 of 12 times, 496–613 ms after it whatever the wait (so an event at the jump started its countdown again); in the control rounds it opened at 496–514 ms, and once (1 of 4) it was still open 300 ms after the jump away. **With the fix:** 0 of 18 after a jump; the control 6 of 6 opened at 511–528 ms and closed after the jump away. **Image peek:** none after a jump on either build (0 of 12 each; its card stops waiting on any exit), the control 4 of 4 at 479–497 ms. The app's log over both builds: 62 lines, 0 WRN/ERR. Locally: the whole suite 2,680 = 2,675 passed + 5 opt-in skipped, 0 failed (Core 2,165, Windows 515), and on the rebased branch (`0516dc1`) 2,707 = 2,702 passed + 5 opt-in skipped, 0 failed (Core 2,192, Windows 515); no warning in the three changed files; the documentation checker 0 gaps. Seen on the way: before the Screenshots folder's file was imported, the Win+PrtScn copy's card read "Client Server Runtime Process" (csrss.exe's description); after a restart the file merged and it read "Win+PrtScn" (§6). | claude-desktops MCP tools (`press_keys`, screenshots, `run_command`); `jumppeek.ps1` and `setup.ps1` (session d711f370's scratchpad, `guest/`) | ✅ Not run: a real mouse flicked out of the panel, touch and pen, the owner's PC |
+| **Background transparency and the header buttons' order, live** (2026-11-20, §2.58; the owner: "Add to settings "Background Transparency" slider … Also add to settings 'Buttons in the panel" Order up/down arrows to resort the buttons and have them shown in the sorted and also have the settings stationary"). A claude-desktops Windows 11 desktop on this PC (`bc-look`, 1600×900, no GPU; the worker's drive was at 31 % I/O stall; deleted afterwards with its persist folder), packages of a private worktree (`0.2.12-dev.look2`: the change rebased onto `1036d69`, then `look3` with the measured scale, installed over it as an update) through `install.ps1 -Package`; UI Automation read the rows, the arrows' states, the slider, the focus and the panel header's order after each step. **Defaults:** Pin, Updates, Pause, Groups, Clear in that order, Pin's up and Clear's down disabled, the Settings row ticked and disabled, the slider at 50 (steps 5 and 25), the header Pin, Updates, Pause, Groups, Clear, Settings. **A click** on Pin's down arrow: Updates first, the rows at the same places (y 562 to 690), the keyboard on Pin's down arrow in its new row, `PanelButtonOrder` [Updates, KeepOpen, Pause, Groups, Clear] saved at once, the log line, and the panel's header in that order (a screenshot: sync, pin, pause, bookmark, trash, gear). **The keyboard:** Space on Groups' down arrow moved it last, its down arrow disabled, the keyboard on its up arrow (a focus ring and the tooltip); Space again moved it back, the keyboard still on its up arrow. **Hidden:** *Pause capturing* unticked left the header without it and the order as it was; moved while hidden and ticked again, it showed in its new place. **Kept** through `--exit` and a start, and through the update to `look3`; moved back to the default order, the file held `"PanelButtonOrder": []`. **The slider:** one value saved once, about 0.7 s later; five values 100 ms apart saved once, 460 ms after the last, with the last; a value set right before Settings closed was saved at the close (before the rest timer was due), and kept through the silent restart that followed; a click on the track's middle set 50, Right twice 60, Home 0, End 100, each saved; the panel opened at 0, 70 and 100. The app's log: 0 WRN/ERR, no "no desktop acrylic" line. Not seen there: the glass itself (no GPU: the fallback color at every level) | claude-desktops MCP tools (`run_command`, `click`, `press_keys`, region screenshots); guest scripts `look.ps1` (state, invoke, toggle, slider, focus) and `slider.ps1` (values, spacing, writes of settings.json, the close) in session bf22767a's scratchpad, `qa/` | ✅ Not run: the Store edition's list (unit-tested), a right-to-left card, touch and pen, Narrator |
+| **The backdrop lab on this PC's GPU** (2026-11-20, §2.58). `tools/probes/backdrop_lab` (new), five visible runs of about 20 s at the bottom-left of the main monitor, each started only after two checks found the terminal in front and 3 s without input (`guarded_show.py`); the windows were never activated, and the foreground was the terminal before and after every run but the last, which ended over a game the owner had switched to (no run was armed after it). **Values** (cloaked, every run the same): Windows' own looks per kind and theme; one value set made the controller drop the theme; `ResetProperties` gave it back. **Run 1** (the stripes behind the glass, their own spread 95.8): an inactive window's acrylic solid (0.0 %), Windows' dark look 3.7 %, no luminosity 68.4 %, 0.25 51.3 %, 0.5 34.3 %, 0.75 17.3 %, 0.96 4.0 % with tints 0, 0.15 and 0.5 alike, luminosity 1 0.2 %; it then ended in WinUI (0xC000027B) when the light pass replaced the window's backdrop. **Runs 2 to 5** (a fresh window per setting): the stripes window stood under the maximized terminal, Word, Notepad++ and Explorer (run 5's diagnostic: its own pixels the stripes, `topmost False`), so the glass blurred those windows; the straight line in luminosity repeated in both themes, the tint again changed nothing, 0.99 and 1 gave 0.0 to 0.1 %. The scale was set from these (§2.58). The unit tests: `PanelBackdropTests` 16 and `PanelButtonOrderTests` 11; mutations caught: a frosted end of luminosity 1 (`Ends_StayGlass`, 2 cases) and an uneven stop (`EachHalf_StepsEvenly`); earlier, `Move` moving a button Settings does not list (`RandomPresses_KeepEveryButtonOnce`, a real bug, fixed). The whole suite on `1036d69` plus the change: 2,684 = 2,679 passed + 5 opt-in skipped, 0 failed (Core 2,170, Windows 514); the documentation hook's checker 0 gaps in the 15 changed code files; `catalog.py check` 0 missing and 0 to review | `BackdropLab.exe <log> [--steps|--show]`, `guarded_show.py`, `zorder.py` (session bf22767a's scratchpad, `lab/`) | ✅ the values and the shape; ⚠️ the stripes window under other windows in runs 2 to 5 (§6) |
+| **Lines per card, live** (2026-11-20, §2.57; the owner: "We show N lines in the clipboard row, make the number of lines per card configurable 1-40"). A claude-desktops Windows 11 desktop on this PC (`bc-lines`, Tiny11 25H2, 1600×900; deleted afterwards with its persist folder). The released 0.2.11 from GitHub with the README's installer, given BC-TEST copies: a list of 43 files, a one-line, a twelve-line, a long code and a long prose text. Then a package of the change (`0.2.12-dev.lines`) installed over the running 0.2.11 with its own `install.ps1 -Package … -NoLaunch`. **The update:** the same store ("new key: False"); "Rebuilt 3 preview(s) that earlier versions cut short, so cards set to show many lines fill them." once, and not at the next start; the panel at four lines as before. **Settings:** the card after *Buttons in the panel*; the search finds it by its title and by a keyword ("rows"); the number box's accessible name "Lines per card Minimum1 Maximum40". **At 40:** the file list named 40 files, then the dotted line and the eye (caption "many files"); the twelve-line text whole, without either; the code text 40 lines in a 900-DIP panel (0.2.11 had stored about 20 of them); the prose 40 wrapped lines, the last ending in "…". **Live, with the panel pinned on screen:** 1 (each card its first line; the one-line text without the dotted line or the eye), then 10. **After the update:** a copy of 60 lines showed its first 10; Enter pasted all 60 into Notepad; `bclip list --json` gave 1,000 characters ending in "…" (the file list 807: forty names and "+3 more"), `bclip get` the whole text. `LinesPerCard` 40 in `settings.json` and after a restart. The hover peek showed the file list's whole text (43 lines). The app's log: 78 lines, 0 WRN/ERR. **Found, older than this change:** a peek can open where the mouse already went (fixed the same day, §2.56, in the row "A peek never opens where the mouse no longer is"). **Tests:** `LinesPerCardTests` 28 cases (new), `ContentTests` and `PreviewTextTests` updated; six mutations each caught (the rebuild skipped, no extra line for the text block's trimming, the five-name shape forgotten, old cuts not recognized, the head cut inside a surrogate pair, `bclip`'s long preview); the whole suite 2,680 = 2,675 passed + 5 opt-in skipped, 0 failed (Core 2,165, Windows 515); a solution build without new warnings; the documentation checker 0 gaps in the changed code (4 older ones in `ClipStore` methods this change does not touch); `catalog.py check`; `check-translations.py` ok for the four translations | claude-desktops MCP tools (`press_keys`, `type_text`, `scroll`, `move_mouse`, `find_elements`, `window`, region screenshots, `run_command` with `bclip`); `mutate.py`, `doc_gaps.py` (session d711f370's scratchpad) | ✅ Not run: a real GPU, several monitors, Narrator, a right-to-left language on screen |
+| **The notes for certification for 0.2.12, in both places** (2026-11-20, §3.5; the owner: "We should be live, also we have a PR and all changes go there", then "do it all in browser instead of me"). The public Store page answered "BetterClipboard - Free download and install on Windows \| Microsoft Store". **The script** (a private worktree of `origin/release/0.2.12`): `submit-store.ps1` sets `notesForCertification` from the kit; `test-submit-store.ps1` 58 of 58 (13 new: the field sent with LF and named in the progress line; Check's answer for other, equal and empty published notes; `-KeepCertificationNotes`; the repository's own kit by default; a kit without notes, notes of 1,997 characters as written but 2,003 counted, a missing kit and an empty `-ListingKit` refused with exit code 2 and no request, Check included); three mutations (the field never set, line breaks counted once, the empty-notes answer removed) each failed exactly their tests; `test-store-listing.py` all checks (3 new; counting `len()` fails the strict-reading test); the documentation checker 0 gaps. CI on `d244723`: 2,648 tests (2,643 passed, 5 skipped, 0 failed), the Store script's 56 checks, the kit, installer and Chocolatey checks. **The real service**: *Microsoft Store › check* from the PR branch (run 44729126650): "it has a published submission", package 1.2.11.0, its notes for certification 0 characters. **The page the testers read**, in the owner's Chrome (a tab of mine, closed afterwards; the owner's personal account picked from Microsoft's list, its session still valid, no passkey asked): *Supplemental info › Additional Testing Information*, a product page (`/products/9PHL574X9BF9/suppinfo/additionaltestinginfo`, text box `certificationNotesDescription`, at most 6,000 characters), held exactly the v0.2.11 kit's 1,770 characters; given the 0.2.12 kit's text, saved, and read back after a reload: 1,966 characters, SHA-256 equal to the kit's. The overview still offered *Start update*; *check* again (run 44735367700): nothing pending, the field still 0 characters, so the page and the field are two places | `test-submit-store.ps1`, `test-store-listing.py`, CI, `store.yml` check, chrome-devtools (`fill`; `evaluate_script` hashing the text box in the page) | ✅ Not known: whether the testers also see the submission's own field |
+| **The pin's tip, live** (2026-11-20, §2.55; the owner: "Add a tooltip shown once until dismissed when pinned enabled that in 1.5 sentences explains how pinning works"). A claude-desktops Windows 11 desktop on this PC (`bc-tip-qa`, 1600×900; deleted afterwards with its persist folder); three x64 packages of the change (`0.2.12-dev.tip1` to `tip3`) installed with `install.ps1 -Package`; BC-TEST copies only. `tipstate.ps1` read the app's windows (owner, cloak, topmost), the popups' UI Automation texts, the focus, the foreground window and the settings. **The pin's click:** the tip opened 308 ms later over the panel, its tail on the pin, its window owned by the panel and topmost. The keyboard stayed in the search box: typed text searched, Enter pasted into Notepad, and the tip stayed. A click on a card pasted, and the tip stayed. **Summons:** Win+V with Notepad in front brought the panel forward with the tip. Win+V again closed both, and the next summon showed the tip again (closing the panel does not dismiss it). **Moves:** a drag of the panel by (+347, +217) kept the tip in its place beside the pin. Ctrl+G grew the panel, and the tip followed. With the panel at the top of the screen, the tip opened to the left of the pin. An unpin and a re-pin 69 ms apart ended with the tip shown. **Dismissing:** Esc closed it for good (`KeepOpenTipDismissed` saved, the log "The pin's tip was closed with Esc; it does not show again.", the search text kept), and later summons showed none. After a restart with the flag removed it showed again; its X closed it ("… with its close button"), and the search box had the keyboard. In the dark theme in Hebrew it drew right, with WinUI's own name for the close button ("סגור"). **Found and fixed:** `tip1` closed the tip at every move, so a drag of the panel ended after 7 px, a reopen asked for during the close animation was refused (the tip stayed away), and after a second drag typed keys went nowhere. `tip2` (placed again instead of closed; a check that tries again): a click on the pin of a pinned panel waiting behind Notepad unpinned it without bringing it forward, and the panel went away. `tip3` (the panel activates itself under the tip): that click brought the panel forward and unpinned it, and the panel stayed. The app's log over the three builds: 121 lines, 0 WRN/ERR. **Tests:** `PanelButtonsTests` 30 (2 new: the tip due while pinned with the pin shown until it is closed; its closing kept through the file). Two mutations each failed tests: a closed tip still due (2 failed), and a hidden pin's tip due (1 failed). The whole suite: 2,629 = 2,624 passed + 5 opt-in skipped, 0 failed (Core 2,115, Windows 514). The documentation checker found 0 gaps, and `catalog.py check` 0 missing | claude-desktops MCP tools (`click`, `press_keys`, `drag`, `type_text`, screenshots, `run_command`); `tipstate.ps1` (session 94eade0a's scratchpad, `qa/`) | ✅ Not run: a real GPU, several monitors, Narrator, touch |
+| **The pin, live** (2026-11-20, §2.55; the owner: "Before the update icon add a pin icon which keeps window open after pasting and properly pastes as if the window would've closed … all buttons but settings can be hidden in settings"). A claude-desktops Windows 11 desktop on the worker (`bc-pin-qa`, Tiny11 25H2, 1600×900; deleted afterwards with its persist folder), five x64 packages of the change (`0.2.12-dev.pin` to `pin5`; from `pin2` on with §2.56 in) installed with `install.ps1 -Package`, BC-TEST copies only. **Pinned pasting:** Win+V at Notepad's caret opened the panel 432 px wide with its six buttons; the pin's name turned to "Unpin: …", `KeepPanelOpen` was saved and logged; four clicks in a row pasted charlie, alpha, delta and bravo into Notepad in that order, Notepad keeping the keyboard and the panel on screen ("panel kept" in the paste's line). A click on Edge's page brought Edge forward while the panel stayed above it; two clicks then pasted into Edge's text box, Notepad unchanged. Win+V with Edge in front brought the panel forward in its place; "char" and Enter pasted into Edge, the search stayed and the card read "just now"; Win+V again closed it; the next Win+V opened it pinned; Esc closed it; after `--exit` and a new start it opened pinned and a click pasted into Edge. *Copy only* put the item on the clipboard, the panel stayed and Edge got the keyboard back. A copy made while it showed was listed at once, Edge keeping the keyboard; a hover peek over the inactive panel left Edge the keyboard. The text viewer from a card's eye, then Alt+Tab: the viewer closed, the panel stayed ("The pinned panel stays up, its viewers and peeks closed: …"). **Settings:** the card's five boxes; Updates and Pause hidden → the header showed the pin, groups, clear and the gear at the remembered 400 px; the tray's *Install 0.2.11…* then opened the update dialog under the gear, and Esc closed only the dialog; the two shown again while a pinned panel stood at the screen's right edge → it grew on its left to 1168–1600, the gear in place; the pin hidden while the pinned panel waited behind Settings → concealed at once, `KeepPanelOpen` kept; a click-paste then closed the panel ("panel away"); the pin shown again → pinned; unpinned by its button → the next paste closed the panel. **Found and fixed on the way:** with `pin1` a live copy shifted the cards under the resting mouse and opened the text peek by itself (§2.56's rule, committed meanwhile; not seen from `pin2` on); in one `pin2` session the panel had lost its always-on-top flag and vanished behind Edge after a paste while uncloaked (not reproduced: tooltips, peeks, put-aways, live copies and six starts kept the flag; `KeepOnTop` added, and with `pin4` the flag taken off from outside after a paste came back within a second after a click into the window that already had the keyboard, logged once — `pin3`'s foreground-change check alone had missed that click); `pin4` widened the panel with its left edge kept, 32 px past the screen's edge; a waiting panel stayed up after its pin was hidden. The app's log: 0 WRN/ERR. Older than the pin, seen in both flows: a row keeps the hover fill after the list reorders under a resting mouse (§6). | claude-desktops MCP tools (`click`, `press_keys`, `clipboard`, `move_mouse`, screenshots, `run_command`, the browser's `browser_evaluate` for Edge's text box); guest scripts `state.ps1` (the panel's windows, header buttons and Notepad's text through UI Automation), `zorder.ps1` and `untop.ps1` (the always-on-top flag read and taken off), `restart-check.ps1` (copies in session 94eade0a's scratchpad, `qa/`) | ✅ Not run: a real GPU, several monitors, touch and pen, a standard user, Narrator, the Store edition |
+| The pin and the header's buttons, tests (2026-11-20, §2.55): Core `PanelButtonsTests` 28 (defaults, the file round trip by name, lenient names, which names parse, the pinned mode only while its button shows, one button shown or hidden at a time in header order, the minimum width per buttons shown, the shortcut's answer for every mix of open, pinned and in front, the members' names) and `UpdateSettingsTests.Settings_MinimumWidthFollowsTheHeaderButtons` (replaces the five-button test); Windows `ForegroundTrackerTests` 23 (the shell's surfaces never paste targets while other windows are, the hook started and stopped repeatedly, a callback required, `ForegroundContext.ForWindow`) and `InputTests` with the size hook's minimum. The whole suite on `2995049` plus the change: 2,627 = 2,622 passed + 5 opt-in skipped, 0 failed (Core 2,113, Windows 514); a solution build with only the known CS0108; the documentation checker 0 gaps in the changed files; `catalog.py check` 0 missing and 0 to review; `check-translations.py --offline` only the 12 differences per translation from the restyle (§6) | the test executables, `dotnet test --solution`, scratch `doc_gaps.py` | ✅ |
+| **Leaving the panel closes it, also while a popup shows** (2026-11-20, §2.56; the owner: "if you open "View whole text" eye icon (maybe for image too) then the window doesn't close after we closed the viewing panel that opened"). A claude-desktops Windows 11 desktop on this PC (`bc-close-qa`, Tiny11 25H2, 1600×900; deleted afterwards with its persist folder), packages of a private worktree installed with `install.ps1 -Package`: `0.2.12-dev.qa1` (`b9ccc7f`, unchanged) and `qa4` (the fix); BC-TEST items only. A driver script sent real input (`SendInput` clicks, keys and mouse glides) and read after each step whether the panel showed, which window was in front, and how many of the panel's popup windows were open. **Unchanged build:** the panel stayed on top of Notepad, for good, after the text viewer and Notepad from the taskbar (also after the viewer's X and a click on Notepad), the image viewer likewise, Alt+Tab from the text viewer, a card's menu and a click on Notepad (also a second click), a tab's menu and a click, the clear confirmation and a click, the text viewer's language menu and Notepad from the taskbar, *View* from the card menu and Notepad from the taskbar, and Settings from the taskbar with the text viewer open. The update dialog and a click (§2.29's own check), and Esc on a viewer or a menu followed by a click, put it away. **The fix:** in every case above the panel and its viewer went away at the switch, with the window gone to in front, logged as "The panel went away: the user went to another window while the text viewer showed." (or the image viewer, a peek, the update dialog, a menu or flyout). Unchanged as designed: the X, Esc and a click on a viewer's dim backdrop close only the viewer, and the next click on Notepad conceals the panel; with nothing open, a click on Settings and the gear conceal the panel. A text peek or an image peek open, then Notepad from the taskbar: gone. Esc closed the text viewer 8 of 8 and the image viewer 4 of 4; Esc during the 3.2 MB text's load (at 191, 354, 385 and 517 ms) closed the viewer, the panel stayed, and the search box had the keyboard. Landed beside a peer session's uncommitted pin work: both built together in a scratch checkout, 0 errors, Core 2,113 passed. | `qa.ps1` (24 scenarios), `escloop.ps1`, `bigfocus.ps1`, `state.ps1` (session dc5a1e72's scratchpad, `guest/`); claude-desktops MCP tools | ✅ Not run: a real GPU, several monitors, touch and pen, the owner's PC |
+| **A peek never opens over a resting mouse** (2026-11-20, §2.56; found by the QA above). The same desktop; `xwhat.ps1` sampled every 40 ms which of the app's windows were open, with their sizes, from the closing key on. **Unchanged build:** after Esc closed the text viewer with the mouse left on the eye, a monitor-sized window (the text peek) opened 653–730 ms later, 4 of 4; after the image viewer's Esc the image peek, 672–734 ms later, 3 of 3; after Shift closed a text peek, it opened again 907–929 ms later, 3 of 3. **The fix:** none opened (3 + 3 + 2 rounds); about 1 s after a viewer's Esc its eye button's tooltip showed (158 × 41 and 215 × 41 px; UI Automation read "View the whole text (F3)" and "View — zoom and pan (Esc closes)"). A move of 20 px and a rest opened the peeks again; after a glide onto a card the text peek opened in 642–833 ms and the image peek in 452–475 ms (the unchanged build: 612–676 and 468–484). **Found, not changed:** after a click on Settings, neither build opened a peek within 5 s (text 0 of 3, image 0 of 3; §6); a diagnostic build (never committed) logged replayed "pointer exited" and "entered" every ~0.5 s. **Tests:** `PointerSelectionGateTests` 3 new; five mutations of `HasMoved` each caught (the mouse owning the selection ignored, the threshold counted as moved, no spot required, the selection taken like `Observe`, one axis only). The whole suite: 2,576 = 2,571 passed + 5 opt-in skipped, 0 failed (Core 2,085, Windows 491); a solution build without a new warning; the documentation checker 0 gaps in the six changed files. | `xwhat.ps1`, `peektime.ps1` (`guest/`), `mutate_gate.py`, `doc_gaps.py` (session dc5a1e72's scratchpad) | ✅ |
+| **The hover peeks while Settings is open: a replay is not a move** (2026-11-20, §2.56; the owner chose "Fix it now"). **The cause,** in the first test desktop (`bc-close-qa`, the row above): with Settings open and the mouse having been over it, no peek opened within 5 s (text 0 of 3, image 0 of 3, with and without the leave fix); the diagnostic build's log had generated "pointer exited" and "entered" events for the card under the resting mouse 493–514 ms apart, each exit outside the card by its own position. **A fresh desktop** (`bc-peek-qa`, on this PC, Tiny11 25H2, 1600×900; deleted afterwards with its persist folder): the leave fix's package `0.2.12-dev.40.g2995049` and this fix's `0.2.12-dev.qa7`, installed with `install.ps1 -Package`; three BC-TEST texts through `bclip` and a Win+PrtScn picture. **The leave fix:** the trigger did not come back in six tries (Settings by a click, from the taskbar and by the gear, `qa.ps1`'s N, O and S; a 3 MB text in the history; Notepad at the screen's top-left as in the first desktop; Settings moved; Settings' search box holding the keyboard, `settingsfocus.ps1`): its peeks opened 459–1,041 ms after the mouse came to rest, in 7 of 23 rounds after more than 600 ms; a rest of 200 ms and a glide onto Notepad opened none (4 of 4). **This fix:** the peeks opened 466–560 ms after the rest, without Settings (text 479–560, image 488–498) and with it (text 466–502, image 478–488), and stayed 2 s while the mouse rested (12 of 12); a rest of 200 ms and a glide onto Notepad opened none (text 3 of 3, image 3 of 3); after a viewer's Esc with the mouse on the eye only the eye's tooltip showed (text 3 of 3, image 2 of 2), and nothing after Shift closed a text peek (3 of 3); 12 of `qa.ps1`'s 24 leave scenarios again (the viewers, a card's menu, Alt+Tab, Settings three ways, the peeks) as with the leave fix; Esc closed the text viewer 4 of 4. The app's log: 27 lines, 0 WRN/ERR. **Not seen live:** the fix against the trigger itself, which did not come back. **On the pin commit `e1affd0`,** in a private worktree (a clean three-way merge in `ClipboardFlyout.Leaving.cs`): 0 errors, only the known CS0108; the whole suite 2,627 = 2,622 passed + 5 opt-in skipped, 0 failed; the documentation checker 0 gaps in the three changed files. **The landed build** `0.2.12-dev.42.g945fb25` (the pin and this fix), installed over `qa7` in the same desktop: the peeks opened 468–517 ms after the rest without Settings and 461–515 ms with it, staying 2 s (12 of 12); a 200-ms rest and a glide away opened none (6 of 6); after a viewer's Esc only the eye's tooltip showed (5 of 5), nothing after Shift (3 of 3); Settings three ways as before. **With the pin:** one click pins (5 of 5), and one click unpins after Win+V brought the inactive pinned panel forward (4 of 5; in the fifth the first click went to the peek that stayed open, below); the peek opened over the pinned panel (532 ms) and over it inactive after Alt+Tab (610 ms), and Alt+Tab closed it while the pinned panel stayed up; a header button's tooltip closed within 300 ms when the panel went away by Esc, a click on Notepad or Win+V (6 of 6). The app's log: 45 lines, 0 WRN/ERR. Three clicks of the first pin scripts hit nothing: their `Find` returned the pin's tooltip, which UI Automation lists under the button's name at the place it last showed, above the panel (a diagnostic read a `ToolTip` at 529,38 and the button at 529,74; §4); the later scripts click the button by its control type. **Seen once, not explained** (§6): after Alt+Tab left an Explorer window in front, a text peek over the inactive pinned panel stayed open while the mouse moved 130 px away (1 of 9 rounds; not in six more, two of them with Alt+Tab's switcher held up, whose moves closed it). Dev build `0.2.12-dev.42.g945fb25` in the dev-builds folder. **Added to 0.2.12** (asked after the Lines per card QA, the owner chose "Add 945fb25 to #7"): cherry-picked onto `release/0.2.12` as `ac841f7` (its code the same patch as `945fb25`'s) and `18091c3` (`6488318`'s record), with the peek fix of the first row. | `peektime.ps1`, `peekleave.ps1`, `settingsfocus.ps1`, `xwhat.ps1`, `qa.ps1`, `seed.ps1`, `pinpeek.ps1`, `pinclick.ps1`, `tipstay.ps1`, `peekstuck.ps1`, `switcherpeek.ps1` (session dc5a1e72's scratchpad, `guest/`); `doc_gaps.py` | ✅ the peeks with and without Settings, and with the pin; ⚠️ the trigger not seen fixed live |
+| **Tables fitted to the window** (2026-11-20, §2.50; the owner: "I want you to review the table, this table seems overflowing to other columns rather than more height per row or more with per column"). **The owner's transcript, content-free** (the same history entry 3242; only column widths printed): its Roadmap table's goal column is 68 characters, which the old 48-character cap spilled into the next column; at Cascadia Mono's advance the table (99 characters in all) now fits the peek's 106 and the viewer's 169, and the 172-character first table wraps its two long columns (peek 25, 39, 38; viewer 25, 57, 83). **Tests:** `TableLayoutTests` 49 (the water level for 9 cases and 2,000 random tables; the data-first layout; 13 wrap cases incl. `<br>`, a cut word, Chinese, an emoji, an accent; 15 width cases and a lone surrogate; the Roadmap in 405, 728 and no DIPs and at 200 %, exact lines, stops and row gaps; a quoted table; `<br>` and a tab in a cell; 34 columns in blanks; a measured Consolas advance; 1,000 random tables of Latin, Chinese, Japanese and emoji that never overflow a column, fit the budget and keep every character; `HasTables`), and three `TextViewRenderingTests` expectations moved from blanks to tabs. Thirteen mutations each caught (no width, no wrap, every character one wide, no data-first layout, stops without the gap, no floor, no leftover, no row gap, no blank fallback, the indentation not taken off, `<br>` joined, the measured advance ignored, no fit margin). The whole suite: 2,573 = 2,568 passed + 5 opt-in skipped, 0 failed (Core 2,082, Windows 491); a solution build without a new warning; the documentation checker 0 gaps in the six changed files. **Live** in a claude-desktops Windows 11 desktop on the worker (`bc-tablewrap`, 1600×900; the worker's drive 2 at a 35 % I/O stall, this PC with 2.5 GB free; deleted afterwards with its persist folder): packages of the worktree (`0.2.13-dev.tables`, then `tables2`) installed with `install.ps1 -Package`, a BC-TEST transcript of the owner's shape on the clipboard, F3. The first build drew no overflow and lined the Notes column up across a ✅, a ❌, a ⚠️, a Chinese row and a `<br>`, but its columns stood 9 % too far apart: the desktop draws Consolas (7.33 DIPs a character) where the writer assumed 8.0. The second measured it ("Consolas advances 0.5499 em a character") and drew two-character gaps; the viewer (1,358 DIPs of text) kept the Roadmap whole and wrapped the 195-character Step table inside its columns to the box's edge; *Wrap* off redrew both at their natural widths, scrolling sideways; 120 % and 200 % re-fitted them (at 200 % the goals wrap, the header stays whole); the hover peek (862 DIPs) fitted all three. App log: 38 lines, 0 WRN/ERR | `probe_fit.cs`, `table_model.py` (an independent model of the rules for the expected lines), `mutate_tables.py` (session b98cc553's scratchpad); claude-desktops MCP tools (`clipboard`, `press_keys`, `click`, `move_mouse`, screenshots, `run_command`) | ✅ Not run: a real GPU, Cascadia Mono on screen (the owner's PC has it; the probe used its advance), Windows' text size above 100 %, a right-to-left language |
+| **Tables inside quotes, list items and code blocks** (2026-11-20, §2.50; the owner: "The trasncript in my clipboard has > or code block and in them a markdown table. we should be rendering that table too even if its nested or quoted or whatever"). **The owner's transcript, content-free** (history entry 3242, read with `bclip get` into the scratchpad; only line shapes, counts and block kinds printed): 1,106 lines, 4 delimiter rows, all inside `>` quotes, no fence. Before the change the viewer's document had 85 blocks (18 headings, 2 list items, 65 paragraphs) and 0 tables; after it 32 quotes holding 34 headings, 515 list items, 180 paragraphs and 4 tables of 10×3, 7×5, 12×3 and 7×5 (the source's rows), and no `|---|` left in the RTF. **Tests:** `MarkdownTests` +17 (quotes holding a transcript's blocks in both modes, 12 shapes of nesting and lazy lines, tables and quotes under list items, quoted ASCII and Markdown tables with a kept layout, quote nesting bounded at 12 with lines of 1,000 marks, `SplitTables`) and three updated quote expectations; `TextViewRenderingTests` +4 (a quoted table one level right in the secondary color and a nested one two levels right, with the quoted fence still colored; tables drawn in a bare and a `text` fence while a `python` fence stays whole; 1,000 random nested documents; numbered markers' room). Five mutations each caught (the quote offset in the RTF, tables in list items, lazy lines, the code-block cut, the marker width), the sources restored byte for byte. The whole suite: 2,523 = 2,518 passed + 5 opt-in skipped, 0 failed (Core 2,032, Windows 491); the solution built without a new warning; the documentation checker 0 gaps in the six changed files. **Live** in a claude-desktops Windows 11 desktop on this PC (`bc-quotes`, 1600×900; the worker's drive was at 31 % I/O stall; deleted afterwards with its persist folder): packages of the working tree (`0.2.13-dev.quotes`, then `quotes2` with the marker fix) installed with `install.ps1 -Package`, a BC-TEST transcript of the owner's shape put on the clipboard: F3 drew the quoted messages indented in gray italics, the quoted heading bold, the nested lists, the quoted table as an aligned grid, the table of a quote in a quote two levels in, the table under "1. Hold the rest.", and the tool output's table between its code lines, while the `python` block's table-shaped string stayed code in its string color; the hover peek the same; "1.Hold" before the marker fix, "1. Hold" after. The app's log: 37 lines, 0 WRN/ERR | `probe_blocks.cs`, `probe_rows.cs`, `mutate.py`, `doc_gaps.py` (session b98cc553's scratchpad); claude-desktops MCP tools (`clipboard`, `press_keys`, `scroll`, `move_mouse`, screenshots, `run_command`) | ✅ Not seen: the release notes' dialog's bordered quotes (no release has one) |
+| **The Hebrew README's two alert boxes** (2026-11-20, right after the sync below). GitHub's own HTML of `docs/translations/README.he.md` at `e560272` (contents API, `application/vnd.github.html`) showed the IMPORTANT and TIP boxes as plain quotes with `[!IMPORTANT]` and `[!TIP]` as text: both stood inside the file's `<div dir="rtl">`. The API's gfm mode: a box inside `<div dir="rtl">`, a centered `<div>` or a `<details>` is not drawn, one after the `</div>` is. The `<div>` is now closed before each box and opened again after it. `check-translations.py`'s new check 6 (an alert inside an open `<div>` or `<details>`, in every translation): 2 problems on `e560272`'s Hebrew file, none on the fixed one or the other three; 13 of 13 planted cases (a box in a fold, in a centered `<div>`, in nested elements, upper-case tags; a one-line `<div>`, a tag in a code span or a fence, and a stray `</div>`, none of which may count). gfm rendering: each of the five READMEs draws the same two boxes, no marker left as text. The Hebrew boxes drawn in Chrome: the box left to right, its text right to left, the brackets around `-AddToPath` mirrored as they should be. All four `ok` with GitHub's rendering | `check-translations.py`; scratch `tools/test_alert_check.py`, `tools/alert_shot.py` (session 91bb0d99's scratchpad) | ✅ |
+| **The four README translations synced to README.md** (2026-11-20; the owner, on merge request #7: "please go over all the READMEs in all the languages and sync it to the main eng README"). Two English-only commits had never reached the translations: the restyle `dfada01` (the hero animation, the short *Features* list with its gallery, keys as `<kbd>`, the *Updates* fold, the alert boxes, the *Privacy* paragraph on the Store edition) and the short *Install* `1d363c0`; every other README change since `8864660` had reached all four (checked: `1d363c0` touched only *Install* and its two subsections, and `dfada01`'s 23 hunks change words in 8, the rest only keys). Rewritten in each language: the top block (the Docs badge, the link row, `hero.gif` with a translated alt text, the tagline without its dropped second sentence), *Features* (15 items, 6 + 6 nested, both gallery tables with translated captions and alt texts), *Install* with *For every user of a PC* and *Microsoft Store edition* (Microsoft's badge in each language, `zh-cn`, `ru`, `es`, `he`: each answered 200 and was drawn to check its words), and the Store paragraph of *Privacy*. By a script (scratchpad `tools/sync.py`), the same in each: 134 key code spans to `<kbd>` (`Ctrl+<click word>` keeps its word outside), the *Updates* fold with a translated summary, the IMPORTANT and TIP boxes. `check-translations.py` extended (keys, alerts, folds, the localized badge, Hebrew key combinations, an alert's marker skipped for block direction): before the sync it found 39 problems in the Chinese file alone (the old checks 19, none of them the *Updates* fold); after it, all four `ok` with GitHub's rendering; six planted faults (a key back to code, an alert dropped, the fold dropped, the badge in another theme, a Hebrew combination without its marks, a Hebrew block starting with Latin) were each named by its check. Hebrew drawn in headless Chrome with GitHub's HTML and stylesheet (scratchpad `tools/render_page.py`, `tools/measure.sh`): 55 key combinations, as in English, 0 mirrored (3 of 3 unmarked ones in a sample were); screenshots of the top, *Features*, *Install* (fold open) and the *Use* table read right to left with left-to-right keys and code. The new *Install* list was loose and laid out left to right: made tight. GitHub's own HTML of the published Hebrew README (contents API): its 3 loose lists lay out left to right; 2 still do (§6) | `check-translations.py`; scratch `sync.py`, `render_page.py`, `measure.sh` (session 91bb0d99's scratchpad) | ✅ Not read by a native speaker; the new sentences are Claude's, like the rest of the translations |
+| **The 0.2.12 candidate with the text-peek fix and the no-paste log lines** (2026-11-18; asked after the QA below, the owner chose "Add to #7 now" and, for the log lines, "Yes, in 0.2.12 too"). `release/0.2.12` + `36addb9` (the text-peek fix) + `3edf9f1` (the log lines: `c8a4c05` on `main`, the same patch-id), packaged as `0.2.12+3edf9f1` and installed fresh with its own `install.ps1 -Package -NoLaunch -NoUpdateCheck` in a second worker desktop (`bc-paste-qa2`, deleted afterwards with its persist folder; 22 s, Win+V taken over); BC-TEST data through `bclip` and a Win+PrtScn picture. Basic batch 20/20; peek batch 8/8, Enter with the text peek open included. **The log lines** (§2.52): Enter on a search that matches nothing logged "Not pasted: no card was selected and the list armed none (it was empty)." and left the panel open. The window the panel was opened from ended before the Enter: "Not pasted: the window the panel was opened from is gone. The item is on the clipboard." The panel opened from the tray icon, then Enter: "Copied only: no window to paste into was captured when the panel opened (…)", and the foreground went to the tray's overflow window. "Paste after choosing an item" off, two choices: nothing pasted, and the line said once. Not provoked: the panel put away while the search settled (a typed search then Enter settled at once, "search 0 ms", so the click came after the paste), and an Enter ignored as a repeat (a second Enter 15 ms after the first was held by the paste's key guard and typed after the pasted text, §2.54). The app's log: 80 lines over two starts, 0 WRN/ERR. The suite on `3edf9f1` in a private worktree: 2,524 = 2,518 passed + 5 opt-in skipped + 1 failed, `WindowDragTests.ScreenPointer_UnknownPointerIsUnknown`: GetCursorPos failed because this PC was locked (LogonUI running, no input desktop), alone too; it passed in every earlier full run | claude-desktops MCP tools; `loglines.ps1`, `temp.ps1` and the kit of the row below (session 2d8e09a0's scratchpad, `qa-guest/`) | ✅ |
+| **Paste on `release/0.2.12`, manual QA on the worker; a text-peek fault found and fixed** (2026-11-18; the owner: "Use manual qa to cover the pasting mechanism and ui's pasting functinalities like clicking card or context menu / Prove that paste is stable with release/0.2.12"). **Setup:** a claude-desktops Windows 11 desktop on the worker (`bc-paste-qa`, Tiny11 25H2 26200, 1920×1080; deleted afterwards with its persist folder), the release package of `release/0.2.12` at `a3b4d7f` (`package.ps1 -Version 0.2.12`, x64, `0.2.12+a3b4d7f`), BC-TEST data only. **Update path:** 0.2.11 installed with the README's installer (`-Version 0.2.11 -NoLaunch`, 33 s, Win+V taken over), BC-TEST copies through `bclip`, 0.2.11's whitespace symptom reproduced, then the package's own `install.ps1 -Update` with the contract command line (13 s): the same store and key, pins kept, the whitespace entry deleted once, 0 WRN/ERR. **Rounds**, each pasted into its target and read back (SendInput keys and clicks, UI Automation): a WinForms stage that logs every WM_PASTE with the clipboard's holder took the keys (Enter on the newest copy, ↓, ↑ into the pins, a search then Enter at once, Ctrl+1…9, Shift+Enter, Enter 250 ms after Win+V, typing on at once), clicks on the selected card, a row and a pin, the card menu's *Paste* and *Copy only* (then Ctrl+V), the Pinned, Text, Links, Run, Pwsh, Cmd and Claude tabs, the menu key and Shift+F10, Esc, the Alt+C and Alt+E searches, and "Paste after choosing an item" off: 35/35 once the harness was fixed. Notepad, Windows Terminal, a cmd console, Agentmaster and Claude Code 2.1.322 in Agentmaster, 10 cases each: 50/50; Claude Code again under load (`probe_ctrlv.cs` busy-after:500 with an attacher every millisecond): 10/10. Repeats: basic ×3 59/60, the failed case ×15 30/30, basic ×5 with key and foreground logs 100/100. `probe_ctrlv.cs --mode user`: Windows Terminal under load 8/8, with slow hooks and typing on 8/8, a cmd console under load 8/8, Windows Terminal with busy processors and typing on 8/8. By hand: a formatted copy (bold, italic, a link) into a rich editor and a text area in Edge, formatted and plain, 6/6; files pasted into Explorer, Shift+Enter and the menu's *Paste paths as text*; a picture into Paint, *Copy path*, *Save to temp and › Copy path*, *Copy image as a file*; the Run box; a group's view; the whitespace rule. **Found:** with the text peek open (the mouse resting on a long card's text) the first key was dropped. Enter pasted nothing and the panel stayed up, 3/3, and each next round failed with it (the panel was still open); pressed again, Enter did nothing either, since the peek reopens under a resting mouse. Clicks, Ctrl+N and Shift+Enter worked, and every key with the image peek open (§2.50 "Keys while the text peek is open"; in 0.2.11 too). **Fixed** (`dffd388`) and installed over the candidate with `install.ps1 -Update` (`0.2.12+36addb9`: `a3b4d7f` plus the fix, branch `qa/textpeek-keys`): one Enter pasted the long card's 510 characters; the peek batch 24/24 (22 read back, 2 picture pastes shown by the stage's WM_PASTE log: a text box takes no bitmap); basic and *more* again 26/26 (23 read back, 3 picture pastes). **Totals:** 395 rounds, 380 delivered as asked; 8 lost to the first run's harness (its clicks landed in Edge: the stage was not in front), 6 to the text-peek fault, and 1 unexplained: "up x2, enter: the top pin" once pasted nothing, with the stage in front afterwards and no log line, and passed the 21 times it ran later (220 later rounds lost nothing else); the logs of that moment were overwritten. The app's log: 0 WRN/ERR. Not re-checked live after the fix: the peek's own right-click menu (its code is unchanged) | claude-desktops MCP tools; `install.ps1 -Update`; guest scripts `lib.ps1`, `stage.ps1`, `cases.ps1`, `targets.ps1`, `setup-peek.ps1`, `fgwatch.ps1`, `summary.ps1` (session 2d8e09a0's scratchpad, `qa-guest/`) | ✅ after the fix; one paste lost once, unexplained |
+| **"It only produces space": a whitespace entry under the newest copy, and the rule that keeps such copies out** (2026-11-17, §2.3; the owner: "it only produces space so i just ctrl + V / It happens only if i pick the non first item in the list"). **The owner's PC, read-only:** `bclip list --json` (kinds, sizes, first and last use; the pasted texts tested for whitespace in memory, never printed) against the app's paste log lines: the six pastes 18:20:06–18:22:17Z were entries 3158 (four times), 3160 and 3162, each last use equal to its log line to the millisecond; 3158 is a single space copied in Notepad++ at 17:40:31Z, second in the list at 18:20:13 and 18:22:17 and first at 18:20:16, after its own pastes moved it up. **A claude-desktops Windows 11 desktop on this PC** (`bc-space`, 1600×900, the owner's dev.27 installed with `install.ps1 -Package`; deleted afterwards with its persist folder): Win+V, ↓, Enter (Enter held 110–120 ms, as a person presses it) pasted the selected item into Windows Terminal with a raw-mode Node reader (what Claude Code reads), Agentmaster (the owner's Release-B layout, registered loose) with that reader, and the real Claude Code 2.1.322 (a dummy API key, its own config folder): all 12 pastes, also with two pins, a low-level hook sleeping 50 ms per key event (`sent 181–231 ms`, as on the owner's PC), the mouse resting over the panel, three ↓ in 7 ms, and a second paste 1.2 s after the first; the panel labels a lone space "(whitespace · 1 char)". **The fix,** `0.2.12-dev.28.g9bdf84d` installed over dev.27 there: the old whitespace entry gone at the start (`fixup.whitespace_only.v1`), a copied space and a copied tab and line break never listed ("Skipped a copy that is only whitespace."), `BC-TEST eight` kept, ↓ + Enter pasted the right text; the whole suite 2,503 = 2,498 passed + 5 opt-in skipped, 0 failed | `bclip`, the app's logs; claude-desktops MCP tools; guest scripts `keys.ps1` (SendInput with a person's timing), `slowhook.ps1`, `keylog.js` (session 2d8e09a0's scratchpad, gone with the desktop) | ✅ |
+| **A paste never types "v": reproduced and fixed** (2026-11-17, §2.54; the owner: "I tried pasting to a terminal on a overloaded computer and i got 'v'"). A claude-desktops Windows 11 desktop on this PC (`bc-ctrlv`, Tiny11 25H2, 1600×900, 4 cores, no GPU; deleted afterwards with its persist folder); Agentmaster (the owner's Release build) with PowerShell, Windows Terminal 1.18 with cmd, a classic console; BC-TEST markers only. `probe_ctrlv.cs` with the one-call Ctrl+V of before: PASTED with no load (3/3 per terminal), the window suspended 500 ms before or after its activation (4/4 each), hooks at 100 ms per key event (4/4; 10/10 with 8 busy threads), a starved hand-over (6/6), attaches every 20 ms with slow hooks (8/8), the window busy 500 ms without attaches (8/8); **V 8/8** with the window busy 500 ms and a program attaching to its thread every millisecond (`--load busy-after:500 --attacher 1`). Ctrl held 1.5 s: PASTED 6/6; the key-state watch: V 6/6 ("V taken 3 ms" from a suspended window). Through BetterClipboard (Win+V and Enter, `--mode user`): the build of `d35e518` V 8/8 (23,103 attaches); the fix PASTED 8/8 (`0.2.12-dev.ctrlv2`, ready 562–690 ms, Ctrl held 42–99 ms, once 1024 ms at the cap), 8/8 (`ctrlv4`, ready 459–464 ms, held 44–142 ms) and 4/4 (`ctrlv5`) | `probe_ctrlv.cs` (`batch`, `hold:N`, `wait`, `user`, `--load`, `--attacher`, `--hook-delay`, `--cpu`); the app's log | ✅ |
+| **The keys typed during a paste** (2026-11-17, §2.54), the same desktop: an x typed N ms after the Enter (`--type-after N`). Hooks at 100 ms per event, x at 200 ms: Ctrl+X 4/4 with the hold alone (`ctrlv3`) and 3/4 with the build of `d35e518` (one X+PASTED): Windows let the x in between the events of its one `SendInput` call ("sent 613 ms" for four events). With the guard: x after the paste, as itself, 4/4 (`ctrlv4`) and 3/3 (`ctrlv5`), logged "2 key events typed meanwhile went in after it". The window busy 500 ms with attaches every millisecond, x at 300 ms (during the wait for it): X-LOST 4/4 with the guard engaged around the keys only (`ctrlv4`), after the paste 4/4 with it engaged from the Enter (`ctrlv5`); x at 560 ms: after the paste 4/4. No load: x at 20, 40, 100 and 250 ms after the paste in Agentmaster and Windows Terminal (3/3 each); at 0 ms it was lost (it reached the panel before the guard) | `probe_ctrlv.cs --mode user --type-after N` | ✅ |
+| **Ordinary pastes with the fix** (2026-11-17, `ctrlv5` and `ctrlv4`): Agentmaster, Windows Terminal and the console 3–6 of 3–6 each; 12 of 12 under 120 ms from the key (none logged); Notepad (WinUI) pasted the whole text; no modifier left down afterwards (`GetAsyncKeyState`); the app's log 41 lines, 0 WRN/ERR. The first readiness rule (two answers within 2 ms) had made them 57–313 ms slower (`ctrlv2`, "ready 57–313 ms"); one answer: ready 1–98 ms (`ctrlv3`) | `probe_ctrlv.cs --mode user`; desktop tools for Notepad | ✅ |
+| The paste's waits and guard, tests (2026-11-17, §2.54): `InputThreadWatchTests` 19 and `PasteKeyGuardTests` 12 (the 2 real-hook tests opt-in, run here with `BETTERCLIPBOARD_HOOK_TESTS=1`: the hook in place for milliseconds); seven mutations of the waits' rules each caught (the fallback without its answer count, without its time, none at all; a readiness without a ping, one that ignores the settle time; a hold without its least hold, one released at the first quick answer). The whole suite: 2,488 = 2,483 passed + 5 opt-in skipped, 0 failed (Core 1,997, Windows 491); a `--no-incremental` build without documentation warnings; the documentation checker 0 gaps | the test executables, `mutate_watch.py` (session 2d8e09a0's scratchpad) | ✅ |
+| **Formatted in the code font, every line as typed** (2026-11-16, §2.50; the owner: "we need mono font so we will see ascii tables formatted by default just because of the font"). A probe of ten BC-TEST table shapes (psql, PowerShell `Format-Table` and `Get-Process`, box drawing, MySQL, a dashed border, tab-separated, sqlite's column mode, pandas, kubectl), all detected as Markdown: before the change three came out of *Formatted* as copied (box drawing, MySQL, kubectl), after it all ten (sqlite's one difference a trailing blank, which is not drawn). Tests: `TextViewRenderingTests` +13 (the document's font table and size; eleven terminal tables as copied in both views; 500 random tables as typed), `MarkdownTests` +13 (indentation and tabs, an item's lines measured from its text, ten dashed-line cases each way, quotes and backslashes), and the random-markup test parsing with a kept layout too. Nine mutations each caught: no kept layout in the viewer; a dashed line under a paragraph, or above text, a rule; top-level lines trimmed; documents in Segoe UI again; a line-ending backslash eaten; a spaced dashed line a list item; a quote's indentation trimmed; an item's lines keeping the item's own indentation. The whole suite in a private worktree of `683ed40` plus the change: 2,456 = 2,453 passed + 3 opt-in skipped, 0 failed (Core 1,996, Windows 460); a `--no-incremental` build with only the known CS0108 and no warning in a changed file. **Live** in a claude-desktops Windows 11 desktop on the worker (`bc-mono`, 1600×900; deleted afterwards with its persist folder): a package of the change (`0.2.12-dev.mono`) installed with `install.ps1 -Package`, four BC-TEST copies through the clipboard. F3 on the PowerShell table opened *Formatted* (detected Markdown) in the code font, its `----  -----` line and its columns as copied; *As copied* the same font and alignment, with line numbers; the psql table with its leading blanks and right-aligned numbers lined up; the box-drawn table lined up; a Markdown note still drawn (a larger bold heading, bold, inline code on its background, task boxes, a bullet, a rule, an italic quote), all in the code font; the hover peek of the PowerShell card the same view. The app's log: 19 lines, 0 WRN/ERR. **The cards** (the owner's "All text cards mono", the same day): a package of that change (`0.2.12-dev.cards`) in a second worker desktop (`bc-cards`, deleted afterwards with its persist folder), six BC-TEST copies: the PowerShell, kubectl and box-drawn tables' cards lined up in the code font, a prose card and a Markdown note's card in it too, a link's card in the interface font; 0 WRN/ERR | `probe/tables.cs` and `mutate.py` (session 7deffe32's scratchpad); claude-desktops MCP tools (`clipboard`, `press_keys`, `click`, `move_mouse`, screenshots, `run_command`) | ✅ Not run: a real GPU, Consolas (PCs without Cascadia Mono), tables holding Hebrew or CJK text (their widths in a monospace font). |
+| **Every release page gets the downloads table** (2026-11-16; the owner, asked whether v0.2.11's page, the Latest, should get it: "and all other releases"). The twelve bodies were read through GitHub's API and kept (each was its tag's message plus the footer); new bodies built from each release's own files (session 4fa1e655's scratchpad, `make_release_bodies.py`): only the table and the signing note's sentence change. Before publishing, GitHub's renderer (mode gfm) drew one table per page, every link at a file of that release, at the Store page or at main's installer, and no Markdown as text. Published with `gh release edit --notes-file`, then read back: all twelve bodies equal the intended ones; titles, the Latest flag (v0.2.11), pre-release and draft flags and assets unchanged; the real v0.2.11 page in a headless Chrome shows the table | `gh api`, `gh release edit`, `verify_release_bodies.py`, a headless Chrome | ✅ |
+| **The whole interface checked for text that bypasses the catalogs, before 0.2.12** (2026-11-16, §2.37; the owner: "See if the entire UI is translated and if not close the gap"). **The catalogs:** `catalog.py check` 0 missing and 0 to review in zh-Hans, ru, es and he; the guards green. **The sources:** every XAML text attribute and element content without a markup extension, and every C# literal on its way to the screen without `UiText` (the App alone: 85 candidates, read one by one), found the classifier's English previews on cards and in *Delete stored…*'s examples, an Everything pick's caption and a forgotten item's title joined left to right in Hebrew, and the Store edition's uninstall details. **A pseudo-translated build** (`es.json` wrapped as `⟦English⟧`, `0.2.12-l10n.1` from the worktree; the real catalog put back right after packaging) in a worker claude-desktops Windows 11 desktop (`bc-l10n`, 1600×900; deleted afterwards with its persist folder), Spanish chosen, BC-TEST data through `bclip`, Win+PrtScn and Win+R, every window read through UI Automation: Settings empty and with a history, the panel's 13 tab states, the menus of a Win+R, a picture, a text, a file list and a pinned card, the tab menu, the groups column with its icon picker, a new group's menu and its delete confirmation, the search with whole word and regular expression on, the text viewer and its language menu, the image viewer and its file band, *Forget forever*'s confirmation and a clear's, the update dialog, *Delete stored…* with data, and the tray menu. Found beyond the sources: sizes ("26.4 KB" in the picture menu, "5.5 MB" in Settings' figures) and the update dialog's release date ("0.2.11 · 13 Nov 2026"); every other unmarked text was a name, a key, BC-TEST content or WinUI's own Spanish ("Elemento emergente"). **After the fixes,** a second pseudo build: Settings without an unmarked text of the app, its figures "⟦12 items · ⟦5.5 MB⟧ · …⟧", the picture menu's and the image viewer's sizes marked, and after *Check now* the release heading "0.2.11 · ⟦13 nov 2026⟧" (the catalog's pattern, Spanish month names). **Tests:** Core 1,990 (20 new) and Windows 461 (1 new): 2,451 = 2,448 passed + 3 opt-in skipped, 0 failed; no new warning (`StoredDataTests` keeps three older xUnit1051 lines); the documentation hook's checker 0 gaps on the changed files | source scans (`scan_xaml.py`, `scan_cs.py`), `make_pseudo.py`, guest scripts `uiadump.ps1`, `unmarked.ps1`, `keys.ps1`, `invoke.ps1`, `show.ps1` (session 08299f81's scratchpad); `dotnet test --solution` | ✅ Not seen at runtime (the code only): tray notifications, the hover peek's menu, the language picker, the Microsoft Store edition's setup window |
+| **README *Install* and the release notes' downloads table** (2026-11-16; the owner: "Our README.md Install page and release note's File-What table, Propose (AskQuestionsHtml)"). Three rounds of HTML questions, every option drawn by GitHub's renderer (pages in session 4fa1e655's scratchpad, `q/`): four *Install* layouts ("No, redo it simpler, less word - too much text"), three shorter ones ("I am missing portable"), then three with Portable as a way of its own: **P3**, the three ways as a list (174 words visible, today's section 1,039), with "the icon" in *Microsoft Store edition* and a collapsed *Advanced install* added on the owner's word. The table: **By need, with links**, the install command alone in the `install.ps1` row ("In install ps1, 2nd line put the sql command", read as the install command and confirmed with a page per reading). Landed on `release/0.2.12` (merge request #7), the owner's choice. Checked: GitHub's renderer, mode markdown for the README (no Markdown left as text; the fold: 9 options, the example, a link to *For every user of a PC*) and mode gfm for the notes (4 lists, 14 items, 1 table of 7 rows, 14 links, the command's bar shown as `|`); `ConvertTo-StoreNotes` on the final draft: 758 characters, the same as before, and on each of the six table variants; the docs site's `build.ps1 -Strict` from the worktree: 0 warnings, the badge on the *Install* and *Microsoft Store edition* pages; `check-translations.py --offline`: 19 differences per translation (12 before, the new 7 all in *Install*); winget's msstore source lists "BetterClipboard 9PHL574X9BF9" by Nucs (`winget search BetterClipboard --source msstore`, `winget show 9PHL574X9BF9 --source msstore`; nothing installed); Microsoft's two badge images and the Store page answer 200; GitHub's release page is 1,170 px wide at a 1280-px window (v0.2.11 in a headless Chrome), the update dialog's notes 402 px with equal columns (`UpdateView.xaml`, `MarkdownRenderer.CreateTable`), where today's file names break mid-word | `gh api markdown`, a headless Chrome with a throw-away profile, `pwsh` with `ConvertTo-StoreNotes` from the script's syntax tree, `build.ps1 -Strict`, `check-translations.py`, `winget` | ✅ Not run: the app's update dialog itself with the new table (its mock-up follows `MarkdownRenderer.CreateTable` and `UpdateView.xaml`) |
+| **0.2.12 prepared on `release/0.2.12`** (2026-11-16; the owner: "gather all the work in all the branches and everything we have done and haven't merged into a single branch … then I want you to read how we do release notes and prepare our own release notes", and "The goal is to create a single branch, which we will be creating a merge request for, with a version bump, and eventually doing a release"). **Branches:** `feat/localization`, `feat/localization-choices` and `pr/1-simplified-chinese` are ancestors of `main`; `feat/settings-search-delete-stored` (`2620733`) is not, but its tree equals `9324621`'s (the same change landed four minutes later on the same parent, `2bb0a56`), so nothing was missing. GitHub has no branch but `main`. Local `main` was 2 commits ahead of GitHub's (`20d61ad`, `683ed40`). **The AI conversation** (§2.35), uncommitted in the shared tree since 2026-10-22: asked in one question, the owner chose "Leave it out and stash". Every uncommitted hunk was checked to be that work (`aiChatMode`, `FocusComposer`, `AiOptions`, the §2.35 text; nothing changed that day), then stashed with its 16 new files (`tools/__pycache__/` left alone): `stash@{0}` "AI conversation (CLAUDE.md 2.35), uncommitted since 2026-10-22: left out of release 0.2.12 and stashed on the owner's word, 2026-11-16 (base 683ed40)". All 25 files equal, blob for blob, a backup taken first (session d5cc75cc's scratchpad, `ai-work-backup/`). **The Store edition** was found published (2026-11-15 19:51 UTC, 1.2.11.0 for x64 and ARM64, in Microsoft's public catalog) while the README still said "Not in the Store yet": the five READMEs now link its Store page; `check-translations.py --offline` prints the same before and after. **The branch:** made from local `main` in a private worktree; local `main` left at `683ed40`, where the shared tree sits. This record, then "Version 0.2.12" (`Directory.Build.props` only) with the notes draft in its message. **The notes:** 67 lines, none over 117 columns outside the table, nothing wrapped inside a link, a code span or an emphasis, no other version named, the three README anchors present; GitHub's Markdown API: 4 lists with 14 items, one table of 7 rows, one code block, 5 links, no Markdown left as text; the Store's "What's new" through `submit-store.ps1`'s own `ConvertTo-StoreNotes`: 758 of 1,500 characters, each lead-in's first sentence readable alone. Then pushed for a pull request (the owner: "Push and open it"). **Later the same day** (the owner's "Add to #7"): the viewer's Formatted view and the panel's text cards in the code font, cherry-picked from `main` (`bedf502`, `b810246`), and the notes' paragraph **Tables line up.** after the pins one: 4 lines, none over 117 columns, its link and emphasis whole, GitHub's renderer as intended; the Store's "What's new" 875 of 1,500 characters. **2026-11-17** (the owner's "Add to #7 now", asked once the fix was on `main`): the paste fix (§2.54, `main`'s `a06b5fe`) cherry-picked as `5a1ab4b` (CLAUDE.md's two count conflicts merged by hand), and the notes' **Fixed** list gained its last bullet (3 lines, none over 117 columns, every code span whole; the Store's "What's new" still 875 characters, "Fixed: 8 fixes."); the branch's suite 2,509 = 2,504 passed + 5 opt-in skipped, 0 failed (Core 2,017, Windows 492). **Later on 2026-11-17** (the owner answered "1 and 2" to "Add to #7 now" and "Try dev.28 first": added at once, and the owner tries the dev build meanwhile): the whitespace fix (§2.3, `main`'s `9bdf84d`) cherry-picked as `239a203` (CLAUDE.md's two count conflicts merged by hand), with `main`'s §5 row of the finding (`168c7c0`), and the notes' **Fixed** list gained its last bullet (3 lines, none over 117 columns; the Store's "What's new" still 875 characters, "Fixed: 9 fixes."); the branch's suite 2,524 = 2,519 passed + 5 opt-in skipped, 0 failed (Core 2,032, Windows 492). **2026-11-18** (after the paste QA on the worker, §5: the owner chose "Add to #7 now" for the text-peek fix and "Yes, in 0.2.12 too" for the no-paste log lines): `main`'s `dffd388` and `c8a4c05` cherry-picked as `36addb9` and `3edf9f1` (the same patch-ids), with `main`'s records `6f62382` and `7bdecc7`, and the notes' **Fixed** list gained its last bullet (3 lines, none over 117 columns, every code span whole; the Store's "What's new" 876 characters, "Fixed: 10 fixes."); the branch's suite 2,524 = 2,518 passed + 5 opt-in skipped + 1 failed only because this PC was locked (`WindowDragTests.ScreenPointer_UnknownPointerIsUnknown`, §5). **2026-11-20** (the owner chose "Add to #7 now" for the quoted tables, §2.50): `main`'s `f5c6729` cherry-picked as `b19a06a` (CLAUDE.md's three record conflicts merged by hand), and the notes' **Tables line up.** paragraph gained two sentences (none over 117 columns, the README link on a line of its own; GitHub's renderer: 4 lists, 18 items, one table, one code block, no Markdown left as text; the Store's "What's new" unchanged, 876 characters); the branch's suite 2,545 = 2,540 passed + 5 opt-in skipped, 0 failed (Core 2,053, Windows 492). **2026-11-20, later** (the owner chose "Add to #7 now" for the table fit, §2.50): `main`'s `1137771` cherry-picked as `a8871cc` (same patch-id; CLAUDE.md's three record conflicts merged by hand), the *Wrap* bullet of the five READMEs gained the table fit (`check-translations.py` ok, GitHub's rendering included), and the notes' **Tables line up.** paragraph gained a sentence (none over 117 columns; GitHub's renderer: 4 lists, 18 items, one table, one code block, no Markdown left as text; the Store's "What's new" unchanged, 876 characters); the branch's suite 2,594 = 2,589 passed + 5 opt-in skipped, 0 failed (Core 2,102, Windows 492); a standalone run of the Windows tests, made only to count them, once had 1 failure not captured by name, and 492 of 492 passed in two reruns. **2026-11-20, later still** (the owner chose "Add to #7 now" for leaving the panel, §2.56): `main`'s `2995049` cherry-picked as `e521ecc` (same patch-id; CLAUDE.md's three record conflicts merged by hand), and the notes' **Fixed** list gained an eleventh bullet (none over 117 columns; GitHub's renderer: 4 lists, 19 items, one table, one code block, no Markdown left as text; the Store's "What's new" still 876 characters, its last line now "Fixed: 11 fixes."); the branch's suite 2,597 = 2,592 passed + 5 opt-in skipped, 0 failed (Core 2,105, Windows 492). **2026-11-20, last** (the owner chose "Add to #7 now" for the pin, §2.55): `main`'s `e1affd0` cherry-picked as `1cdae1e` (CLAUDE.md's two count conflicts merged by hand; the four translations' *Features* lists too: the branch's are the restyled ones, so the pin's bullet went into them as one line and *A panel that fits you* gained its buttons, and the keys of the pin's paragraph under *Use* are `<kbd>` like the rest of them; `check-translations.py` ok, GitHub's rendering included), and the notes gained the paragraph **Paste one item after another.** after the pins one (5 lines, none over 117 columns, its link, code spans and emphasis whole; GitHub's renderer: 4 lists, 19 items, one table, one code block, no Markdown left as text; the Store's "What's new" 1,044 of 1,500 characters, the pin's lead-in and first sentence on a line of their own); the branch's suite 2,648 = 2,643 passed + 5 opt-in skipped, 0 failed (Core 2,133, Windows 515). **2026-11-20, the pin's tip** (the owner chose "Add to #7 now" for the tip, §2.55): `main`'s `c2e21b5` cherry-picked as `5892f94`, on top of another session's `d244723` (the Store step). CLAUDE.md's three record conflicts were merged by hand: §2.1's rows and §3's total with this branch's counts, and §5's new row before this branch's pin row. The notes' **Paste one item after another.** paragraph gained a line of its own, "Until you close it, a tip at the pin explains how pinning works." No line is over 117 columns. GitHub's renderer: 4 lists, 19 items, one table, one code block, no Markdown left as text. The Store's "What's new" is unchanged at 1,044 of 1,500 characters (only the paragraph's lead-in and first sentence go there). The branch's suite: 2,650 = 2,645 passed + 5 opt-in skipped, 0 failed (Core 2,135, Windows 515). **2026-11-20, Lines per card** (the owner's request that day, §2.57; built on this branch, where every change goes while #7 is open): `573dd0f`, then the notes' paragraph **Up to 40 lines on a card.** after the tables one: 3 lines, none over 117 columns, its link and emphasis whole, nothing that names another version. GitHub's renderer: 4 lists, 19 items, one table, one code block, no Markdown left as text. The Store's "What's new" 1,219 of 1,500 characters, the paragraph's lead-in and first sentence on a line of their own. The branch's suite: 2,680 = 2,675 passed + 5 opt-in skipped, 0 failed (Core 2,165, Windows 515). **2026-11-20, Background transparency and the header buttons' order** (the owner's request that day, §2.58; every change goes to #7 while it is open): `main`'s `3b737d1` cherry-picked as `5b1da1b`; CLAUDE.md's three record conflicts were merged by hand (§2.1's rows and §3's total with this branch's counts, §5's two new rows before this branch's newest). The notes' **Paste one item after another.** paragraph says the arrows order the buttons and the gear stays last, and a paragraph of its own, **Clearer or more frosted.**, comes after the lines one (no README link: the owner had the README changes undone, so the README does not describe it). No line over 117 columns, links and emphasis whole, nothing that names another version. GitHub's renderer: 4 lists, 19 items, one table, one code block, no Markdown left as text. The Store's "What's new" 1,412 of 1,500 characters. The branch's suite: 2,707 = 2,701 passed + 5 opt-in skipped + 1 failed, `QuickSuccessiveCopies_AreAllCaptured` (24 of 25 copies; alone 1 of 3 passed while the owner played a game on this PC; it passed in `main`'s whole run half an hour earlier, and nothing in this change touches capture). **2026-11-20, two peek fixes** (asked after the Lines per card QA, the owner chose "Add 945fb25 to #7" and "Fix it now on #7", §2.56): `main`'s `945fb25` and `6488318` cherry-picked, and the peek that opened after the mouse left its card fixed here; built on `78e2489` while the background transparency reached GitHub, then rebased onto `495b3a7` as `ac841f7`, `18091c3` and `0516dc1` (CLAUDE.md's conflicts merged by hand: §2.1's App row, and the §5 rows: the peek fix's first, the other session's two after it, then Lines per card's; the first notes commit was dropped and written again on the other session's draft). The notes' **Fixed** list gained a twelfth bullet for both: 3 lines, none over 117 columns, nothing that names another version. GitHub's renderer: 4 lists, 20 items, one table, one code block, no Markdown left as text. The Store's "What's new" unchanged at 1,412 of 1,500 characters ("Fixed: 12 fixes."). The branch's suite on `0516dc1`: 2,707 = 2,702 passed + 5 opt-in skipped, 0 failed (Core 2,192, Windows 515). **2026-11-20, the panel that leaves the keyboard with your app** (the owner's request that day, §2.59; every change goes to #7 while it is open): `main`'s `d5bfcf5` cherry-picked as `1363d6e`; CLAUDE.md's three record conflicts were merged by hand (§2.1's App and test rows and §3's total with this branch's counts, §5's three new rows before this branch's newest). The notes gained a paragraph of its own, **Keep your place.**, after the list one (no README link: the README is not changed for a feature unless the owner asks). No line over 117 columns, spans and emphasis whole, nothing that names another version. GitHub's renderer: 4 lists, 20 items, one table, one code block, 16 links, no Markdown left as text. The Store's "What's new" 1,492 of 1,500 characters, its long form kept (the paragraph's lead-in and first sentence were kept short for that). The branch's suite on `1363d6e`: 2,824 = 2,816 passed + 8 opt-in skipped, 0 failed (Core 2,240, Windows 584). **2026-11-20, the current screen is the mouse's** (the owner's request that day, §2.38; every change goes to #7 while it is open): `main`'s `58242cc` cherry-picked as `855a9a8`; CLAUDE.md's two record conflicts were resolved by hand (§2.1's Windows test row and §3's total, with this branch's counts: Core 2,240, Windows 575). The notes' **Fixed** list gained a thirteenth bullet: 3 lines, none over 117 columns, emphasis whole, nothing that names another version, no README link (the owner chose to leave the README as it is). GitHub's renderer: 4 lists, 21 items, one table, one code block, 16 links, no Markdown left as text. The Store's "What's new" unchanged at 1,492 of 1,500 characters, its long form kept ("Fixed: 13 fixes."). The branch's suite on `855a9a8`: 2,815 = 2,807 passed + 8 opt-in skipped, 0 failed (Core 2,240, Windows 575). **2026-11-21, Win+V over Start** (the owner's report of 2026-11-20, §2.61; every change goes to #7 while it is open): `main`'s `46f42c3` cherry-picked as `7036c41`; the code applied cleanly, and CLAUDE.md's two record conflicts were resolved by script (§2.1's App and Windows test rows and §3's total, with this branch's counts: Core 2,312, Windows 614). The notes' **Fixed** list gained a fourteenth bullet: 3 lines, none over 117 columns, code spans whole, nothing that names another version, no README link (the README is not changed for a feature unless the owner asks). GitHub's renderer: 4 lists, 22 items, one table, one code block, 16 links, no Markdown left as text. The Store's "What's new" unchanged at 1,429 of 1,500 characters, its long form kept ("Fixed: 14 fixes."). The branch's suite on `7036c41`: 2,926 = 2,918 passed + 8 opt-in skipped, 0 failed (Core 2,312, Windows 614). **2026-11-21, the integrations' limits** (the owner's request that day, §2.62; built on this branch, where every change goes while #7 is open): `b9a18ac` (the limits) and `8b1c9f6` (the Cmd tab's reader, found in their live check), rebased onto `03c94aa` without a conflict. The notes' **Room for everything.** paragraph gained a closing sentence on the other apps' tabs (not its first sentence, so the Store's "What's new" is unchanged at 1,429 of 1,500 characters), and the **Fixed** list a fifteenth bullet ("Fixed: 15 fixes."): no line over 117 columns, code spans and emphasis whole, nothing that names another version, no README link (the README is not changed for a feature unless the owner asks). GitHub's renderer: 4 lists, 23 items, one table, one code block, 16 links, no Markdown left as text. The branch's suite on `8b1c9f6`: 2,950 = 2,942 passed + 8 opt-in skipped, 0 failed (Core 2,331, Windows 619). | `git merge-base --is-ancestor`, tree comparison, `git stash` and `git hash-object --path` against the backup, the Store's public catalog, `check-translations.py`, `gh api markdown`, a scratch `whatsnew.ps1` (the function from the script's syntax tree) | ✅ prepared; CI runs on the pull request |
+| **The list opens below the pins** (2026-11-15, §2.28; the owner: "When Win+V is pressed … the scroll should be at the first item that is not pinned"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-pins`, Tiny11 25H2, 1600×900; the worker had no golden template; deleted afterwards with its persist folder), packages of a private worktree at `dbaddb7` plus the change (`0.2.12-dev.pins1`, then `pins2` with the empty-list reset) installed with `install.ps1 -Package`; BC-TEST items through `bclip` (5 pins: 3 texts and 2 links; 32 copies), read through UI Automation after each step (each realized row's offset from the list's top, the scroll position). **Win+V:** `copy 30` at offset 0 and selected, the 5 pins off screen above; **Up:** the lowest pin selected at the top edge; **the wheel up:** every pin in view (the selection follows the pointer, §2.28's rule); **Esc, Win+V:** below the pins again. **Tabs:** Pinned (nothing but pins) at its top with no room; Text below its 3 pinned texts; **Links** (2 pinned, 2 links: a short list) with `link-2` at the top, the scroll at its end (100 %) and empty room below the last card. **A search** ("link"): every match from the top, the pinned ones in view, the selection on `link-2`, the room gone; **Esc** (search cleared): below the pins again, the room back. **A copy arriving** while the panel shows (`bclip put`): the new copy at the top, the pins out of view, the user's selected card kept. **A group** (made with +, a pin and a copy added through the card menu): its pin in view at the top, the copy selected, no room; **the group left:** below the pins again. **Ctrl+P** on the armed copy: it heads the pins, selected and in view; the next Win+V: the next copy at the top. **A cold start** (`--exit`, `--background`), then Win+V with the screen copied every 16–31 ms: no frame shows a pin (78–143 ms after the key: the known first-summon frame of unbound defaults, §6; from 174 ms: the list below the pins). **Settings:** the card's new description; "Show pinned items first" off: the list at its top in time order, row 0 selected; on again (after the silent restart): below the pins. **Enter** pasted `BC-TEST r1 copy 30` into Notepad. **14 pins** (more than a screen): `copy 30` at the top, every pin above. `pins2`: the same for Win+V, Links, the empty Images tab and Links again. The app's log over both builds: 168 lines, 0 WRN/ERR; first summons 27–45 ms. Locally: `PanelNavigationTests` 147 (15 new: the rule, 13 room cases, 2,000 random lists), three mutations (no room term; no rounding tolerance, caught by its own case once the random lists missed it; groups ignored) each caught; the whole suite 2,430 = 2,427 passed + 3 opt-in skipped, 0 failed (Core 1,970, Windows 460); a `--no-incremental` build with only the known CS0108 and xUnit analyzer warnings; the documentation checker 0 gaps on changed lines; `catalog.py check` 0 missing and 0 to review; `check-translations.py --offline` only the 12 known differences per translation, none in *Use* | claude-desktops MCP tools (`press_keys`, `scroll`, `click`, `element_action`, screenshots, `run_command`); guest scripts `state.ps1`, `seed.ps1`, `setup.ps1`, `restart.ps1`, `frames.ps1` (session 9472c5dc's scratchpad, `qa/`) | ✅ Not run: a real GPU, a panel resized while open, the Everything, shell and prompt tabs with pinned entries (the same code path) |
 | **The failed certification fixed, and the submission resubmitted** (2026-11-15, §3.5; the owner pasted Microsoft's mail "Fix certification issues in your product, BetterClipboard"). The report, read in a tab of my own in the owner's Chrome (its pop-up caught with a `window.open` wrapper, a second late pop-up closed by its opener): one finding, policy 10.1.3, search term "Win+V" in all five languages. The owner chose "copy history" (each language) and "You resubmit". The kit changed (check 0 problems, 52 tests pass). The listing page's Keywords box did not save (three saves, English and Chinese: the request carried the old keywords; read back unchanged), so the listings went in by import: export captured in the page, the file generated from the kit, the two compared cell by cell (5 search terms and the copyright row's usual form, nothing else), imported, exported again: `--check` "is what the kit says, with 8 screenshots in the kit's order in every language". *Resubmit for certification*: "Product submission: In certification" again, about 19:30 UTC. No native dialog left open; my tab closed | chrome-devtools in a tab of my own, `make-store-listing-csv.py`, `check-store-listing.py`, `test-store-listing.py`, scratch cell diff | ✅ resubmitted. The result comes with Microsoft's next mail |
 | **The text peek's 15-pixel radius, live** (2026-11-15, §2.50; the owner: "i want a 15px radius of movement to exit the viewer after it showed"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-radius`, 1920×1080 at 100 %, no GPU; the worker was unreachable; deleted afterwards with its persist folder), a self-contained build of a private worktree (`eaf0f65` plus only this change, `0.2.12-dev.radius1`) started with pre-seeded settings, and one 30-line BC-TEST text copied through the clipboard. The peek opened with the mouse resting at (1052, 522); moved to 10 px right, (10, 10) at 14.1 px and (15, 0) at exactly 15 px, it stayed; at (12, 10), 15.6 px with each axis under 15, it closed. Again with its right-click menu: the mouse moved into the menu (about 160 px), Esc closed the menu, and the circle was centered there: 10 px kept the peek, 20 px closed it. The app's log: 18 lines, 0 WRN/ERR | claude-desktops MCP tools (`clipboard`, `move_mouse` single jumps, `click`, `press_keys`, screenshots); guest script `setup.ps1` (settings, unpack, start) | ✅ Not run: a monitor at another scale (the radius is in physical pixels), touch and pen (a touch or pen move still closes at once) |
-| **The Store pipeline connected** (2026-11-14 and 15, §3.5; the owner: "Lets do it, guide me through what to do and finish this up", then "Again lets try to publish"). In the owner's Azure directory, with `az`: a work account with Global Administrator (its first password in a file, changed by the owner at the first sign-in, then deleted) and the application *BetterClipboard Store submission (GitHub Actions)*. In the owner's Chrome, in a tab of my own (closed afterwards): the tenant associated from the developer account (the work account in the picker, then the confirmation page's *Confirm*: "Tenant association complete … now has Account admin permissions"), and, signed in again as the work account, the application added with Manager (Windows). The three secrets set, the key by pipe (it ends 2027-11-15). *Microsoft Store › check*: run 43719040350 signed in and read the app, and was red with "exit code " (the script's Check mode ended with a `return`); with `8939afe`, pushed alone onto GitHub's `main` as a temporary branch (deleted afterwards), run 43719877269 was green: "App 9PHL574X9BF9 is "BetterClipboard": nothing is published yet, and a submission is pending". `test-submit-store.ps1` 45 of 45; HEAD's unfixed script fails exactly its two new in-process checks ("LASTEXITCODE 99"). Not read: the work account's second factor and the directory's security defaults (the Azure CLI's token lacks the scopes) | `az`, `gh secret set`, chrome-devtools in a tab of my own, `gh workflow run store.yml --ref <branch> -f mode=check`, `test-submit-store.ps1` | ✅ connected. Submitting waits for the first published submission |
+| **The Store pipeline connected** (2026-11-14 and 15, §3.5; the owner: "Lets do it, guide me through what to do and finish this up", then "Again lets try to publish"). In the owner's Azure directory, with `az`: a work account with Global Administrator (its first password in a file, changed by the owner at the first sign-in, then deleted) and the application *BetterClipboard Store submission (GitHub Actions)*. In the owner's Chrome, in a tab of my own (closed afterwards): the tenant associated from the developer account (the work account in the picker, then the confirmation page's *Confirm*: "Tenant association complete … now has Account admin permissions"), and, signed in again as the work account, the application added with Manager (Windows). The three secrets set, the key by pipe (it ends 2027-11-15). *Microsoft Store › check*: run 43719040350 signed in and read the app, and was red with "exit code " (the script's Check mode ended with a `return`); with `8939afe`, pushed alone onto GitHub's `main` as a temporary branch (deleted afterwards), run 43719877269 was green: "App 9PHL574X9BF9 is "BetterClipboard": nothing is published yet, and a submission is pending". After the push of `main` (2026-11-15, `f6083ff..dbaddb7`), the run from `main` (43754741556) answered the same. `test-submit-store.ps1` 45 of 45; HEAD's unfixed script fails exactly its two new in-process checks ("LASTEXITCODE 99"). Not read: the work account's second factor and the directory's security defaults (the Azure CLI's token lacks the scopes) | `az`, `gh secret set`, chrome-devtools in a tab of my own, `gh workflow run store.yml --ref <branch> -f mode=check`, `test-submit-store.ps1` | ✅ connected. Submitting waits for the first published submission |
 | **Speed survey: what else was slow** (2026-11-15, §2.53; the owner: "What else (other functionalities) that are too slow, improve"). The owner's log (2026-10-31 to 11-15): 39 summons of 101–538 ms (median 154), first summons 53–875 ms, the warm-up 485–7,218 ms. A claude-desktops Windows 11 desktop on this PC (`bc-speed`: Tiny11 25H2, 4 cores, no GPU; the owner's demo data; deleted afterwards with its persist folder), packages `0.2.12-dev.speed1` to `speed4` with temporary stage marks and page-fault counts (never committed): summons 33–94 ms with the memory in place (130–250 faults), 33–55 ms after a trim with the pages in RAM (6,200–8,200), 5.1–11.7 s after a trim and a standby purge (4,600–15,500), 58–110 ms with no trim (75–415); Settings 1.19–1.23 s (JIT) → 0.58 s (ReadyToRun), the warm-up 713 → 428–478 ms, the first Win+V 214 → 88 ms; a 3840 × 2400 bitmap-only picture's peek 1.44–1.49 s (PNG encode) → 0.74–0.83 s (.bmp); the four tab lookups 0–2 ms in place, 0.1–1.2 s purged; tab reloads 20–140 ms, Files 257–368 ms; the prefetch prototype read 57–58 MB in 5.0–8.4 s and no summon got faster | `probe_paste.cs` (`--memory warm|trim|purge`), the builds' temporary log lines, the owner's log | ✅ |
 | **The final build in the test desktop** (2026-11-15, §2.53; `0.2.12-dev.speed5`, this change before its docs), installed over the earlier build with `install.ps1 -Package`. The summon's new log line: "(queued 6 ms, prepared 20 ms, moved 9 ms, activated 37 ms, shown 3 ms; 243 page faults)" for the first summon after the install, "(…, activated 105 ms, …; 84 page faults)" for a slow one that waited for the window's activation, "(queued 1158 ms, prepared 463 ms, moved 178 ms, activated 980 ms, shown 6 ms; 12,508 page faults)" after a purge; warm summons a median of 32.8 ms (the probe). The 4K picture's peek drawn from its bitmap. Settings opened and drew its page; closing it restarted the app silently ("Silent restart: the shortcuts were held during the switch"); the warm-up 427–513 ms after a restart; `bclip --version`, and `status` refused with the command line off (exit 3). Task Manager's "Memory" 32 MB after the start and 50–52 MB after using the panel; private 53 and 84 MB. Found: a paste of the 37 MB bitmap-only picture reads it at the paste ("formats 488–794 ms", §6). The app's log: 0 WRN/ERR | claude-desktops MCP tools; `probe_paste.cs`; performance counters; the app's log | ✅ |
 | Speed, tests and packages (2026-11-15, §2.53): `StageTimelineTests` 2, and the 7 `PasteTimelineTests` on the derived class; the whole suite in a private worktree of `03da017` plus the change: 2,415 = 2,412 passed + 3 opt-in skipped, 0 failed (Core 1,955, Windows 460); a `--no-incremental` build with 0 errors and no warning in a changed file; the documentation hook's checker 0 gaps. `package.ps1` built both architectures with ReadyToRun (ARM64 cross-compiled) and the .7z archives; `package-chocolatey.ps1` packed 105.3 MB; `package-msix.ps1 -ForStore` built both Store packages with their checks. The shared libraries in the zip are precompiled (`BetterClipboard.Core.dll` 3.5 MB against 2.0 MB, `SQLitePCLRaw.core.dll` 110 against 51 KB). `check-translations.py`: the same 12 differences per translation as before (the restyle, §6), and GitHub's rendering of the Hebrew one without direction problems | the test executables, the release scripts, `check-translations.py` | ✅ |
 | **Instant paste, measured** (2026-11-15, §2.52; the owner: "I Win+V, go up 1/2 cards to the pinned ones and press enter. there is a delay of 400ms-1000ms"). A claude-desktops Windows 11 desktop on this PC (`bc-paste`, Tiny11 25H2, 1600×900, 4 cores, no GPU; deleted afterwards with its persist folder), packages of `dfada01` with the old order plus timing marks (`0.2.12-dev.pastea`) and of the fix (`pasteb`, `pastec`), installed over each other with `install.ps1 -Package`; 2 pinned and 6 copied BC-TEST items through `bclip`. `probe_paste.cs`, 8 rounds a row, Win+V, Up, Up, Enter into a Win32 edit box. Old order: Ctrl+V taken at a median of 181 ms warm, 120 ms trimmed, 355 ms purged (text 187 / 123 / 366 ms; an earlier purged run 775 ms, 309–1,438); its log: `panel away` 42–136 ms warm and 84–1,258 ms purged, `formats` up to 150 ms, `settle` 40–56 ms. `pasteb` (activation before the write, put-away right after the Ctrl+V): purged, Ctrl+V taken at 63–194 ms (one round stalled); warm, text at 62–157 ms over two runs, 12–45 ms after the keys: the target waited on the panel's busy UI thread. `pastec` (the order of §2.52): Ctrl+V taken at 56 / 51 / 94 ms, text at 59 / 55 / 98 ms, 3–5 ms after the keys; no paste over 120 ms in the app's log. One purged round's Enter was handled ~280 ms late by a summon still page-faulting (text at 408 ms) | `probe_paste.cs`; the app's log; `install.ps1 -Package` | ✅ |
 | **Instant paste, functional pass** (2026-11-15, the same desktop, `pastec`): Up, Up, Enter pasted the top pin into Notepad (WinUI) and into an Edge textarea (`browser_evaluate` read it back); Up, Enter pasted the second pin at Windows Terminal's prompt; a search typed with Enter at once pasted its match; Esc, Esc, then "xy" typed: the letters landed in Notepad; the next Win+V showed an empty search, the pasted pin bumped to the top of the pins and the newest copy armed; *Copy only* from Shift+F10 put the item on the clipboard (read back) with nothing pasted and the terminal in front; Ctrl+3 pasted the third card; a panel opened from the tray copied on Enter, pasted nothing and gave the foreground to the tray's overflow window. The app's log: 0 WRN/ERR. The final build (`pasted`: the rest of every put-away queued, also for Esc and a click elsewhere): the probe again, text in the target at a median of 52 ms warm (6 rounds) and 88 ms purged (5 rounds); Esc, Esc, then "xy": the letters landed in Notepad; with the panel open after a typed search, a click on Notepad's text: the panel went away, the click and "zz" reached Notepad, and the next Win+V showed an empty search with the newest copy armed; Esc and Win+V sent together: the panel came back and took "num" into its search; the app's log 0 WRN/ERR. Locally: the whole suite 2,413 = 2,410 passed + 3 opt-in skipped, 0 failed; `PasteTimelineTests` 7; a `--no-incremental` build with 0 errors and no warning in a changed file; the documentation checker 0 gaps | claude-desktops MCP tools (`press_keys`, `click`, `clipboard`, `browser_evaluate`, screenshots); `dotnet test --solution` | ✅ Not run: a real GPU, Office, Chrome, Electron and Java apps |
-| **The README restyled** (2026-11-15, §4, §3.4; the owner: "Now make the README.md neat and attractive", then "B · Scannable + gallery" with "The picture above, should be a gif, centered small version expands to large, few sec and reverse and repeat", and "English first"). README.md rendered through GitHub's `/markdown` API (mode `markdown`, the way README files render) and drawn with github-markdown-css 5.8.1 in a headless Chrome, the alerts drawn from the API's `gfm` output: 31 headings, the same as before (so every anchor and docs page stays), 2 `<details>`, 5 alerts, 14 pictures, no raw Markdown left, the *Features* list tight. `build.ps1 -Strict`: 0 warnings, 38 pages; its first run refused two different `prompts.png`, so the gallery's pictures got names of their own. The hero GIF from 24 frames of a real resize of the panel (0.2.11, the owner's demo data, ShareX and Everything installed so every tab shows) in a claude-desktops Windows 11 desktop on this PC (2560 × 1440 at 150 %, dark; deleted afterwards with its persist folder): 960 × 643, 46 frames, 6.4 s a loop, 3.8 MB, the tabs appearing as the panel widens. `gallery.py` and `hero-gif.py` rebuild the five gallery pictures and the GIF byte for byte; the documentation checks find 0 gaps in the three new tools; `hero-frames.ps1` parses in PowerShell 7 and 5.1. `check-translations.py --offline`: 12 differences in each translation, all from the restyle (§6) | `gh api markdown`, a headless Chrome, `build.ps1 -Strict`, claude-desktops MCP tools, `cmp`, `check-translations.py` | ✅ Not seen: the README on github.com itself (once pushed); the translations (§6) |
+| **The README restyled** (2026-11-15, §4, §3.4; the owner: "Now make the README.md neat and attractive", then "B · Scannable + gallery" with "The picture above, should be a gif, centered small version expands to large, few sec and reverse and repeat", and "English first"). README.md rendered through GitHub's `/markdown` API (mode `markdown`, the way README files render) and drawn with github-markdown-css 5.8.1 in a headless Chrome, the alerts drawn from the API's `gfm` output: 31 headings, the same as before (so every anchor and docs page stays), 2 `<details>`, 5 alerts, 14 pictures, no raw Markdown left, the *Features* list tight. `build.ps1 -Strict`: 0 warnings, 38 pages; its first run refused two different `prompts.png`, so the gallery's pictures got names of their own. The hero GIF from 24 frames of a real resize of the panel (0.2.11, the owner's demo data, ShareX and Everything installed so every tab shows) in a claude-desktops Windows 11 desktop on this PC (2560 × 1440 at 150 %, dark; deleted afterwards with its persist folder): 960 × 643, 46 frames, 6.4 s a loop, 3.8 MB, the tabs appearing as the panel widens. `gallery.py` and `hero-gif.py` rebuild the five gallery pictures and the GIF byte for byte; the documentation checks find 0 gaps in the three new tools; `hero-frames.ps1` parses in PowerShell 7 and 5.1. `check-translations.py --offline`: 12 differences in each translation, all from the restyle (§6) | `gh api markdown`, a headless Chrome, `build.ps1 -Strict`, claude-desktops MCP tools, `cmp`, `check-translations.py` | ✅ Seen after the push of 2026-11-15 (`dbaddb7`): GitHub's own rendering of README.md (the REST API's HTML, as github.com shows it) has the 5 alerts as alerts (2 notes, 2 tips, 1 important), 2 folds, 204 `<kbd>` keys, 14 pictures, 13 `##` and 18 `###` headings, and no Markdown left as text; `hero.gif` is served (3.76 MB). Not seen: the translations (§6) |
 | **The docs site, live** (2026-11-15, §2.51; the owner: "Push directly to main and see it launching", after switching Pages to GitHub Actions). Pushed `73b3fe3..e0a31ac`: four commits, scanned first (no secret-like lines, e-mail addresses or personal paths; the only binaries the site's two photos, looked at: demo data only). *Docs* run 43687242945: build 28 s (38 pages, 0 warnings and 0 errors on `ubuntu-latest`), deploy 9 s, the Pages deployment for `e0a31ac`. Every page, picture, `index.json`, `llms.txt`, `llms-full.txt`, `robots.txt` and `sitemap.xml` answered 200 at https://nucs.github.io/BetterClipboard/. A headless Chrome with a throw-away profile on the live site: the dark theme following the system's, the photo widening on hover (the wide picture's clip at `inset(0px round 12px)`, its shadow layer 896 px wide), the light theme, a guide, and Privacy's *Edit this page* at `README.md?plain=1#L876-L940`. One flaw, fixed in the commit that records this: the home page's tab read "BetterClipboard \| BetterClipboard" (now "Clipboard history for Windows \| BetterClipboard"; only `<title>` and its meta tag changed). CI run 43687242883 green (`build-and-test`), the first run of `70e26ef`, `e6d4c02` and `b89eb1c` on GitHub | `git push`, `gh run view`, `curl`, scratch `live/shoot.py` (session fcc0d69a) | ✅ |
 | **The docs site** (2026-11-15, §2.51). `build.ps1 -Strict` in a private worktree of `b89eb1c`: 0 warnings, 38 pages and the home page, `llms.txt` 9.5 KB, `llms-full.txt` 122 KB. The same in a Linux container (`mcr.microsoft.com/dotnet/sdk:10.0`, Python 3.12.3, PowerShell 7.6.10), as on CI's runner: 0 warnings. With the other session's uncommitted README (its AI bullets and a link to `docs/ai.md`): 0 warnings. The generator on a small README with a link to a heading that is gone, a missing picture and a missing file named all three with their lines and exited 1, and left inline and fenced code as written. Pages drawn in a headless Chrome, light and dark: the menu, *Edit this page* (Privacy opens `README.md?plain=1#L876-L940`), a guide's in-page link (`#offline-or-a-pinned-version`). The widening photo: 896 px wide when open, and a hit-test probe kept the hover over the opened part (`rest@inside=IMG.bc-shot-wide`, `open@left=IMG.bc-shot-wide`). The documentation checker's language checks on the four code files: 0 gaps (its `find_gaps` skips the scratchpad, so they were called directly) | `build.ps1`, Docker, a headless Chrome with throw-away profiles, scratch probes (session fcc0d69a's scratchpad) | ✅ The workflow and the live site: the row above |
 | **Selecting in the text viewer and the peek, live** (2026-11-14, §2.50; the owner: "selecting text and right clicking, text selection is all clumsy slow and on rightclick or randomally the selection blinks"). A disposable claude-desktops Windows 11 desktop on this PC (`bc-selblink`, 1920×1080, no GPU; deleted afterwards with its persist folder), self-contained builds of a private worktree (`e6d4c02` plus only this change: `0.2.12-dev.diag1` to `diag7` with temporary diagnostics, never committed, then `selfix` to `selfix5`), BC-TEST texts only, from session c073d86d's `make_qa_data.py` (the heartbeat-shaped XML prompt, 29 lines; a JSON text; a Markdown note; the 2.3 MB C# text, whose page 2 starts at line 1863). **The blink:** a sampler counting the selection's accent pixels every frame read 9,588 after a drag and 3 while the right-click menu showed (old build), and 9,588 from the drag to the end with the fix; also unchanged after *Copy* (337 characters on the clipboard, recorded in the history), with another window in front, and in a Markdown document. **Line numbers:** right after wheel scrolls (rows 50, 58, 74 where they belong), on page 2 (starting at line 1863), with Wrap off, and in wrapped long lines. **Text size:** Ctrl+= and Ctrl+− kept line 52 at the top. **Gutter:** its width set with the text (the text box 1,311 DIPs from the first layout, no second one). **Drag:** a frame every 16 ms (median). **The peek** (`selfix5`): UI Automation showed its RichEditBox focused after its menu while Windows' focus stayed on the panel's input window; before the fix Ctrl+C, Right and a letter each closed the peek and copied or typed nothing, and Down on its menu closed both. With the fix: Down moves in the menu (to *Paste*), Esc closes only the menu and then the peek, *Select all* + Ctrl+C copied the whole text (1,055 characters, 29 lines), Shift+Down ×3 + Ctrl+C the first three lines (141 characters, entry 17), Shift+F10 opened the menu with *Copy* enabled; a letter typed over a peek opened under a resting mouse still closed it and went into the search box ("heartbeatq"). **The viewer** (`selfix4`): a dragged selection stayed drawn under the right-click menu, Esc closed only the menu. The app's log since `selfix5` started: 16 lines, 0 WRN/ERR. The whole solution with this change and the other session's uncommitted AI work, `--no-incremental`: 0 errors, no warning in a changed file (165: xUnit analyzers and CS0108) | claude-desktops MCP tools (`move_mouse`, `click`, `drag`, `press_keys`, `screenshot`, `run_command`); guest scripts `sampler.ps1`, `log.ps1`, `focus.ps1` (UI Automation), `w32focus.ps1` (`GetGUIThreadInfo`), `install.ps1` | ✅ Not run: a real GPU, touch and pen, Narrator, the owner's PC |
@@ -8353,6 +10691,136 @@ kit by a scratch generator, session 66cdd808):
 
 ## 6. Roadmap / known gaps
 
+- **Release notes in other languages** (2026-11-21, §2.67), next steps:
+  - Russian and Spanish notes: the composer takes `ru.md` and `es.md` as they are (issues #4 and #5 ask native speakers
+    to review the app's own Russian and Spanish first);
+  - Hebrew: the update dialog must draw right-to-left notes (the embedding of §2.37) before the composer lets `he.md`
+    through;
+  - a line in the dialog for a release shown in English for want of a translation, if readers miss it;
+  - a structure check in the composer (paragraphs, list items, code blocks, table rows, link targets against the
+    English), as `check-translations.py` does for the README; for 0.2.12 the counts were compared by hand;
+  - the main tree held the 2026-11-16 study's files untracked (`docs/release-notes-languages.md`,
+    `tools/probes/probe_release_notes.py`); they are committed now, updated, so those untracked copies block a merge that
+    brings them in until they are removed.
+- **Running a Win+R command** (2026-11-21, §2.17):
+  - **two runs 130 ms apart in the owner's log** (15:36:44.975Z and 15:36:45.105Z, plain runs of a picture, nine seconds
+    after its failed *Run as administrator*) are not explained. The keys go through `PasteBestMatchAsync`, whose
+    `enterPending` holds only while a run is under way; the card menu's *Run* has no guard at all. A double click on the
+    menu's *Run*, two real clicks 60 ms apart and *Run* with the panel holding the keyboard each ran once in a test
+    desktop. A shared guard (one run at a time, logged once when a second is ignored) would cover both ways if it
+    happens again: look for two "Ran entry N" lines closer than the first run took;
+  - the other launches from the card menu while the panel leaves the keyboard with the app (*Open file*, *Open folder*,
+    Everything's *Open*, *Open link*) are clicks, which give the panel's process the right to bring a window forward
+    (measured for *Run*); only keys needed the fix. A new key that starts a program needs
+    `TakeKeyboardBeforeLaunchAsync` too.
+- **The README after the Settings regroup** (2026-11-21, §2.65): its Settings list under *Use* still describes the nine
+  sections of before, and three paths name moved cards' old places (*Settings › Pasting* for the pinned order,
+  *Settings › Shortcut › Panel position*, *Settings › Shortcut › Lines per card*), in all five languages. Changed only
+  on the owner's word (§4's README rule as the owner set it on 2026-11-20).
+- **Above Start with Windows' UI access** (2026-11-21, §2.63), next steps:
+  - the owner's PC: switching their copy to `-UIAccess` adds a certificate to their trusted roots, moves the copy to
+    Program Files and makes every update ask for administrator rights: their call (asked in the reply of 2026-11-21);
+  - code signing (§3.3) would let a release be trusted without a certificate of each PC's own;
+  - the update dialog could say before the click that the update asks for administrator rights;
+  - see a declined consent prompt and a standard user's copy (neither was run);
+  - the README, when the owner asks: the *Features* bullet about Start, the installer's options, *Updates*;
+  - `$UiAccessMinimumVersion` could compare whole versions, so an older 0.2.12 development build never gets UI access;
+  - why the panel stayed behind Start on the owner's PC with §2.61's design (beside Start) is still unknown.
+- **The integrations' limits** (2026-11-21, §2.62), next steps:
+  - the README, when the owner asks: the ShareX and Snipping sections' "up to the 100 newest" (and the four translations'),
+    and the six numbers in the Settings list's Integrations line;
+  - commands typed in the last read interval before *Delete stored…* on the Cmd card are kept at the next read: a read of
+    the open windows inside the deletion would cover them;
+  - a hand-edited lower limit in `settings.json` trims a hidden list only at its next hide (Settings applies it at once).
+- **Win+V over Start and the shell's other surfaces** (2026-11-20, §2.61), next steps (a copy with UI access stands
+  above them since 2026-11-21, §2.63):
+  - see it on the owner's PC (a real GPU and their monitors' scales: at 125 % or more the room beside Start may be too
+    small, and Start is then closed first) and on Windows 10, whose Start's band was not measured;
+  - a surface in a band not measured (a UIAccess window, one a later Windows adds) is treated as an app window: measure it
+    when one is reported (`zstate.ps1` lists every window's band);
+  - a narrower panel beside Start (fewer header buttons, or a compact width) would keep Start open on smaller screens;
+  - the groups column's shrink after it grew away from Start (`ShrinkLeft`, §2.61's limits).
+
+- **The history's limits** (2026-11-20, §2.60), next steps:
+  - the README, when the owner asks: line 28 (*Features*: "10,000 items of up to 64 MB each by default" → no item limit
+    and a 16 GB budget, a notification from 90 %), the Settings list's **History** line (each limit's "Now:" line), and
+    the `bclip` table (`list … [--sort size]` with `+` = in a group, `delete ID…`, `status` with the budget), in all five
+    languages;
+  - see the notification and the bar with Narrator, and on the owner's PC with a real budget (the log's "History size
+    budget …" lines tell when it warned);
+  - a warning for the item limit too (not asked for: only the size budget warns).
+
+- **The panel that leaves the keyboard with your app** (2026-11-20, §2.59), next steps:
+  - see it on the owner's PC with the real Obsidian (the test used a web page that ends its editing on blur), a real GPU
+    and Narrator;
+  - input methods that compose text: their Latin letters go into the search until the user clicks into the search box.
+    Opening the usual way while such a layout is active (the layout of the app in front) was not built;
+  - **a hand-made Ctrl+V into File Explorer's rename box reads the copy again** (older than this change): the rename box
+    changes the clipboard at every paste (§2.59), so BetterClipboard records the same copy once more — its use count rises,
+    and an owner-less copy's source becomes "Windows Explorer". Only BetterClipboard's own pastes are protected (the owner
+    rule). Skipping a change whose content equals the last capture's when it arrives right after a paste would cover the
+    rest;
+  - the search box of a pinned panel waiting behind the app keeps the focused look while typing goes to the app.
+
+- **Background transparency and the header buttons' order** (2026-11-20, §2.58), next steps:
+  - see the panel's glass on a real GPU at a few levels, in both themes and pinned behind another app (the look
+    was measured with the lab's controller only);
+  - the backdrop lab's stripes window was not topmost in four of five runs although it asked to be (its own pixels
+    were right): find out why before its look phase is trusted again on a busy desktop. Most likely the WinUI fault §2.61
+    found **[inferred]**: a window that lost the flag refuses `SetWindowPos(HWND_TOPMOST)` while the call reports success,
+    and its presenter's `IsAlwaysOnTop` turned off and on sets it;
+  - the README has no lines for either feature (the owner's "Undo any README changes"); add them when the owner
+    asks;
+  - a "Reset" next to the slider was not built: 50 is the default, and the ticks mark it.
+- **Lines per card** (2026-11-20, §2.57):
+  - a picture's thumbnail could follow the line count (a compact list at one line still shows 128-DIP pictures);
+    not asked for;
+  - read the owner's log for "Rebuilt N preview(s) …" after the first start of a build with it: the count and how
+    long that start took tell whether the one-time rebuild needs to move off the start.
+- **The pin** (2026-11-20, §2.55):
+  - **the always-on-top flag one session lost** is not explained: tooltips, peeks, put-aways, live copies and six starts
+    kept it. `KeepOnTop` puts it back within a second and logs "The pinned panel was no longer always on top …" once per
+    session: look for that line in the owner's log before looking further. Since §2.61 (2026-11-20) a likely part of it
+    is known: a panel window that had lost the flag refused `SetWindowPos(HWND_TOPMOST)` while the call reported success,
+    so the old "put back on top" line could be wrong; `EnsureTopmost` now checks, and sets the flag through the presenter.
+    Look also for "The panel's window refused always-on-top …" and "… Windows refused to put it back";
+  - **memory and the silent restart wait while a pinned panel shows** (§2.45, §2.46: neither runs while the panel is on
+    screen). Letting them run while a pinned panel is not the active window is the owner's call: a reclaim's compacting
+    collections could delay a click on a card by tens of milliseconds;
+  - **a row keeps the hover fill after the list reorders under a resting mouse**, older than the pin (seen unpinned too:
+    after a card was pasted from the fourth row, the next summon drew the fourth row's new card gray, without the selection
+    bar, until the mouse moved). WinUI keeps the recycled row's pointer-over state; not changed;
+  - no key or menu item for the pin.
+- **The panel's popups, after the leave fix** (2026-11-20, §2.56):
+  - ~~**the hover peeks never open while Settings is open and the mouse has been over it**~~: fixed the same day, the
+    owner's "Fix it now" (§2.56: a replayed exit over a mouse that never left is ignored, and a replay never restarts a
+    running countdown). A fresh test desktop did not bring the trigger back, so the fix against it is not seen live: if a
+    peek still stays shut while Settings is open on the owner's PC, a log line in `TextCard_PointerExited` and
+    `ImageCard_PointerExited` (generated or not, cursor over the card or not) tells the next cause;
+  - **a text peek over an inactive pinned panel stayed open once while the mouse moved 130 px away** (1 of 9 rounds,
+    seen in the QA of `945fb25`, §5): Alt+Tab had left an Explorer window in front, and the next click closed the peek.
+    Not seen again in six more rounds, two of them with Alt+Tab's switcher held up (its moves closed the peek). The move
+    rule (`TextPeek_PointerMoved`) closes the peek on any move it receives, so that time the peek's surface received
+    none: watch for it, and record the foreground window's class and the mouse capture when it happens. It may be the
+    fault fixed later that day (§2.56, a peek that opened after the mouse left its card): a peek that opens just after
+    the mouse moved away looks like one that stayed open while it moved;
+  - watch the owner's log for "The panel went away: the user went to another window while …" lines, and for a panel
+    that still stays up after a click elsewhere (a popup kind not counted in `openPopups`);
+  - ~~**a peek can open where the mouse already went**~~ (seen 2026-11-20 in the Lines per card QA, §5): fixed the same
+    day, the owner's "Fix it now on #7" (§2.56: a countdown that ends asks Windows' cursor whether it still lies over
+    the card, and again right before the peek opens). The text peek opened after 12 of 12 jumps out of the panel before
+    the fix and after none of 18 with it; the image peek, whose card stops waiting on any exit, after none on either
+    build. A real mouse flicked out of the panel was not tried.
+- **Pasting, after the "v" fix** (2026-11-17, §2.54):
+  - read the owner's log over a few days: the "ready" stage (the window's own work after its activation, now ahead of the
+    keys) and any "(released before the window took the keys)";
+  - the ~5 ms after the Enter in which a key still reaches the panel: the panel could hand such keys on to the guard;
+  - mouse buttons and the wheel during the hold (Ctrl+click, Ctrl+wheel): not held;
+  - Windows Terminal 1.18's lost pastes while a program attaches to it every few milliseconds (old builds too).
+  - one paste lost once, unexplained, in the paste QA of 0.2.12 (2026-11-18, §5): the Enter chose a pin, nothing was
+    pasted, the stage was in front afterwards, and nothing was logged. Since `c8a4c05` (in 0.2.12) every choice that
+    pastes nothing logs why (§2.52): read the owner's log for those lines, and for an Enter that left no line at all
+    (then the key never reached the panel).
 - **Speed, next steps** (2026-11-15, §2.52, §2.53):
   - the Files tab's list takes 257–368 ms in the test desktop against 20–140 ms for the other tabs: not explained yet
     (its cards, or the path detector's work per row, are the first suspects);
@@ -8370,25 +10838,24 @@ kit by a scratch generator, session 66cdd808):
     links under the tagline);
   - the site in other languages, from the translated READMEs (the owner: "We only do one language first");
   - redirects for renamed README headings, so old page addresses keep working.
-- **The translated READMEs follow the restyle of 2026-11-15** (the owner: "English first", §4): the hero animation
-  instead of `panel.png`, the shorter *Features* list with the gallery, `<kbd>` keys, the folds and the alerts.
-  `check-translations.py` reports 12 differences in each of the four until then; run it after each translation.
-- **The translated READMEs' Privacy still says the Store edition's history leaves with the app** (found 2026-11-15
-  while checking the docs site's guides; README.md was fixed the same day, with its restyle): "Its history is in its
-  own app data folder, which Windows removes when you uninstall it", and that a move copies the history into that
-  folder. Since `73b3fe3` the edition keeps it in the shared `%LOCALAPPDATA%\BetterClipboard`, which stays after an
-  uninstall, as the README's own Store and Uninstall sections say. The *Privacy* section is the privacy policy
-  (§3.3): fix that paragraph in the four translations.
+- ~~**The translated READMEs follow the restyle of 2026-11-15** and the short *Install* of 2026-11-16, and their
+  *Privacy* paragraph on the Store edition~~: done 2026-11-20 on `release/0.2.12` (§5).
+- **Two loose lists in the Hebrew README lay out left to right on GitHub** (bullets on the left; their text still reads
+  right to left, §4): ShareX's *Where it looks* list and the *Code signing policy* list, whose items hold a paragraph
+  after a nested list, which Markdown writes only as a loose list. A list written as raw HTML (`<ul>` with no `dir`)
+  would follow the page's `<div dir="rtl">`, at the cost of the checker's comparison of list items; not done.
 - **Left from the hunt for bugs like the reviving pin** (2026-11-14, §5):
   - Windows' own clipboard history service (`cbdhsvc`) still competes for the clipboard. Copies it holds are now read late
     (logged with the wait and the holder) instead of lost. Turning Windows' history off would end the contention, but
     also the import's catch-up of copies made while BetterClipboard restarts (every update): not suggested.
-  - The capped lists of the user's hides (Everything picks, newest 500; Pwsh and Cmd commands, newest 1,000) bring the
-    oldest hide back once the cap is passed. Dropping the hides whose item no longer exists first would fix it.
+  - ~~The capped lists of the user's hides (Everything picks, newest 500; Pwsh and Cmd commands, newest 1,000) bring the
+    oldest hide back once the cap is passed.~~ No cap by default since 2026-11-21 (§2.62); a limit is the user's own.
   - Settings' *Allow again*, *Allow all again…*, *Clear…* and *Delete everything…* report a failure only in the log
     (`App.OnUnhandledException`); a line in the window would tell the user.
 - **Long texts** (2026-11-13, §2.50), next steps:
   - Find (Ctrl+F) in the text viewer, across its pages (not chosen this time);
+  - tab stops on the code font's character grid (`\deftab`), so tabs line up with blanks in both views; today they
+    stop every half inch, RichEdit's default;
   - a selection and *Select all* across pages (copy from the source text, not from RichEdit), and a *Copy* that gives a
     Markdown document's source rather than its drawn text;
   - the peek's language from the viewer's own detection, so a megabyte log no longer reads "Markdown" in the peek;
@@ -8396,10 +10863,9 @@ kit by a scratch generator, session 66cdd808):
     overlays;
   - decide whether a copy made in the peek or the viewer belongs in the history (today it becomes a new entry, like any
     copy);
-  - a panel whose text viewer was open when another window took the foreground stays shown, behind that window, after
-    the viewer closes (seen 2026-11-14 in the selection QA, not changed): `OnActivated` conceals the panel only while
-    none of its popups is counted, and closing the last one does not look at the foreground (the update dialog's does,
-    §2.29). The image viewer and the peeks are counted the same way.
+  - ~~a panel whose text viewer was open when another window took the foreground stays shown, behind that window, after
+    the viewer closes (seen 2026-11-14 in the selection QA, not changed)~~: fixed 2026-11-20 (§2.56), for every popup of
+    the panel: going to another window conceals the panel and closes its viewers at once.
 - **Pictures and their files** (2026-11-13, §2.49), next steps:
   - follow a file that was renamed or moved (its NTFS file id could be kept with the path, or the folder searched by
     pixels again), instead of calling it "moved or deleted";
@@ -8416,14 +10882,16 @@ kit by a scratch generator, session 66cdd808):
   (§2.48). A refused `NIM_ADD` is followed by a `NIM_MODIFY` that finds an icon Explorer added late, and a real refusal is
   retried on a timer. Copies up to 0.2.10 still have the dead icon after a slow sign-in.
 - **The Microsoft Store edition** (2026-11-13, §2.47, §3.5), next steps:
-  - **certification**: the first report failed one search term ("Win+V", policy 10.1.3); fixed and resubmitted on
-    2026-11-15 (§3.5). Watch for the next report; another failure is fixed and resubmitted the same way. It
-    publishes itself once certified;
+  - ~~**certification**~~: the first report failed one search term ("Win+V", policy 10.1.3); fixed, resubmitted,
+    certified and published on 2026-11-15 at 19:51 UTC (§3.5). A later failure is fixed and resubmitted the same way;
   - ~~waiting for the owner's word~~ and ~~replace the listing's screenshots~~: done 2026-11-13 (v0.2.11 released;
     eight new scenes; submitted on the owner's "You tick and submit");
-  - **the next submission's notes for certification** (the shared data folder, 2026-11-14): type the kit's new text
-    (`docs/store-listing.md` §1) into that submission by hand before it is committed; the pipeline carries the notes
-    over unchanged, and the old text says the history is removed with the app;
+  - ~~**the next submission's notes for certification**~~ (the shared data folder, 2026-11-14), the blocker for the
+    0.2.12 tag: done 2026-11-20, the product's notes page holds the kit's text and the release run sends it too
+    (§3.5, open item 7);
+  - **the notes page by hand**: the Store's API does not reach the product's *Additional Testing Information* page,
+    so a change of the kit's notes is pasted there before the next tag (or that page read through the browser and
+    compared with the kit as part of the release checklist);
   - **the shared folder after Windows feature updates**: each new build is proven once ("The shared data folder is
     written for real on this Windows build (…)" in the log); run `msix_lab -Only shared` on a new Windows release;
   - **one log for two processes**: the app's appends from two processes overwrite each other's lines (`AppLog`,
@@ -8451,12 +10919,14 @@ kit by a scratch generator, session 66cdd808):
   - **run it** on a standard user account, with UAC on, on a real GPU and on an ARM64 device; run the Windows App
     Certification Kit on the submitted package;
   - **after the first Store release:** an update served by the Store (the restart `PackagedRestart` asks for), and the
-    Store link in the README and in the installer's Store-edition warning;
+    Store link in the installer's Store-edition warning (the README has it since `release/0.2.12`, with Microsoft's
+    badge in *Install* since 2026-11-16);
   - **a native review of the listing's translations** (zh-Hans, ru, es, he: written by Claude, like the catalogs);
   - optional: let the Store edition offer the move also from a Chocolatey copy when the user is an administrator
     (today it only guides), and merge two histories (today the other one stays where it is).
-- **The panel's first frame of a session can show unbound defaults** (seen once, 2026-11-13, on the GPU-less test
-  desktop, in the Store edition and equally possible in every edition): the "Paused" chip and the Everything tab's
+- **The panel's first frame of a session can show unbound defaults** (addressed 2026-11-20, §2.59: the warm-up now calls
+  `Bindings.Initialize()` before the panel is first shown; not looked for again since). Seen once, 2026-11-13, on the
+  GPU-less test desktop, in the Store edition and possible in every edition: the "Paused" chip and the Everything tab's
   *Start Everything* were drawn for one frame at the first summon. x:Bind in a `Window` initializes at the window's
   first `Activated` (the generated `Activated += bindings.Activated`), and the panel is first activated by that
   summon. Calling `Bindings.Initialize()` in the warm-up, before the panel is first shown cloaked, should bind earlier;
@@ -8527,13 +10997,20 @@ kit by a scratch generator, session 66cdd808):
     125 %) when they want to try it, or in a test desktop with two displays. The cause and the fix are proven with the
     lab only; look for the log line "The panel came out … instead of …" once per session;
   - the same check for the image viewer and the update dialog, windows of their own that follow the panel's monitor;
-  - optional, not asked for: "where I last left it", and a fixed monitor.
+  - optional, not asked for: "where I last left it", and a fixed monitor;
+  - the README (*Use*, and the Settings list) and its four translations still say the current screen is "the one you are
+    typing on": since 2026-11-20 it is the mouse's. The owner chose to leave them; change them only on their word.
 - **Interface languages** (§2.37; the deferred gaps were closed on 2026-11-08, "Complete the gaps", and the owner's
   choices built the same day), next steps:
-  - the uncommitted AI conversation's strings (§2.35 in the shared tree) need catalog entries when it lands: the guards
-    fail until they have them (`catalog.py add -d "…"`, or `add-file` for many), each with its description, and with
-    Russian, Spanish and Hebrew too;
+  - the AI conversation's strings (§2.35, stashed since 2026-11-16) need catalog entries when it is restored and
+    lands: the guards fail until they have them (`catalog.py add -d "…"`, or `add-file` for many), each with its
+    description, and with Russian, Spanish and Hebrew too;
   - a native speaker's review of Russian, Spanish and Hebrew (translated by Claude on 2026-11-09, §2.37);
+  - the pseudo-translated check (§2.37, run 2026-11-16 and 2026-11-21) as a tool in the repository, so the next release
+    runs it in minutes (today: scratch scripts of session 08299f81 that write a pseudo `es.json`, scan and compare the
+    sources, and dump the windows through UI Automation in a test desktop); and its blind spots, seen in the code only:
+    the hover peek's menu, the language picker, the Microsoft Store edition's setup window, and failures that need a
+    broken PC (an update that fails to install). The second run saw a tray notification (the budget's warning);
   - right-aligned right-to-left paragraphs, if the owner wants Hebrew's lines to start flush at the right
     (`TextAlignment="DetectFromContent"` on the text blocks): today they are aligned left with the rest of the
     left-to-right layout, so a wrapped Hebrew sentence's lines start ragged;
@@ -8573,11 +11050,18 @@ kit by a scratch generator, session 66cdd808):
   - the live check on Word, Teams, Outlook and Excel (`probe_rich_formats.cs --watch`), to replace the **[docs]** and
     **[inferred]** facts with measurements;
   - step 1, small: a thumbnail and the image peek and viewer for formatted copies that carry a picture (spreadsheets),
-    plain text from HTML-only copies, no code font for formatted copies;
+    plain text from HTML-only copies (the code-font point is moot: every text card is monospace since 2026-11-16);
   - step 2: a peek for every card and a viewer for formatted copies (RTF in `RichEditBox`, HTML through an own
     converter, WebView2 only on request with every request blocked);
   - step 3: virtual files (zip contents, Outlook attachments: not recorded at all today), LibreOffice's `Markdown`,
     perhaps Office's EMF.
+- **A real-DPAPI store test that can meet another class's pool clearing** (seen once, 2026-11-21, in a full run on this
+  PC): `SecurityTests.MachineBoundStore_WithRealDpapi_Persists` failed with `ObjectDisposedException: …
+  'SQLitePCL.sqlite3'` inside `SqliteCommand.ExecuteReader`, and passed 3 of 3 alone. Most likely §4's race
+  **[inferred]**: `SqliteConnection.ClearAllPools` (a store test's `TempDirectory.Dispose`) empties every pool of the
+  process, and the Windows suite runs its classes in parallel, so a class that clears can dispose a connection this one
+  rented. Core runs one class at a time for exactly this; a collection of their own for the Windows tests that open a
+  store would do the same there.
 - **A prompt-archive test that can fail on GitHub's runners** (first seen 2026-11-13, the v0.2.11 release run's first
   attempt; a re-run passed): `PromptArchiveTests.Claude_PruneByRenameOver_StoresNothingTwice` renames a staging file
   over `history.jsonl` with `File.Move(…, overwrite: true)` and got "Access to the path is denied". Most likely the
@@ -8613,8 +11097,8 @@ kit by a scratch generator, session 66cdd808):
   - Shift+Space as a Shift+click (a run from the anchor), and a key that starts a merged view from a walk that shows;
   - look at the ring-only style in the dark theme, and at a column longer than the panel.
 - Getting around the panel (§2.28), next steps:
-  - give the focus back to the search box after a mouse click on a tab, so typing searches at once (today the tab keeps
-    the focus until Ctrl+F or a click into the box);
+  - ~~give the focus back to the search box after a mouse click on a tab, so typing searches at once (today the tab
+    keeps the focus until Ctrl+F or a click into the box)~~ (done 2026-11-21, §2.66);
   - check the hover selection on real hardware: a touchpad, a mouse with a high polling rate, touch and pen;
   - the Menu key in the groups column for the group's own menu, and a key that creates a group;
   - an announcement for screen readers when the arrow keys step through the groups;
@@ -8642,7 +11126,10 @@ kit by a scratch generator, session 66cdd808):
   cache. A BMP stream (file header + the stored DIB) would decode at once; check BI_BITFIELDS/alpha handling first.
 - Settings' shortcut hint is a plain text line: give it a live-region announcement so a screen reader says
   "Enter adds Ctrl+Shift+K." when a shortcut is recorded.
-- Caret position for apps without a Win32 caret (WinUI, some Electron): UI Automation `TextPattern2.GetCaretRange`.
+- Caret position for apps without a Win32 caret: Chromium, Electron, Firefox and the console are read through MSAA since
+  2026-11-21 (§2.64). Windows Terminal and XAML/WinUI text boxes (Explorer's address bar, the Settings app) report their
+  caret only through UI Automation (`TextPattern2.GetCaretRange`), whose first call took about a second in a test
+  desktop and turns on accessibility in the app: it would need its own deadline, and a decision whether that is worth it.
 - LL-hook watchdog (Windows removes hooks that time out) + re-install. (Hook-free mode when `DisabledHotkeys`
   is set: done — `RegisterHotKey` succeeds then.)
 - Several shortcuts and the installer's takeover (§2.25), next steps:
@@ -8656,14 +11143,17 @@ kit by a scratch generator, session 66cdd808):
 - Code signing through the SignPath Foundation (§3.3, [`docs/code-signing.md`](docs/code-signing.md)). The
   repository is prepared; the application waits for reputation: posts and directory listings first, judged by
   GitHub's own numbers; Chocolatey later. After acceptance: the signing step in `release.yml`.
-- winget manifest. (The in-app update check against GitHub releases is built: §2.29. The README names it and both
-  switches, §3.3.)
+- winget manifest for the installer's copy. (The Store edition installs through winget already:
+  `winget install 9PHL574X9BF9 --source msstore`, which the README's *Install* names; winget's msstore source listed
+  "BetterClipboard 9PHL574X9BF9" by Nucs on 2026-11-16. The in-app update check against GitHub releases is built:
+  §2.29. The README names it and both switches, §3.3.)
 - Found during the update QA on the owner's PC (2026-10-10), outside the update system:
   - **A panel opened by `--show-flyout` that does not get the foreground stays on the screen.** While the user
     types in another app, Windows refuses the activation; the panel then never hears a deactivation, which is
     what conceals it (seen for about 30 s with a test copy, always on top). Conceal it when it is not the
     foreground window a moment after it was shown. Not seen with Win+V: Windows lets the program that receives a
-    hotkey take the foreground.
+    hotkey take the foreground. Not reproduced on 2026-11-20 (§2.56): a `--show-flyout` from a script in a test
+    desktop got the foreground.
   - **Startup fails when another process still holds the store's `-shm` file** ("Startup failed. SQLite Error 10:
     'disk I/O error'", seen with a crashed copy's leftover process object): retry for a moment, then say what
     holds the history instead of ending silently.
@@ -8761,7 +11251,9 @@ kit by a scratch generator, session 66cdd808):
     Win+PrtScn shots are new to the history or a second copy of a clipboard copy. The merge itself is verified offline
     for both bitmap kinds (§2.22).
   - **If Win+PrtScn does copy:** keep the tool's name when its explorer.exe-owned copy bumps the entry after the file
-    (today the card would then read "Windows Explorer"; the entry stays in the tab by its origin).
+    (today the card would then read "Windows Explorer"; the entry stays in the tab by its origin). On 2026-11-20 a
+    Win+PrtScn copy's card read "Client Server Runtime Process" (csrss.exe's description) until its file was imported
+    (§5, the peek QA's row), so the copy may name csrss.exe rather than Explorer.
   - **A custom Snipping Tool folder:** a hint is shown; *Also watch a folder…* would follow it (its FutureAccessList form
     is unknown).
   - **ShareX's watcher:** move it to the same writer-friendly read (it still opens with `FileShare.Read`, §4).

@@ -26,8 +26,8 @@ internal sealed record MarkdownStyles(Style Text, Style CodeBorder, Style QuoteB
 /// <remarks>
 /// <para>
 /// WinUI 3 has no Markdown control, and release notes need little: text with emphasis and links, headings, lists, code,
-/// the odd table. Each block becomes a <see cref="TextBlock"/> (or a small grid around some), so the result scrolls,
-/// wraps and follows the theme like any other text of the app.
+/// the odd table. Each block becomes a <see cref="TextBlock"/> (or a small grid around some), and a block quote a bordered
+/// panel of its own blocks, so the result scrolls, wraps and follows the theme like any other text of the app.
 /// </para>
 /// <para>
 /// <b>Links never navigate by themselves.</b> A <see cref="Hyperlink"/> gets no <c>NavigateUri</c>; its click is handed
@@ -60,32 +60,68 @@ internal static class MarkdownRenderer
     private static FontFamily TaskMarkerFont => new("Segoe UI Symbol");
 
     /// <summary>
-    /// Appends blocks to a panel, in order.
+    /// Appends blocks to a panel, in order. A block quote becomes one bordered panel of its own blocks (a quote inside it,
+    /// another one inside that), so its bar runs the quote's whole height.
     /// </summary>
     /// <param name="target">The panel that receives the elements (a vertical <see cref="StackPanel"/>).</param>
     /// <param name="blocks">The parsed notes.</param>
     /// <param name="styles">The styles to draw with.</param>
     /// <param name="openLink">Called with a link's address when the user clicks it.</param>
-    /// <param name="maxBlocks">The most blocks drawn; the rest is left out (see the return value).</param>
+    /// <param name="maxBlocks">
+    /// The most blocks drawn; the rest is left out (see the return value). A quote counts as one, and so does each block
+    /// inside it, so notes that are one long quote are bounded too.
+    /// </param>
     /// <returns>How many blocks were left out because of <paramref name="maxBlocks"/>; 0 when everything was drawn.</returns>
     public static int Append(Panel target, IReadOnlyList<MarkdownBlock> blocks, MarkdownStyles styles, Action<Uri> openLink, int maxBlocks = int.MaxValue)
     {
-        int drawn = 0;
+        int budget = Math.Max(0, maxBlocks);
+        return AppendBlocks(target, blocks, styles, openLink, ref budget);
+    }
+
+    /// <summary>
+    /// Appends blocks to a panel while the budget lasts: <see cref="Append"/>'s work, recursing into block quotes.
+    /// </summary>
+    /// <param name="target">The panel that receives the elements.</param>
+    /// <param name="blocks">The blocks: the notes', or a quote's own.</param>
+    /// <param name="styles">The styles to draw with.</param>
+    /// <param name="openLink">Called with a link's address when the user clicks it.</param>
+    /// <param name="budget">How many more blocks may be drawn; lowered by each block drawn, quotes and their blocks alike.</param>
+    /// <returns>How many blocks were left out, nested ones included.</returns>
+    private static int AppendBlocks(Panel target, IReadOnlyList<MarkdownBlock> blocks, MarkdownStyles styles, Action<Uri> openLink, ref int budget)
+    {
+        int leftOut = 0;
         foreach (var block in blocks)
         {
-            if (drawn >= maxBlocks)
+            if (budget <= 0)
             {
-                break;
+                leftOut += CountBlocks(block);
+                continue;
             }
 
-            // The first element of a panel needs no gap above it, not even a heading.
+            budget--;
+
+            // The first element of a panel needs no gap above it, not even a heading (a quote's first block included).
             bool first = target.Children.Count == 0;
+            if (block is MarkdownQuote quote)
+            {
+                // The quote's blocks keep the notes' own spacing between them, inside one bar.
+                var inner = new StackPanel { Spacing = target is StackPanel stack ? stack.Spacing : 0 };
+                leftOut += AppendBlocks(inner, quote.Blocks, styles, openLink, ref budget);
+                target.Children.Add(new Border { Style = styles.QuoteBorder, Margin = new Thickness(quote.Indent * IndentDip, 0, 0, 0), Child = inner });
+                continue;
+            }
+
             target.Children.Add(Create(block, styles, openLink, first));
-            drawn++;
         }
 
-        return blocks.Count - drawn;
+        return leftOut;
     }
+
+    /// <summary>How many blocks a block is when counted against <see cref="Append"/>'s limit: one, plus a quote's own, deeply.</summary>
+    /// <param name="block">The block.</param>
+    /// <returns>The count, at least 1.</returns>
+    private static int CountBlocks(MarkdownBlock block) =>
+        block is MarkdownQuote quote ? 1 + quote.Blocks.Sum(CountBlocks) : 1;
 
     /// <summary>Creates the element for one block.</summary>
     /// <param name="block">The block.</param>
@@ -151,25 +187,28 @@ internal static class MarkdownRenderer
                 };
 
             case MarkdownTable table:
-                return CreateTable(table, styles, openLink);
+            {
+                var grid = CreateTable(table, styles, openLink);
+
+                // A table indented under a list item is drawn under the item's text, like its code blocks and paragraphs.
+                grid.Margin = new Thickness(table.Indent * IndentDip, 0, 0, 0);
+                return grid;
+            }
 
             case MarkdownRule:
                 return new Border { Style = styles.Rule };
 
             case MarkdownParagraph paragraph:
             {
+                // A quoted paragraph is drawn by the quote around it (AppendBlocks): here it is a paragraph like any other.
                 var text = CreateText(paragraph.Inlines, styles, openLink);
-                if (paragraph.IsQuote)
-                {
-                    return new Border { Style = styles.QuoteBorder, Margin = new Thickness(paragraph.Indent * IndentDip, 0, 0, 0), Child = text };
-                }
-
                 text.Margin = new Thickness(paragraph.Indent * IndentDip, 0, 0, 0);
                 return text;
             }
 
             default:
-                // A block kind added to the parser later is shown as nothing rather than failing the whole dialog.
+                // A block kind added to the parser later is shown as nothing rather than failing the whole dialog. A quote
+                // never gets here: AppendBlocks draws it with its blocks.
                 return new Border();
         }
     }

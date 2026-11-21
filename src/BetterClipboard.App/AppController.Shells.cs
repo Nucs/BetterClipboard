@@ -133,7 +133,7 @@ public sealed partial class AppController
         {
             var name = ShellTab.HiddenStateName(shell);
             var hidden = ShellTab.ParseHidden(await History.GetStateValueAsync(name));
-            await History.SetStateValueAsync(name, ShellTab.FormatHidden(ShellTab.Hide(hidden, contentHash, count)));
+            await History.SetStateValueAsync(name, ShellTab.FormatHidden(ShellTab.Hide(hidden, contentHash, count, HiddenCommandsLimit(shell))));
         }
         catch (Exception ex)
         {
@@ -170,7 +170,10 @@ public sealed partial class AppController
             powerShell = new PowerShellHistorySource();
             RefreshPowerShellAvailability();
 
-            cmdHistory = new CmdHistorySource(History, () => Settings.Current.IsCapturePaused, ExecutablePath);
+            cmdHistory = new CmdHistorySource(History, () => Settings.Current.IsCapturePaused, ExecutablePath)
+            {
+                KeptLimit = () => Settings.Current.MaxKeptCmdCommands,
+            };
             cmdHistory.StatusChanged += (_, _) => ui.TryEnqueue(() => ShellHistoryStatusChanged?.Invoke(this, EventArgs.Empty));
             _ = StartCmdHistoryAsync(cmdHistory, Settings.Current.ShowCmdTab);
         }

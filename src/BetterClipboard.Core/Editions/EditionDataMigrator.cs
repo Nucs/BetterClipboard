@@ -83,6 +83,25 @@ public static class EditionDataMigrator
     /// </summary>
     public const string PendingMarkerName = "edition-move.pending";
 
+    /// <summary>
+    /// The message of the <see cref="InvalidOperationException"/> a copy throws when the target already holds a history
+    /// (two histories are never merged). The setup window shows it after "The history could not be copied:".
+    /// </summary>
+    public const string TargetHoldsHistory = "The target folder already holds a history.";
+
+    /// <summary>
+    /// {0}: a file's path inside the data folder. The message of the <see cref="IOException"/> a copy throws when the file's
+    /// copy does not match the original byte for byte; the setup window shows it after "The history could not be copied:".
+    /// </summary>
+    public const string CopyDiffersFromSource = "The copy of '{0}' differs from its source.";
+
+    /// <summary>
+    /// The messages this class words itself, for translating an exception's message where the setup window shows it
+    /// (<c>UiText.TranslateFormatted</c>): every other message comes from Windows or .NET and is shown as it came.
+    /// </summary>
+    /// <remarks>Until 2026-11-21 these were worded inline and showed in English in every language.</remarks>
+    public static IReadOnlyList<string> MessageTemplates { get; } = [TargetHoldsHistory, CopyDiffersFromSource];
+
     /// <summary>Room kept free beyond the data itself, for the database's own working files after the copy.</summary>
     private const long FreeSpaceReserve = 64L * 1024 * 1024;
 
@@ -240,7 +259,7 @@ public static class EditionDataMigrator
 
         if (new AppPaths(target).HasHistory())
         {
-            throw new InvalidOperationException("The target folder already holds a history.");
+            throw new InvalidOperationException(TargetHoldsHistory);
         }
 
         Directory.CreateDirectory(target);
@@ -292,7 +311,7 @@ public static class EditionDataMigrator
 
             if (!sourceHash.AsSpan().SequenceEqual(copyHash))
             {
-                throw new IOException($"The copy of '{file.RelativePath}' differs from its source.");
+                throw new IOException(string.Format(System.Globalization.CultureInfo.InvariantCulture, CopyDiffersFromSource, file.RelativePath));
             }
         }
     }

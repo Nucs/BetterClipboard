@@ -20,9 +20,11 @@ namespace BetterClipboard.App.Views;
 /// kept for a large one.
 /// </para>
 /// <para>
-/// <b>Minimum:</b> <see cref="AppSettings.MinFlyoutWidth"/> × <see cref="AppSettings.MinFlyoutHeight"/> DIPs (plus the
-/// groups column while it is open), answered per monitor scale through <c>WM_GETMINMAXINFO</c>
-/// (<see cref="FlyoutSizing.MinimumTrackSize"/>), so the header never gets cut off.
+/// <b>Minimum:</b> what the header's buttons need (<see cref="AppSettings.MinFlyoutWidthFor"/>: 432 DIPs with all six, 36
+/// fewer for each one Settings hides, never below <see cref="AppSettings.MinFlyoutWidth"/>) × <see cref="AppSettings.MinFlyoutHeight"/>
+/// DIPs, plus the groups column while it is open, answered per monitor scale through <c>WM_GETMINMAXINFO</c>
+/// (<see cref="FlyoutSizing.MinimumTrackSize"/>), so the header never gets cut off. Read each time Windows asks, so it follows
+/// a button shown or hidden meanwhile.
 /// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout
@@ -41,8 +43,9 @@ public sealed partial class ClipboardFlyout
     {
         try
         {
-            // The minimum grows with the groups column, read when Windows asks, so it follows the column opening.
-            var hook = new WindowSizeHook(hwnd, scale => FlyoutSizing.MinimumTrackSize(scale, groupsPaneOpen ? GroupsPaneDip : 0));
+            // The minimum grows with the groups column and with the header's buttons, read when Windows asks, so it follows
+            // the column opening and a button shown in Settings (ClipboardFlyout.KeepOpen.cs).
+            var hook = new WindowSizeHook(hwnd, scale => FlyoutSizing.MinimumTrackSize(scale, groupsPaneOpen ? GroupsPaneDip : 0, MinWidthDip()));
             hook.UserResized += OnUserResized;
             return hook;
         }

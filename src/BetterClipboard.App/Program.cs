@@ -62,6 +62,13 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // Before anything else, in every mode: a copy installed with UI access (install.ps1 -UIAccess, CLAUDE.md §2.63)
+        // starts at the High integrity level for an administrator, and programs it starts, objects it names and files it
+        // makes would get that level too. Lowered to Medium here, before the first window, named object or file, it keeps
+        // what UI access is for (its always-on-top windows stand above Start) and is an ordinary app of the user otherwise.
+        // A no-op for every other start; the outcome is logged once the log is set up (AppController).
+        BetterClipboard.Windows.Input.UiAccess.LowerIntegrityIfGranted();
+
         if (BetterClipboard.Windows.Updates.PortableUpdateCommand.Matches(args))
         {
             return ApplyPortableUpdate(args);
@@ -389,7 +396,15 @@ public static class Program
                 return true; // a stranger with the old id: the old process ended already
             }
 
-            using var exited = new ProcessExitHandle(old.Handle);
+            // Only the right to wait (ProcessExitWait.Open), never old.Handle, which asks for every right: Windows refuses those
+            // on an old process that started with UI access (its object keeps the High label it was made with, CLAUDE.md
+            // §2.63), and this process, then taking the old one for gone, met it still holding the lock and ended.
+            using var exited = BetterClipboard.Windows.Shell.ProcessExitWait.Open(target.ProcessId) is { } handle ? new ProcessExitHandle(handle) : null;
+            if (exited is null)
+            {
+                return true; // it ended between the two reads
+            }
+
             WaitHandle[] handles = cancel is null ? [exited] : [exited, cancel];
             return WaitHandle.WaitAny(handles, TimeSpan.FromMinutes(2)) == 0;
         }
@@ -406,14 +421,13 @@ public static class Program
 
     /// <summary>
     /// A process handle as a <see cref="WaitHandle"/> (signaled when the process ends), so its end can be waited on together
-    /// with an event. Borrows the handle: the <see cref="System.Diagnostics.Process"/> that owns it closes it.
+    /// with an event. Owns the handle: disposing the wait handle closes it.
     /// </summary>
     private sealed class ProcessExitHandle : WaitHandle
     {
-        /// <summary>Wraps the handle without taking ownership.</summary>
-        /// <param name="processHandle">A process handle with SYNCHRONIZE access.</param>
-        public ProcessExitHandle(nint processHandle) =>
-            SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(processHandle, ownsHandle: false);
+        /// <summary>Wraps the handle and takes ownership of it.</summary>
+        /// <param name="processHandle">A process handle with SYNCHRONIZE access (<see cref="BetterClipboard.Windows.Shell.ProcessExitWait.Open"/>).</param>
+        public ProcessExitHandle(Microsoft.Win32.SafeHandles.SafeWaitHandle processHandle) => SafeWaitHandle = processHandle;
     }
 
     /// <summary>

@@ -151,6 +151,17 @@ public sealed record ClipQuery
     public bool PinnedFirst { get; init; } = true;
 
     /// <summary>
+    /// Order the page by stored size, largest first (equal sizes most recently used first), instead of by recency;
+    /// <see cref="PinnedFirst"/> is then ignored. <c>bclip list --sort size</c>: what an AI assistant asks for when the size
+    /// budget fills up and it is to free space (CLAUDE.md §2.60).
+    /// </summary>
+    /// <remarks>
+    /// There is no index on the size, so SQLite sorts the matching rows (their small columns only; the sort runs in memory,
+    /// <c>temp_store = MEMORY</c>): fine for a command run now and then, not for a list the panel reloads.
+    /// </remarks>
+    public bool LargestFirst { get; init; }
+
+    /// <summary>
     /// Only entries last copied or pasted at or after this instant (e.g. "what did I copy in the last
     /// hour" from the command line); <see langword="null"/> = no time limit. Compared against
     /// <see cref="Model.ClipEntry.LastUsedUtc"/>, so an old item copied again counts as recent.

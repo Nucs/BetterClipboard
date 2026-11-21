@@ -6,7 +6,8 @@ namespace BetterClipboard.Core.Tests;
 
 /// <summary>
 /// Tests for the panel's arrow-key rules (<see cref="PanelNavigation"/>): the row a load selects (the newest copy, below
-/// the pins when they come first), Left and Right through the tabs in a circle, Up and Down through the rows, Up from the
+/// the pins when they come first) and where the list stands around it (the pins out of view in the plain history, with the
+/// room a short list needs for that), Left and Right through the tabs in a circle, Up and Down through the rows, Up from the
 /// top row into the groups column — where the keys land there, and whether their steps show groups or only move — Up and
 /// Down inside it, when Space and Enter pick a group, and when Left and Right belong to the search box's text instead.
 /// </summary>
@@ -242,6 +243,92 @@ public sealed class PanelNavigationTests
 
         Assert.Throws<ArgumentNullException>(() => PanelNavigation.ArmedRow<bool>(null!, static isPinned => isPinned, pinnedFirst: true));
         Assert.Throws<ArgumentNullException>(() => PanelNavigation.ArmedRow(rows, null!, pinnedFirst: true));
+    }
+
+    /// <summary>
+    /// The pins are scrolled out of view exactly while the list shows the plain history (the owner's choice, 2026-11-15:
+    /// Win+V and every tab, "not groups", searches keeping their pinned matches in view, a cleared search or a group view
+    /// left "below the pins again"): a search, a group view, or both keep the list at its top.
+    /// </summary>
+    [Fact]
+    public void PinsOutOfView_OnlyInThePlainHistory()
+    {
+        Assert.True(PanelNavigation.PinsOutOfView(searching: false, groupsShown: false));
+        Assert.False(PanelNavigation.PinsOutOfView(searching: true, groupsShown: false));
+        Assert.False(PanelNavigation.PinsOutOfView(searching: false, groupsShown: true));
+        Assert.False(PanelNavigation.PinsOutOfView(searching: true, groupsShown: true));
+    }
+
+    /// <summary>
+    /// The cases of <see cref="RoomBelowRows_IsWhatTheRowsBelowLack"/>: the row's top, the content's height (its present
+    /// room included), the view's height, the present room, and the room the list must get. Sizes are in DIPs, about the
+    /// panel's: a 376-DIP list of 66-DIP cards, three pins above the newest copy.
+    /// </summary>
+    public static TheoryData<double, double, double, double, double> RoomCases => new()
+    {
+        { 198, 330, 376, 0, 244 },        // 3 pins + 2 copies: the copies lack 244 of a view below the newest one
+        { 198, 574, 376, 244, 244 },      // the same list with that room in place: asked again, the same answer
+        { 198, 640, 376, 244, 178 },      // a copy arrived (66 more): it gives back what the new card fills
+        { 198, 4000, 376, 0, 0 },         // a long list: the copies fill the view, no room
+        { 198, 4244, 376, 244, 0 },       // a long list that still has a short list's room: it is taken back
+        { 198, 574, 376, 0, 0 },          // the copies fill the view exactly: no room
+        { 198.4, 330, 376, 0, 245 },      // a fraction is rounded up: the row reaches the top, never short of it
+        { 198.4, 575, 376, 245, 245 },    // and asked again with that room in place, it holds instead of creeping up
+        { 195, 327.2, 376.2, 0, 244 },    // a need of exactly 244 that the sums put at 244.00000000000006: 244, not 245
+        { 0, 66, 376, 0, 310 },           // the top row of a one-card list: the arithmetic holds (callers never ask)
+        { 198, double.NaN, 376, 0, 0 },   // a list not laid out yet: no room
+        { 198, 330, double.PositiveInfinity, 0, 0 },
+        { double.NegativeInfinity, 330, 376, 0, 0 },
+    };
+
+    /// <summary>
+    /// The room a list gets below its last card is what the rows from the newest copy down lack of a view's height, so that
+    /// copy can be scrolled to the top with the pins out of view — measured with the present room counted, so asking again
+    /// changes nothing, and a list that grew gives its room back. Never negative, never fractional, none for a list that
+    /// is not laid out.
+    /// </summary>
+    /// <param name="rowTop">The newest copy's top in the list's content.</param>
+    /// <param name="extent">The content's height, the present room included.</param>
+    /// <param name="viewport">The view's height.</param>
+    /// <param name="room">The present room.</param>
+    /// <param name="expected">The room the list must get.</param>
+    [Theory]
+    [MemberData(nameof(RoomCases))]
+    public void RoomBelowRows_IsWhatTheRowsBelowLack(double rowTop, double extent, double viewport, double room, double expected)
+    {
+        Assert.Equal(expected, PanelNavigation.RoomBelowRows(rowTop, extent, viewport, room));
+    }
+
+    /// <summary>
+    /// For any list, the room lets the row reach the top of the view (the scroll range covers its top, to the thousandth of
+    /// a unit the rule forgives), and one unit less would not whenever any room is needed; it is a whole number, and asking
+    /// again with it in place gives it back unchanged — 2,000 random lists with sizes in hundredths, from a card to a few
+    /// screens, with and without a stale room.
+    /// </summary>
+    [Fact]
+    public void RoomBelowRows_LetsTheRowReachTheTop_Minimally_AndHolds()
+    {
+        var random = new Random(20261115);
+        for (int i = 0; i < 2000; i++)
+        {
+            double rowTop = Math.Round(random.NextDouble() * 2000, 2);
+            double rows = Math.Round(1 + (random.NextDouble() * 3000), 2);    // the content from the top down to the last card
+            double content = rowTop + rows;
+            double viewport = Math.Round(100 + (random.NextDouble() * 1400), 2);
+            double stale = random.Next(2) == 0 ? 0 : random.Next(0, 600); // room left by an earlier load
+
+            double room = PanelNavigation.RoomBelowRows(rowTop, content + stale, viewport, stale);
+
+            Assert.True(room >= 0, $"case {i}: negative room {room}");
+            Assert.Equal(Math.Floor(room), room);
+            Assert.True(content + room - viewport >= rowTop - 0.001, $"case {i}: the row cannot reach the top");
+            if (room > 0)
+            {
+                Assert.True(content + room - 1 - viewport < rowTop, $"case {i}: {room} is more than needed");
+            }
+
+            Assert.Equal(room, PanelNavigation.RoomBelowRows(rowTop, content + room, viewport, room));
+        }
     }
 
     /// <summary>A groups column, top to bottom (ids deliberately not 1, 2, 3: positions and ids must not be confused).</summary>
@@ -716,6 +803,79 @@ public sealed class PointerSelectionGateTests
 
         gate.Suspend(0, int.MaxValue, Threshold);
         Assert.True(gate.Observe(0, int.MinValue));
+    }
+
+    /// <summary>
+    /// <see cref="PointerSelectionGate.HasMoved"/> answers what <see cref="PointerSelectionGate.Observe"/> would, and changes
+    /// nothing: a peek's question (CLAUDE.md §2.56) never hands the selection to the mouse, so the selection's own handler,
+    /// asking next, still sees the move. Also after the mouse took over, and after a wheel turn.
+    /// </summary>
+    [Fact]
+    public void HasMoved_AnswersLikeObserve_WithoutTakingTheSelection()
+    {
+        var gate = new PointerSelectionGate();
+        gate.Suspend(500, 300, Threshold);
+        Assert.False(gate.HasMoved(500, 300));
+        Assert.False(gate.HasMoved(504, 296));
+        Assert.True(gate.HasMoved(505, 300));
+        Assert.True(gate.HasMoved(500, 295));
+
+        // Asked past the threshold, the gate is still closed: Observe at the old spot still says no.
+        Assert.False(gate.IsPointerActive);
+        Assert.False(gate.Observe(500, 300));
+
+        // Once the mouse owns the selection, every position counts as moved, the old spot included.
+        Assert.True(gate.Observe(510, 300));
+        Assert.True(gate.HasMoved(500, 300));
+
+        gate.Suspend(500, 300, Threshold);
+        Assert.False(gate.HasMoved(500, 300));
+        gate.Activate();
+        Assert.True(gate.HasMoved(500, 300));
+    }
+
+    /// <summary>
+    /// Without a known spot (a suspension without a position) nothing counts as moved, and the question does not take the
+    /// first position as the spot: only <see cref="PointerSelectionGate.Observe"/> does, so a peek's question cannot
+    /// shift where the cursor must go from.
+    /// </summary>
+    [Fact]
+    public void HasMoved_WithoutAKnownSpot_IsNo_AndRecordsNothing()
+    {
+        var gate = new PointerSelectionGate();
+        gate.Suspend(Threshold);
+        Assert.False(gate.HasMoved(700, 700));
+        Assert.False(gate.HasMoved(9000, -9000));
+
+        // The spot is still the first one Observe sees, not one HasMoved saw.
+        Assert.False(gate.Observe(100, 100));
+        Assert.False(gate.HasMoved(103, 100));
+        Assert.True(gate.HasMoved(105, 100));
+    }
+
+    /// <summary>
+    /// On a grid of positions around the spot, and at the coordinate range's ends, <see cref="PointerSelectionGate.HasMoved"/>
+    /// and a fresh gate's <see cref="PointerSelectionGate.Observe"/> agree.
+    /// </summary>
+    [Fact]
+    public void HasMoved_AgreesWithObserve_EverywhereAroundTheSpot()
+    {
+        for (int dx = -6; dx <= 6; dx++)
+        {
+            for (int dy = -6; dy <= 6; dy++)
+            {
+                var asked = new PointerSelectionGate();
+                asked.Suspend(1000, 1000, Threshold);
+                var observed = new PointerSelectionGate();
+                observed.Suspend(1000, 1000, Threshold);
+                Assert.Equal(observed.Observe(1000 + dx, 1000 + dy), asked.HasMoved(1000 + dx, 1000 + dy));
+            }
+        }
+
+        var extreme = new PointerSelectionGate();
+        extreme.Suspend(int.MinValue, int.MaxValue, Threshold);
+        Assert.False(extreme.HasMoved(int.MinValue, int.MaxValue));
+        Assert.True(extreme.HasMoved(int.MaxValue, int.MinValue));
     }
 }
 

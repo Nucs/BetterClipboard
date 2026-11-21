@@ -180,15 +180,33 @@ choice, confirmed 2026-11-09 ("Keep left-to-right"). The text carries its direct
 - **Text a component words in English for the log, shown translated.** Some reasons and statuses are made once, in
   English, by code that also logs them or prints them for the installer: why a shortcut cannot be used
   (`HotkeyGesture.ProblemTemplates`), a shortcut's state, why Everything was not trusted or how it and ShareX were found,
-  why an update failed (`UpdateMessages`), why a Win+R command did not run. The interface translates the finished
+  why an update failed (`UpdateMessages`), why a Win+R command did not run, why the Microsoft Store edition could not
+  uninstall another copy (`EditionUninstaller.DetailTemplates`). The interface translates the finished
   English back through its template list: `UiText.TranslateFormatted(text, templates)` finds the template whose shape
   matches, translates it, and carries the matched parts over unchanged (a part is translated only when it is itself in
   the list, like "the release list"). Each list is the component's contract with the catalogs.
+  - **Every update failure comes from `UpdateMessages`**, the Windows installer's too: a message typed into
+    `new UpdateException(…)` showed in English in every language (eight of them until 2026-11-21), and
+    `TranslationCoverageTests.UpdateFailures_AreWordedFromTheTemplates` now fails on one.
+  - **An exception's message shown inside a sentence** ("Could not save the picture: {0}", "The history could not be
+    copied: {0} …") is Windows' or .NET's own text, shown as it came, unless BetterClipboard worded it: those messages
+    are constants in a template list of their class (`TempImageFiles.MessageTemplates`,
+    `EditionDataMigrator.MessageTemplates`), and the sentence translates the message through it.
 - **Names BetterClipboard makes up for a copy's source** ("Command Prompt", "Snipping Tool", "Screenshots folder") are
   stored in English, because the tabs filter by them, and translated where they are shown (`SourceNames.Display`).
+- **Words BetterClipboard stores with a copy** (`ContentClassifier`'s previews: "Image · 1920 × 1080", "Formatted
+  content", the "+3 more" under a file list's first five names, "(whitespace · 4 chars)") are stored in English: the
+  search, `bclip` and older versions read them. They are translated where they are shown, by their shape
+  (`PreviewText.Display`: the cards, their screen-reader names, and the examples of *Delete stored…*). A new preview
+  the classifier words itself needs its shape there too, or it shows in English.
+- **Sizes** (`ByteSizeText.Format`: Settings' history figures, *Delete stored…*, a picture's file details) take their
+  units from the catalogs (`{0} B`, `{0:0.#} KB`, `{0:0.#} MB`, `{0:0.##} GB`), worded as the language's own File
+  Explorer words them: Russian "байт", КБ, МБ, ГБ; Chinese 字节; Spanish "bytes"; Hebrew בתים. `bclip` keeps its
+  own English units.
 - **Dates** use the interface language's day and month names (`UiText.DateCulture`): an English Windows with the
   Chinese interface shows "周四 14:02", not "Thu 14:02". The two date patterns, `d MMM` and `d MMM yyyy`, are catalog
-  entries: Chinese writes `M月d日` and `yyyy年M月d日`.
+  entries: Chinese writes `M月d日` and `yyyy年M月d日`. The update dialog's release date uses the second one
+  ("0.2.7 · 2026年10月1日").
 - **WinUI's own text** (a text box's Cut, Copy and Paste) comes from WinUI's `.mui` files, which Windows picks by the
   process's preferred UI languages. The app sets them to the interface language at start, before any window is built
   (`ProcessLanguages`, plus the Windows App SDK's `PrimaryLanguageOverride`), so they follow it too.
@@ -284,7 +302,8 @@ reviewer can see them.
 2. Translate strings: `catalog.py missing {tag}` lists them, each with its description. Keep every `{0}`-style
    placeholder that carries content; a translation may leave a value out, never add one. Give every plural string each
    form its rules name. Mind the room a description names (placeholders, buttons, tabs): the search box shows about
-   220 pixels of text, and Russian ran past it before it was shortened. Four kinds of string need care:
+   290 pixels of text at the panel's default width and about 220 at its narrowest, and Russian ran past it before it
+   was shortened (when it had about 220 at the default width). Four kinds of string need care:
    - `d MMM` and `d MMM yyyy` are .NET custom date patterns, not words: write the language's own order (`M月d日`).
    - The group icons' names (`Star`, `Work`, …) become a new group's default name: keep them distinct (a test checks).
    - A string that starts with a space continues a sentence; drop the space where the language writes none.
@@ -304,13 +323,36 @@ lacks.
 Some words stay English in every language:
 
 - **Names:** BetterClipboard, Everything, ShareX, PowerShell, Claude Code, Codex, Win+R, Win+PrtScn, and the short tab
-  names Pwsh, Cmd, Claude and Codex.
+  names Pwsh, Cmd, Claude and Codex; the text viewer's names of formats (XML, JSON, Python, Diff, …), all but *Plain
+  text* and the "(detected)" after one.
 - **Keys and shortcuts** (`Ctrl+Shift+V`, `PageDown`, `Enter` in a menu), as Windows itself writes them, and the search
   box's `Aa`, `W` and `.*`.
 - **Text from outside the app,** shown as it came: Windows' own error messages, .NET's reason for a regular expression
-  that does not parse ("Not enough )'s."), the network stack's reason for a failed update, and the installer's report
-  (a PowerShell script's English).
-- **What is stored:** a copy's text, a file list's preview, group names, and the source names of other apps.
+  that does not parse ("Not enough )'s."), the network stack's reason for a failed update, the installer's report
+  (a PowerShell script's English), and a release's notes from GitHub.
+- **What is stored:** a copy's text, the file names a file list's card shows (the "+3 more" under them is translated,
+  above), group names, and the source names of other apps.
+
+## Checking that nothing bypasses the catalogs
+
+The tests check that every text handed to `UiText` or `{loc:Tr …}` has an entry in every catalog. They cannot see a
+text that never reaches either: a label typed into the XAML, a word built in code, a unit or a date .NET formats by
+itself. Such a text shows in English in every language, and only a reader of that language notices. These checks find
+them; they ran twice before 0.2.12 (2026-11-16 and, after five days of new features, 2026-11-21; CLAUDE.md §2.37):
+
+- **A scan of the sources.** Every literal text attribute and element content in the XAML that is not a markup
+  extension, and every C# string literal on its way to the screen that does not pass through `UiText`. Most findings
+  are log lines, font and key names, or constants; each one is checked by hand. A second run only needs what is new:
+  compare its rows with the last run's, file and text without line numbers. Read the exception messages too: a
+  message BetterClipboard words itself reaches the screen wherever a sentence shows `{ex.Message}`, and the update
+  dialog shows every update failure's message.
+- **The catalogs' new strings.** A translation copied from the English counts as present, so list the strings added
+  since the last check and compare each language's value with the English (none were copies on 2026-11-21).
+- **A pseudo-translated build.** Every value of one catalog (`es.json`) wrapped as `⟦English⟧`, the app packaged with
+  it and run in a disposable Windows test desktop with that language chosen, and every window, menu, dialog and tab
+  read through UI Automation. A visible text without the brackets bypassed the catalogs, unless it is a name, a key,
+  a number, the user's own content, or WinUI's own text (which follows the language: "Elemento emergente"). Put the
+  real catalog back right after the build: the pseudo one must never be committed.
 
 ## Known gaps
 

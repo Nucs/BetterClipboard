@@ -32,6 +32,44 @@ public sealed record UpsertResult(ClipEntry Entry, bool IsNew, bool Changed);
 /// </param>
 public sealed record StoreStats(long Count, long PinnedCount, long TotalBytes, long GroupedCount = 0, long ForgottenCount = 0, long RunCount = 0, long HiddenCount = 0);
 
+/// <summary>Outcome of <see cref="ClipStore.PruneAndMeasure"/>.</summary>
+/// <param name="Removed">Entries removed by every limit together.</param>
+/// <param name="RemovedForSize">
+/// Of those, the entries the size budget removed: above 0 means the budget is full and the history no longer keeps
+/// everything (<see cref="Services.HistoryBudgetWarnings"/> warns of it).
+/// </param>
+/// <param name="CountedBytes">
+/// The payload of the unprotected entries left, which is what the size budget counts; <see langword="null"/> when the policy
+/// has no size budget (the sum is then never added up).
+/// </param>
+public sealed record PruneResult(int Removed, int RemovedForSize, long? CountedBytes);
+
+/// <summary>
+/// What each retention limit has to work with now (<see cref="ClipStore.GetRetentionStats"/>): Settings › History's "Now:"
+/// lines and <c>bclip status</c> show it so the user can pick limits that fit.
+/// </summary>
+/// <param name="CountedItems">Entries the item limit and the size budget count: neither pinned nor in a group.</param>
+/// <param name="CountedBytes">Their stored payload: what the size budget counts.</param>
+/// <param name="ProtectedItems">Pinned or grouped entries, which no limit counts or removes.</param>
+/// <param name="ProtectedBytes">Their stored payload.</param>
+/// <param name="OldestCountedUseUtc">
+/// The retention clock of the counted entry the age limit reaches first (its last use, or when it left its last group or
+/// was unpinned, whichever is later); <see langword="null"/> when no entry is counted.
+/// </param>
+/// <param name="LargestItemBytes">The largest entry's payload, pinned and grouped ones included; 0 for an empty history.</param>
+/// <param name="DatabaseBytes">
+/// The history database file's size: the payload plus the search index, thumbnails and SQLite's own pages (the write-ahead
+/// log beside it is not counted).
+/// </param>
+public sealed record RetentionStats(
+    long CountedItems,
+    long CountedBytes,
+    long ProtectedItems,
+    long ProtectedBytes,
+    DateTimeOffset? OldestCountedUseUtc,
+    long LargestItemBytes,
+    long DatabaseBytes);
+
 /// <summary>Outcome of <see cref="ClipStore.RemoveFromGroup"/>.</summary>
 /// <param name="Removed">The entry was in the group and is not anymore.</param>
 /// <param name="RetentionReset">
@@ -254,6 +292,13 @@ public sealed partial class ClipStore
     public bool MigratedFromPlaintext { get; private set; }
 
     /// <summary>
+    /// How many previews the last <see cref="Initialize"/> rebuilt at the longer preview length
+    /// (<see cref="RebuildShortPreviews"/>: history entries and archived prompts together, for the log); 0 on every start
+    /// after the first one that ran the rebuild.
+    /// </summary>
+    public int RebuiltPreviews { get; private set; }
+
+    /// <summary>
     /// Creates or migrates the schema, and encrypts a legacy plaintext file in place when this store has a
     /// key. Idempotent; call once at startup before any other member.
     /// </summary>
@@ -399,6 +444,7 @@ public sealed partial class ClipStore
         transaction.Commit();
         ApplyDataFixups(connection);
         BackfillPathCounts(connection);
+        RebuiltPreviews = RebuildShortPreviews(connection);
     }
 
     /// <summary>
@@ -501,6 +547,148 @@ public sealed partial class ClipStore
         }
 
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// <c>meta</c> flag of the one-time rebuild of the previews earlier versions cut short (see
+    /// <see cref="RebuildShortPreviews"/>). Never reuse it: a new rebuild needs a new key.
+    /// </summary>
+    private const string LongPreviewsKey = "fixup.long_previews.v1";
+
+    /// <summary>
+    /// Rebuilds, once per store, every preview an earlier version cut at its shorter length: a text cut at 1,000 characters
+    /// and a file list cut after five names, now <see cref="ContentClassifier.PreviewMaxChars"/> characters and
+    /// <see cref="ContentClassifier.PreviewMaxFiles"/> names (CLAUDE.md §2.57), so that a card set to show many lines fills
+    /// them for entries kept before the change too.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Where each preview comes from.</b> A history entry's text from its indexed text (<c>search_text</c>, the first
+    /// <see cref="ContentClassifier.SearchMaxChars"/> characters of it), which gives exactly the preview the whole text gives
+    /// (see <see cref="ContentClassifier.PreviewMaxChars"/>), so no payload is read for it; a file list from its own
+    /// <c>CF_HDROP</c> format, the only place that has every name and their number; an archived prompt from its whole text.
+    /// Only the head the classifier looks at is read (<c>substr</c>, twice the cap plus one, which still tells a longer
+    /// text apart).
+    /// </para>
+    /// <para>
+    /// <b>Which rows.</b> Only previews that end the way a cut one does ("…" for a text, "more" for a file list); a row is
+    /// written only when its rebuilt preview differs, so a text that merely ends with "…" stays as it is. Ids are listed
+    /// first and each row is read and written on its own, so a large archive is never held in memory at once. The full-text
+    /// triggers fire on a change of the indexed text only, so no index is rebuilt.
+    /// </para>
+    /// <para>
+    /// One transaction with its flag: an interrupted start leaves every preview as it was, and the next one does the whole
+    /// job. Entries a version older than this one stores afterwards keep its short shape; their cards still recognize them
+    /// as cut (<see cref="ContentClassifier.IsCutPreview"/>) and show as much as those previews hold.
+    /// </para>
+    /// </remarks>
+    /// <param name="connection">Open connection (outside any transaction).</param>
+    /// <returns>How many previews were rewritten (0 when the rebuild had run on an earlier start).</returns>
+    /// <exception cref="SqliteException">A read or write failed (lock timeout, disk full); nothing is changed, and the next start retries.</exception>
+    private static int RebuildShortPreviews(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+        using (var flag = Command(connection, "INSERT OR IGNORE INTO meta (key, value) VALUES ($key, '1');"))
+        {
+            flag.Parameters.AddWithValue("$key", LongPreviewsKey);
+
+            // Zero rows inserted = already done on an earlier start.
+            if (flag.ExecuteNonQuery() == 0)
+            {
+                return 0;
+            }
+        }
+
+        // Texts, formatted texts and links: their preview is BuildTextPreview's. A whitespace-only text never ends with "…".
+        int rebuilt = RebuildPreviews(
+            connection,
+            $"SELECT id FROM clips WHERE kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText}, {(int)ClipKind.Link}) AND substr(preview, -1) = '…';",
+            "SELECT preview, substr(search_text, 1, $head) FROM clips WHERE id = $id;",
+            "UPDATE clips SET preview = $preview WHERE id = $id;",
+            reader => reader.IsDBNull(1) || reader.GetString(1) is not { Length: > 0 } text ? null : ContentClassifier.BuildTextPreview(text));
+
+        // File lists with their "+N more" line: the names come from the list itself (the indexed text may stop mid-path).
+        rebuilt += RebuildPreviews(
+            connection,
+            $"SELECT id FROM clips WHERE kind = {(int)ClipKind.Files} AND preview LIKE '%more';",
+            $"SELECT c.preview, f.data FROM clips c JOIN clip_formats f ON f.clip_id = c.id AND f.name = '{ClipFormatNames.HDrop}' WHERE c.id = $id;",
+            "UPDATE clips SET preview = $preview WHERE id = $id;",
+            reader => reader.IsDBNull(1) || DropFilesCodec.Decode(reader.GetFieldValue<byte[]>(1)) is not { Count: > 0 } paths
+                ? null
+                : ContentClassifier.DescribeFiles(paths));
+
+        // Archived prompts keep their whole text: the preview is BuildTextPreview's of it, as when it was stored.
+        rebuilt += RebuildPreviews(
+            connection,
+            "SELECT id FROM prompts WHERE substr(preview, -1) = '…';",
+            "SELECT preview, substr(text, 1, $head) FROM prompts WHERE id = $id;",
+            "UPDATE prompts SET preview = $preview WHERE id = $id;",
+            reader => reader.IsDBNull(1) || reader.GetString(1) is not { Length: > 0 } text ? null : ContentClassifier.BuildTextPreview(text));
+
+        transaction.Commit();
+        return rebuilt;
+    }
+
+    /// <summary>
+    /// One table's part of <see cref="RebuildShortPreviews"/>: lists the candidate ids, then reads, rebuilds and writes each
+    /// row on its own (inside the caller's transaction).
+    /// </summary>
+    /// <param name="connection">Open connection inside the caller's transaction.</param>
+    /// <param name="candidates">SQL listing the candidate ids (constants only).</param>
+    /// <param name="read">SQL reading one row by <c>$id</c>: column 0 the stored preview, column 1 the source to rebuild it from; may use <c>$head</c>.</param>
+    /// <param name="write">SQL writing <c>$preview</c> to the row <c>$id</c>.</param>
+    /// <param name="rebuild">The new preview from the read row, or <see langword="null"/> to leave the row alone.</param>
+    /// <returns>How many rows were rewritten.</returns>
+    /// <exception cref="SqliteException">A read or write failed; the caller's transaction rolls back.</exception>
+    private static int RebuildPreviews(SqliteConnection connection, string candidates, string read, string write, Func<SqliteDataReader, string?> rebuild)
+    {
+        var ids = new List<long>();
+        using (var list = Command(connection, candidates))
+        using (var reader = list.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                ids.Add(reader.GetInt64(0));
+            }
+        }
+
+        int rewritten = 0;
+        using var select = Command(connection, read);
+        var selectId = select.Parameters.Add("$id", SqliteType.Integer);
+
+        // Twice the cap plus one: the classifier looks at twice the cap, and the one more tells it the text goes on.
+        select.Parameters.AddWithValue("$head", (ContentClassifier.PreviewMaxChars * 2) + 1);
+        using var update = Command(connection, write);
+        var updateId = update.Parameters.Add("$id", SqliteType.Integer);
+        var updatePreview = update.Parameters.Add("$preview", SqliteType.Text);
+        foreach (long id in ids)
+        {
+            selectId.Value = id;
+            string? preview;
+            string stored;
+            using (var reader = select.ExecuteReader())
+            {
+                if (!reader.Read())
+                {
+                    continue;
+                }
+
+                stored = reader.GetString(0);
+                preview = rebuild(reader);
+            }
+
+            if (preview is null || preview == stored)
+            {
+                continue;
+            }
+
+            updateId.Value = id;
+            updatePreview.Value = preview;
+            update.ExecuteNonQuery();
+            rewritten++;
+        }
+
+        return rewritten;
     }
 
     /// <summary>
@@ -935,7 +1123,10 @@ public sealed partial class ClipStore
             sql.Append(" WHERE ").AppendJoin(" AND ", predicates);
         }
 
-        sql.Append(query.PinnedFirst ? " ORDER BY c.is_pinned DESC, c.last_used_utc DESC, c.id DESC" : " ORDER BY c.last_used_utc DESC, c.id DESC");
+        sql.Append(
+            query.LargestFirst ? " ORDER BY c.size_bytes DESC, c.last_used_utc DESC, c.id DESC"
+            : query.PinnedFirst ? " ORDER BY c.is_pinned DESC, c.last_used_utc DESC, c.id DESC"
+            : " ORDER BY c.last_used_utc DESC, c.id DESC");
         sql.Append(" LIMIT $limit OFFSET $offset;");
         command.Parameters.AddWithValue("$limit", Math.Clamp(query.Limit, 1, 1000));
         command.Parameters.AddWithValue("$offset", Math.Max(0, query.Offset));
@@ -1228,16 +1419,35 @@ public sealed partial class ClipStore
     /// Age and order use <see cref="RetentionKey"/>: an entry that recently left its last group counts as
     /// fresh from that moment. Runs in one transaction; afterwards an incremental vacuum returns freed pages
     /// to the OS so the file actually shrinks (large images are the usual culprit). Also expires old tombstones.
+    /// <see cref="PruneAndMeasure"/> does the same and also says what the size budget counts afterwards.
     /// </remarks>
     /// <param name="policy">The limits.</param>
     /// <param name="now">Reference time for the age limit.</param>
     /// <returns>Number of entries removed.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="policy"/> is <see langword="null"/>.</exception>
     /// <exception cref="SqliteException">The write failed.</exception>
-    public int Prune(RetentionPolicy policy, DateTimeOffset now)
+    public int Prune(RetentionPolicy policy, DateTimeOffset now) => PruneAndMeasure(policy, now).Removed;
+
+    /// <summary>
+    /// Applies retention like <see cref="Prune"/>, and returns, besides how many entries went, what the size budget counts
+    /// once they are gone: the payload of every unprotected entry. The history service watches that against the budget to
+    /// warn the user before the oldest items start to go (<see cref="Services.HistoryBudgetWarnings"/>).
+    /// </summary>
+    /// <remarks>
+    /// The count comes from the sum the size step adds up anyway, so it costs no second pass over the table; it is
+    /// therefore only known while the policy has a size budget (<see cref="RetentionPolicy.MaxTotalBytes"/> above 0).
+    /// </remarks>
+    /// <param name="policy">The limits.</param>
+    /// <param name="now">Reference time for the age limit.</param>
+    /// <returns>What was removed, and the unprotected payload left.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="policy"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The write failed.</exception>
+    public PruneResult PruneAndMeasure(RetentionPolicy policy, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(policy);
         int removed = 0;
+        int removedForSize = 0;
+        long? countedBytes = null;
         using var connection = Open();
         using (var transaction = connection.BeginTransaction())
         {
@@ -1258,7 +1468,9 @@ public sealed partial class ClipStore
 
             if (policy.MaxTotalBytes > 0)
             {
-                removed += PruneBySize(connection, policy.MaxTotalBytes);
+                removedForSize = PruneBySize(connection, policy.MaxTotalBytes, out long remaining);
+                removed += removedForSize;
+                countedBytes = remaining;
             }
 
             using (var tombs = Command(connection, "DELETE FROM deleted_hashes WHERE deleted_utc < $cutoff;"))
@@ -1276,7 +1488,100 @@ public sealed partial class ClipStore
             Execute(connection, "PRAGMA incremental_vacuum;");
         }
 
-        return removed;
+        return new PruneResult(removed, removedForSize, countedBytes);
+    }
+
+    /// <summary>
+    /// What each retention limit has to work with right now, for Settings › History's "Now:" lines and <c>bclip status</c>:
+    /// the entries the limits count (neither pinned nor grouped) and their payload, the protected ones, the entry the age
+    /// limit would reach first, the largest entry, and how large the database file is.
+    /// </summary>
+    /// <remarks>
+    /// One pass over <c>clips</c> (the same scan <see cref="GetStats(IReadOnlyList{ClipFilter})"/> makes, plus a lookup in
+    /// <c>clip_groups</c>' primary key per row), and the file size from SQLite's page count, so no file system call. Call it
+    /// when a window that shows it opens or the history changed, never per copy.
+    /// </remarks>
+    /// <returns>The numbers.</returns>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public RetentionStats GetRetentionStats()
+    {
+        using var connection = Open();
+        long countedItems, countedBytes, protectedItems, protectedBytes, largest;
+        DateTimeOffset? oldest;
+        using (var command = Command(connection,
+            "SELECT coalesce(sum(u), 0), coalesce(sum(CASE WHEN u THEN size_bytes ELSE 0 END), 0), " +
+            "count(*) - coalesce(sum(u), 0), coalesce(sum(CASE WHEN u THEN 0 ELSE size_bytes END), 0), " +
+            "min(CASE WHEN u THEN k END), coalesce(max(size_bytes), 0) " +
+            $"FROM (SELECT size_bytes, {RetentionKey} AS k, ({Unprotected}) AS u FROM clips);"))
+        using (var reader = command.ExecuteReader())
+        {
+            reader.Read();
+            countedItems = reader.GetInt64(0);
+            countedBytes = reader.GetInt64(1);
+            protectedItems = reader.GetInt64(2);
+            protectedBytes = reader.GetInt64(3);
+            oldest = reader.IsDBNull(4) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4));
+            largest = reader.GetInt64(5);
+        }
+
+        // The main file only: the write-ahead log beside it is checkpointed back into it and stays small.
+        long pages = Convert.ToInt64(Scalar(connection, "PRAGMA page_count;"));
+        long pageSize = Convert.ToInt64(Scalar(connection, "PRAGMA page_size;"));
+        return new RetentionStats(countedItems, countedBytes, protectedItems, protectedBytes, oldest, largest, pages * pageSize);
+    }
+
+    /// <summary>
+    /// Deletes several entries in one transaction, each tombstoned like <see cref="Delete"/> (an import from Windows' history
+    /// cannot bring it back), then gives the freed pages back to the file system: <c>bclip delete</c> with several ids, the
+    /// way an AI assistant frees space when the size budget fills up.
+    /// </summary>
+    /// <remarks>
+    /// Pins and groups do not protect an entry here: naming it is the explicit request, as for <see cref="Delete"/>. The
+    /// incremental vacuum makes the file shrink at once, which a one-by-one delete leaves to the next prune.
+    /// </remarks>
+    /// <param name="ids">The entry ids; unknown ids and repeats are skipped.</param>
+    /// <param name="now">Tombstone timestamp (tombstones expire after 30 days).</param>
+    /// <returns>The ids that were deleted, in the order given.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="ids"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The write failed (nothing is deleted then).</exception>
+    public IReadOnlyList<long> DeleteMany(IReadOnlyList<long> ids, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(ids);
+        var deleted = new List<long>(ids.Count);
+        if (ids.Count == 0)
+        {
+            return deleted;
+        }
+
+        using var connection = Open();
+        using (var transaction = connection.BeginTransaction())
+        {
+            using var delete = Command(connection, "DELETE FROM clips WHERE id = $id RETURNING content_hash;");
+            var idParameter = delete.Parameters.Add("$id", SqliteType.Integer);
+            using var tomb = Command(connection, "INSERT OR REPLACE INTO deleted_hashes (content_hash, deleted_utc) VALUES ($hash, $now);");
+            var hashParameter = tomb.Parameters.Add("$hash", SqliteType.Text);
+            tomb.Parameters.AddWithValue("$now", now.ToUnixTimeMilliseconds());
+            foreach (long id in ids.Distinct())
+            {
+                idParameter.Value = id;
+                if (delete.ExecuteScalar() is string hash)
+                {
+                    hashParameter.Value = hash;
+                    tomb.ExecuteNonQuery();
+                    deleted.Add(id);
+                }
+            }
+
+            transaction.Commit();
+        }
+
+        if (deleted.Count > 0)
+        {
+            // Outside the transaction, as after a prune: the file shrinks now instead of keeping the pages for later copies.
+            Execute(connection, "PRAGMA incremental_vacuum;");
+        }
+
+        return deleted;
     }
 
     /// <summary>
@@ -1580,6 +1885,54 @@ public sealed partial class ClipStore
     }
 
     /// <summary>
+    /// Which of many fingerprints are forgotten forever: one connection and one query per <see cref="ForgottenLookupChunk"/>
+    /// fingerprints, instead of a connection per fingerprint (<see cref="IsForgotten"/>). What the merged tabs ask about every
+    /// command or pick they show — since 2026-11-21 every one, not the newest 700 at most (CLAUDE.md §2.62).
+    /// </summary>
+    /// <remarks>
+    /// The answer holds only fingerprints the caller passed in (the list's rows that match them), never another entry of the
+    /// list: the forgotten list's fingerprints stay inside the store, as <see cref="ForgottenColumns"/> keeps them out of
+    /// every listing.
+    /// </remarks>
+    /// <param name="fingerprints">Fingerprints to look up (<see cref="ForgetFingerprint"/>); duplicates and blanks are fine.</param>
+    /// <returns>The forgotten ones, each once.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="fingerprints"/> is <see langword="null"/>.</exception>
+    /// <exception cref="SqliteException">The read failed.</exception>
+    public IReadOnlySet<string> FindForgotten(IEnumerable<string> fingerprints)
+    {
+        ArgumentNullException.ThrowIfNull(fingerprints);
+        var forgotten = new HashSet<string>(StringComparer.Ordinal);
+        var distinct = fingerprints.Where(f => !string.IsNullOrWhiteSpace(f)).Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count == 0)
+        {
+            return forgotten;
+        }
+
+        using var connection = Open();
+        foreach (var chunk in distinct.Chunk(ForgottenLookupChunk))
+        {
+            // Numbered parameters, never the values in the text: a fingerprint is data, and the chunk keeps the count far
+            // below SQLite's limit on variables per statement.
+            using var command = connection.CreateCommand();
+            var names = new string[chunk.Length];
+            for (int i = 0; i < chunk.Length; i++)
+            {
+                names[i] = "$fp" + i.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                command.Parameters.AddWithValue(names[i], chunk[i]);
+            }
+
+            command.CommandText = $"SELECT fingerprint FROM forgotten WHERE fingerprint IN ({string.Join(", ", names)});";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                forgotten.Add(reader.GetString(0));
+            }
+        }
+
+        return forgotten;
+    }
+
+    /// <summary>
     /// Counts one more new copy kept out by a forgotten entry (shown in Settings as "kept out N times").
     /// </summary>
     /// <param name="fingerprint">The fingerprint that matched.</param>
@@ -1741,6 +2094,12 @@ public sealed partial class ClipStore
         DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(7)),
         reader.GetInt64(8),
         reader.IsDBNull(9) ? null : DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(9)));
+
+    /// <summary>
+    /// Fingerprints asked about per query by <see cref="FindForgotten"/>: far below SQLite's limit on variables per statement
+    /// (32,766), and small enough that one query stays a few milliseconds.
+    /// </summary>
+    private const int ForgottenLookupChunk = 500;
 
     /// <summary>Columns of <c>forgotten</c> in the order <see cref="ReadForgotten(SqliteDataReader)"/> reads them (never the fingerprint).</summary>
     private const string ForgottenColumns =
@@ -2195,6 +2554,14 @@ public sealed partial class ClipStore
     /// copied before the resolver skipped such descriptions is labeled "SnippingTool.exe". This renames those rows; it
     /// touches only rows whose path is Snipping Tool's executable.
     /// </para>
+    /// <para>
+    /// <c>fixup.whitespace_only.v1</c>: copies that are only whitespace are no longer kept (2026-11-17,
+    /// <see cref="ContentClassifier.IsWhitespaceOnly"/>); the ones earlier builds kept are deleted once, so the stray space
+    /// that caused the report stops sitting under the newest copy. Left alone: a pinned or grouped one (the user chose to
+    /// keep it), one whose text was cut at the search cap (its search text says nothing of the rest), and one that carries
+    /// a picture (the same exception the capture rule makes). No tombstone: the capture rule keeps the same content out of
+    /// every later copy and import.
+    /// </para>
     /// </remarks>
     /// <param name="connection">Open connection (outside any transaction).</param>
     private static void ApplyDataFixups(SqliteConnection connection)
@@ -2212,7 +2579,36 @@ public sealed partial class ClipStore
             WHERE source_app_name = '{WindowsScreenshots.SnippingToolExecutableName}'
               AND source_app_path LIKE '%\{WindowsScreenshots.SnippingToolExecutableName}';
             """);
+
+        // A text kept whole has its search text equal to it (shorter than the cap); the empty search text of a
+        // "Formatted content" row (HTML or RTF without text) is not whitespace. foreign_keys is on for this connection, so
+        // the formats, group memberships and tracked-document links go with each row; the full-text triggers update the index.
+        ApplyDataFixup(connection, "fixup.whitespace_only.v1",
+            $"""
+            DELETE FROM clips
+            WHERE kind IN ({(int)ClipKind.Text}, {(int)ClipKind.RichText})
+              AND is_pinned = 0
+              AND length(search_text) BETWEEN 1 AND {ContentClassifier.SearchMaxChars - 1}
+              AND trim(search_text, {WhitespaceSqlCharacters}) = ''
+              AND NOT EXISTS (SELECT 1 FROM clip_groups g WHERE g.clip_id = clips.id)
+              AND NOT EXISTS (SELECT 1 FROM clip_formats f WHERE f.clip_id = clips.id AND f.name IN ({PictureFormatSqlList}));
+            """);
     }
+
+    /// <summary>
+    /// SQLite's <c>char(…)</c> of every character .NET counts as whitespace (<see cref="ForgetFingerprint.WhitespaceCharacters"/>):
+    /// the set <c>trim</c> strips in <c>fixup.whitespace_only.v1</c>, so the store and <see cref="string.IsNullOrWhiteSpace"/>
+    /// agree on what is blank. Built from constants (code points), never from content.
+    /// </summary>
+    private static readonly string WhitespaceSqlCharacters =
+        $"char({string.Join(", ", ForgetFingerprint.WhitespaceCharacters.Select(c => (int)c))})";
+
+    /// <summary>
+    /// The picture formats (<see cref="ContentClassifier.PrimaryImageFormats"/>) as a quoted SQL list, for the fix-up's
+    /// "carries a picture" exception. Constants only.
+    /// </summary>
+    private static readonly string PictureFormatSqlList =
+        string.Join(", ", ContentClassifier.PrimaryImageFormats.Select(name => $"'{name}'"));
 
     /// <summary>
     /// Runs one fix-up unless its flag says it already ran: flag and change commit together, so a crash in between
@@ -2295,10 +2691,12 @@ public sealed partial class ClipStore
     /// <summary>Deletes the oldest unprotected rows (by <see cref="RetentionKey"/>) until their total size fits <paramref name="maxBytes"/>.</summary>
     /// <param name="connection">Open connection inside the caller's transaction.</param>
     /// <param name="maxBytes">The size cap.</param>
+    /// <param name="remaining">The unprotected payload left afterwards (what the size budget counts).</param>
     /// <returns>Rows deleted.</returns>
-    private static int PruneBySize(SqliteConnection connection, long maxBytes)
+    private static int PruneBySize(SqliteConnection connection, long maxBytes, out long remaining)
     {
         long total = Convert.ToInt64(Scalar(connection, $"SELECT coalesce(sum(size_bytes), 0) FROM clips WHERE {Unprotected};"));
+        remaining = total;
         if (total <= maxBytes)
         {
             return 0;
@@ -2323,6 +2721,8 @@ public sealed partial class ClipStore
             delete.ExecuteNonQuery();
         }
 
+        // What the loop above left: the victims' sizes are already taken off.
+        remaining = total;
         return victims.Count;
     }
 

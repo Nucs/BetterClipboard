@@ -25,14 +25,24 @@ namespace BetterClipboard.Windows.Integrations;
 /// <b>How.</b> Each interactive cmd (<see cref="InteractiveConsoles"/>) in this session gets one helper:
 /// <c>BetterClipboard.exe --read-console-history &lt;pid&gt;</c> (<see cref="ConsoleCommandHistory"/>), at most
 /// <see cref="MaxParallelReads"/> at once, each with a <see cref="HelperTimeout"/>. A window read before is compared
-/// with its last read (<see cref="CmdHistory.NewSince"/>), so a command typed again counts again; a window seen for
-/// the first time adds its commands without counting them again.
+/// with its last read (<see cref="CmdHistory.NewSinceRead"/>), so a command typed again counts again; a window seen for
+/// the first time adds its commands without counting them again, each one the list does not keep placed by the window's
+/// own order (<see cref="CmdHistory.Remember"/>).
 /// </para>
 /// <para>
-/// <b>Kept list</b> (<see cref="CmdHistory.KeptStateName"/>, in the encrypted store, newest
-/// <see cref="CmdHistory.MaxKept"/>): written only when it changed, and never while capture is paused — reads
-/// still happen then, so the tab shows open windows' commands, but nothing new is kept. Switching the feature off
-/// stops the timer and deletes the list. Nothing of it reaches a log (counts only).
+/// <b>The reader's memory</b> (<see cref="CmdHistory.WindowsStateName"/>, fingerprints only): each open window's last read,
+/// written whenever it changed — also while paused, like the Win+R snapshot — and loaded at the first read of a process. So
+/// a window open through a restart (the silent restart a few seconds after Settings closed, an update) is a window read
+/// before. Until 2026-11-21 the memory lived in the process alone: after <em>Delete stored…</em> or a lowered limit, the
+/// restart that followed closing Settings kept the open windows' removed commands again (CLAUDE.md §2.62).
+/// </para>
+/// <para>
+/// <b>Kept list</b> (<see cref="CmdHistory.KeptStateName"/>, in the encrypted store, as many commands as
+/// <see cref="KeptLimit"/> allows — Settings' <see cref="Core.Settings.AppSettings.MaxKeptCmdCommands"/>, no limit by default;
+/// the newest 1,000 until 2026-11-21): written only when it changed, and never while capture is paused — reads still happen
+/// then, so the tab shows open windows' commands, but nothing new is kept. A lowered limit applies at once
+/// (<see cref="ApplyLimitAsync"/>). Switching the feature off stops the timer and deletes the list. Nothing of it reaches a
+/// log (counts only).
 /// </para>
 /// Thread-safe: reads are serialized by a gate; events are raised on the pool.
 /// </remarks>
@@ -56,14 +66,28 @@ public sealed class CmdHistorySource : IAsyncDisposable
     private readonly TimeProvider time;
     private readonly SemaphoreSlim gate = new(1, 1);
 
-    /// <summary>Each window's last read, by process id and start time (ids are reused). Guarded by <see cref="gate"/>.</summary>
+    /// <summary>
+    /// Each window's last read as fingerprints (<see cref="CmdHistory.Fingerprint"/>), oldest first, by process id and start
+    /// time (ids are reused): the reader's memory, saved in the store when it changes (<see cref="savedWindows"/>).
+    /// Guarded by <see cref="gate"/>.
+    /// </summary>
     private readonly Dictionary<(uint ProcessId, long StartTicks), IReadOnlyList<string>> lastReads = [];
+
+    /// <summary>
+    /// The reader's memory as last loaded or written (<see cref="CmdHistory.FormatWindows"/>); <see langword="null"/> until
+    /// the first read of this process loaded it. Guarded by <see cref="gate"/>.
+    /// </summary>
+    private string? savedWindows;
 
     /// <summary>The kept list as last loaded or written; <see langword="null"/> until loaded. Guarded by <see cref="gate"/>.</summary>
     private IReadOnlyList<KeptCommand>? kept;
 
-    /// <summary>What the open windows held at the last read, oldest first, for a paused view. Guarded by <see cref="gate"/>.</summary>
-    private IReadOnlyList<string> openCommands = [];
+    /// <summary>
+    /// What each open window held at the last read, oldest first, for the tab's view (<see cref="GetCommandsAsync"/>): one
+    /// list per window, because <see cref="CmdHistory.Remember"/> places what the list does not keep by each window's own
+    /// order. Guarded by <see cref="gate"/>.
+    /// </summary>
+    private IReadOnlyList<IReadOnlyList<string>> openWindowCommands = [];
 
     private DateTimeOffset lastRead = DateTimeOffset.MinValue;
     private Timer? timer;
@@ -88,6 +112,12 @@ public sealed class CmdHistorySource : IAsyncDisposable
         this.helperPath = helperPath;
         this.time = time ?? TimeProvider.System;
     }
+
+    /// <summary>
+    /// The most commands the kept list may hold, asked at every read (<see cref="Core.Settings.ListLimit"/>: 0 = no limit, the
+    /// default). The app passes Settings' <see cref="Core.Settings.AppSettings.MaxKeptCmdCommands"/>; tests leave it unlimited.
+    /// </summary>
+    public Func<int> KeptLimit { get; init; } = static () => 0;
 
     /// <summary>Raised (pool thread) after a read changed the kept list, or the feature was switched on or off.</summary>
     public event EventHandler? StatusChanged;
@@ -127,9 +157,13 @@ public sealed class CmdHistorySource : IAsyncDisposable
             {
                 kept = [];
                 lastReads.Clear();
-                openCommands = [];
+                openWindowCommands = [];
                 OpenWindows = -1;
                 await history.SetStateValueAsync(CmdHistory.KeptStateName, string.Empty);
+
+                // The reader's memory goes too: on again, open windows are read as new ones, as on a first activation.
+                await history.SetStateValueAsync(CmdHistory.WindowsStateName, string.Empty);
+                savedWindows = string.Empty;
                 AppLog.Info("Cmd tab switched off; the kept Command Prompt commands were deleted.");
             }
             catch (Exception ex) when (ex is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
@@ -147,13 +181,16 @@ public sealed class CmdHistorySource : IAsyncDisposable
 
     /// <summary>
     /// Forgets the kept commands (Settings' <em>Delete stored…</em> on the Cmd card), in memory and in the store, while the
-    /// reading goes on. Each open window's last read is kept, so what the windows hold now is not kept again on the next
-    /// read; commands typed from now on are. The windows themselves are never touched: the tab still shows what they hold
-    /// while they are open.
+    /// reading goes on. Each open window's last read is kept — in the reader's memory, which outlives a restart
+    /// (<see cref="CmdHistory.WindowsStateName"/>) — so what the windows hold now is not kept again on the next read, also
+    /// not after the silent restart that follows closing Settings; commands typed from now on are. The windows themselves are
+    /// never touched: the tab still shows what they hold while they are open.
     /// </summary>
     /// <remarks>
     /// Without this, the list in memory would be written back at the next read (every 30 s), undoing a deletion made
     /// through the store alone. Waits for a read in progress (the same gate), so a read cannot write the old list after it.
+    /// Until 2026-11-21 the reader's memory lived in the process alone, and the restart after Settings closed kept the open
+    /// windows' commands again (CLAUDE.md §2.62).
     /// </remarks>
     /// <returns>A task completing when forgotten; failures are logged, never thrown.</returns>
     public async Task ForgetKeptAsync()
@@ -183,6 +220,53 @@ public sealed class CmdHistorySource : IAsyncDisposable
     }
 
     /// <summary>
+    /// Applies <see cref="KeptLimit"/> to the kept list now, in memory and in the store: a lowered limit deletes the commands
+    /// seen longest ago at once, so Settings' count and the tab follow the number the user just typed instead of the next
+    /// read (up to <see cref="ScanInterval"/> later). Nothing changes when the list fits, or before it was ever loaded and
+    /// the store holds none.
+    /// </summary>
+    /// <remarks>
+    /// Applied also while capture is paused: pausing stops keeping new commands, not the user's own limit. Waits for a read in
+    /// progress (the same gate), so a read cannot write the longer list after it.
+    /// </remarks>
+    /// <returns>A task completing when applied; failures are logged, never thrown.</returns>
+    public async Task ApplyLimitAsync()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        bool trimmed = false;
+        await gate.WaitAsync();
+        try
+        {
+            kept ??= CmdHistory.ParseKept(await history.GetStateValueAsync(CmdHistory.KeptStateName));
+            var next = CmdHistory.Trim(kept, KeptLimit());
+            if (next.Count < kept.Count)
+            {
+                await history.SetStateValueAsync(CmdHistory.KeptStateName, CmdHistory.FormatKept(next));
+                AppLog.Info($"The Cmd tab's kept commands follow their new limit: {kept.Count - next.Count} deleted, {next.Count} kept.");
+                kept = next;
+                trimmed = true;
+            }
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
+        {
+            AppLog.Warn($"Applying the limit of kept Command Prompt commands failed ({ex.GetType().Name}).");
+        }
+        finally
+        {
+            gate.Release();
+        }
+
+        if (trimmed)
+        {
+            StatusChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
     /// The Cmd tab's live commands: the kept list plus whatever open windows hold, newest first. Reads the windows
     /// first unless the last read is fresher than <see cref="FreshFor"/>.
     /// </summary>
@@ -201,10 +285,15 @@ public sealed class CmdHistorySource : IAsyncDisposable
         {
             var list = kept ?? [];
 
-            // While paused nothing new is kept, but the tab still shows what open windows hold (not counted again).
-            if (openCommands.Count > 0)
+            // The tab also shows what open windows hold besides the kept list, not counted again: what was typed while
+            // capture is paused, and what Settings' Delete stored… forgot. Each window as one seen for the first time, so a
+            // command the list does not keep goes below the window's next newer one, within the limit a read would keep:
+            // under a lowered limit the tab shows the kept newest, never a window's older commands (CLAUDE.md §2.62; until
+            // 2026-11-21 all windows' commands went in as one list, each near now, and pushed the kept newest out).
+            var now = time.GetUtcNow();
+            foreach (var window in openWindowCommands)
             {
-                list = CmdHistory.Remember(list, openCommands, typedAgain: false, time.GetUtcNow());
+                list = CmdHistory.Remember(list, window, typedAgain: false, now, KeptLimit());
             }
 
             return list.Select(c => new ShellCommand(ShellKind.Cmd, c.Text, c.Count, c.LastSeen, ShellSources.CmdName)).ToList();
@@ -234,20 +323,32 @@ public sealed class CmdHistorySource : IAsyncDisposable
         try
         {
             kept ??= CmdHistory.ParseKept(await history.GetStateValueAsync(CmdHistory.KeptStateName));
+            if (savedWindows is null)
+            {
+                // The first read of this process: the reader's memory from the one before (a restart, the silent one after
+                // Settings closed included), so windows open through it are windows read before, not new ones.
+                savedWindows = await history.GetStateValueAsync(CmdHistory.WindowsStateName) ?? string.Empty;
+                foreach (var (window, fingerprints) in CmdHistory.ParseWindows(savedWindows))
+                {
+                    lastReads.TryAdd(window, fingerprints);
+                }
+            }
+
             var windows = FindInteractiveCmdWindows();
             var reads = await ReadWindowsAsync(windows);
             var now = time.GetUtcNow();
+            int limit = KeptLimit();
             var next = kept;
-            var open = new List<string>();
+            var open = new List<IReadOnlyList<string>>();
             var seen = new HashSet<(uint, long)>();
             foreach (var (window, commands) in reads)
             {
                 seen.Add(window);
-                open.AddRange(commands);
+                open.Add(commands);
                 next = lastReads.TryGetValue(window, out var previous)
-                    ? CmdHistory.Remember(next, CmdHistory.NewSince(previous, commands), typedAgain: true, now)
-                    : CmdHistory.Remember(next, commands, typedAgain: false, now);
-                lastReads[window] = commands;
+                    ? CmdHistory.Remember(next, CmdHistory.NewSinceRead(previous, commands), typedAgain: true, now, limit)
+                    : CmdHistory.Remember(next, commands, typedAgain: false, now, limit);
+                lastReads[window] = commands.Select(CmdHistory.Fingerprint).ToList();
             }
 
             // Windows that closed: their last read is all there will ever be.
@@ -256,18 +357,28 @@ public sealed class CmdHistorySource : IAsyncDisposable
                 lastReads.Remove(gone);
             }
 
-            openCommands = open;
+            openWindowCommands = open;
             OpenWindows = windows.Count;
             lastRead = now;
             bool changed = !SameList(kept, next);
             if (changed && !isPaused())
             {
-                await history.SetStateValueAsync(CmdHistory.KeptStateName, CmdHistory.FormatKept(next));
+                await history.SetStateValueAsync(CmdHistory.KeptStateName, CmdHistory.FormatKept(next, limit));
                 kept = next;
 
                 // Counts only, never a command.
                 AppLog.Info($"Command Prompt history read ({reason}): {windows.Count} window(s), {kept.Count} command(s) kept.");
                 StatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+
+            // The reader's memory, after the kept list: when that write fails, the saved memory stays behind it, and a restart
+            // reads those windows as seen first instead of skipping commands that were never kept. Also while paused —
+            // fingerprints only, like the Win+R snapshot — so what was typed while paused stays unkept after a restart too.
+            var memory = CmdHistory.FormatWindows(lastReads);
+            if (!string.Equals(memory, savedWindows, StringComparison.Ordinal))
+            {
+                await history.SetStateValueAsync(CmdHistory.WindowsStateName, memory);
+                savedWindows = memory;
             }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -407,6 +518,13 @@ public sealed class CmdHistorySource : IAsyncDisposable
         };
         start.ArgumentList.Add(ConsoleCommandHistory.HelperSwitch);
         start.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
+
+        // A copy installed with UI access (CLAUDE.md §2.63) is a program CreateProcess refuses (740); the compatibility
+        // layer makes Windows start it as a plain program of this process's level instead, which is all the helper needs.
+        if (Input.UiAccess.StartedWithUiAccess)
+        {
+            start.Environment[Input.UiAccess.CompatibilityLayerVariable] = Input.UiAccess.RunAsInvoker;
+        }
         using var timeout = new CancellationTokenSource(HelperTimeout);
         Process? helper = null;
         try

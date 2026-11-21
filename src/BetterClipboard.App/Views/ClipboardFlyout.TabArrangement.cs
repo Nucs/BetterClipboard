@@ -43,9 +43,10 @@ namespace BetterClipboard.App.Views;
 /// user's, and without reloading the list.
 /// </para>
 /// <para>
-/// <b>Where the menu opens:</b> a right-click (or a touch press-and-hold) on a tab, the Menu key or Shift+F10 while a tab
-/// has the keyboard focus (<see cref="Root_PreviewKeyDown"/>), and a right-click on the row's empty space, where only
-/// <i>Show all hidden</i> is offered. Items that cannot apply are grayed out: the moves at the ends and on "All", both
+/// <b>Where the menu opens:</b> a right-click (or a touch press-and-hold) on a tab, the Menu key or Shift+F10 right after a
+/// click on a tab (<see cref="Root_PreviewKeyDown"/>; until 2026-11-21 the click gave the tab the keyboard focus, which the
+/// search box keeps now, so the tab clicked is remembered instead: <see cref="clickedTab"/>, ClipboardFlyout.SearchFocus.cs),
+/// and a right-click on the row's empty space, where only <i>Show all hidden</i> is offered. Items that cannot apply are grayed out: the moves at the ends and on "All", both
 /// hides on "All", <i>Show all hidden</i> while nothing is hidden (it says how many tabs are).
 /// </para>
 /// </remarks>
@@ -376,7 +377,11 @@ public sealed partial class ClipboardFlyout
     /// <param name="tab">The tab the menu is for, or <see langword="null"/> for the row's empty space.</param>
     /// <param name="target">Placement target.</param>
     /// <param name="position">Position relative to <paramref name="target"/>.</param>
-    private void ShowTabMenu(SelectorBarItem? tab, FrameworkElement target, global::Windows.Foundation.Point position)
+    /// <returns>
+    /// The menu, already opening: the Menu key's caller takes the search box's own Cut/Copy/Paste menu away until it closes
+    /// (the key reaches the search box too, whose menu would close this one at once).
+    /// </returns>
+    private MenuFlyout ShowTabMenu(SelectorBarItem? tab, FrameworkElement target, global::Windows.Foundation.Point position)
     {
         var menu = new MenuFlyout();
         if (tab is not null)
@@ -409,5 +414,6 @@ public sealed partial class ClipboardFlyout
         menu.Opened += Popup_Opened;
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });
+        return menu;
     }
 }

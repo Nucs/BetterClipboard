@@ -14,9 +14,9 @@ namespace BetterClipboard.Windows.Integrations;
 /// <remarks>
 /// <para>
 /// <b>Catch-up marker.</b> <see cref="LastSeenStateName"/> (kept in the encrypted store) is the newest
-/// write time of a screenshot file already dealt with. At startup, files written after it are imported,
-/// at most <see cref="MaxCatchUpFiles"/> of the newest. The first activation sets it to "now", so turning
-/// the feature on never backfills a whole screenshot archive. Turning it off clears it, and turning it back
+/// write time of a screenshot file already dealt with. At startup, files written after it are imported:
+/// every one by default, or the newest <see cref="CatchUpLimit"/> when Settings sets one. The first activation sets it to
+/// "now", so turning the feature on never backfills a whole screenshot archive. Turning it off clears it, and turning it back
 /// on starts fresh. Screenshots taken while it was off are not imported afterwards; exiting the app does
 /// not count as off.
 /// </para>
@@ -35,9 +35,6 @@ public sealed class ShareXIntegration : IAsyncDisposable
 {
     /// <summary>Store state name of the catch-up marker (ISO 8601 round-trip UTC time; empty = none).</summary>
     public const string LastSeenStateName = "sharex.last_seen_utc";
-
-    /// <summary>Most screenshots one catch-up imports (the newest ones), so a long absence cannot flood the history.</summary>
-    public const int MaxCatchUpFiles = 100;
 
     /// <summary>
     /// Store state name that marks the one-time search for the files of ShareX screenshots stored before BetterClipboard kept
@@ -93,6 +90,14 @@ public sealed class ShareXIntegration : IAsyncDisposable
     /// half a minute by default, so the start's own work (imports, the panel's warm-up) goes first. Tests set zero.
     /// </summary>
     public TimeSpan FileSearchDelay { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// The most screenshots one catch-up imports, asked at each catch-up — the newest of those saved meanwhile
+    /// (<see cref="Core.Settings.ListLimit"/>: 0 = every one, the default). The app passes Settings'
+    /// <see cref="Core.Settings.AppSettings.MaxShareXCatchUp"/>; until 2026-11-21 it was a constant 100
+    /// (<c>MaxCatchUpFiles</c>), so a long absence could not flood the history.
+    /// </summary>
+    public Func<int> CatchUpLimit { get; init; } = static () => 0;
 
     /// <summary>Raised on a pool thread whenever <see cref="Installation"/>, <see cref="IsWatching"/> or the import count changed.</summary>
     public event EventHandler? StatusChanged;
@@ -417,7 +422,7 @@ public sealed class ShareXIntegration : IAsyncDisposable
         {
             try
             {
-                int imported = await target.CatchUpAsync(since, MaxCatchUpFiles, shutdown.Token).ConfigureAwait(false);
+                int imported = await target.CatchUpAsync(since, Core.Settings.ListLimit.Effective(CatchUpLimit()), shutdown.Token).ConfigureAwait(false);
                 if (imported > 0)
                 {
                     AppLog.Info($"Imported {imported} ShareX screenshot{(imported == 1 ? string.Empty : "s")} saved while BetterClipboard was not watching.");

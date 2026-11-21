@@ -190,12 +190,17 @@ public sealed class InputTests
     [Fact]
     public void Sizing_MinimumTrackSizeFollowsScaleAndColumn()
     {
-        // 396 DIPs wide since the header holds a fifth button (the update button): 360 before.
-        Assert.Equal((396, 320), FlyoutSizing.MinimumTrackSize(1.0, extraWidthDip: 0));
-        Assert.Equal((660, 480), FlyoutSizing.MinimumTrackSize(1.5, extraWidthDip: 44));
-        Assert.Equal((495, 400), FlyoutSizing.MinimumTrackSize(1.25, extraWidthDip: 0));
-        Assert.Equal((693, 560), FlyoutSizing.MinimumTrackSize(1.75, extraWidthDip: 0));
-        Assert.Equal((396, 320), FlyoutSizing.MinimumTrackSize(double.NaN, extraWidthDip: 0));
+        // A five-button header (396 DIPs, the minimum from the update button's arrival until the pin's).
+        Assert.Equal((396, 320), FlyoutSizing.MinimumTrackSize(1.0, extraWidthDip: 0, minWidthDip: 396));
+        Assert.Equal((660, 480), FlyoutSizing.MinimumTrackSize(1.5, extraWidthDip: 44, minWidthDip: 396));
+        Assert.Equal((495, 400), FlyoutSizing.MinimumTrackSize(1.25, extraWidthDip: 0, minWidthDip: 396));
+        Assert.Equal((693, 560), FlyoutSizing.MinimumTrackSize(1.75, extraWidthDip: 0, minWidthDip: 396));
+        Assert.Equal((396, 320), FlyoutSizing.MinimumTrackSize(double.NaN, extraWidthDip: 0, minWidthDip: 396));
+
+        // The width is the header's (CLAUDE.md §2.55): six buttons need 432 DIPs, and anything below the floor counts as it.
+        Assert.Equal((432, 320), FlyoutSizing.MinimumTrackSize(1.0, extraWidthDip: 0, minWidthDip: AppSettings.MinFlyoutWidthFor(6)));
+        Assert.Equal((714, 480), FlyoutSizing.MinimumTrackSize(1.5, extraWidthDip: 44, minWidthDip: AppSettings.MinFlyoutWidthFor(6)));
+        Assert.Equal((AppSettings.MinFlyoutWidth, 320), FlyoutSizing.MinimumTrackSize(1.0, extraWidthDip: 0, minWidthDip: 100));
     }
 
     /// <summary>On a monitor smaller than the flyout it shrinks to fit instead of spilling off-screen.</summary>

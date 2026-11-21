@@ -208,15 +208,19 @@ public sealed class ContentTests
         Assert.Equal(ClipKind.RichText, ContentClassifier.Classify(capture)!.Kind);
     }
 
-    /// <summary>Previews normalize newlines, drop leading blank lines, keep indentation and truncate with an ellipsis.</summary>
+    /// <summary>
+    /// Previews normalize newlines, drop leading blank lines, keep indentation and truncate with an ellipsis; a text the
+    /// old 1,000-character cap cut (5,000 characters) is kept whole now (CLAUDE.md §2.57).
+    /// </summary>
     [Fact]
     public void Preview_NormalizesAndTruncates()
     {
         Assert.Equal("  code\nmore", ContentClassifier.BuildTextPreview("\r\n\r\n  code\r\nmore  \r\n"));
-        var longText = new string('x', 5000);
+        var longText = new string('x', ContentClassifier.PreviewMaxChars * 3);
         var preview = ContentClassifier.BuildTextPreview(longText);
         Assert.Equal(ContentClassifier.PreviewMaxChars, preview.Length);
         Assert.EndsWith("…", preview);
+        Assert.Equal(new string('x', 5000), ContentClassifier.BuildTextPreview(new string('x', 5000)));
     }
 
     /// <summary>Whitespace-only copies get a visible placeholder so the card is never blank.</summary>
@@ -225,6 +229,65 @@ public sealed class ContentTests
     {
         Assert.Equal("(whitespace · 1 char)", ContentClassifier.BuildTextPreview(" "));
         Assert.Equal("(whitespace · 3 chars)", ContentClassifier.BuildTextPreview(" \t\n"));
+    }
+
+    /// <summary>
+    /// The texts the history leaves out (CLAUDE.md §2.3): blank text in every whitespace .NET knows, plain or formatted;
+    /// not text with anything visible in it, not invisible characters that are not whitespace, and not blank text that
+    /// carries a picture.
+    /// </summary>
+    /// <param name="text">The copy's text.</param>
+    /// <param name="withHtml">Whether the copy also carries HTML (a formatted copy).</param>
+    /// <param name="withPicture">Whether the copy also carries a PNG (Office and browsers attach one to some copies).</param>
+    /// <param name="expected">Whether the copy is only whitespace.</param>
+    [Theory]
+    [MemberData(nameof(WhitespaceCases))]
+    public void IsWhitespaceOnly_BlankTextWithoutAPicture(string text, bool withHtml, bool withPicture, bool expected)
+    {
+        var formats = new List<ClipFormatData> { new(ClipFormatNames.UnicodeText, UnicodeTextCodec.Encode(text)) };
+        if (withHtml)
+        {
+            formats.Add(new ClipFormatData(ClipFormatNames.Html, Encoding.UTF8.GetBytes("<p> </p>")));
+        }
+
+        if (withPicture)
+        {
+            formats.Add(new ClipFormatData(ClipFormatNames.Png, [1, 2, 3, 4]));
+        }
+
+        var capture = new ClipCapture { Formats = formats, CapturedAtUtc = TestData.Now };
+        Assert.Equal(expected, ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(capture)!, capture));
+    }
+
+    /// <summary>The cases of <see cref="IsWhitespaceOnly_BlankTextWithoutAPicture"/>: text, HTML, PNG, expected.</summary>
+    public static TheoryData<string, bool, bool, bool> WhitespaceCases => new()
+    {
+        { " ", false, false, true },
+        { "\t", false, false, true },
+        { "\r\n", false, false, true },
+        { "  \r\n\t \n", false, false, true },
+        { "\u00A0", false, false, true },          // no-break space
+        { "\u3000\u2003", false, false, true },    // ideographic space, em space
+        { " ", true, false, true },                 // a formatted copy of a blank paragraph
+        { " x ", false, false, false },
+        { "\u200B", false, false, false },          // zero-width space: a format character, not whitespace
+        { "a", false, false, false },
+        { " ", false, true, false },                // blank text with a picture: the picture is kept
+        { "\r\n", true, true, false },
+    };
+
+    /// <summary>A classification of a picture, files, or rich content without text is never "only whitespace".</summary>
+    [Fact]
+    public void IsWhitespaceOnly_NotForOtherKinds()
+    {
+        var picture = TestData.Image(3);
+        Assert.False(ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(picture)!, picture));
+        var files = TestData.Files(@"C:\a b\c.txt");
+        Assert.False(ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(files)!, files));
+        var richOnly = new ClipCapture { Formats = [new ClipFormatData(ClipFormatNames.Html, Encoding.UTF8.GetBytes("<p> </p>"))] };
+        Assert.False(ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(richOnly)!, richOnly));
+        Assert.Throws<ArgumentNullException>(() => ContentClassifier.IsWhitespaceOnly(null!, picture));
+        Assert.Throws<ArgumentNullException>(() => ContentClassifier.IsWhitespaceOnly(ContentClassifier.Classify(picture)!, null!));
     }
 
     /// <summary>Truncation never splits a surrogate pair (which SQLite would store as U+FFFD).</summary>
@@ -237,14 +300,18 @@ public sealed class ContentTests
         Assert.False(char.IsHighSurrogate(preview[^2]) && preview[^1] == '…');
     }
 
-    /// <summary>File previews list names and summarize the overflow.</summary>
+    /// <summary>
+    /// File previews list names and summarize the overflow past forty names (five before 2026-11-20, so seven files are
+    /// listed whole now).
+    /// </summary>
     [Fact]
     public void DescribeFiles_SummarizesLongLists()
     {
-        var paths = Enumerable.Range(1, 7).Select(i => $@"C:\dir\file{i}.txt").ToArray();
+        var paths = Enumerable.Range(1, ContentClassifier.PreviewMaxFiles + 2).Select(i => $@"C:\dir\file{i}.txt").ToArray();
         var preview = ContentClassifier.DescribeFiles(paths);
         Assert.StartsWith("file1.txt\nfile2.txt", preview);
         Assert.EndsWith("+2 more", preview);
+        Assert.Equal("file1.txt\nfile2.txt\nfile3.txt\nfile4.txt\nfile5.txt\nfile6.txt\nfile7.txt", ContentClassifier.DescribeFiles([.. paths.Take(7)]));
         Assert.Equal("folder", ContentClassifier.DescribeFiles([@"C:\folder\"]));
     }
 

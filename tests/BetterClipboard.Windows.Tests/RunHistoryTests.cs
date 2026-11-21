@@ -457,8 +457,9 @@ public sealed class RunHistoryIntegrationTests : IAsyncLifetime
 
 /// <summary>
 /// <see cref="RunCommandLauncher"/>: how commands are split like the Run dialog does (URIs, programs, variables,
-/// paths with spaces, quotes, folders, relative paths, drives, the last resort) and real hidden launches. Nothing
-/// visible is ever started.
+/// paths with spaces, quotes, folders, relative paths, drives, the last resort), real hidden launches, and whether Windows
+/// can run a command as administrator (asked of the registry and of real shortcuts, never by running anything; the
+/// elevated run itself only with fakes, so no consent prompt ever appears). Nothing visible is ever started.
 /// </summary>
 public sealed class RunCommandLauncherTests : IDisposable
 {
@@ -576,6 +577,164 @@ public sealed class RunCommandLauncherTests : IDisposable
         Assert.Equal(2, missing.Win32Error);
         Assert.Equal("Windows cannot find it.", missing.Describe());
         Assert.Equal("Cancelled at the administrator prompt.", new RunCommandResult(RunCommandOutcome.Cancelled, 1223).Describe());
+    }
+
+    /// <summary>
+    /// Programs have an administrator mode, as Explorer's menu says: a program Windows resolves by name, by its path, a
+    /// batch file, a command script and an MMC snap-in named bare (CLAUDE.md §2.17). Nothing is run.
+    /// </summary>
+    [Fact]
+    public void CanRunAsAdministrator_Programs()
+    {
+        var batch = Path.Combine(temp, "BC-TEST tool.bat");
+        var script = Path.Combine(temp, "BC-TEST tool.cmd");
+        File.WriteAllText(batch, "@echo BC-TEST");
+        File.WriteAllText(script, "@echo BC-TEST");
+
+        Assert.True(RunCommandLauncher.CanRunAsAdministrator("notepad"));
+        Assert.True(RunCommandLauncher.CanRunAsAdministrator("cmd /c echo BC-TEST"));
+        Assert.True(RunCommandLauncher.CanRunAsAdministrator(@"%WINDIR%\System32\cmd.exe /k"));
+        Assert.True(RunCommandLauncher.CanRunAsAdministrator(batch));
+        Assert.True(RunCommandLauncher.CanRunAsAdministrator($"\"{script}\" arg"));
+        Assert.True(RunCommandLauncher.CanRunAsAdministrator("compmgmt.msc"));
+    }
+
+    /// <summary>
+    /// What Explorer offers no "Run as administrator" for, and Win+R's Ctrl+Shift+Enter opens normally (measured on
+    /// 26200): a picture (the owner's report), a text file, a file without a type, a folder, a link, a <c>shell:</c> place,
+    /// a settings page, and a picture that is gone (judged by its type).
+    /// </summary>
+    [Fact]
+    public void CanRunAsAdministrator_DocumentsFoldersAndLinks_AreGrayedOut()
+    {
+        var picture = Path.Combine(temp, "BC-TEST console-1403.png");
+        var text = Path.Combine(temp, "BC-TEST notes.txt");
+        var untyped = Path.Combine(temp, "BC-TEST untyped");
+        File.WriteAllBytes(picture, [0x89, 0x50, 0x4E, 0x47]);
+        File.WriteAllText(text, "BC-TEST");
+        File.WriteAllText(untyped, "BC-TEST");
+
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator(picture));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator(text));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator(untyped));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator(temp));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator("https://example.com/BC-TEST"));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator("shell:startup"));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator("ms-settings:display"));
+
+        // A path without spaces: one with spaces that matches nothing is split at its first space (Win+R's last resort),
+        // and its first word, typeless, is left to the run.
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator(Path.Combine(Path.GetDirectoryName(temp)!, "BC-TEST-gone.png")));
+    }
+
+    /// <summary>
+    /// A shortcut is judged by its target, as Explorer's menu does: to a program it can run as administrator, to a picture
+    /// or a folder it cannot; a file named <c>.lnk</c> that is no shortcut leaves the answer to running it. The shortcut
+    /// reader gives the target back as written.
+    /// </summary>
+    [Fact]
+    public void CanRunAsAdministrator_ShortcutsByTheirTarget()
+    {
+        var picture = Path.Combine(temp, "BC-TEST picture.png");
+        File.WriteAllBytes(picture, [0x89, 0x50, 0x4E, 0x47]);
+        var notepad = Path.Combine(Environment.SystemDirectory, "notepad.exe");
+        var toProgram = Path.Combine(temp, "BC-TEST to notepad.lnk");
+        var toPicture = Path.Combine(temp, "BC-TEST to picture.lnk");
+        var toFolder = Path.Combine(temp, "BC-TEST to folder.lnk");
+        var broken = Path.Combine(temp, "BC-TEST not a shortcut.lnk");
+        ShellShortcut.Create(toProgram, notepad);
+        ShellShortcut.Create(toPicture, picture);
+        ShellShortcut.Create(toFolder, temp);
+        File.WriteAllText(broken, "BC-TEST");
+
+        Assert.Equal(picture, ShellShortcut.ReadTarget(toPicture), ignoreCase: true);
+        Assert.Null(ShellShortcut.ReadTarget(broken));
+        Assert.True(RunCommandLauncher.CanRunAsAdministrator(toProgram));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator(toPicture));
+        Assert.False(RunCommandLauncher.CanRunAsAdministrator(toFolder));
+        Assert.Null(RunCommandLauncher.CanRunAsAdministrator(broken));
+    }
+
+    /// <summary>A bare name Windows looks up on PATH only when it runs: the answer is left to running it.</summary>
+    [Fact]
+    public void CanRunAsAdministrator_UnknownName_IsLeftToTheRun()
+    {
+        Assert.Null(RunCommandLauncher.CanRunAsAdministrator($"bc-test-no-such-program-{Guid.NewGuid():N} --flag"));
+        Assert.Throws<ArgumentException>(() => RunCommandLauncher.CanRunAsAdministrator(" "));
+    }
+
+    /// <summary>
+    /// How a run asked as administrator is carried out, with fakes instead of <c>ShellExecuteEx</c> (no consent prompt on a
+    /// developer's PC): a program elevates and its outcome stands (a decline too); a target without an administrator mode
+    /// opens normally without trying <c>runas</c> (a link would elevate the browser); an unknown one tries <c>runas</c> and
+    /// opens normally when Windows answers "no association".
+    /// </summary>
+    /// <param name="canRunAsAdministrator">The decision: 1 can, 0 cannot, -1 unknown.</param>
+    /// <param name="elevatedError">The fake elevated run's Win32 error (0 = started, 1223 = declined, 1155 = no administrator mode, 2 = not found).</param>
+    /// <param name="expected">The attempts in order: E elevated, N normal.</param>
+    /// <param name="withoutAdministrator">Whether the result says it opened without administrator rights.</param>
+    [Theory]
+    [InlineData(1, 0, "E", false)]
+    [InlineData(1, 1223, "E", false)]
+    [InlineData(1, 2, "E", false)]
+    [InlineData(1, 1155, "EN", true)]
+    [InlineData(0, 0, "N", true)]
+    [InlineData(-1, 0, "E", false)]
+    [InlineData(-1, 1155, "EN", true)]
+    [InlineData(-1, 1223, "E", false)]
+    public void Run_AsAdministrator_FollowsWindows(int canRunAsAdministrator, int elevatedError, string expected, bool withoutAdministrator)
+    {
+        var invocation = new RunInvocation(@"C:\BC-TEST\target", null, null);
+        var attempts = new System.Text.StringBuilder();
+        bool? can = canRunAsAdministrator switch { 1 => true, 0 => false, _ => null };
+
+        var result = RunCommandLauncher.Run(invocation, asAdministrator: true, _ => can, elevate =>
+        {
+            attempts.Append(elevate ? 'E' : 'N');
+            if (!elevate)
+            {
+                return RunCommandResult.Started;
+            }
+
+            return elevatedError switch
+            {
+                0 => RunCommandResult.Started,
+                1223 => new RunCommandResult(RunCommandOutcome.Cancelled, 1223),
+                _ => new RunCommandResult(RunCommandOutcome.Failed, elevatedError),
+            };
+        });
+
+        Assert.Equal(expected, attempts.ToString());
+        Assert.Equal(withoutAdministrator, result.WithoutAdministrator);
+        var expectedOutcome = expected.EndsWith('N') || elevatedError == 0
+            ? RunCommandOutcome.Started
+            : elevatedError == 1223 ? RunCommandOutcome.Cancelled : RunCommandOutcome.Failed;
+        Assert.Equal(expectedOutcome, result.Outcome);
+    }
+
+    /// <summary>
+    /// A run not asked as administrator runs once, normally, whatever Windows could do; and the composition refuses null
+    /// delegates.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// Only when the composition asks whether Windows can elevate a run nobody asked to elevate: that question reads the file
+    /// system for nothing, so the test fails with it.
+    /// </exception>
+    [Fact]
+    public void Run_NotAsAdministrator_RunsOnceNormally()
+    {
+        var invocation = new RunInvocation(@"C:\BC-TEST\tool.exe", null, null);
+        var attempts = new System.Text.StringBuilder();
+        var result = RunCommandLauncher.Run(invocation, asAdministrator: false, _ => throw new InvalidOperationException("Not asked."), elevate =>
+        {
+            attempts.Append(elevate ? 'E' : 'N');
+            return RunCommandResult.Started;
+        });
+
+        Assert.Equal("N", attempts.ToString());
+        Assert.False(result.WithoutAdministrator);
+        Assert.Throws<ArgumentNullException>(() => RunCommandLauncher.Run(invocation, true, null!, _ => RunCommandResult.Started));
+        Assert.Throws<ArgumentNullException>(() => RunCommandLauncher.Run(invocation, true, _ => true, null!));
     }
 
     /// <summary>Reads a file that another process may still be writing.</summary>

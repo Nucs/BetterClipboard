@@ -1,0 +1,341 @@
+using System.Diagnostics;
+using BetterClipboard.App.Interop;
+using BetterClipboard.Core.Diagnostics;
+using BetterClipboard.Core.Presentation;
+using BetterClipboard.Windows.Input;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
+
+namespace BetterClipboard.App.Views;
+
+/// <summary>
+/// The panel goes away when the user goes to another window, also while one of its own popups shows (a viewer, a peek, a
+/// menu, a flyout); and a hover peek never opens by itself over a mouse that did not move, nor after the mouse left its
+/// card.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>The bug</b> (the owner's report, 2026-11-20: "if you open "View whole text" eye icon (maybe for image too) then the
+/// window doesn't close after we closed the viewing panel that opened. It should've closed."). <see cref="OnActivated"/>
+/// conceals the panel when it is deactivated, but only while no popup of its own is counted (<see cref="openPopups"/>),
+/// because a popup that took the activation must not conceal its own panel. In the WinUI this app ships, none does:
+/// measured in the QA (CLAUDE.md §2.56), the panel stays the foreground window while a viewer, a peek, a menu, a flyout or
+/// the update dialog shows, and the popups' windows are owned by the panel's window. So a deactivation while one of them
+/// showed was always the user going elsewhere: another app from the taskbar or with Alt+Tab, Settings, a click beside a
+/// menu. It was ignored. A menu then closed by itself (light dismiss), a viewer stayed and kept dimming the monitor, and
+/// the panel stayed on top of the other window for good: it was no longer the active window, so no later click elsewhere
+/// could deactivate it, and only the shortcut pressed again put it away. The update dialog alone had checks of its own
+/// (ClipboardFlyout.Update.cs).
+/// </para>
+/// <para>
+/// <b>Now</b> a deactivation while a popup is counted, and the last counted popup closing, ask who is in front once Windows
+/// has finished the switch (<see cref="ConcealIfUserLeft"/>). The panel, or a window it owns (its popups), keeps everything
+/// as it is. Any other window closes the viewers and peeks and the update dialog, and conceals the panel: another app, and
+/// also Settings, which conceals the panel when nothing of it is open too (a click on Settings is a click elsewhere).
+/// </para>
+/// <para>
+/// <b>The keyboard after a popup.</b> A popup that closes gives the keyboard back to a viewer that is still open, or to the
+/// search box, only while the panel shows and is in front (<see cref="GiveKeyboardBackAfterPopup"/>): the popup may have
+/// closed because the user went elsewhere, and a programmatic focus in the panel must not reach after the keyboard then. A
+/// precaution more than a finding: Settings runs on the panel's own thread, and Win32's <c>SetFocus</c> activates the
+/// window that receives the focus.
+/// </para>
+/// <para>
+/// <b>A peek that opened by itself</b> (<see cref="MouseMovedSincePanelChanged"/>). The hover peeks started their countdown
+/// on WinUI's "pointer entered", which also comes for a card that appears under a mouse lying still: WinUI replays the last
+/// pointer position after every frame that changed the picture. Found in the QA (2026-11-20): Esc or the X closed the text
+/// viewer, the mouse still rested where the eye had been, and the text peek opened with the same text 0.65 to 0.73 s later
+/// (4 of 4 times on the unchanged build; the image viewer's Esc and its peek 3 of 3), so the viewer looked as if Esc had not
+/// closed it. The same could happen after a summon under the mouse, a reload, and a peek closed by a click or a key. A
+/// countdown now starts only once the mouse really moved since the panel last changed under it: the hover selection's rule
+/// (<see cref="PointerSelectionGate"/>), asked without taking the selection.
+/// </para>
+/// <para>
+/// <b>Replays are not moves</b> (<see cref="IsReplayedExitOver"/>). While Settings is open and the mouse has been over it,
+/// WinUI replays "pointer entered", "pointer moved" and "pointer exited" to the card under a resting mouse every half
+/// second, the exit's own position outside the card (a diagnostic build's log, 2026-11-20). Each exit stopped the peek's
+/// countdown and each enter started it again, so no peek ever opened (text 0 of 3, image 0 of 3, on the unchanged build
+/// too). A replayed exit (<see cref="Microsoft.UI.Xaml.Input.PointerRoutedEventArgs.IsGenerated"/>) while Windows' own
+/// cursor is still over the card or the peek is ignored, and a replayed event never postpones a countdown that runs: the
+/// replays came 493 to 514 ms apart, and restarting the 450-ms countdown at each would leave it a race of a few dozen
+/// milliseconds to end in.
+/// </para>
+/// <para>
+/// <b>A peek where the mouse no longer is</b> (<see cref="StillOverHoveredCard"/>). The opposite case: after a move that
+/// jumped from a card's text straight out of the panel's window, the text peek still opened, 496 to 613 ms after the jump
+/// whatever the wait before it, and stayed until the mouse moved 15 px (12 of 12 in the Lines per card QA, 2026-11-20). No
+/// exit stopped its countdown (most likely because the text area ignores an exit whose position lies inside it: crossing
+/// onto the card's eye raises one), and an event at the jump even started it again. When a countdown ends, and again right
+/// before its peek opens, Windows' cursor must still be over the card and over the list's visible area; otherwise the card
+/// is forgotten and nothing opens. The image peek follows the same rule as a guard: its card stops waiting on any exit,
+/// and it opened none after a jump in the same test (0 of 12).
+/// </para>
+/// <para>UI thread only.</para>
+/// </remarks>
+public sealed partial class ClipboardFlyout
+{
+    /// <summary>
+    /// How long after the deactivation, or after the last popup closed, the panel looks at who is in front: Windows is in
+    /// the middle of the switch when the deactivation arrives. The update dialog waits as long for the same reason
+    /// (ClipboardFlyout.Update.cs).
+    /// </summary>
+    private static readonly TimeSpan LeaveSettleTime = TimeSpan.FromMilliseconds(80);
+
+    /// <summary>
+    /// The longest the panel waits for Windows to name a foreground window at all: during a switch there can be none for a
+    /// moment. Still none after that (a locked screen, a secure desktop), the panel counts as left: it is not where the
+    /// keyboard is either.
+    /// </summary>
+    private static readonly TimeSpan NoForegroundWait = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>How often the panel looks again while Windows names no foreground window.</summary>
+    private static readonly TimeSpan NoForegroundPoll = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// Set while a look started by <see cref="ConcealIfUserLeft"/> waits: the deactivation and the light-dismissed menu's
+    /// closing come from one switch, and one look serves both.
+    /// </summary>
+    private bool leaveLookPending;
+
+    /// <summary>
+    /// Once Windows has finished the current switch, looks whether the user went to another window, and if so closes the
+    /// panel's viewers, peeks and update dialog and conceals the panel — a pinned panel (CLAUDE.md §2.55) only loses those
+    /// and stays up. A no-op when the panel is not showing, when it or a window it owns is in front, and while another look
+    /// is pending.
+    /// </summary>
+    /// <param name="cause">
+    /// What made the panel look, for the log line (content-free: which kind of popup showed, or that the last one closed).
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Called from <see cref="OnActivated"/> when the panel is deactivated while a popup of its own is counted (a
+    /// deactivation with none conceals the panel at once, as it always did), and from <see cref="Popup_Closed"/> when the
+    /// last counted popup closed: a deactivation can come while Windows names no foreground window yet, and a look then
+    /// cannot tell; the popup closing (a menu closes by itself when its window is left) asks again.
+    /// </para>
+    /// <para>
+    /// "In front" is <see cref="ForegroundHelper.IsForeground"/>: the panel's window, or a window it owns. The panel's
+    /// popups are windows owned by the panel's (measured in the QA), so a popup that took the keyboard would never count as
+    /// the user leaving. Settings is not owned by the panel: going to it conceals the panel, as it does when nothing of the
+    /// panel is open.
+    /// </para>
+    /// <para>
+    /// <c>async void</c>: it is started from event handlers and awaited by nobody; it catches everything itself.
+    /// </para>
+    /// </remarks>
+    private async void ConcealIfUserLeft(string cause)
+    {
+        // Without the keyboard the panel is never in front, and its hooks report where the user goes instead
+        // (ClipboardFlyout.Focusless.cs): a look here would take the app the user types in for "elsewhere".
+        if (leaveLookPending || closingForExit || !IsOpen || focusless)
+        {
+            return;
+        }
+
+        leaveLookPending = true;
+        try
+        {
+            await Task.Delay(LeaveSettleTime);
+
+            // During a switch Windows can name no foreground window for a moment, and neither question below can be
+            // answered then: wait for one, briefly.
+            var waited = Stopwatch.StartNew();
+            while (!ForegroundHelper.IsForeground(hwnd) && !ForegroundHelper.IsAnotherWindowInForeground(hwnd) &&
+                waited.Elapsed < NoForegroundWait)
+            {
+                await Task.Delay(NoForegroundPoll);
+            }
+
+            // Concealed meanwhile (the user pasted, pressed Esc, the shortcut again), the app is exiting, or the panel or
+            // one of its popups has the keyboard: nothing to do. Nor for a panel that shows without the keyboard by now (a
+            // pinned one brought forward that way meanwhile): its hooks decide.
+            if (closingForExit || !IsOpen || focusless || ForegroundHelper.IsForeground(hwnd))
+            {
+                return;
+            }
+
+            if (StaysOpen)
+            {
+                // Pinned: the panel itself stays up while the user works elsewhere; only what it showed for the use they
+                // left goes (ClipboardFlyout.KeepOpen.cs).
+                CloseOverlaysOfPinnedPanel(cause);
+                return;
+            }
+
+            AppLog.Info($"The panel went away: the user went to another window while {cause}.");
+
+            // The viewers and peeks are windows of their own that would stay on screen without the panel (a viewer dims
+            // the whole monitor); so is the update dialog. Menus and flyouts closed themselves when their window was left.
+            CloseImageOverlays();
+            CloseUpdateDialog();
+            Conceal();
+        }
+        catch (Exception ex)
+        {
+            // async void: nothing above may let an exception escape into the dispatcher.
+            AppLog.Warn($"Looking whether the user left the panel failed: {ex.Message}");
+        }
+        finally
+        {
+            leaveLookPending = false;
+        }
+    }
+
+    /// <summary>
+    /// Names the kind of popup the panel shows, for <see cref="ConcealIfUserLeft"/>'s log line: one phrase, content-free.
+    /// </summary>
+    /// <returns>"the text viewer showed", "a peek showed", "a menu or flyout showed", and so on.</returns>
+    /// <remarks>Read at the deactivation: a menu closes by itself during the switch, so a later read would name nothing.</remarks>
+    private string DescribeOpenPopups()
+    {
+        if (textViewer is not null)
+        {
+            return "the text viewer showed";
+        }
+
+        if (viewerPopup is not null)
+        {
+            return "the image viewer showed";
+        }
+
+        if (textPeekPopup is not null || peekPopup is not null)
+        {
+            return "a peek showed";
+        }
+
+        if (updateDialog is { IsOpen: true })
+        {
+            return "the update dialog showed";
+        }
+
+        return "a menu or flyout showed";
+    }
+
+    /// <summary>
+    /// Whether the mouse really moved since the panel last changed under it (a summon, a reload, the keyboard's selection,
+    /// a popup that closed): the hover selection's rule (<see cref="PointerSelectionGate.HasMoved"/>), asked without taking
+    /// the selection. The peeks start their countdown only then (class remarks).
+    /// </summary>
+    /// <returns>
+    /// <see langword="true"/> once the cursor has left the spot it was on at that change by more than the drag threshold, or
+    /// the mouse owns the selection already (it moved, or its wheel turned over the list); <see langword="false"/> while it
+    /// rests there, and when its position cannot be read (a secure desktop): a peek then waits for the next move.
+    /// </returns>
+    /// <remarks>
+    /// Never <see cref="IsPointerSelecting"/>, which hands the selection to the mouse: the peeks' handlers run on the card's
+    /// inner elements before the list's own handler, which would then find the selection taken and skip the row under the
+    /// mouse.
+    /// </remarks>
+    private bool MouseMovedSincePanelChanged() => ScreenPointer.Cursor() is { } cursor && pointerGate.HasMoved(cursor.X, cursor.Y);
+
+    /// <summary>
+    /// Whether a "pointer exited" is one of WinUI's replays over a mouse that never left: a generated event while Windows'
+    /// own cursor is still over the element that raised it. The hover peeks ignore such an exit (class remarks).
+    /// </summary>
+    /// <param name="sender">The element the exit came for (a card's text, a picture's border, the text peek's surface).</param>
+    /// <param name="e">The exit.</param>
+    /// <returns>
+    /// <see langword="true"/> for a replayed exit with the cursor still over the element; <see langword="false"/> for a real
+    /// exit (the mouse moved), for a replay after the element moved away from under the cursor (the list scrolled or
+    /// reloaded), and when the cursor's position cannot be read (a secure desktop): then the exit counts, as it always did.
+    /// </returns>
+    /// <remarks>
+    /// Only generated events are asked about: a real exit with the cursor inside the element's rectangle means something
+    /// covered it (a menu, another window), and the hover must end then. The exit's own position is not used, because a
+    /// replay reports one outside the element (measured: every replayed exit while Settings was open).
+    /// </remarks>
+    private bool IsReplayedExitOver(object sender, PointerRoutedEventArgs e) =>
+        e.IsGenerated && sender is FrameworkElement element && CursorIsOver(element);
+
+    /// <summary>
+    /// Whether Windows' cursor lies over an element of the panel or of one of its popups, compared in screen pixels: the
+    /// element's place in the panel's coordinates (its popups share them), scaled and moved by the panel's client origin.
+    /// </summary>
+    /// <param name="element">The element.</param>
+    /// <returns>
+    /// <see langword="true"/> while the cursor is within the element's rectangle; <see langword="false"/> otherwise, when the
+    /// cursor cannot be read, and when the element is not in the tree any more.
+    /// </returns>
+    /// <remarks>
+    /// The rectangle is the element's whole layout box, also a part scrolled out of view: good enough for telling a replay
+    /// from a real exit, which is all it answers. The update reminder's tooltip check does the same arithmetic
+    /// (ClipboardFlyout.UpdateReminder.cs).
+    /// </remarks>
+    private bool CursorIsOver(FrameworkElement element)
+    {
+        if (Root.XamlRoot is not { } root || ScreenPointer.Cursor() is not { } cursor)
+        {
+            return false;
+        }
+
+        try
+        {
+            double scale = root.RasterizationScale > 0 ? root.RasterizationScale : 1.0;
+            var (clientLeft, clientTop) = WindowInterop.GetClientOrigin(hwnd);
+            var origin = element.TransformToVisual(null).TransformPoint(default);
+            double left = clientLeft + (origin.X * scale);
+            double top = clientTop + (origin.Y * scale);
+            return cursor.X >= left && cursor.X < left + (element.ActualWidth * scale)
+                && cursor.Y >= top && cursor.Y < top + (element.ActualHeight * scale);
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            // The element left the tree between the event and here (a list that reloaded): it cannot be under the cursor.
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether Windows' cursor still lies over the card a hover peek's countdown started on, and over the list's visible
+    /// area: asked when the countdown ends and again right before the peek opens, so a peek never opens where the mouse no
+    /// longer is.
+    /// </summary>
+    /// <param name="element">
+    /// The card's text area or picture border the countdown started on (the sender of its "pointer entered"), or
+    /// <see langword="null"/> when no countdown started on one.
+    /// </param>
+    /// <returns>
+    /// <see langword="true"/> while the cursor is within both the element's and the list's rectangles;
+    /// <see langword="false"/> otherwise, for <see langword="null"/>, and when the cursor cannot be read (a secure desktop):
+    /// a peek that cannot tell where the mouse is does not open.
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The countdown alone was not enough. After a move that jumped from a card's text straight out of the panel's window,
+    /// the text peek opened 496 to 613 ms after the jump, whatever the wait before it, with the mouse elsewhere, and stayed
+    /// until the mouse moved 15 px, since its anchor is where the cursor was when it opened (12 of 12 in the Lines per card
+    /// QA, 2026-11-20, CLAUDE.md §2.56): no exit had stopped its countdown, and an event at the jump had started it again.
+    /// Most likely also the "130 px" case of the pin's QA. The image peek opened none in the same test (its card stops
+    /// waiting on any exit) and asks the same question as a guard, so both peeks follow one rule.
+    /// </para>
+    /// <para>
+    /// The list's own rectangle is asked as well, because an element's layout box covers its parts scrolled out of view:
+    /// a card of up to 40 lines (§2.57) runs past the list's visible area, under the panel's footer or past its window, and
+    /// the cursor there is not over anything the user sees of the card.
+    /// </para>
+    /// </remarks>
+    private bool StillOverHoveredCard(FrameworkElement? element) =>
+        element is not null && CursorIsOver(element) && CursorIsOver(ItemsList);
+
+    /// <summary>
+    /// After one of the panel's popups closed: the keyboard goes to a viewer that is still open (its text, its backdrop),
+    /// else to the search box, but only while the panel shows and is in front (class remarks).
+    /// </summary>
+    /// <remarks>
+    /// Not when another window is in front: the popup closed because the user went there (a menu closes by itself when its
+    /// window is left), and <see cref="ConcealIfUserLeft"/> is about to conceal the panel. A panel that is in front again
+    /// later gets the keyboard from its own activation (<see cref="OnActivated"/>).
+    /// </remarks>
+    private void GiveKeyboardBackAfterPopup()
+    {
+        if (!IsOpen || !ForegroundHelper.IsForeground(hwnd))
+        {
+            return;
+        }
+
+        if (!FocusOpenViewer())
+        {
+            SearchBox.Focus(FocusState.Programmatic);
+        }
+    }
+}

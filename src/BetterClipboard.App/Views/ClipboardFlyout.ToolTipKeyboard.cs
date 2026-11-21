@@ -32,6 +32,12 @@ namespace BetterClipboard.App.Views;
 /// It only acts while some tooltip is open, so every other way the keyboard moves in the panel is left as it was.
 /// UI thread only.
 /// </para>
+/// <para>
+/// <b>Since 2026-11-21 the focus guard comes first</b> (ClipboardFlyout.SearchFocus.cs): it refuses the move to that scroll
+/// viewer before it happens, so the search box never loses the keyboard here, and it opens the update dialog for a click on
+/// the update button's tooltip itself (<see cref="OpenUpdateDialogIfItsToolTipWasClicked"/>). This repair stays for a move
+/// WinUI does not let the guard refuse.
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout
 {
