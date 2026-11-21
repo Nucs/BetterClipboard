@@ -403,7 +403,8 @@ public sealed partial class ClipboardFlyout
         // Content-free: the state only. A support question "it does not close any more" finds its answer here.
         AppLog.Info(pin ? "Panel pinned: it stays open after pasting." : "Panel unpinned: it closes after pasting again.");
 
-        // A click leaves the keyboard on the button; typing must search again.
+        // A click left the keyboard on the button; typing must search again. Since 2026-11-21 the focus guard keeps the click
+        // from taking it (ClipboardFlyout.SearchFocus.cs), and this stays for a click WinUI does not let the guard refuse.
         SearchBox.Focus(FocusState.Programmatic);
     }
 

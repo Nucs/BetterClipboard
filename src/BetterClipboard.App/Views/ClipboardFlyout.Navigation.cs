@@ -349,6 +349,9 @@ public sealed partial class ClipboardFlyout
         SelectFilter(start);
         PlaceTabStripForShow();
         arrowNavigating = false;
+
+        // A tab clicked in the last use no longer holds the Menu key (ClipboardFlyout.SearchFocus.cs).
+        ForgetClickedTab();
         LeaveGroupsNavigation();
     }
 
@@ -692,7 +695,8 @@ public sealed partial class ClipboardFlyout
         }
 
         // When a tab itself has the keyboard (the user tabbed or clicked into the strip), the focus moves along with the
-        // selection: left behind, its focus rectangle would sit on a tab that is no longer the selected one.
+        // selection: left behind, its focus rectangle would sit on a tab that is no longer the selected one. Since 2026-11-21
+        // no tab takes the focus (ClipboardFlyout.SearchFocus.cs), so this stays for one that gets it anyway.
         bool focusInStrip = Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is SelectorBarItem;
 
         // Reloads the list (which arms its newest copy, ArmCard), and glides the strip to the tab while the panel is open.
@@ -701,6 +705,12 @@ public sealed partial class ClipboardFlyout
         if (focusInStrip)
         {
             visible[next].Focus(FocusState.Programmatic);
+        }
+
+        // A tab clicked just before: the Menu key's hold moves along with the selection, as the clicked tab's focus once did.
+        if (clickedTab is not null)
+        {
+            clickedTab = visible[next];
         }
     }
 

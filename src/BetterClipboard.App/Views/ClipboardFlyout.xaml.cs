@@ -234,6 +234,10 @@ public sealed partial class ClipboardFlyout : Window
         // A click on a tooltip must not cost the panel its keyboard: ClipboardFlyout.ToolTipKeyboard.cs.
         InitializeToolTipKeyboardGuard();
 
+        // No element of the panel but the search box takes the keyboard focus; its popups do, and give it back:
+        // ClipboardFlyout.SearchFocus.cs.
+        InitializeSearchFocusGuard();
+
         // The selected card's formats are read ahead, so Enter pastes without waiting for the store: ClipboardFlyout.Paste.cs.
         InitializePaste();
         ViewModel.PropertyChanged += (_, e) =>
@@ -628,6 +632,10 @@ public sealed partial class ClipboardFlyout : Window
         DisposeForegroundTracking();
         DisposeUpdateButton();
         DisposeToolTipKeyboardGuard();
+
+        // The focus guard listens to a static event, which would keep this window alive and run for every focus move of
+        // the app's other windows.
+        DisposeSearchFocusGuard();
         sizeHook?.Dispose();
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
@@ -837,11 +845,20 @@ public sealed partial class ClipboardFlyout : Window
         // Alt alone: AltGr arrives as Ctrl+Alt, and on many layouts AltGr+C/E types a letter (Polish ć, ę, ...).
         bool altOnly = IsKeyDown(VirtualKey.Menu) && !ctrl;
 
+        // A tab clicked last is the one the Menu key opens the menu of, as while a click gave it the focus; any other key
+        // but Left and Right ends that (ClipboardFlyout.SearchFocus.cs). Read before the switch, which acts on the key.
+        var clickedTabForMenu = TakeClickedTabForKey(e.Key, shift);
+
         // A key that repeats because it is held down stops at an edge (the top row, the last tab); only a new press
         // crosses it (PanelNavigation).
         bool repeat = e.KeyStatus.WasKeyDown;
         switch (e.Key)
         {
+            case VirtualKey.Tab when !IsAltOrWindowsKeyDown():
+                // The search box keeps the keyboard (ClipboardFlyout.SearchFocus.cs): Tab and Shift+Tab would only try to move
+                // it on to the next control, which the focus guard refuses anyway. Taken here, so WinUI does not even try. Tab
+                // inside a popup (a menu, a name box) never comes here (IsPopupKey above), and keeps moving between its parts.
+                break;
             case VirtualKey.Down:
                 MoveVertical(1, repeat);
                 break;
@@ -960,11 +977,20 @@ public sealed partial class ClipboardFlyout : Window
                 break;
             case VirtualKey.Application:
             case VirtualKey.F10 when shift:
-                if (FindTab(e.OriginalSource as DependencyObject) is { } focusedTab)
+                if ((FindTab(e.OriginalSource as DependencyObject) ?? clickedTabForMenu) is { } focusedTab)
                 {
-                    // A tab has the keyboard (after a click on it): the key is for the tab's menu, the keyboard's way to
-                    // the right-click one (ClipboardFlyout.TabArrangement.cs). Opened below the tab, like a context menu.
-                    ShowTabMenu(focusedTab, focusedTab, new global::Windows.Foundation.Point(8, focusedTab.ActualHeight));
+                    // A tab was just clicked (clickedTab; the focus itself stays in the search box since 2026-11-21,
+                    // ClipboardFlyout.SearchFocus.cs), or — should one ever get it — a tab has the keyboard: the key is for
+                    // the tab's menu, the keyboard's way to the right-click one (ClipboardFlyout.TabArrangement.cs). Opened
+                    // below the tab, like a context menu.
+                    var tabMenu = ShowTabMenu(focusedTab, focusedTab, new global::Windows.Foundation.Point(8, focusedTab.ActualHeight));
+
+                    // The key came from the search box (it keeps the keyboard), whose text box answers it with its own
+                    // Cut/Copy/Paste menu, which would close this one at once: muted until it closes, as for the card menu.
+                    if (e.OriginalSource is TextBox tabKeyBox)
+                    {
+                        MuteContextFlyoutUntilClosed(tabKeyBox, tabMenu);
+                    }
                 }
                 else if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
                 {
@@ -1256,6 +1282,11 @@ public sealed partial class ClipboardFlyout : Window
             if (!selectingFilterFromCode)
             {
                 RememberTab(filter);
+
+                // A tab picked by a click is scrolled into view here: WinUI brings a clicked tab into view only when the click
+                // gives it the focus, which the search box keeps since 2026-11-21 (ClipboardFlyout.SearchFocus.cs). A selection
+                // from code reveals its tab itself (SelectFilter).
+                RevealClickedTab();
             }
 
             EnterTab(filter);

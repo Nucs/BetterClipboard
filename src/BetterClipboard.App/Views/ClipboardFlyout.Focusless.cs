@@ -393,6 +393,9 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
+        // A tab clicked last is the one the Menu key opens the menu of, until another key but Left and Right
+        // (ClipboardFlyout.SearchFocus.cs), as in Root_PreviewKeyDown.
+        var clickedTabForMenu = TakeClickedTabForKey(virtualKey, shift);
         switch (virtualKey)
         {
             case VirtualKey.Down:
@@ -504,8 +507,15 @@ public sealed partial class ClipboardFlyout
                 break;
             case VirtualKey.Application:
             case VirtualKey.F10 when shift:
-                // A menu opened from the keyboard is walked with the keyboard: the usual way.
-                if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
+                // A menu opened from the keyboard is walked with the keyboard: the usual way. Right after a click on a tab it
+                // is that tab's menu (the README's keys table: "Menu on a tab you clicked"), below the tab like a context
+                // menu; otherwise the selected card's.
+                if (clickedTabForMenu is { } tab)
+                {
+                    TakeKeyboard("the menu key");
+                    ShowTabMenu(tab, tab, new global::Windows.Foundation.Point(8, tab.ActualHeight));
+                }
+                else if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
                 {
                     TakeKeyboard("the menu key");
                     ShowItemMenu(forMenu, container, new global::Windows.Foundation.Point(24, 24));
