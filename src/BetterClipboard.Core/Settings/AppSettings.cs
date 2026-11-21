@@ -376,24 +376,34 @@ public sealed record AppSettings
     public bool KeepPanelOpen { get; init; }
 
     /// <summary>
-    /// The panel header's buttons the user hid (Settings › Shortcut › Buttons in the panel), as
-    /// <see cref="Presentation.PanelButton"/> names; empty while every button shows (the default). The Settings button is
-    /// never among them.
+    /// The panel header's buttons hidden in Settings › Shortcut › Buttons in the panel, as <see cref="Presentation.PanelButton"/>
+    /// names. By default only the trash (<see cref="Presentation.PanelButton.Clear"/>) is hidden: Clear history starts
+    /// unticked. An empty list means every button shows. The Settings button is never among them.
     /// </summary>
     /// <remarks>
     /// <para>
     /// Hiding a button only takes it off the header: what it does stays in reach elsewhere (<c>Ctrl+G</c> for the groups
-    /// column, the tray menu for pausing and updates, Settings for clearing the history), except the pin, whose mode ends
-    /// with it (<see cref="PanelStaysOpen"/>). Each hidden button lets the panel be 36 DIPs narrower
-    /// (<see cref="MinFlyoutWidthFor"/>).
+    /// column, the tray menu for pausing and updates, Settings › Privacy › Clear history for clearing it), except the pin,
+    /// whose mode ends with it (<see cref="PanelStaysOpen"/>). Each hidden button lets the panel be 36 DIPs narrower
+    /// (<see cref="MinFlyoutWidthFor"/>), so the default header needs 396 DIPs instead of 432.
+    /// </para>
+    /// <para>
+    /// <b>The trash hidden by default</b> (the owner, 2026-11-21: "Make Clear History unchecked by default"). The default
+    /// reaches every file without this member: new installs, and files written by 0.2.11 and older, whose header always
+    /// showed the trash, so it is gone from their header after the update until it is ticked again. A file that stores an
+    /// empty list keeps every button, also one written by a 0.2.12 development build before this default: no migration,
+    /// since no release ever stored the member (as for the unreleased transparency level the same day, the owner: "its
+    /// unreleased feature.. no migration"). An emptied list is written as <c>[]</c>, so a trash ticked back on stays shown
+    /// across restarts.
     /// </para>
     /// <para>
     /// Names, read leniently (<see cref="Presentation.PanelButtons.TryParse"/>) and kept canonical by
     /// <see cref="Normalize"/>, never an enum written by name: an unknown name would make an older version set the whole file
-    /// aside. Footgun: a version from before this member drops it when it saves the file, and every button shows again.
+    /// aside. Footgun: a version from before this member drops it when it saves the file; the next newer version then reads
+    /// the default again, with every other button shown and the trash hidden.
     /// </para>
     /// </remarks>
-    public IReadOnlyList<string> HiddenPanelButtons { get; init; } = [];
+    public IReadOnlyList<string> HiddenPanelButtons { get; init; } = [nameof(Presentation.PanelButton.Clear)];
 
     /// <summary>
     /// The panel header's buttons in the order the user arranged them (Settings › Shortcut › Buttons in the panel, the up and

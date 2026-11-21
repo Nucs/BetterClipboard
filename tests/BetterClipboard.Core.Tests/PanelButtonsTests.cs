@@ -17,15 +17,24 @@ public sealed class PanelButtonsTests : IDisposable
     public void Dispose() => temp.Dispose();
 
     /// <summary>
-    /// A new install shows every button, does not pin the panel and has not closed the pin's tip; so does a settings file
-    /// written before these members existed, which also loads without being set aside.
+    /// A new install hides only the trash (Clear history starts unticked, the owner's request of 2026-11-21), does not pin
+    /// the panel and has not closed the pin's tip, so its header needs five buttons' width; so does a settings file written
+    /// before these members existed (0.2.11 and older), which also loads without being set aside.
     /// </summary>
     [Fact]
-    public void Defaults_EveryButtonShown_PanelNotPinned()
+    public void Defaults_OnlyTheTrashHidden_PanelNotPinned()
     {
         var fresh = new AppSettings();
         Assert.False(fresh.KeepPanelOpen);
-        Assert.Empty(fresh.HiddenPanelButtons);
+        Assert.Equal(["Clear"], fresh.HiddenPanelButtons);
+        foreach (var button in PanelButtons.All)
+        {
+            Assert.Equal(button == PanelButton.Clear, PanelButtons.IsHidden(fresh.HiddenPanelButtons, button));
+        }
+
+        Assert.Equal(5, PanelButtons.CountShown(fresh.HiddenPanelButtons, hasUpdateButton: true));
+        Assert.Equal(396, AppSettings.MinFlyoutWidthFor(PanelButtons.CountShown(fresh.HiddenPanelButtons, hasUpdateButton: true)));
+        Assert.Equal(fresh.HiddenPanelButtons, fresh.Normalize().HiddenPanelButtons);
         Assert.False(fresh.PanelStaysOpen);
         Assert.False(fresh.KeepOpenTipDismissed);
         Assert.False(fresh.KeepOpenTipDue);
@@ -34,10 +43,47 @@ public sealed class PanelButtonsTests : IDisposable
         File.WriteAllText(path, "{ \"MaxItems\": 50, \"ShowGroupsPane\": true }");
         var loaded = new SettingsStore(path).Load();
         Assert.False(loaded.KeepPanelOpen);
-        Assert.Empty(loaded.HiddenPanelButtons);
+        Assert.Equal(["Clear"], loaded.HiddenPanelButtons);
         Assert.False(loaded.KeepOpenTipDismissed);
         Assert.True(loaded.ShowGroupsPane);
         Assert.Empty(Directory.GetFiles(temp.Path, "*.corrupt*"));
+    }
+
+    /// <summary>
+    /// The default is no migration: a file that stores an empty list (every button shown: what a 0.2.12 development build
+    /// wrote before the trash was hidden by default) keeps every button, and a trash ticked back on in Settings is written as
+    /// an empty list that survives a save and a load, instead of the default hiding it again at the next start.
+    /// </summary>
+    [Fact]
+    public void Defaults_AnEmptyListKeepsEveryButton_AcrossASave()
+    {
+        var path = Path.Combine(temp.Path, "settings.json");
+        File.WriteAllText(path, "{ \"HiddenPanelButtons\": [] }");
+        var store = new SettingsStore(path);
+        Assert.Empty(store.Load().HiddenPanelButtons);
+
+        // A fresh install ticks the trash back on: the list empties, is saved as [], and reads back empty.
+        File.Delete(path);
+        store = new SettingsStore(path);
+        Assert.Equal(["Clear"], store.Load().HiddenPanelButtons);
+        store.Update(s => s with { HiddenPanelButtons = PanelButtons.WithShown(s.HiddenPanelButtons, PanelButton.Clear, shown: true) });
+        Assert.Contains("\"HiddenPanelButtons\": []", File.ReadAllText(path), StringComparison.Ordinal);
+        var reloaded = new SettingsStore(path).Load();
+        Assert.Empty(reloaded.HiddenPanelButtons);
+        Assert.Equal(6, PanelButtons.CountShown(reloaded.HiddenPanelButtons, hasUpdateButton: true));
+
+        // And the default itself is written out at the first save, so a later default never changes what this user has.
+        File.Delete(path);
+        store = new SettingsStore(path);
+        store.Load();
+        store.Update(s => s with { ShowGroupsPane = true });
+        using (var written = JsonDocument.Parse(File.ReadAllText(path)))
+        {
+            var stored = written.RootElement.GetProperty("HiddenPanelButtons");
+            Assert.Equal(["Clear"], stored.EnumerateArray().Select(name => name.GetString()).ToArray());
+        }
+
+        Assert.Equal(["Clear"], new SettingsStore(path).Load().HiddenPanelButtons);
     }
 
     /// <summary>

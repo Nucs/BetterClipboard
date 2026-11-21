@@ -35,7 +35,11 @@ public enum PanelButton
     /// <summary>The bookmark that opens the groups column. Hidden, <c>Ctrl+G</c> still opens and closes it.</summary>
     Groups,
 
-    /// <summary>The trash: clear history. Hidden, Settings › Privacy › Clear history still clears it.</summary>
+    /// <summary>
+    /// The trash: clears the history after a confirmation. Hidden by default since 2026-11-21 (Clear history starts unticked
+    /// in Settings; <see cref="Settings.AppSettings.HiddenPanelButtons"/>); hidden, Settings › Privacy › Clear history still
+    /// clears it.
+    /// </summary>
     Clear,
 }
 
