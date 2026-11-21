@@ -141,6 +141,18 @@ public static class ShellSurfaces
     }
 
     /// <summary>
+    /// Whether a window lives in the UI-access band (<see cref="UiAccessBand"/>), which Windows draws above Start and Search:
+    /// true for an always-on-top window of a process Windows started with UI access (<see cref="UiAccess"/>, CLAUDE.md §2.63).
+    /// The panel asks it of its own window before it opens over Start instead of beside it.
+    /// </summary>
+    /// <param name="window">A top-level window.</param>
+    /// <returns>
+    /// <see langword="true"/> only when the band reads as the UI-access band; <see langword="false"/> also when it cannot be
+    /// read (the panel then stands beside Start, as without UI access).
+    /// </returns>
+    public static bool IsInUiAccessBand(nint window) => BandOf(window) == UiAccessBand;
+
+    /// <summary>
     /// Describes the window that had the foreground: a shell surface above every app window (its kind and bounds), or
     /// <see cref="ShellSurface.None"/>. Cheap (two calls into user32): the shortcut's thread calls it for every summon.
     /// </summary>

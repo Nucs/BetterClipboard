@@ -518,6 +518,13 @@ public sealed class CmdHistorySource : IAsyncDisposable
         };
         start.ArgumentList.Add(ConsoleCommandHistory.HelperSwitch);
         start.ArgumentList.Add(processId.ToString(CultureInfo.InvariantCulture));
+
+        // A copy installed with UI access (CLAUDE.md §2.63) is a program CreateProcess refuses (740); the compatibility
+        // layer makes Windows start it as a plain program of this process's level instead, which is all the helper needs.
+        if (Input.UiAccess.StartedWithUiAccess)
+        {
+            start.Environment[Input.UiAccess.CompatibilityLayerVariable] = Input.UiAccess.RunAsInvoker;
+        }
         using var timeout = new CancellationTokenSource(HelperTimeout);
         Process? helper = null;
         try

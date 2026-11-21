@@ -238,7 +238,8 @@ public sealed class ShellSurfaceTests
 
     /// <summary>
     /// The real call: a window of this process is in the desktop band (or the call is missing, which reads as no band), so it
-    /// is no shell surface and no shell window; no window and a window that closed have no band.
+    /// is no shell surface, no shell window, and not in the UI-access band above Start (this process has no UI access,
+    /// CLAUDE.md §2.63); no window and a window that closed have no band.
     /// </summary>
     [Fact]
     public void RealWindows_AreAppWindows()
@@ -246,6 +247,7 @@ public sealed class ShellSurfaceTests
         Assert.Null(ShellSurfaces.BandOf(0));
         Assert.Equal(ShellSurface.None, ShellSurfaces.Describe(0));
         Assert.False(ShellSurfaces.IsShellWindow(0));
+        Assert.False(ShellSurfaces.IsInUiAccessBand(0));
 
         nint closed;
         using (var window = new MessageWindowThread("Shell surface test", messageOnly: false))
@@ -258,9 +260,11 @@ public sealed class ShellSurfaceTests
 
             Assert.Equal(ShellSurface.None, ShellSurfaces.Describe(window.Handle));
             Assert.False(ShellSurfaces.IsShellWindow(window.Handle));
+            Assert.False(ShellSurfaces.IsInUiAccessBand(window.Handle));
         }
 
         Assert.Null(ShellSurfaces.BandOf(closed));
         Assert.Equal(ShellSurface.None, ShellSurfaces.Describe(closed));
+        Assert.False(ShellSurfaces.IsInUiAccessBand(closed));
     }
 }

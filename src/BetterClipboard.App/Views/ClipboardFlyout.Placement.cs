@@ -51,9 +51,11 @@ public sealed partial class ClipboardFlyout
         ArgumentNullException.ThrowIfNull(context);
         var settings = controller.Settings.Current;
 
-        // Beside Start or Search, which no window of this process can be raised above (CLAUDE.md §2.61): the controller asked
-        // CanOpenBeside before this summon, so there is room; the placement setting has no say there.
-        if (context.Surface.Kind == ShellSurfaceKind.Search && ShouldLeaveFocus(context) && BesideBounds(context, groupsColumnOpen) is { } beside)
+        // Beside Start or Search, which no window of an ordinary process can be raised above (CLAUDE.md §2.61): the controller
+        // asked CanOpenBeside before this summon, so there is room; the placement setting has no say there. A copy that runs
+        // with UI access stands above them (CLAUDE.md §2.63), so the placement setting decides as over any app.
+        if (context.Surface.Kind == ShellSurfaceKind.Search && ShouldLeaveFocus(context) && !CanStandAboveShell()
+            && BesideBounds(context, groupsColumnOpen) is { } beside)
         {
             return beside;
         }

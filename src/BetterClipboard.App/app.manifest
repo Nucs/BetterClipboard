@@ -13,6 +13,21 @@
     </application>
   </compatibility>
 
+  <!--
+    The caller's rights, and no UI access. install.ps1 -UIAccess rewrites uiAccess to "true" in the installed copy and signs
+    it with a certificate it makes for that PC (CLAUDE.md §2.63): its panel then opens above Start and Search. Never "true"
+    here: Windows refuses to start a program that asks for UI access unless it lives in Program Files and is signed with a
+    certificate the PC trusts, so every build would fail to start. 64-bit programs get no UAC file and registry
+    virtualization, so naming asInvoker changes nothing else.
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+
   <application xmlns="urn:schemas-microsoft-com:asm.v3">
     <windowsSettings>
       <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>

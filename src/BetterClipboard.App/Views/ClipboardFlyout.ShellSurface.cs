@@ -34,6 +34,14 @@ namespace BetterClipboard.App.Views;
 /// View): the controller closes the surface first, the way Esc does, and the panel opens over the window in front then
 /// (<c>AppController.CloseShellSurfaceThenSummon</c>).
 /// </para>
+/// <para>
+/// <b>Above Start, with UI access</b> (CLAUDE.md §2.63; the owner chose "Above Start, like Windows"). A copy installed with
+/// <c>install.ps1 -UIAccess</c> runs with Windows' UI access, and its always-on-top windows live in the UI-access band, which
+/// Windows draws above Start and Search (<see cref="CanStandAboveShell"/>). There the panel opens where the placement setting
+/// puts it, over Start if that is where it falls, and everything else stays as beside it: Start keeps the keyboard, the
+/// paste goes into its search box, and taking the keyboard closes Start first. Room beside Start no longer matters, and a
+/// pinned panel is never covered.
+/// </para>
 /// </remarks>
 public sealed partial class ClipboardFlyout
 {
@@ -45,11 +53,16 @@ public sealed partial class ClipboardFlyout
     private const double BesideGapDip = 24;
 
     /// <summary>
-    /// Whether the panel shows beside Start or Search, without the keyboard, pasting into the search box: the hover peeks stay
-    /// closed, the groups column grows away from the surface, and taking the keyboard closes Start first. Cleared when the
-    /// mode ends (<see cref="EndFocusless"/>, <see cref="EndModeForKeyboard"/>, <see cref="TakeKeyboardPastSurface"/>).
+    /// Whether the panel shows while Start or Search stays open — beside it, or above it with UI access
+    /// (<see cref="CanStandAboveShell"/>) — without the keyboard, pasting into the search box: the hover peeks stay closed,
+    /// the groups column grows away from the surface (when the panel stands beside it), and taking the keyboard closes Start
+    /// first. Cleared when the mode ends (<see cref="EndFocusless"/>, <see cref="EndModeForKeyboard"/>,
+    /// <see cref="TakeKeyboardPastSurface"/>).
     /// </summary>
     private bool besideSurface;
+
+    /// <summary>Whether this session logged that the panel opened above Start or Search (logged once, <see cref="CanStandAboveShell"/>).</summary>
+    private bool aboveShellLogged;
 
     /// <summary>The bounds of the Start or Search the panel stands beside (valid while <see cref="besideSurface"/>).</summary>
     private ScreenRect surfaceBounds;
@@ -162,8 +175,9 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Whether a summon over <paramref name="context"/> can leave Start or Search open: it is Start or Search, the panel would
-    /// show without the keyboard (<see cref="ShouldLeaveFocus"/>), and the panel fits beside it — or, for the pinned panel
-    /// brought forward where it stands, the panel waits without the keyboard and the surface does not cover it.
+    /// show without the keyboard (<see cref="ShouldLeaveFocus"/>), and the panel can stand above it (UI access,
+    /// <see cref="CanStandAboveShell"/>) or fits beside it — or, for the pinned panel brought forward where it stands, the
+    /// panel waits without the keyboard and the surface does not cover it (it never does above it).
     /// </summary>
     /// <param name="context">Where the user was when pressing the shortcut.</param>
     /// <param name="bringForward">The pinned panel on screen is brought forward (it does not move).</param>
@@ -175,6 +189,13 @@ public sealed partial class ClipboardFlyout
         if (context.Surface.Kind != ShellSurfaceKind.Search || !ShouldLeaveFocus(context))
         {
             return false;
+        }
+
+        // Above Start, nothing has to fit and nothing covers the panel. A pinned panel that took the keyboard the usual way
+        // would still have to be activated, which Start refuses: Start is closed for that one, as beside it.
+        if (CanStandAboveShell())
+        {
+            return !bringForward || focusless;
         }
 
         if (bringForward)
@@ -194,6 +215,32 @@ public sealed partial class ClipboardFlyout
         }
 
         return BesideBounds(context, controller.Settings.Current.ShowGroupsPane) is not null;
+    }
+
+    /// <summary>
+    /// Whether the panel can stand above Start and Search instead of beside them: this copy runs with Windows' UI access
+    /// (<see cref="UiAccess.StartedWithUiAccess"/>, CLAUDE.md §2.63) and the panel's window is in the UI-access band, which
+    /// Windows draws above Start (<see cref="ShellSurfaces.IsInUiAccessBand"/>). Only an always-on-top window of such a copy is
+    /// in that band, so the flag is put back first when it went missing (<see cref="EnsureTopmost"/>). The first time it
+    /// answers yes in a session, a log line says so (content-free).
+    /// </summary>
+    /// <returns><see langword="true"/> to place the panel as usual, over Start where it falls; <see langword="false"/> to stand beside it.</returns>
+    private bool CanStandAboveShell()
+    {
+        if (!UiAccess.StartedWithUiAccess)
+        {
+            return false;
+        }
+
+        EnsureTopmost();
+        bool above = ShellSurfaces.IsInUiAccessBand(hwnd);
+        if (above && !aboveShellLogged)
+        {
+            aboveShellLogged = true;
+            AppLog.Info("The panel opens above Start or Search: this copy runs with Windows' UI access.");
+        }
+
+        return above;
     }
 
     /// <summary>

@@ -1,7 +1,10 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Text;
+using BetterClipboard.Core;
 using BetterClipboard.Core.Updates;
+using BetterClipboard.Windows.Input;
 
 namespace BetterClipboard.Windows.Updates;
 
@@ -33,6 +36,16 @@ namespace BetterClipboard.Windows.Updates;
 /// Footgun: an execution policy enforced by Group Policy overrides <c>-ExecutionPolicy Bypass</c>. The script then never
 /// runs, the process ends at once with a code other than 0, and the update service reports that the installed version
 /// is unchanged. The installer command of the README (<c>irm … | iex</c>) is not a script file and still works there.
+/// </para>
+/// <para>
+/// <b>As administrator, for a folder only administrators may change</b> (<see cref="NeedsAdministrator"/>; a copy in Program
+/// Files, where one with UI access must live, CLAUDE.md §2.63). The same command line goes to the same script, started
+/// through the shell with the <c>runas</c> verb (<see cref="CreateElevatedStartInfo"/>): an administrator's account gets one
+/// consent prompt. Only for a user who can elevate that way (<see cref="UiAccess.CanElevateWithConsent"/>), and only for a
+/// release whose installer then starts BetterClipboard again with the user's normal rights (<see cref="ElevatedUpdate"/>);
+/// otherwise the update stops with a message before anything changes. So does an isolated instance
+/// (<see cref="AppPaths.DataDirectoryVariable"/>): Windows gives an elevated program its account's own environment, so the
+/// installer would not see that instance's data folder.
 /// </para>
 /// </remarks>
 public sealed class ScriptUpdateInstaller : IUpdateInstaller
@@ -84,10 +97,68 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
         // Reading the zip's directory and writing the script is disk work: off the caller's thread.
         var scriptPath = await Task.Run(() => ExtractScript(request.PackagePath, request.WorkDirectory, cancellationToken), cancellationToken).ConfigureAwait(false);
 
+        // A copy in a folder only administrators may change is replaced by an installer that runs as administrator. The probe
+        // is a file created and deleted: disk work, off the caller's thread too.
+        bool elevate = await Task.Run(() => NeedsAdministrator(request.InstallDirectory), cancellationToken).ConfigureAwait(false);
+        if (elevate && !ElevatedUpdate.Accepts(request.Version))
+        {
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.ElevatedUpdateTooOld, request.Version));
+        }
+
+        // Windows starts an elevated program with its account's own environment, never this process's: an isolated instance's
+        // data folder (BETTERCLIPBOARD_DATA_DIR) would not reach the installer, whose --exit would then close the regular
+        // instance and whose records would be the regular ones. Only tests and dev runs set it; they use a test desktop.
+        if (elevate && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(AppPaths.DataDirectoryVariable)))
+        {
+            throw new UpdateException(UpdateFailure.Installer, $"An isolated instance ({AppPaths.DataDirectoryVariable}) cannot update a copy in a folder only administrators may change: the installer would run as administrator without its data folder. The installed version is unchanged.");
+        }
+
+        if (elevate && !UiAccess.CanElevateWithConsent())
+        {
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.NeedsAdministrator);
+        }
+
         // The last moment an update can still be cancelled: after this line another process owns it.
         cancellationToken.ThrowIfCancellationRequested();
-        var process = Start(CreateStartInfo(request, scriptPath));
+        var process = elevate ? StartElevated(CreateElevatedStartInfo(request, scriptPath)) : Start(CreateStartInfo(request, scriptPath));
         return new UpdateInstallerRun(WaitForExitAsync(process));
+    }
+
+    /// <summary>
+    /// Whether replacing <paramref name="installDirectory"/> needs administrator rights: this process may not create a file
+    /// next to it, where the installer puts the new folder and renames the old one (a copy in Program Files).
+    /// </summary>
+    /// <param name="installDirectory">The running copy's folder.</param>
+    /// <returns>
+    /// <see langword="true"/> when Windows denies the write; <see langword="false"/> when it is allowed, and also when the
+    /// probe fails another way (a missing folder, a full disk): the installer then says what is wrong, as it always did.
+    /// </returns>
+    internal static bool NeedsAdministrator(string installDirectory)
+    {
+        string? parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(installDirectory)));
+        if (string.IsNullOrEmpty(parent))
+        {
+            return false;
+        }
+
+        // A name nothing else uses, deleted by Windows when the handle closes: nothing stays behind even if this process dies.
+        string probe = Path.Combine(parent, $".betterclipboard-write-probe-{Guid.NewGuid():N}");
+        try
+        {
+            using (new FileStream(probe, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1, FileOptions.DeleteOnClose))
+            {
+            }
+
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     /// <summary>
@@ -170,26 +241,126 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
 
         // ArgumentList quotes each argument for the Windows command line, so paths with spaces arrive whole; -File hands
         // them to the script as plain text, with nothing interpreted on the way.
-        string[] arguments =
-        [
-            "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
-            "-File", scriptPath,
-            "-Update",
-            "-Package", request.PackagePath,
-            "-PackageSha256", request.PackageSha256,
-
-            // No trailing separator: the script builds "<folder>.new" and "<folder>.old" from this text.
-            "-InstallDir", Path.TrimEndingDirectorySeparator(request.InstallDirectory),
-            "-ResultPath", request.ResultPath,
-            "-LogPath", request.LogPath,
-        ];
-        foreach (var argument in arguments)
+        foreach (var argument in ContractArguments(request, scriptPath))
         {
             info.ArgumentList.Add(argument);
         }
 
         info.Environment.Remove(ModulePathVariable);
         return info;
+    }
+
+    /// <summary>
+    /// Builds the process description of an installer that runs as administrator: the same command line as
+    /// <see cref="CreateStartInfo"/>, started by the shell with the <c>runas</c> verb (one consent prompt), with no window
+    /// and the temp folder as working folder.
+    /// </summary>
+    /// <param name="request">What to install, and where.</param>
+    /// <param name="scriptPath">The extracted installer script.</param>
+    /// <returns>The start information; nothing is started.</returns>
+    /// <remarks>
+    /// The environment is not touched, and cannot be through the shell: Windows starts an elevated program with its
+    /// account's own environment, never the caller's, so PowerShell 7's module path cannot reach it either. The arguments
+    /// are joined here with the quoting rules <see cref="ProcessStartInfo.ArgumentList"/> uses (<see cref="JoinArguments"/>),
+    /// so the script receives exactly what the unelevated start would hand it.
+    /// </remarks>
+    internal ProcessStartInfo CreateElevatedStartInfo(UpdateInstallRequest request, string scriptPath) =>
+        new(powerShellPath)
+        {
+            UseShellExecute = true,
+            Verb = "runas",
+            WindowStyle = ProcessWindowStyle.Hidden,
+            WorkingDirectory = Path.GetTempPath(),
+            Arguments = JoinArguments(ContractArguments(request, scriptPath)),
+        };
+
+    /// <summary>The contract command line (see the class remarks), one argument per item.</summary>
+    /// <param name="request">What to install, and where.</param>
+    /// <param name="scriptPath">The extracted installer script.</param>
+    /// <returns>The arguments, in order.</returns>
+    private static string[] ContractArguments(UpdateInstallRequest request, string scriptPath) =>
+    [
+        "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+        "-File", scriptPath,
+        "-Update",
+        "-Package", request.PackagePath,
+        "-PackageSha256", request.PackageSha256,
+
+        // No trailing separator: the script builds "<folder>.new" and "<folder>.old" from this text.
+        "-InstallDir", Path.TrimEndingDirectorySeparator(request.InstallDirectory),
+        "-ResultPath", request.ResultPath,
+        "-LogPath", request.LogPath,
+    ];
+
+    /// <summary>
+    /// Joins arguments into one Windows command line the way <see cref="ProcessStartInfo.ArgumentList"/> does for
+    /// <c>CreateProcess</c>: an argument without spaces, tabs or quotes stays as it is; any other one is quoted, with a
+    /// quote inside escaped by a backslash and the backslashes before a quote (or before the closing one) doubled, so
+    /// <c>CommandLineToArgvW</c> and PowerShell read each one back whole.
+    /// </summary>
+    /// <param name="arguments">The arguments.</param>
+    /// <returns>The command line (without the program).</returns>
+    internal static string JoinArguments(IEnumerable<string> arguments)
+    {
+        var line = new StringBuilder();
+        foreach (var argument in arguments)
+        {
+            if (line.Length > 0)
+            {
+                line.Append(' ');
+            }
+
+            if (argument.Length > 0 && argument.AsSpan().IndexOfAny(" \t\"") < 0)
+            {
+                line.Append(argument);
+                continue;
+            }
+
+            line.Append('"');
+            for (int i = 0; i < argument.Length;)
+            {
+                char c = argument[i++];
+                if (c == '\\')
+                {
+                    int backslashes = 1;
+                    while (i < argument.Length && argument[i] == '\\')
+                    {
+                        i++;
+                        backslashes++;
+                    }
+
+                    if (i == argument.Length)
+                    {
+                        // Before the closing quote: doubled, so none of them escapes it.
+                        line.Append('\\', backslashes * 2);
+                    }
+                    else if (argument[i] == '"')
+                    {
+                        // Before a quote inside: doubled, plus one that escapes the quote.
+                        line.Append('\\', (backslashes * 2) + 1).Append('"');
+                        i++;
+                    }
+                    else
+                    {
+                        line.Append('\\', backslashes);
+                    }
+
+                    continue;
+                }
+
+                if (c == '"')
+                {
+                    line.Append('\\').Append('"');
+                    continue;
+                }
+
+                line.Append(c);
+            }
+
+            line.Append('"');
+        }
+
+        return line.ToString();
     }
 
     /// <summary>Starts the installer process.</summary>
@@ -209,6 +380,35 @@ public sealed class ScriptUpdateInstaller : IUpdateInstaller
         {
             return Process.Start(info)
                    ?? throw new UpdateException(UpdateFailure.Installer, "Windows did not start the installer. The installed version is unchanged.");
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
+        {
+            throw new UpdateException(UpdateFailure.Installer, $"The installer could not be started ({ex.Message}). The installed version is unchanged.", ex);
+        }
+    }
+
+    /// <summary>Starts the installer as administrator (<see cref="CreateElevatedStartInfo"/>); Windows asks for consent first.</summary>
+    /// <param name="info">The process description.</param>
+    /// <returns>The running process; the caller disposes it.</returns>
+    /// <exception cref="UpdateException">
+    /// Windows PowerShell is missing, the consent prompt was declined (<see cref="UpdateMessages.ElevationDeclined"/>), or the
+    /// installer could not be started (<see cref="UpdateFailure.Installer"/>). Nothing was changed.
+    /// </exception>
+    private static Process StartElevated(ProcessStartInfo info)
+    {
+        if (!File.Exists(info.FileName))
+        {
+            throw new UpdateException(UpdateFailure.Installer, $"Windows PowerShell was not found ({info.FileName}), and the installer needs it. The installed version is unchanged.");
+        }
+
+        try
+        {
+            return Process.Start(info)
+                   ?? throw new UpdateException(UpdateFailure.Installer, "Windows did not start the installer. The installed version is unchanged.");
+        }
+        catch (Win32Exception ex) when (ex.NativeErrorCode == Interop.NativeMethods.ERROR_CANCELLED)
+        {
+            throw new UpdateException(UpdateFailure.Installer, UpdateMessages.ElevationDeclined, ex);
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {

@@ -33,6 +33,14 @@ says which.
 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced`, value `DisabledHotkeys` | Gets `V` (and the letter or digit of every other Win+letter or Win+digit shortcut you chose), so Explorer leaves Win+V to BetterClipboard. Other letters already there are kept. |
 | `HKCU\Environment`, value `Path` | Only with `-AddToPath`: the program's folder, for `bclip`. |
 
+With `-UIAccess` ([Above Start and Search](powershell-installer.md#above-start-and-search)) two things differ, for you or
+for every user:
+
+| Where | What |
+|---|---|
+| `%ProgramFiles%\BetterClipboard\` | The program, instead of `%LOCALAPPDATA%\Programs`: Windows grants UI access only there. Its `BetterClipboard.exe` asks for UI access and is signed with this PC's own certificate. |
+| `Cert:\LocalMachine\Root`, subject `BetterClipboard UI access (this PC)` | That certificate, without its private key, among the PC's trusted root certificates. An update replaces it; `-NoUIAccess` and the uninstall remove it. |
+
 ## The PowerShell installer, for every user
 
 | Where | What |

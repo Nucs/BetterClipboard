@@ -1348,3 +1348,36 @@ public sealed class UpdateReminderTests
         Assert.False(UpdateReminder.IsDue(Offered(), loaded.UpdateReminderShownUtc, Now.AddDays(-2)));
     }
 }
+
+/// <summary>
+/// Tests for <see cref="ElevatedUpdate"/> (CLAUDE.md §2.63): which offers may run their installer as administrator for a copy
+/// in a folder only administrators may change - only those whose installer then starts BetterClipboard with the user's normal
+/// rights and keeps its UI access.
+/// </summary>
+public sealed class ElevatedUpdateTests
+{
+    /// <summary>
+    /// From the development build that brought UI access on: every later build of 0.2.12 and every release from 0.2.12 on.
+    /// Before it: 0.2.11 and older (the way back from a development build), and the development builds of 0.2.12 before it.
+    /// </summary>
+    /// <param name="offered">The version offered.</param>
+    /// <param name="accepted">Whether its installer may run as administrator.</param>
+    [Theory]
+    [InlineData("0.2.12-dev.65", true)]
+    [InlineData("0.2.12-dev.65.gabc1234", true)]
+    [InlineData("0.2.12-dev.66.g0123abc", true)]
+    [InlineData("0.2.12-dev.100.gffff000", true)]
+    [InlineData("0.2.12", true)]
+    [InlineData("0.2.13-dev.1.gabc1234", true)]
+    [InlineData("1.0.0", true)]
+    [InlineData("0.2.12-dev.64.g0b11df8", false)]
+    [InlineData("0.2.12-dev.9.gabc1234", false)]
+    [InlineData("0.2.11", false)]
+    [InlineData("0.2.6", false)]
+    public void Accepts_OnlyInstallersThatStartTheAppWithNormalRights(string offered, bool accepted)
+    {
+        Assert.True(SemanticVersion.TryParse(offered, out var version));
+
+        Assert.Equal(accepted, ElevatedUpdate.Accepts(version));
+    }
+}

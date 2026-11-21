@@ -28,7 +28,9 @@ namespace BetterClipboard.App;
 /// </para>
 /// <list type="number">
 /// <item>The new process is started with Windows' launch feedback off (<see cref="QuietProcess"/>: no busy pointer), told
-/// whom it replaces and the last clipboard state this process handled.</item>
+/// whom it replaces and the last clipboard state this process handled. A copy that runs with UI access is started through
+/// the shell instead (<see cref="QuietProcess.StartThroughShell"/>, CLAUDE.md §2.63), which shows no busy pointer either
+/// while BetterClipboard has no window in front.</item>
 /// <item>It adds its tray icon hidden and holds the shortcuts with a keyboard hook (<see cref="RestartBridge"/>), then
 /// says so through a named event; this process waits for that up to 3 s.</item>
 /// <item>If the panel, Settings or the language picker opened meanwhile, or an update began, the restart is called off:
@@ -186,7 +188,12 @@ public sealed partial class AppController
                 target.ToArgument(),
                 StartupOptions.ClipboardSequenceSwitch,
                 sequence);
-            process = QuietProcess.Start(ExecutablePath, arguments, AppContext.BaseDirectory);
+            // A copy that runs with UI access (CLAUDE.md §2.63) asks for it in its manifest, and CreateProcess refuses such a
+            // program (740): the shell starts it, through Windows' AppInfo service, with UI access again. It shows no busy
+            // pointer either, since BetterClipboard has no window in front now (QuietProcess.StartThroughShell says why).
+            process = UiAccess.StartedWithUiAccess
+                ? QuietProcess.StartThroughShell(ExecutablePath, arguments, AppContext.BaseDirectory)
+                : QuietProcess.Start(ExecutablePath, arguments, AppContext.BaseDirectory);
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException or ArgumentException)
         {

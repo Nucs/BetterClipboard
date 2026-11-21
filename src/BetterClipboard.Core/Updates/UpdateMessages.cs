@@ -155,6 +155,18 @@ public static class UpdateMessages
     public const string PortableRestoreIncomplete = "{0} could not be replaced ({1}), and the previous version could not be put back completely. Download the release again and extract it over {2}.";
 
     /// <summary>
+    /// {0}: the version offered. The copy is in a folder only administrators may change, and that version's installer
+    /// cannot run as administrator without leaving BetterClipboard running as one (<see cref="ElevatedUpdate"/>).
+    /// </summary>
+    public const string ElevatedUpdateTooOld = "BetterClipboard {0} cannot update a copy in a folder only administrators may change. Install it with the installer command, in PowerShell as administrator. The installed version is unchanged.";
+
+    /// <summary>The copy is in a folder only administrators may change, and the user's account is not an administrator's.</summary>
+    public const string NeedsAdministrator = "This copy is in a folder only administrators may change: an administrator installs the update with the installer command, in PowerShell as administrator. The installed version is unchanged.";
+
+    /// <summary>The prompt for administrator rights the update needs was declined (or closed).</summary>
+    public const string ElevationDeclined = "The update needs administrator rights for this copy's folder, and Windows did not get them (the prompt was declined). The installed version is unchanged.";
+
+    /// <summary>
     /// Every template above, for translating a finished message (and the release list's two names, which the messages
     /// carry inside them).
     /// </summary>
@@ -167,7 +179,7 @@ public static class UpdateMessages
         NoDevBuildsFolder, BuildChecksumMissing, CopyMismatch, BuildChecksumsGone, BuildChecksumsTooLarge, BuildChecksumsUnreadable,
         BuildPackageGone, BuildPackageChangedSinceOffer, BuildPackageChangedWhileCopied, BuildNotCopied, BuildAssetNotAFile,
         PortablePackageUnreadable, PortablePackageNoProgram, PortableHelperNotStarted, PortableNotAppFolder, PortableAppDidNotClose,
-        PortableFileNotReplaced, PortableRestoreIncomplete,
+        PortableFileNotReplaced, PortableRestoreIncomplete, ElevatedUpdateTooOld, NeedsAdministrator, ElevationDeclined,
     ];
 
     /// <summary>
