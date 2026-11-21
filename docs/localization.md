@@ -295,7 +295,8 @@ reviewer can see them.
 2. Translate strings: `catalog.py missing {tag}` lists them, each with its description. Keep every `{0}`-style
    placeholder that carries content; a translation may leave a value out, never add one. Give every plural string each
    form its rules name. Mind the room a description names (placeholders, buttons, tabs): the search box shows about
-   220 pixels of text, and Russian ran past it before it was shortened. Four kinds of string need care:
+   290 pixels of text at the panel's default width and about 220 at its narrowest, and Russian ran past it before it
+   was shortened (when it had about 220 at the default width). Four kinds of string need care:
    - `d MMM` and `d MMM yyyy` are .NET custom date patterns, not words: write the language's own order (`M月d日`).
    - The group icons' names (`Star`, `Work`, …) become a new group's default name: keep them distinct (a test checks).
    - A string that starts with a space continues a sentence; drop the space where the language writes none.

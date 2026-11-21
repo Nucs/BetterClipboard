@@ -296,12 +296,19 @@
         </Grid>
 
         <!--
-            Search. The match-case / whole-word / regex toggles sit inside the box, left of the magnifier: they are the
-            box's Description, which SearchBoxTextBoxStyle (App.xaml) shows in a column of its own instead of below.
+            Search. The match-case / whole-word / regex toggles sit inside the box, at its right end: they are the box's
+            Description, which SearchBoxTextBoxStyle (App.xaml) shows in a column of its own instead of below.
             Order as in VS Code and Rider (case, word, pattern); Alt+C / Alt+W / Alt+E toggle them from the keyboard
             (Root_PreviewKeyDown), since they never take focus. Alt+E, Visual Studio's key, not VS Code's Alt+R: GPU
             overlays register Alt+R globally (NVIDIA's performance overlay, AMD's Radeon overlay), so on such PCs it
             never reaches the panel (measured 2026-10-01: RegisterHotKey(Alt+R) fails with 1409 here).
+            No QueryIcon, so no magnifier (the owner's request, 2026-11-21; CLAUDE.md §2.6.2): the list follows the
+            text as it is typed (FlyoutViewModel, 120 ms after the last key), and the query button a QueryIcon brings
+            only raises QuerySubmitted, which nothing here handles (Enter pastes through the panel's own key
+            handling: Root_PreviewKeyDown, or HandleKeyWithoutFocus while the app keeps the keyboard). Without a
+            QueryIcon, WinUI collapses that button and its column takes no room, so the text gets the 34 DIPs it
+            held. Don't add one back as decoration: a button that does nothing is what was removed. Settings' search
+            box keeps its magnifier (the owner chose the panel only).
         -->
         <AutoSuggestBox
             x:Name="SearchBox"
@@ -309,7 +316,6 @@
             Grid.Column="1"
             AutomationProperties.Name="{loc:Tr Text='Search clipboard history'}"
             PlaceholderText="{x:Bind ViewModel.SearchPlaceholder, Mode=OneWay}"
-            QueryIcon="Find"
             Text="{x:Bind ViewModel.SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
             TextBoxStyle="{StaticResource SearchBoxTextBoxStyle}">
             <AutoSuggestBox.Description>
