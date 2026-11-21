@@ -36,6 +36,18 @@ namespace BetterClipboard.App.Controls;
 /// another. Where the system has no desktop acrylic (<see cref="DesktopAcrylicController.IsSupported"/>), nothing is drawn
 /// behind the content and the window shows its default background, as with the stock backdrop.
 /// </para>
+/// <para>
+/// <b>A theme switched while the app runs gets a new controller</b> (<see cref="Renew"/>): Windows' own switch, Settings ›
+/// App › Theme, and high contrast turned on or off all reach it, since each changes the theme of the panel's content, which
+/// the tracked configuration follows. Until 2026-11-21 the mirrored theme and <c>ResetProperties</c> were left to recolor
+/// the existing controller, and at the default level they did not: after Windows switched from light to dark, the panel's
+/// text turned light while its glass kept the light colors, so the panel was unreadable until BetterClipboard restarted
+/// [verified in a test desktop, twice; 0.2.11's stock backdrop, which hands the controller the tracked configuration itself
+/// and never resets it, recolored]. Most likely the reset ran before the controller had taken in the configuration's new
+/// theme, and so reset to the old theme's values [inferred]. A controller set up for the new theme is what a start does,
+/// and a start draws either theme right [verified], so a switch now does the same: verified both ways at the default level
+/// and at 80, through Settings, on a pinned panel left on screen, and into and out of High Contrast Black. CLAUDE.md §2.58.
+/// </para>
 /// </remarks>
 public sealed partial class AdjustableAcrylicBackdrop : SystemBackdrop
 {
@@ -47,6 +59,12 @@ public sealed partial class AdjustableAcrylicBackdrop : SystemBackdrop
 
     /// <summary>The window's acrylic while its target is connected; <see langword="null"/> before, after, and where unsupported.</summary>
     private DesktopAcrylicController? controller;
+
+    /// <summary>
+    /// The target <see cref="controller"/> draws on, kept so <see cref="Renew"/> can hand it to a new controller;
+    /// <see langword="null"/> whenever <see cref="controller"/> is.
+    /// </summary>
+    private ICompositionSupportsSystemBackdrop? controllerTarget;
 
     /// <summary>The connected window's XAML root, for its theme when the tracked configuration leaves the theme to the system.</summary>
     private XamlRoot? root;
@@ -113,6 +131,7 @@ public sealed partial class AdjustableAcrylicBackdrop : SystemBackdrop
         }
 
         root = xamlRoot;
+        controllerTarget = connectedTarget;
         Mirror(GetDefaultSystemBackdropConfiguration(connectedTarget, xamlRoot));
         controller = new DesktopAcrylicController();
         controller.SetSystemBackdropConfiguration(configuration);
@@ -133,14 +152,15 @@ public sealed partial class AdjustableAcrylicBackdrop : SystemBackdrop
         controller.RemoveSystemBackdropTarget(disconnectedTarget);
         controller.Dispose();
         controller = null;
+        controllerTarget = null;
         root = null;
         appliedLight = null;
     }
 
     /// <summary>
     /// The tracked configuration changed — the panel's theme, high contrast, or its activation, which is ignored here (see
-    /// remarks): mirrors it, and applies the level again when the theme flipped, since every level but the default sets the
-    /// theme's own colors.
+    /// remarks): mirrors it, and when the theme or high contrast changed, sets the acrylic up afresh for them
+    /// (<see cref="Renew"/>). An activation alone changes nothing mirrored and costs nothing.
     /// </summary>
     /// <param name="target">The window's backdrop target.</param>
     /// <param name="xamlRoot">The window's XAML root.</param>
@@ -152,31 +172,71 @@ public sealed partial class AdjustableAcrylicBackdrop : SystemBackdrop
             return;
         }
 
-        Mirror(GetDefaultSystemBackdropConfiguration(target, xamlRoot));
-        Apply(force: false);
+        if (Mirror(GetDefaultSystemBackdropConfiguration(target, xamlRoot)))
+        {
+            Renew();
+        }
     }
 
     /// <summary>
     /// Copies the theme and high-contrast state of the tracked configuration into <see cref="configuration"/>, leaving input
-    /// active. The controller reads the configuration object itself, so a mirrored change reaches it at once.
+    /// active. A controller reads the configuration object itself, but a switch while it runs is not left to that: the
+    /// caller renews the controller when this reports a change (class remarks).
     /// </summary>
     /// <param name="tracked">The configuration the base class keeps in step with the window.</param>
-    private void Mirror(SystemBackdropConfiguration tracked)
+    /// <returns>Whether the theme, high contrast or its background color changed.</returns>
+    private bool Mirror(SystemBackdropConfiguration tracked)
     {
+        bool changed = false;
         if (configuration.Theme != tracked.Theme)
         {
             configuration.Theme = tracked.Theme;
+            changed = true;
         }
 
         if (configuration.IsHighContrast != tracked.IsHighContrast)
         {
             configuration.IsHighContrast = tracked.IsHighContrast;
+            changed = true;
         }
 
         if (!configuration.HighContrastBackgroundColor.Equals(tracked.HighContrastBackgroundColor))
         {
             configuration.HighContrastBackgroundColor = tracked.HighContrastBackgroundColor;
+            changed = true;
         }
+
+        return changed;
+    }
+
+    /// <summary>
+    /// Replaces the controller with a new one set up for the configuration as it is now, on the same target, and applies the
+    /// level to it: what a start does, which draws either theme right, where recoloring the old controller left the old
+    /// theme's glass at the default level (class remarks). Logs the switch, content-free.
+    /// </summary>
+    /// <remarks>
+    /// The target holds one controller at a time, so the old one lets go of it before the new one takes it: a panel on
+    /// screen at that moment (a pinned one) may show one frame without glass. A theme switch is rare, and the panel is
+    /// usually concealed then.
+    /// </remarks>
+    private void Renew()
+    {
+        if (controller is null || controllerTarget is null)
+        {
+            return;
+        }
+
+        controller.RemoveSystemBackdropTarget(controllerTarget);
+        controller.Dispose();
+        controller = new DesktopAcrylicController();
+        controller.SetSystemBackdropConfiguration(configuration);
+        controller.AddSystemBackdropTarget(controllerTarget);
+        Apply(force: true);
+        // Windows' own switch and Settings › App › Theme both arrive here (the panel's content changed its actual theme). In
+        // high contrast the controller draws the contrast theme's background whatever the theme says (WinUI's configuration
+        // read "light" under High Contrast Black in the test desktop), so the line names high contrast alone then.
+        string look = configuration.IsHighContrast ? "high contrast" : appliedLight == true ? "the light theme" : "the dark theme";
+        AppLog.Info($"The panel's glass was set up again for {look}: the theme changed while BetterClipboard ran.");
     }
 
     /// <summary>
