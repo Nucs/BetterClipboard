@@ -1477,7 +1477,9 @@ public sealed partial class ClipboardFlyout : Window
         if (item.Pick is null && item.Entry.HasRunHistory)
         {
             menu.Items.Add(MenuItem(UiText.Translate("Run"), RunGlyph, "Ctrl+Enter", () => _ = RunItemAsync(item, asAdministrator: false)));
-            menu.Items.Add(MenuItem(UiText.Translate("Run as administrator"), RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
+            var runAsAdministrator = MenuItem(UiText.Translate("Run as administrator"), RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true));
+            menu.Items.Add(runAsAdministrator);
+            _ = GrayOutWithoutAdministratorModeAsync(item, runAsAdministrator);
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1502,6 +1504,36 @@ public sealed partial class ClipboardFlyout : Window
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });
         return menu;
+    }
+
+    /// <summary>
+    /// Grays out a card menu's "Run as administrator" when Windows has no administrator mode for the card's command — a
+    /// picture, a document, a folder, a link — the way Explorer's own menu offers the item only for programs (the owner's
+    /// choice, 2026-11-21: "Gray out the run as admin when we can't"; CLAUDE.md §2.17).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The item opens enabled and is grayed once the controller has read the command and asked Windows off the UI thread
+    /// (milliseconds: one store read and a few registry reads, during the menu's opening animation). Enabled is the safe
+    /// start: programs and names Windows looks up when they run keep it, and a click before the answer still does the
+    /// right thing — a run asked as administrator opens a target without one normally (RunCommandLauncher.Run), as
+    /// Ctrl+Shift+Enter does on a grayed card.
+    /// </para>
+    /// <para>
+    /// A menu that closed meanwhile is graying an item nobody sees: harmless. Never throws (the controller's question logs
+    /// its own failures and answers "only running tells", which keeps the item enabled).
+    /// </para>
+    /// </remarks>
+    /// <param name="item">The card, with <see cref="ClipEntry.HasRunHistory"/>.</param>
+    /// <param name="runAsAdministrator">Its menu's "Run as administrator" item.</param>
+    /// <returns>A task completing once the item is settled.</returns>
+    private async Task GrayOutWithoutAdministratorModeAsync(ClipItemViewModel item, MenuFlyoutItem runAsAdministrator)
+    {
+        // The continuation comes back on the UI thread (this window's dispatcher), where the item may be changed.
+        if (await controller.CanRunAsAdministratorAsync(item.Entry) == false)
+        {
+            runAsAdministrator.IsEnabled = false;
+        }
     }
 
     /// <summary>
@@ -1851,7 +1883,18 @@ public sealed partial class ClipboardFlyout : Window
                 // on any other card it pastes, as it always did.
                 if (ctrl && toPaste.Pick is null && toPaste.Entry.HasRunHistory)
                 {
-                    await RunItemAsync(toPaste, asAdministrator: shift);
+                    // The program's window must be able to come to the front (TakeKeyboardBeforeLaunchAsync says why only
+                    // the keys need this). A no-op when the panel already has the keyboard.
+                    await TakeKeyboardBeforeLaunchAsync(shift ? "Ctrl+Shift+Enter runs a Win+R command" : "Ctrl+Enter runs a Win+R command");
+                    if (!IsOpen)
+                    {
+                        // Only beside Start or Search, whose closing is awaited: the shortcut pressed again meanwhile.
+                        AppLog.Info("Not run: the panel was put away while Start or Search closed before the run.");
+                    }
+                    else
+                    {
+                        await RunItemAsync(toPaste, asAdministrator: shift);
+                    }
                 }
                 else
                 {
@@ -2780,7 +2823,10 @@ public sealed partial class ClipboardFlyout : Window
     /// still open for another try.
     /// </summary>
     /// <param name="item">A card with <see cref="ClipEntry.HasRunHistory"/>.</param>
-    /// <param name="asAdministrator">Run elevated (Windows asks for consent; the panel's window owns the prompt).</param>
+    /// <param name="asAdministrator">
+    /// Run elevated where Windows can (Windows asks for consent; the panel's window owns the prompt). A target Windows has no
+    /// administrator mode for — the cards whose menu item is grayed — opens normally, as Win+R's Ctrl+Shift+Enter does.
+    /// </param>
     /// <returns>A task completing when the command started or failed (never throws).</returns>
     private async Task RunItemAsync(ClipItemViewModel item, bool asAdministrator)
     {

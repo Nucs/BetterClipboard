@@ -40,7 +40,9 @@ namespace BetterClipboard.App.Views;
 /// <para>
 /// <b>The panel takes the keyboard the usual way</b> (<see cref="TakeKeyboard"/>) where typing into a control of its own is
 /// needed, which ends the app's editing as before: a click into the search box (a caret, and an input method's
-/// composition), Ctrl+F, a viewer, a name box, a menu opened from the keyboard. And it opens the usual way when the setting is
+/// composition), Ctrl+F, a viewer, a name box, a menu opened from the keyboard. So does a key that starts a program (Ctrl+Enter
+/// on a Win+R command), whose window could not come to the front otherwise (<see cref="TakeKeyboardBeforeLaunchAsync"/>).
+/// And it opens the usual way when the setting is
 /// off (screen readers follow the keyboard focus), when there is no window to type into (the tray), over BetterClipboard's own
 /// windows, and over a window that runs as administrator: a hook of a process that is not elevated sees no keys typed there.
 /// </para>
@@ -241,6 +243,47 @@ public sealed partial class ClipboardFlyout
         EndModeForKeyboard(reason);
         Activate();
         ForegroundHelper.Activate(hwnd);
+    }
+
+    /// <summary>
+    /// Before a key starts a program (Ctrl+Enter or Ctrl+Shift+Enter on a Win+R command), the panel takes the keyboard if it
+    /// shows without it (<see cref="TakeKeyboard"/>), and the caller waits until it has it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why.</b> Windows lets a started program bring its window to the front only when the process that started it may do
+    /// so itself: it is the foreground process, or it received the last input. The Run tab's "launch first, hide after"
+    /// (AppController.RunCommandAsync) relied on the first, and the panel stopped being the foreground window when it began to
+    /// leave the keyboard with the app (CLAUDE.md §2.59). A key the hook takes is never delivered to any window, so the second
+    /// does not hold either. Measured 2026-11-21 in a test desktop: Ctrl+Enter and Ctrl+Shift+Enter opened Photos and Notepad
+    /// behind Edge, their taskbar buttons flashing, which looks like "nothing opened"; with the panel holding the keyboard,
+    /// and after a click on the card menu's <i>Run</i> (input this process received), Photos came to the front.
+    /// </para>
+    /// <para>
+    /// Taking the keyboard ends the app's editing, as every way of taking it does, and costs nothing here: the program's
+    /// window takes the focus from the app anyway, and a run that fails leaves the panel with the keyboard and its reason in
+    /// the footer, as runs did before the mode existed. Beside Start or Search, Start is closed first, which a program coming
+    /// to the front would do too; that closing is awaited, so the program starts after the panel is in front.
+    /// </para>
+    /// </remarks>
+    /// <param name="reason">Why, for the log line (content-free: "Ctrl+Enter runs a Win+R command").</param>
+    /// <returns>
+    /// A task completing once the panel has the keyboard, or at once when it had it already or does not show. Never faults.
+    /// </returns>
+    private Task TakeKeyboardBeforeLaunchAsync(string reason)
+    {
+        if (!focusless || !presented)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (besideSurface)
+        {
+            return TakeKeyboardPastSurfaceAsync(reason);
+        }
+
+        TakeKeyboard(reason);
+        return Task.CompletedTask;
     }
 
     /// <summary>

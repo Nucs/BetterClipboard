@@ -1776,7 +1776,10 @@ public sealed partial class AppController
     /// <b>Launch first, hide after.</b> The panel is the foreground window while the command starts, and Windows lets
     /// a process started by the foreground process bring its window to the front. Hiding first would hand the
     /// foreground back to the app below, and the new window could open behind it. The panel is then hidden
-    /// without re-activating that app: the new window keeps the focus.
+    /// without re-activating that app: the new window keeps the focus. While the panel leaves the keyboard with the app
+    /// (CLAUDE.md §2.59) it is not the foreground window: a key that runs a command makes the panel take the keyboard first
+    /// (ClipboardFlyout.TakeKeyboardBeforeLaunchAsync), and a click on the card menu is input this process received, which
+    /// gives it the same leave (both measured 2026-11-21).
     /// </para>
     /// <para>
     /// Only offered for entries with a run time (<see cref="ClipEntry.HasRunHistory"/>): commands the user ran
@@ -1785,24 +1788,30 @@ public sealed partial class AppController
     /// </para>
     /// </remarks>
     /// <param name="entry">The entry (its <c>CF_UNICODETEXT</c> is the command).</param>
-    /// <param name="asAdministrator">Run elevated: Windows asks for consent first.</param>
+    /// <param name="asAdministrator">
+    /// Run elevated where Windows can: Windows asks for consent first. A target Windows has no administrator mode for (a
+    /// picture, a document, a folder, a link) is opened normally, as Win+R's Ctrl+Shift+Enter does
+    /// (<see cref="RunCommandResult.WithoutAdministrator"/>).
+    /// </param>
     /// <param name="ownerWindow">The panel's window, owner of the consent prompt.</param>
     /// <returns>How it ended, or <see langword="null"/> when the entry holds no single-line command or reading it failed (logged). Never throws.</returns>
     public async Task<RunCommandResult?> RunCommandAsync(ClipEntry entry, bool asAdministrator, nint ownerWindow)
     {
         try
         {
-            var formats = await History.GetFormatsAsync(entry.Id);
-            var text = formats.FirstOrDefault(f => f.Name == ClipFormatNames.UnicodeText);
-            var command = text is null ? string.Empty : UnicodeTextCodec.Decode(text.Data).Trim();
-            if (command.Length == 0 || command.AsSpan().IndexOfAny('\r', '\n') >= 0)
+            if (await ReadRunCommandAsync(entry) is not { } command)
             {
                 AppLog.Warn($"Entry {entry.Id} holds no single-line command to run.");
                 return null;
             }
 
             var result = await RunCommandLauncher.RunAsync(command, asAdministrator, ownerWindow);
-            AppLog.Info($"Ran entry {entry.Id} as a Win+R command{(asAdministrator ? " as administrator" : string.Empty)}: {result.Describe()}");
+
+            // Content-free either way; the second form says why "as administrator" opened it normally, so a report of "no
+            // administrator prompt" can be read from the log.
+            AppLog.Info(result.WithoutAdministrator
+                ? $"Ran entry {entry.Id} as a Win+R command, asked as administrator: Windows has no administrator mode for it, so it was opened without one, as Win+R's Ctrl+Shift+Enter does. {result.Describe()}"
+                : $"Ran entry {entry.Id} as a Win+R command{(asAdministrator ? " as administrator" : string.Empty)}: {result.Describe()}");
             if (result.Outcome != RunCommandOutcome.Started)
             {
                 return result;
@@ -1829,6 +1838,55 @@ public sealed partial class AppController
             AppLog.Error($"Running entry {entry.Id} failed.", ex);
             return null;
         }
+    }
+
+    /// <summary>
+    /// Whether Windows can run a stored Win+R command as administrator (<see cref="RunCommandLauncher.CanRunAsAdministrator(string)"/>):
+    /// the card menu grays its "Run as administrator" when the answer is <see langword="false"/> (the owner's choice,
+    /// 2026-11-21: a picture's item used to do nothing).
+    /// </summary>
+    /// <remarks>
+    /// The command is read from the store and judged on the thread pool: judging it reads the file system (a shortcut's
+    /// target, a network share that may not answer), which never belongs on the UI thread. Nothing is logged for a normal
+    /// answer: the menu asks every time it opens.
+    /// </remarks>
+    /// <param name="entry">A card's entry with <see cref="ClipEntry.HasRunHistory"/>.</param>
+    /// <returns>
+    /// The answer, or <see langword="null"/> when only running tells, the entry holds no single-line command, or the
+    /// question failed (logged, content-free). Never throws.
+    /// </returns>
+    public async Task<bool?> CanRunAsAdministratorAsync(ClipEntry entry)
+    {
+        try
+        {
+            if (await ReadRunCommandAsync(entry) is not { } command)
+            {
+                return null;
+            }
+
+            return await Task.Run(() => RunCommandLauncher.CanRunAsAdministrator(command));
+        }
+        catch (Exception ex)
+        {
+            // The menu keeps the item enabled then: a run asked as administrator still opens what Windows cannot elevate.
+            AppLog.Warn($"Could not tell whether entry {entry.Id} can run as administrator ({ex.GetType().Name}).");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The single-line Win+R command a stored entry holds: its <c>CF_UNICODETEXT</c>, trimmed.
+    /// </summary>
+    /// <param name="entry">The entry.</param>
+    /// <returns>The command, or <see langword="null"/> when the entry has no text or more than one line (Win+R takes one).</returns>
+    /// <exception cref="InvalidOperationException">Called before <see cref="Start"/> (<see cref="History"/> is not there yet).</exception>
+    /// <exception cref="Microsoft.Data.Sqlite.SqliteException">The store could not be read.</exception>
+    private async Task<string?> ReadRunCommandAsync(ClipEntry entry)
+    {
+        var formats = await History.GetFormatsAsync(entry.Id);
+        var text = formats.FirstOrDefault(f => f.Name == ClipFormatNames.UnicodeText);
+        var command = text is null ? string.Empty : UnicodeTextCodec.Decode(text.Data).Trim();
+        return command.Length == 0 || command.AsSpan().IndexOfAny('\r', '\n') >= 0 ? null : command;
     }
 
     /// <summary>

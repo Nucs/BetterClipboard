@@ -273,9 +273,24 @@ public sealed partial class ClipboardFlyout
     /// (<c>AppController.CloseShellSurfaceForKeyboardAsync</c>). The caller's own steps (focusing the search box, opening a
     /// viewer) run at once; the activation follows some 20 to 50 ms later, keeping the focus they set.
     /// </para>
-    /// <para><c>async void</c>: started by the key or click handler, awaited by nobody; it catches everything itself.</para>
+    /// <para>
+    /// <c>async void</c>: started by the key or click handler, awaited by nobody. A caller that must wait until the panel has
+    /// the keyboard (a key that starts a program, <see cref="TakeKeyboardBeforeLaunchAsync"/>) awaits
+    /// <see cref="TakeKeyboardPastSurfaceAsync"/> instead.
+    /// </para>
     /// </remarks>
-    private async void TakeKeyboardPastSurface(string reason)
+    private async void TakeKeyboardPastSurface(string reason) => await TakeKeyboardPastSurfaceAsync(reason);
+
+    /// <summary>
+    /// The work of <see cref="TakeKeyboardPastSurface"/>, for a caller that waits for it: Start or Search is closed, then the
+    /// panel is activated.
+    /// </summary>
+    /// <param name="reason">Why, for the log line (content-free).</param>
+    /// <returns>
+    /// A task completing once the panel was activated, or once Start closed with the panel put away meanwhile (the shortcut
+    /// pressed again). Never faults: a failure is logged as a warning.
+    /// </returns>
+    private async Task TakeKeyboardPastSurfaceAsync(string reason)
     {
         try
         {

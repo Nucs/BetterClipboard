@@ -28,6 +28,13 @@ public sealed record RunCommandResult(RunCommandOutcome Outcome, int Win32Error)
     public static readonly RunCommandResult Started = new(RunCommandOutcome.Started, 0);
 
     /// <summary>
+    /// Asked to run as administrator, it was opened (or tried) without: Windows has no administrator mode for it — a
+    /// picture, a document, a folder, a link — so it opened the way Win+R's Ctrl+Shift+Enter opens such a target. Only the
+    /// log says so (<see cref="Describe"/> is unchanged): a started run closes the panel, so there is no footer to show it in.
+    /// </summary>
+    public bool WithoutAdministrator { get; init; }
+
+    /// <summary>
     /// Every sentence <see cref="Describe"/> gives, as composite formats: the panel's footer shows a refusal in the
     /// interface language through <c>UiText.TranslateFormatted</c>, the log keeps the English. A changed sentence must
     /// change here and in every catalog; <c>TranslationTemplateTests</c> check that each outcome matches one.
@@ -94,6 +101,17 @@ public sealed record RunInvocation(string File, string? Arguments, string? Worki
 /// while the app still holds the foreground (the panel is open), or Windows may open the new window behind the
 /// app the user came from.
 /// </para>
+/// <para>
+/// <b>As administrator</b> (the owner's choice, 2026-11-21: "Like Windows", and the card menu's item grayed where it
+/// cannot work; CLAUDE.md §2.17). Measured on Windows 11 (26200, UAC on): Explorer's menu offers "Run as administrator"
+/// only for programs — <c>.exe</c>, <c>.bat</c>, <c>.cmd</c>, <c>.msc</c>, <c>.cpl</c>, app aliases, shortcuts to
+/// programs — and <c>ShellExecuteEx</c> with <c>runas</c> fails with <c>ERROR_NO_ASSOCIATION</c> for a picture, a text
+/// file, a folder, a script that opens in an editor, a shortcut to a file, <c>shell:</c> and <c>ms-settings:</c>; Win+R's
+/// Ctrl+Shift+Enter opens those normally, and a link too (where <c>runas</c> would elevate Edge, whose <c>https</c>
+/// association has a <c>runas</c> verb). So <see cref="CanRunAsAdministrator(string)"/> answers Explorer's question, and a
+/// run asked "as administrator" (<see cref="Run"/>) elevates what it can and opens the rest normally, never failing
+/// silently as before (a picture's run did nothing, its footer said "No app is set to open it.").
+/// </para>
 /// </remarks>
 public static partial class RunCommandLauncher
 {
@@ -101,12 +119,85 @@ public static partial class RunCommandLauncher
     /// Runs a command.
     /// </summary>
     /// <param name="command">The command as typed into Win+R (unexpanded).</param>
-    /// <param name="asAdministrator">Use the <c>runas</c> verb (the administrator prompt appears).</param>
+    /// <param name="asAdministrator">
+    /// Run it as administrator where Windows can (the <c>runas</c> verb: the administrator prompt appears); a target Windows
+    /// has no administrator mode for is opened normally instead (<see cref="RunCommandResult.WithoutAdministrator"/>).
+    /// </param>
     /// <param name="ownerWindow">Owner of any Windows UI (the prompt); 0 = none.</param>
     /// <returns>How it ended; never throws for a command Windows refuses.</returns>
     /// <exception cref="ArgumentException"><paramref name="command"/> is null, blank, or spans several lines (Win+R takes one).</exception>
     public static Task<RunCommandResult> RunAsync(string command, bool asAdministrator, nint ownerWindow = 0) =>
         RunCoreAsync(Parse(command), asAdministrator, ownerWindow, quiet: false);
+
+    /// <summary>
+    /// Whether Windows can run a Win+R command as administrator: Explorer's question ("Run as administrator" in its menu),
+    /// answered from the command's target and its file type's own verbs. The card menu grays its "Run as administrator"
+    /// when the answer is <see langword="false"/>.
+    /// </summary>
+    /// <remarks>
+    /// Reads the file system (the target, a shortcut's file) and the registry, never runs anything and loads no shell
+    /// extension; a target on a network share that does not answer blocks it, so callers run it off the UI thread.
+    /// </remarks>
+    /// <param name="command">The command as typed into Win+R (unexpanded).</param>
+    /// <returns>
+    /// <see langword="true"/> for a program (its file type has a <c>runas</c> verb: <c>.exe</c>, <c>.bat</c>, <c>.cmd</c>,
+    /// <c>.msc</c>, <c>.cpl</c>…) or a shortcut to one; <see langword="false"/> for a picture, a document, a folder, a link
+    /// or a <c>shell:</c> place; <see langword="null"/> when only running it tells — a bare name Windows looks up on PATH
+    /// when it runs, or a shortcut whose target cannot be read.
+    /// </returns>
+    /// <exception cref="ArgumentException"><paramref name="command"/> is null, blank, or spans several lines (Win+R takes one).</exception>
+    public static bool? CanRunAsAdministrator(string command) => CanRunAsAdministrator(Parse(command));
+
+    /// <summary>
+    /// <see cref="CanRunAsAdministrator(string)"/> for a command already parsed.
+    /// </summary>
+    /// <param name="invocation">What Windows is asked to open.</param>
+    /// <returns>See <see cref="CanRunAsAdministrator(string)"/>.</returns>
+    internal static bool? CanRunAsAdministrator(RunInvocation invocation) => CanRunAsAdministrator(invocation.File, followShortcut: true);
+
+    /// <summary>
+    /// Carries out a run the way <see cref="RunAsync"/> describes: as administrator where Windows can, otherwise normally.
+    /// Pure composition over its two delegates, so the tests check every path without a consent prompt.
+    /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item>Not asked as administrator: one normal run.</item>
+    /// <item>Windows has no administrator mode for the target: one normal run, marked
+    /// <see cref="RunCommandResult.WithoutAdministrator"/>. <c>runas</c> is not even tried: for a link it would elevate the
+    /// browser, which Win+R's Ctrl+Shift+Enter does not do.</item>
+    /// <item>A program, or a target only running tells about: <c>runas</c> first. A decline (<c>ERROR_CANCELLED</c>) and
+    /// every other failure are reported as they are, except <c>ERROR_NO_ASSOCIATION</c>, which means Windows found no
+    /// administrator mode after all (a name it looked up on PATH, a shortcut it could not read): then a normal run, marked
+    /// as above.</item>
+    /// </list>
+    /// </remarks>
+    /// <param name="invocation">What Windows is asked to open.</param>
+    /// <param name="asAdministrator">Asked to run it as administrator.</param>
+    /// <param name="canRunAsAdministrator">The question <see cref="CanRunAsAdministrator(RunInvocation)"/> answers.</param>
+    /// <param name="execute">Runs it, elevated (<see langword="true"/>) or not.</param>
+    /// <returns>How it ended.</returns>
+    /// <exception cref="ArgumentNullException">A delegate is null.</exception>
+    internal static RunCommandResult Run(RunInvocation invocation, bool asAdministrator, Func<RunInvocation, bool?> canRunAsAdministrator, Func<bool, RunCommandResult> execute)
+    {
+        ArgumentNullException.ThrowIfNull(canRunAsAdministrator);
+        ArgumentNullException.ThrowIfNull(execute);
+        if (!asAdministrator)
+        {
+            return execute(false);
+        }
+
+        if (canRunAsAdministrator(invocation) != false)
+        {
+            var elevated = execute(true);
+            if (elevated is not { Outcome: RunCommandOutcome.Failed, Win32Error: NativeMethods.ERROR_NO_ASSOCIATION })
+            {
+                return elevated;
+            }
+        }
+
+        // Windows has no administrator mode for it: open it as Win+R's Ctrl+Shift+Enter does, normally.
+        return execute(false) with { WithoutAdministrator = true };
+    }
 
     /// <summary>
     /// Runs a command for a test: hidden, never elevated, and not counted for Start's "most used" list (a real run
@@ -119,7 +210,7 @@ public static partial class RunCommandLauncher
 
     /// <summary>Runs <paramref name="invocation"/> on a short-lived STA thread (see the class remarks).</summary>
     /// <param name="invocation">What to open.</param>
-    /// <param name="asAdministrator">Use the <c>runas</c> verb.</param>
+    /// <param name="asAdministrator">As administrator where Windows can (<see cref="Run"/>).</param>
     /// <param name="ownerWindow">Owner of any Windows UI.</param>
     /// <param name="quiet">Hidden window and no usage logging (tests).</param>
     /// <returns>How it ended; faults only on an unexpected exception inside the launch thread.</returns>
@@ -130,7 +221,8 @@ public static partial class RunCommandLauncher
         {
             try
             {
-                completion.SetResult(Execute(invocation, asAdministrator, ownerWindow, quiet));
+                // The decision reads the file system (a shortcut's target included), so it runs here too, off the UI thread.
+                completion.SetResult(Run(invocation, asAdministrator, CanRunAsAdministrator, elevate => Execute(invocation, elevate, ownerWindow, quiet)));
             }
             catch (Exception ex)
             {
@@ -211,6 +303,90 @@ public static partial class RunCommandLauncher
         var first = space < 0 ? expanded : expanded[..space];
         var tail = space < 0 ? string.Empty : expanded[(space + 1)..].Trim();
         return new RunInvocation(first, tail.Length == 0 ? null : tail, WorkingDirectoryFor(first, first, defaultDirectory, basePath));
+    }
+
+    /// <summary>
+    /// The decision behind <see cref="CanRunAsAdministrator(string)"/>, for one target.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only the file type's own verbs count</b> (<see cref="HasAdministratorMode"/>): the catch-all keys every file and
+    /// folder shares (<c>*</c>, <c>AllFilesystemObjects</c>, <c>Directory</c>) are left out on purpose. Registry tweaks put
+    /// other commands there under the verb name <c>runas</c> (the well-known "Take Ownership" menu entry did:
+    /// <c>takeown</c> and <c>icacls</c> on the file), and an elevated run of a picture must never run those instead.
+    /// </para>
+    /// <para>
+    /// A shortcut is judged by its target, once: Explorer offers "Run as administrator" for a shortcut exactly when its
+    /// target has an administrator mode. A shortcut to a shortcut is judged as a shortcut (no administrator mode).
+    /// </para>
+    /// </remarks>
+    /// <param name="file">The file, folder, URI or bare name Windows is asked to open.</param>
+    /// <param name="followShortcut">Read a <c>.lnk</c> file's target and judge that (only for the command's own target).</param>
+    /// <returns>See <see cref="CanRunAsAdministrator(string)"/>.</returns>
+    private static bool? CanRunAsAdministrator(string file, bool followShortcut)
+    {
+        // Links, shell: places and settings pages: Win+R's Ctrl+Shift+Enter opens them normally (measured), and runas
+        // on a link would elevate the browser instead.
+        if (IsUri(file))
+        {
+            return false;
+        }
+
+        try
+        {
+            // Parse resolved every location it found to a full path. Anything else (a bare name, a relative path nothing
+            // matched) is looked up by Windows itself when it runs, so the disk is not asked here: File.Exists would look
+            // in this app's own folder, which is not where Windows searches.
+            bool fullyQualified = Path.IsPathFullyQualified(file);
+
+            // A folder's window cannot run elevated; Win+R's Ctrl+Shift+Enter opens it normally (measured).
+            if (fullyQualified && Directory.Exists(file))
+            {
+                return false;
+            }
+
+            bool exists = fullyQualified && File.Exists(file);
+            var extension = Path.GetExtension(file);
+            if (exists && followShortcut && extension.Equals(".lnk", StringComparison.OrdinalIgnoreCase))
+            {
+                return ShellShortcut.ReadTarget(file) is { } target ? CanRunAsAdministrator(target, followShortcut: false) : null;
+            }
+
+            if (extension.Length == 0)
+            {
+                // A file without a type has no app at all; a bare name that is not here is looked up on PATH (with
+                // PATHEXT) when it runs, so only running it tells.
+                return exists ? false : null;
+            }
+
+            // A file that is gone (or is looked up on PATH) is still judged by its type: running it says "cannot find".
+            return HasAdministratorMode(extension);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException or UnauthorizedAccessException)
+        {
+            // Characters no path may hold, or a location Windows refuses to describe: only running it tells.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether a file type has an administrator mode of its own: a <c>runas</c> verb registered for it, as a command line or
+    /// through a COM object. Follows the user's default app for the type (Settings › Default apps) like opening it does.
+    /// </summary>
+    /// <param name="extension">The extension with its dot (<c>.exe</c>, <c>.png</c>).</param>
+    /// <returns><see langword="true"/> when the type has the verb.</returns>
+    private static unsafe bool HasAdministratorMode(string extension)
+    {
+        // A null buffer asks only whether the string exists: S_FALSE (1) when it does, a negative HRESULT
+        // (ERROR_NO_ASSOCIATION) when the type lacks the verb.
+        uint length = 0;
+        if (NativeMethods.AssocQueryString(0, NativeMethods.ASSOCSTR_COMMAND, extension, "runas", null, ref length) >= 0)
+        {
+            return true;
+        }
+
+        length = 0;
+        return NativeMethods.AssocQueryString(0, NativeMethods.ASSOCSTR_DELEGATEEXECUTE, extension, "runas", null, ref length) >= 0;
     }
 
     /// <summary>Calls <c>ShellExecuteEx</c> (the launch thread).</summary>
