@@ -5,7 +5,7 @@ namespace BetterClipboard.Core.Presentation;
 
 /// <summary>
 /// What a card in the panel hands its text block: the part of its preview that its number of lines can show, plus one line,
-/// so that the text block still ends with "…" where the text goes on (Settings › Shortcut › Lines per card, CLAUDE.md
+/// so that the text block still ends with "…" where the text goes on (Settings › Panel › Lines per card, CLAUDE.md
 /// §2.57).
 /// </summary>
 /// <remarks>

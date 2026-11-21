@@ -6,7 +6,7 @@ using Windows.Graphics;
 namespace BetterClipboard.App.Views;
 
 /// <summary>
-/// Where a summon puts the panel (Settings › Shortcut › Panel position, <see cref="AppSettings.Placement"/>): next to the
+/// Where a summon puts the panel (Settings › Panel › Panel position, <see cref="AppSettings.Placement"/>): next to the
 /// text cursor (the default), next to the mouse, or centered on the main screen or on the screen with the mouse pointer
 /// (the current screen) — and putting it there at exactly the size asked for, also on a monitor with another scale.
 /// </summary>

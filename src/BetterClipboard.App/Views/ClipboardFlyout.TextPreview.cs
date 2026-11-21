@@ -276,7 +276,7 @@ public sealed partial class ClipboardFlyout
     }
 
     /// <summary>
-    /// Makes the cards show as many lines of their text as Settings › Shortcut › Lines per card says
+    /// Makes the cards show as many lines of their text as Settings › Panel › Lines per card says
     /// (<see cref="Core.Settings.AppSettings.LinesPerCard"/>, CLAUDE.md §2.57), the listed ones in place. Called by the
     /// controller after every settings change; idempotent and cheap when the number did not change. The view model applied
     /// the number when the panel was made.

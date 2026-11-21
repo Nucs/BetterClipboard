@@ -1,7 +1,7 @@
 namespace BetterClipboard.Core.Presentation;
 
 /// <summary>
-/// A button of the panel's header that Settings can hide and move (Settings › Shortcut › Buttons in the panel, CLAUDE.md
+/// A button of the panel's header that Settings can hide and move (Settings › Panel › Buttons in the panel, CLAUDE.md
 /// §2.55, §2.58), listed in the header's default order from left to right. The Settings button is not one: it always shows,
 /// and it stays last, where it is (the owner's "have the settings stationary"), so Settings — where a hidden button is shown
 /// again — stays one click away from the panel, at a place the hand knows.
@@ -29,7 +29,7 @@ public enum PanelButton
     /// </summary>
     Updates,
 
-    /// <summary>Pause / resume capturing. Hidden, the tray menu and Settings › Privacy still pause, and the "Paused" chip still shows.</summary>
+    /// <summary>Pause / resume capturing. Hidden, the tray menu and Settings › Capture still pause, and the "Paused" chip still shows.</summary>
     Pause,
 
     /// <summary>The bookmark that opens the groups column. Hidden, <c>Ctrl+G</c> still opens and closes it.</summary>

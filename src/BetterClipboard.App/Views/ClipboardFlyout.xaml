@@ -106,7 +106,7 @@
                 </Border>
             </Grid>
             <!--
-                The header's buttons. Each but Settings can be hidden and moved in Settings › Shortcut › Buttons in the panel
+                The header's buttons. Each but Settings can be hidden and moved in Settings › Panel › Buttons in the panel
                 (AppSettings.HiddenPanelButtons and PanelButtonOrder, ClipboardFlyout.KeepOpen.cs: ApplyHeaderButtons, which
                 puts them in the user's order with ApplyHeaderOrder), and the panel's minimum width follows how many show
                 (AppSettings.MinFlyoutWidthFor: 36 DIPs a button with its gap). Settings never hides and never moves: it is
@@ -566,7 +566,7 @@
                         </Grid>
 
                         <!--
-                            The text, at most as many lines as Settings › Shortcut › Lines per card says (1 to 40, four by
+                            The text, at most as many lines as Settings › Panel › Lines per card says (1 to 40, four by
                             default; ClipItemViewModel.CardLines, CLAUDE.md §2.57), given only the part of the preview those
                             lines can show (CardText). A card that shows less than its whole text (ClipItemViewModel.IsCutOff)
                             gets a thin dotted line under them and the eye at their bottom right, and resting the mouse on it

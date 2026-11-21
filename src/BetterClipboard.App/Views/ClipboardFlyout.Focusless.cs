@@ -148,7 +148,7 @@ public sealed partial class ClipboardFlyout
         if (!focuslessLogged)
         {
             focuslessLogged = true;
-            AppLog.Info("The panel opens without taking the keyboard: the app keeps it, and the panel takes the keys it acts on (Settings › Shortcut).");
+            AppLog.Info("The panel opens without taking the keyboard: the app keeps it, and the panel takes the keys it acts on (Settings › Panel).");
         }
 
         EngageFocuslessHooks(context.TargetWindow);

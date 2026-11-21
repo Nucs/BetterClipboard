@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Main/settings window (Mica, custom title bar). Sections mirror the Windows 11 Settings app so it
-  feels native: Shortcut, History, Pasting, Privacy, Windows clipboard, Integrations, App, and Third
-  party (credits and official links) at the bottom.
+  Main/settings window (Mica, under Windows' own title bar). Sections mirror the Windows 11 Settings app so it
+  feels native: Shortcut, Panel, Pasting, Capture, History, Privacy, Windows clipboard, Integrations, App, Updates,
+  and Third party (credits and official links) at the bottom. Regrouped on 2026-11-21 (CLAUDE.md §2.65).
 -->
 <Window
     x:Class="BetterClipboard.App.Views.SettingsWindow"
@@ -190,7 +190,10 @@
                         TextWrapping="Wrap" />
                 </StackPanel>
 
-                <!--  Shortcut  -->
+                <!--
+                  Shortcut: the keys that open the panel, and how they are taken from Windows. The panel's own settings
+                  were here until 2026-11-21 and have a section of their own since (Panel, below; CLAUDE.md §2.65).
+                -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Shortcut'}" />
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.HotkeyStatus, Mode=OneWay}"
@@ -307,12 +310,51 @@
                         </ItemsControl>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Win+V belongs to Windows, and other shortcuts may belong to other apps. When on, BetterClipboard intercepts exactly your shortcuts that are taken with a keyboard hook while it runs — quit BetterClipboard and their owners get them back instantly.'}"
+                    Glyph="&#xEDA7;"
+                    Header="{loc:Tr Text='Take over shortcuts owned by Windows'}"
+                    Keywords="{loc:Tr Text='keyboard hook, intercept, Win+V, override'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.UseKeyboardHookFallback, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <!--
+                  Not in the Microsoft Store edition (SettingsWindow.Store.cs takes the card out of the page): a packaged
+                  app's own registry writes never reach Explorer, and the Store's policies ask for supported ways to
+                  change Windows' settings (CLAUDE.md §2.47).
+                -->
+                <controls:SettingsCard
+                    x:Name="ReleaseFromExplorerCard"
+                    Description="{loc:Tr Text='Advanced: tells Explorer not to register your Win+letter shortcuts (Win+V…) at all (DisabledHotkeys), so no hook is needed and they work over admin windows too. Restarts Explorer. While BetterClipboard is not running, those shortcuts then do nothing.'}"
+                    Glyph="&#xEC50;"
+                    Header="{loc:Tr Text='Release from Explorer'}"
+                    Keywords="{loc:Tr Text='DisabledHotkeys, Windows Explorer, registry, free Win+V'}">
+                    <Button
+                        Click="ReleaseFromExplorer_Click"
+                        Content="{x:Bind ViewModel.ExplorerReleaseButtonText, Mode=OneWay}"
+                        IsEnabled="{x:Bind ViewModel.CanChangeExplorerRelease, Mode=OneWay}" />
+                    <controls:SettingsCard.Footer>
+                        <TextBlock
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.ExplorerReleaseStatus, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
+
+                <!--
+                  Panel (the owner's regroup of 2026-11-21, CLAUDE.md §2.65): how the panel opens (where, and whether it
+                  takes the keyboard), what it lists first, and how it looks (lines per card, the header's buttons, the
+                  theme, the glass). From Shortcut, Pasting (Show pinned items first) and App (Theme, Background
+                  transparency). The theme also colors Settings and the other windows; it stands here with the panel's
+                  other looks.
+                -->
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Panel'}" />
                 <!--
                   Where the shortcut opens the panel (AppSettings.Placement + CenterOnMainScreen, mapped by
-                  SettingsViewModel.PlacementIndex). Right under the shortcuts since 2026-11-08: under Pasting it went
-                  unnoticed. Next to the text cursor, next to the mouse, centered on the main screen, centered on the
-                  screen with the mouse pointer (FlyoutPositioner.ChooseScreen; until 2026-11-20 the screen the user was
-                  typing on, CLAUDE.md §2.38).
+                  SettingsViewModel.PlacementIndex). Under the shortcuts from 2026-11-08 (under Pasting it went
+                  unnoticed), first in Panel since 2026-11-21. Next to the text cursor, next to the mouse, centered on the
+                  main screen, centered on the screen with the mouse pointer (FlyoutPositioner.ChooseScreen; until
+                  2026-11-20 the screen the user was typing on, CLAUDE.md §2.38).
                 -->
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Where the clipboard panel opens. The current screen is the one with the mouse pointer.'}"
@@ -340,6 +382,33 @@
                     Header="{loc:Tr Text='Leave the keyboard with your app'}"
                     Keywords="{loc:Tr Text='focus, keep focus, rename, F2, File Explorer, Obsidian, text box, editing, screen reader, input method'}">
                     <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.LeaveFocusInApp, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Pinned items are listed before everything else. The panel opens on your newest copy, with the pinned items just above it: scroll up or press ↑ to see them.'}"
+                    Glyph="&#xE840;"
+                    Header="{loc:Tr Text='Show pinned items first'}"
+                    Keywords="{loc:Tr Text='pins, order, sort, top'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PinnedOnTop, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <!--
+                  How many lines of its text each card shows (AppSettings.LinesPerCard, CLAUDE.md §2.57): the owner's request of
+                  2026-11-20, "make the number of lines per card configurable 1-40". Applied to the panel at once, also while it
+                  shows. Next to the header's buttons: both are how the panel looks. E8E4 = three lines of text (AlignLeft,
+                  checked by rendering).
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='How many lines of its text each card in the panel shows, from 1 to 40. A longer text ends with a dotted line; its eye, or F3, shows all of it.'}"
+                    Glyph="&#xE8E4;"
+                    Header="{loc:Tr Text='Lines per card'}"
+                    Keywords="{loc:Tr Text='rows, card height, preview, compact, dense, longer cards, more text, text lines'}">
+                    <NumberBox
+                        MinWidth="140"
+                        LargeChange="5"
+                        Maximum="40"
+                        Minimum="1"
+                        SmallChange="1"
+                        SpinButtonPlacementMode="Compact"
+                        Value="{x:Bind ViewModel.LinesPerCard, Mode=TwoWay}" />
                 </controls:SettingsCard>
                 <!--
                   The panel header's buttons (AppSettings.HiddenPanelButtons and PanelButtonOrder, CLAUDE.md §2.55, §2.58): one
@@ -445,56 +514,98 @@
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
-                <!--
-                  How many lines of its text each card shows (AppSettings.LinesPerCard, CLAUDE.md §2.57): the owner's request of
-                  2026-11-20, "make the number of lines per card configurable 1-40". Applied to the panel at once, also while it
-                  shows. Next to the header's buttons: both are how the panel looks. E8E4 = three lines of text (AlignLeft,
-                  checked by rendering).
-                -->
                 <controls:SettingsCard
-                    Description="{loc:Tr Text='How many lines of its text each card in the panel shows, from 1 to 40. A longer text ends with a dotted line; its eye, or F3, shows all of it.'}"
-                    Glyph="&#xE8E4;"
-                    Header="{loc:Tr Text='Lines per card'}"
-                    Keywords="{loc:Tr Text='rows, card height, preview, compact, dense, longer cards, more text, text lines'}">
-                    <NumberBox
-                        MinWidth="140"
-                        LargeChange="5"
-                        Maximum="40"
-                        Minimum="1"
-                        SmallChange="1"
-                        SpinButtonPlacementMode="Compact"
-                        Value="{x:Bind ViewModel.LinesPerCard, Mode=TwoWay}" />
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Win+V belongs to Windows, and other shortcuts may belong to other apps. When on, BetterClipboard intercepts exactly your shortcuts that are taken with a keyboard hook while it runs — quit BetterClipboard and their owners get them back instantly.'}"
-                    Glyph="&#xEDA7;"
-                    Header="{loc:Tr Text='Take over shortcuts owned by Windows'}"
-                    Keywords="{loc:Tr Text='keyboard hook, intercept, Win+V, override'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.UseKeyboardHookFallback, Mode=TwoWay}" />
+                    Description="{loc:Tr Text='Light, dark, or follow Windows.'}"
+                    Glyph="&#xE771;"
+                    Header="{loc:Tr Text='Theme'}"
+                    Keywords="{loc:Tr Text='dark mode, light mode, colors, appearance'}">
+                    <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}">
+                        <ComboBoxItem Content="{loc:Tr Text='Use Windows setting'}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Light'}" />
+                        <ComboBoxItem Content="{loc:Tr Text='Dark'}" />
+                    </ComboBox>
                 </controls:SettingsCard>
                 <!--
-                  Not in the Microsoft Store edition (SettingsWindow.Store.cs takes the card out of the page): a packaged
-                  app's own registry writes never reach Explorer, and the Store's policies ask for supported ways to
-                  change Windows' settings (CLAUDE.md §2.47).
+                  How see-through the panel's frosted glass is (AppSettings.BackgroundTransparency, CLAUDE.md §2.58): 0 the most
+                  frosted, 100 the clearest, 50 Windows' own look, the default. The glass stays blurred at every level; the
+                  slider sets how strongly its frost covers the blurred background (PanelBackdrop.LookFor). Steps of 5; a tick at
+                  each end and at the default. Each step shows on the panel at once and is saved when the slider rests
+                  (SettingsViewModel.OnBackgroundTransparencyChanged). E7A1 = a half-filled circle (checked by rendering).
                 -->
                 <controls:SettingsCard
-                    x:Name="ReleaseFromExplorerCard"
-                    Description="{loc:Tr Text='Advanced: tells Explorer not to register your Win+letter shortcuts (Win+V…) at all (DisabledHotkeys), so no hook is needed and they work over admin windows too. Restarts Explorer. While BetterClipboard is not running, those shortcuts then do nothing.'}"
-                    Glyph="&#xEC50;"
-                    Header="{loc:Tr Text='Release from Explorer'}"
-                    Keywords="{loc:Tr Text='DisabledHotkeys, Windows Explorer, registry, free Win+V'}">
-                    <Button
-                        Click="ReleaseFromExplorer_Click"
-                        Content="{x:Bind ViewModel.ExplorerReleaseButtonText, Mode=OneWay}"
-                        IsEnabled="{x:Bind ViewModel.CanChangeExplorerRelease, Mode=OneWay}" />
-                    <controls:SettingsCard.Footer>
-                        <TextBlock
-                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                            Style="{StaticResource CaptionTextBlockStyle}"
-                            Text="{x:Bind ViewModel.ExplorerReleaseStatus, Mode=OneWay}"
-                            TextWrapping="Wrap" />
-                    </controls:SettingsCard.Footer>
+                    Description="{loc:Tr Text='How much of what lies behind the panel shows through its frosted glass. The glass always stays blurred: 0 is the most frosted, 100 the clearest, and 50 the usual look.'}"
+                    Glyph="&#xE7A1;"
+                    Header="{loc:Tr Text='Background transparency'}"
+                    Keywords="{loc:Tr Text='transparent, see-through, opacity, opaque, blur, frosted glass, acrylic, background'}">
+                    <Slider
+                        Width="220"
+                        AutomationProperties.Name="{loc:Tr Text='Background transparency'}"
+                        LargeChange="25"
+                        Maximum="100"
+                        Minimum="0"
+                        SmallChange="5"
+                        StepFrequency="5"
+                        TickFrequency="50"
+                        TickPlacement="Outside"
+                        Value="{x:Bind ViewModel.BackgroundTransparency, Mode=TwoWay}" />
                 </controls:SettingsCard>
+
+                <!--  Pasting: what happens when an item is chosen.  -->
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Pasting'}" />
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='After you pick an item, paste it into the app you came from (like Win+V). Off = only copy it.'}"
+                    Glyph="&#xE77F;"
+                    Header="{loc:Tr Text='Paste after choosing an item'}"
+                    Keywords="{loc:Tr Text='auto paste, Ctrl+V, insert'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PasteOnSelect, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Items you paste from history jump back to the top.'}"
+                    Glyph="&#xE72A;"
+                    Header="{loc:Tr Text='Move pasted items to the top'}"
+                    Keywords="{loc:Tr Text='order, sort, recent'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.MoveToTopOnPaste, Mode=TwoWay}" />
+                </controls:SettingsCard>
+
+                <!--
+                  Capture (2026-11-21, CLAUDE.md §2.65): what gets recorded, and how reliably copies are read. Pause
+                  capturing and Capture reliability came from Privacy, the three switches from History, which keeps only
+                  its limits.
+                -->
+                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Capture'}" />
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Stop recording new copies until you resume. Password managers that mark their copies as private are always skipped.'}"
+                    Glyph="&#xE769;"
+                    Header="{loc:Tr Text='Pause capturing'}"
+                    Keywords="{loc:Tr Text='stop recording, disable, incognito, private'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.IsCapturePaused, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Screenshots and copied images, with thumbnails.'}"
+                    Glyph="&#xE91B;"
+                    Header="{loc:Tr Text='Record images'}"
+                    Keywords="{loc:Tr Text='pictures, screenshots, bitmaps, photos'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.CaptureImages, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Files copied in Explorer (their paths — not the file contents).'}"
+                    Glyph="&#xE8E5;"
+                    Header="{loc:Tr Text='Record copied files'}"
+                    Keywords="{loc:Tr Text='file lists, Explorer, paths'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.CaptureFiles, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='Also keep app-specific formats (Office, IDEs, design tools) for pixel-perfect pastes. Uses much more disk space.'}"
+                    Glyph="&#xE943;"
+                    Header="{loc:Tr Text='Preserve app-specific formats'}"
+                    Keywords="{loc:Tr Text='Office, Word, Excel, rich formats, design tools'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PreserveAllFormats, Mode=TwoWay}" />
+                </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{x:Bind ViewModel.CaptureReliabilityText, Mode=OneWay}"
+                    Glyph="&#xE9D9;"
+                    Header="{loc:Tr Text='Capture reliability'}"
+                    Keywords="{loc:Tr Text='statistics, missed copies, dropped, accuracy'}" />
 
                 <!--
                   History. Each limit's card ends with a "Now:" line: what the limit counts at the moment (CLAUDE.md §2.60, the
@@ -617,13 +728,6 @@
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Screenshots and copied images, with thumbnails.'}"
-                    Glyph="&#xE91B;"
-                    Header="{loc:Tr Text='Record images'}"
-                    Keywords="{loc:Tr Text='pictures, screenshots, bitmaps, photos'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.CaptureImages, Mode=TwoWay}" />
-                </controls:SettingsCard>
                 <!--  How long the pictures a card menu's "Save to temp and" writes are kept (CLAUDE.md §2.49): deleted at a start only.  -->
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Pictures saved with Save to temp (in a picture card menu) are deleted when BetterClipboard starts, once not used for this many days. 0 = delete them at every start.'}"
@@ -644,54 +748,13 @@
                             TextWrapping="Wrap" />
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Files copied in Explorer (their paths — not the file contents).'}"
-                    Glyph="&#xE8E5;"
-                    Header="{loc:Tr Text='Record copied files'}"
-                    Keywords="{loc:Tr Text='file lists, Explorer, paths'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.CaptureFiles, Mode=TwoWay}" />
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Also keep app-specific formats (Office, IDEs, design tools) for pixel-perfect pastes. Uses much more disk space.'}"
-                    Glyph="&#xE943;"
-                    Header="{loc:Tr Text='Preserve app-specific formats'}"
-                    Keywords="{loc:Tr Text='Office, Word, Excel, rich formats, design tools'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PreserveAllFormats, Mode=TwoWay}" />
-                </controls:SettingsCard>
 
-                <!--  Pasting  -->
-                <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Pasting'}" />
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='After you pick an item, paste it into the app you came from (like Win+V). Off = only copy it.'}"
-                    Glyph="&#xE77F;"
-                    Header="{loc:Tr Text='Paste after choosing an item'}"
-                    Keywords="{loc:Tr Text='auto paste, Ctrl+V, insert'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PasteOnSelect, Mode=TwoWay}" />
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Items you paste from history jump back to the top.'}"
-                    Glyph="&#xE72A;"
-                    Header="{loc:Tr Text='Move pasted items to the top'}"
-                    Keywords="{loc:Tr Text='order, sort, recent'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.MoveToTopOnPaste, Mode=TwoWay}" />
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Pinned items are listed before everything else. The panel opens on your newest copy, with the pinned items just above it: scroll up or press ↑ to see them.'}"
-                    Glyph="&#xE840;"
-                    Header="{loc:Tr Text='Show pinned items first'}"
-                    Keywords="{loc:Tr Text='pins, order, sort, top'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.PinnedOnTop, Mode=TwoWay}" />
-                </controls:SettingsCard>
-
-                <!--  Privacy  -->
+                <!--
+                  Privacy: what is kept out, how the history is protected, who else can read it, and wiping it. Command
+                  line (bclip) is here since 2026-11-21 (it was in App): while it is on, any program running as the user
+                  can read the history.
+                -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Privacy'}" />
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Stop recording new copies until you resume. Password managers that mark their copies as private are always skipped.'}"
-                    Glyph="&#xE769;"
-                    Header="{loc:Tr Text='Pause capturing'}"
-                    Keywords="{loc:Tr Text='stop recording, disable, incognito, private'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.IsCapturePaused, Mode=TwoWay}" />
-                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Never record copies from these apps (process names, one per line). Comes filled with known password managers and authenticator apps (1Password, Bitwarden, KeePass, KeePassXC, LastPass, Proton Pass, RoboForm and many more); delete any you do want recorded and they stay deleted. Managers that work only inside the browser cannot be told apart from the browser.'}"
                     Glyph="&#xEA18;"
@@ -792,10 +855,28 @@
                     Header="{loc:Tr Text='Encrypted history'}"
                     Keywords="{loc:Tr Text='encryption, security, DPAPI, key'}" />
                 <controls:SettingsCard
-                    Description="{x:Bind ViewModel.CaptureReliabilityText, Mode=OneWay}"
-                    Glyph="&#xE9D9;"
-                    Header="{loc:Tr Text='Capture reliability'}"
-                    Keywords="{loc:Tr Text='statistics, missed copies, dropped, accuracy'}" />
+                    Description="{loc:Tr Text='Lets scripts and AI assistants list, search, read and copy your clipboard history with the bclip command. While this is on, any program running as you can read your history, so it is off by default.'}"
+                    Glyph="&#xE756;"
+                    Header="{loc:Tr Text='Command line (bclip)'}"
+                    Keywords="{loc:Tr Text='CLI, terminal, scripts, automation, PATH'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.EnableCommandLine, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                IsTextSelectionEnabled="True"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.CommandLineStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <!--  Not in the Microsoft Store edition: there every terminal finds bclip through its app execution alias.  -->
+                            <Button
+                                Click="AddCommandLineToPath_Click"
+                                Content="{loc:Tr Text='Add bclip to PATH'}"
+                                IsEnabled="{x:Bind ViewModel.CanAddCommandLineToPath, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.IsNotStoreEdition}" />
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{loc:Tr Text=&quot;Delete history permanently. Clearing keeps pinned items and items in groups; 'Everything' removes them too (the groups stay, empty). Forgotten items stay forgotten either way.&quot;}"
                     Glyph="&#xE74D;"
@@ -853,7 +934,7 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
 
-                <!--  Integrations  -->
+                <!--  Integrations, in the order of the panel's tabs: Everything last, like its tab (since 2026-11-21).  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='Integrations'}" />
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Every screenshot ShareX saves shows up in your history the moment the file is written, and the panel gets a ShareX tab. Pause capturing, Ignored apps (add ShareX to skip it) and the size limit apply to screenshots too.'}"
@@ -981,45 +1062,6 @@
                                 IsEnabled="{x:Bind ViewModel.Stored.NotepadPlusPlusFiles, Mode=OneWay}"
                                 Loaded="DeleteStoredButton_Loaded"
                                 Tag="NotepadPlusPlusFiles" />
-                        </StackPanel>
-                    </controls:SettingsCard.Footer>
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='While voidtools Everything is installed or running, the panel gets an Everything tab: the files and folders you open from Everything, newest first, next to everything copied from it. BetterClipboard only reads from Everything. A file is kept in your history only when you paste, copy or pin it there.'}"
-                    Glyph="&#xE721;"
-                    Header="Everything"
-                    Keywords="{loc:Tr Text='voidtools, file search, files, folders'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.ShowEverythingTab, Mode=TwoWay}" />
-                    <controls:SettingsCard.Footer>
-                        <StackPanel Spacing="8">
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                IsTextSelectionEnabled="True"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="{x:Bind ViewModel.EverythingStatus, Mode=OneWay}"
-                                TextWrapping="Wrap" />
-                            <!--  The limit of this integration's list, 0 = unlimited by default (CLAUDE.md §2.62, ListLimit).
-                                  Its label stands above the box, not in its Header: a header makes the box as wide as its
-                                  label, and the boxes came out at different widths (their live check).  -->
-                            <StackPanel Spacing="4">
-                                <TextBlock Text="{loc:Tr Text='Maximum files and folders hidden with Delete (0 = unlimited)'}" TextWrapping="Wrap" />
-                                <NumberBox
-                                    MinWidth="140"
-                                    HorizontalAlignment="Left"
-                                    AutomationProperties.Name="{loc:Tr Text='Maximum files and folders hidden with Delete (0 = unlimited)'}"
-                                    LargeChange="1000"
-                                    Maximum="1000000"
-                                    Minimum="0"
-                                    SmallChange="100"
-                                    SpinButtonPlacementMode="Compact"
-                                    Value="{x:Bind ViewModel.MaxHiddenEverythingPicks, Mode=TwoWay}" />
-                            </StackPanel>
-                            <Button
-                                Click="DeleteStored_Click"
-                                Content="{loc:Tr Text='Delete stored…'}"
-                                IsEnabled="{x:Bind ViewModel.Stored.Everything, Mode=OneWay}"
-                                Loaded="DeleteStoredButton_Loaded"
-                                Tag="Everything" />
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
@@ -1189,8 +1231,47 @@
                         </StackPanel>
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='While voidtools Everything is installed or running, the panel gets an Everything tab: the files and folders you open from Everything, newest first, next to everything copied from it. BetterClipboard only reads from Everything. A file is kept in your history only when you paste, copy or pin it there.'}"
+                    Glyph="&#xE721;"
+                    Header="Everything"
+                    Keywords="{loc:Tr Text='voidtools, file search, files, folders'}">
+                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.ShowEverythingTab, Mode=TwoWay}" />
+                    <controls:SettingsCard.Footer>
+                        <StackPanel Spacing="8">
+                            <TextBlock
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                IsTextSelectionEnabled="True"
+                                Style="{StaticResource CaptionTextBlockStyle}"
+                                Text="{x:Bind ViewModel.EverythingStatus, Mode=OneWay}"
+                                TextWrapping="Wrap" />
+                            <!--  The limit of this integration's list, 0 = unlimited by default (CLAUDE.md §2.62, ListLimit).
+                                  Its label stands above the box, not in its Header: a header makes the box as wide as its
+                                  label, and the boxes came out at different widths (their live check).  -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="{loc:Tr Text='Maximum files and folders hidden with Delete (0 = unlimited)'}" TextWrapping="Wrap" />
+                                <NumberBox
+                                    MinWidth="140"
+                                    HorizontalAlignment="Left"
+                                    AutomationProperties.Name="{loc:Tr Text='Maximum files and folders hidden with Delete (0 = unlimited)'}"
+                                    LargeChange="1000"
+                                    Maximum="1000000"
+                                    Minimum="0"
+                                    SmallChange="100"
+                                    SpinButtonPlacementMode="Compact"
+                                    Value="{x:Bind ViewModel.MaxHiddenEverythingPicks, Mode=TwoWay}" />
+                            </StackPanel>
+                            <Button
+                                Click="DeleteStored_Click"
+                                Content="{loc:Tr Text='Delete stored…'}"
+                                IsEnabled="{x:Bind ViewModel.Stored.Everything, Mode=OneWay}"
+                                Loaded="DeleteStoredButton_Loaded"
+                                Tag="Everything" />
+                        </StackPanel>
+                    </controls:SettingsCard.Footer>
+                </controls:SettingsCard>
 
-                <!--  App  -->
+                <!--  App: the language, starting with Windows, the data folder and the version.  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='App'}" />
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Restart BetterClipboard to apply the language. History and custom names are not translated.'}"
@@ -1258,64 +1339,6 @@
                             IsEnabled="{x:Bind ViewModel.CanChangeLaunchAtStartup, Mode=OneWay}"
                             IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}" />
                     </StackPanel>
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Light, dark, or follow Windows.'}"
-                    Glyph="&#xE771;"
-                    Header="{loc:Tr Text='Theme'}"
-                    Keywords="{loc:Tr Text='dark mode, light mode, colors, appearance'}">
-                    <ComboBox MinWidth="180" SelectedIndex="{x:Bind ViewModel.ThemeIndex, Mode=TwoWay}">
-                        <ComboBoxItem Content="{loc:Tr Text='Use Windows setting'}" />
-                        <ComboBoxItem Content="{loc:Tr Text='Light'}" />
-                        <ComboBoxItem Content="{loc:Tr Text='Dark'}" />
-                    </ComboBox>
-                </controls:SettingsCard>
-                <!--
-                  How see-through the panel's frosted glass is (AppSettings.BackgroundTransparency, CLAUDE.md §2.58): 0 the most
-                  frosted, 100 the clearest, 50 Windows' own look, the default. The glass stays blurred at every level; the
-                  slider sets how strongly its frost covers the blurred background (PanelBackdrop.LookFor). Steps of 5; a tick at
-                  each end and at the default. Each step shows on the panel at once and is saved when the slider rests
-                  (SettingsViewModel.OnBackgroundTransparencyChanged). E7A1 = a half-filled circle (checked by rendering).
-                -->
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='How much of what lies behind the panel shows through its frosted glass. The glass always stays blurred: 0 is the most frosted, 100 the clearest, and 50 the usual look.'}"
-                    Glyph="&#xE7A1;"
-                    Header="{loc:Tr Text='Background transparency'}"
-                    Keywords="{loc:Tr Text='transparent, see-through, opacity, opaque, blur, frosted glass, acrylic, background'}">
-                    <Slider
-                        Width="220"
-                        AutomationProperties.Name="{loc:Tr Text='Background transparency'}"
-                        LargeChange="25"
-                        Maximum="100"
-                        Minimum="0"
-                        SmallChange="5"
-                        StepFrequency="5"
-                        TickFrequency="50"
-                        TickPlacement="Outside"
-                        Value="{x:Bind ViewModel.BackgroundTransparency, Mode=TwoWay}" />
-                </controls:SettingsCard>
-                <controls:SettingsCard
-                    Description="{loc:Tr Text='Lets scripts and AI assistants list, search, read and copy your clipboard history with the bclip command. While this is on, any program running as you can read your history, so it is off by default.'}"
-                    Glyph="&#xE756;"
-                    Header="{loc:Tr Text='Command line (bclip)'}"
-                    Keywords="{loc:Tr Text='CLI, terminal, scripts, automation, PATH'}">
-                    <ToggleSwitch OnContent="{loc:Tr Text='On'}" OffContent="{loc:Tr Text='Off'}" IsOn="{x:Bind ViewModel.EnableCommandLine, Mode=TwoWay}" />
-                    <controls:SettingsCard.Footer>
-                        <StackPanel Spacing="8">
-                            <TextBlock
-                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                                IsTextSelectionEnabled="True"
-                                Style="{StaticResource CaptionTextBlockStyle}"
-                                Text="{x:Bind ViewModel.CommandLineStatus, Mode=OneWay}"
-                                TextWrapping="Wrap" />
-                            <!--  Not in the Microsoft Store edition: there every terminal finds bclip through its app execution alias.  -->
-                            <Button
-                                Click="AddCommandLineToPath_Click"
-                                Content="{loc:Tr Text='Add bclip to PATH'}"
-                                IsEnabled="{x:Bind ViewModel.CanAddCommandLineToPath, Mode=OneWay}"
-                                Visibility="{x:Bind ViewModel.IsNotStoreEdition}" />
-                        </StackPanel>
-                    </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
                 <controls:SettingsCard
                     Description="{x:Bind ViewModel.DataFolderDescription}"

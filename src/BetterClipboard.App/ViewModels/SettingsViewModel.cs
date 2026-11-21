@@ -238,7 +238,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial bool PasteOnSelect { get; set; }
 
     /// <summary>
-    /// Settings › Shortcut › Leave the keyboard with your app (<see cref="AppSettings.LeaveFocusInApp"/>, CLAUDE.md §2.59):
+    /// Settings › Panel › Leave the keyboard with your app (<see cref="AppSettings.LeaveFocusInApp"/>, CLAUDE.md §2.59):
     /// the panel opens without taking the keyboard from the app the user types in. Takes effect at the next summon.
     /// </summary>
     [ObservableProperty]
@@ -277,7 +277,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial int PlacementIndex { get; set; }
 
     /// <summary>
-    /// Settings › Shortcut › Buttons in the panel (CLAUDE.md §2.55, §2.58): one row per header button Settings lists, top to
+    /// Settings › Panel › Buttons in the panel (CLAUDE.md §2.55, §2.58): one row per header button Settings lists, top to
     /// bottom as the header runs left to right, each with its box (shown or hidden) and its up and down arrows. Fixed places,
     /// built once; <see cref="RefreshPanelButtonRows"/> puts the saved order and boxes into them (see
     /// <see cref="PanelButtonRowViewModel"/>'s remarks for why rows are places). The update button has no row in a copy
@@ -287,7 +287,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public IReadOnlyList<PanelButtonRowViewModel> PanelButtonRows { get; }
 
     /// <summary>
-    /// Settings › Shortcut › Lines per card (<see cref="AppSettings.LinesPerCard"/>, CLAUDE.md §2.57): how many lines of its
+    /// Settings › Panel › Lines per card (<see cref="AppSettings.LinesPerCard"/>, CLAUDE.md §2.57): how many lines of its
     /// text each card in the panel shows, 1 to 40. A double, as the number box's value is.
     /// </summary>
     [ObservableProperty]
@@ -298,7 +298,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial int ThemeIndex { get; set; }
 
     /// <summary>
-    /// Settings › App › Background transparency's slider: <see cref="AppSettings.BackgroundTransparency"/>, 0 (most frosted)
+    /// Settings › Panel › Background transparency's slider: <see cref="AppSettings.BackgroundTransparency"/>, 0 (most frosted)
     /// to 100 (clearest), 50 the usual look (CLAUDE.md §2.58). Each step shows on the panel at once and is saved once the
     /// slider rests (<see cref="OnBackgroundTransparencyChanged(double)"/>).
     /// </summary>
@@ -1366,7 +1366,7 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Persists one ticked or unticked box of Settings › Shortcut › Buttons in the panel, keeping the others as stored
+    /// Persists one ticked or unticked box of Settings › Panel › Buttons in the panel, keeping the others as stored
     /// (<see cref="PanelButtons.WithShown"/>); the controller then applies the header (<c>ClipboardFlyout.ApplyHeaderButtons</c>).
     /// Unticking the pin also lets the panel close after pasting again (<see cref="AppSettings.PanelStaysOpen"/>).
     /// </summary>

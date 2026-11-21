@@ -100,7 +100,7 @@ public sealed partial class FlyoutViewModel : ObservableObject
     public ObservableCollection<ClipItemViewModel> Items { get; } = [];
 
     /// <summary>
-    /// Makes every card show <paramref name="lines"/> lines of its text (Settings › Shortcut › Lines per card, CLAUDE.md
+    /// Makes every card show <paramref name="lines"/> lines of its text (Settings › Panel › Lines per card, CLAUDE.md
     /// §2.57): the cards made from now on (<see cref="ClipItemViewModel.DefaultCardLines"/>) and the ones listed now, in
     /// place. UI thread only. Nothing is loaded again: every card holds a preview long enough for the most lines.
     /// </summary>

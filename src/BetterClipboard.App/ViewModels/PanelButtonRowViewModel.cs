@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml;
 namespace BetterClipboard.App.ViewModels;
 
 /// <summary>
-/// One row of Settings › Shortcut › Buttons in the panel (CLAUDE.md §2.55, §2.58): a header button's box — ticked while it
+/// One row of Settings › Panel › Buttons in the panel (CLAUDE.md §2.55, §2.58): a header button's box — ticked while it
 /// shows — and its up and down arrows, which move it left and right in the panel.
 /// </summary>
 /// <remarks>

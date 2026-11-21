@@ -2,7 +2,7 @@ namespace BetterClipboard.Core.Presentation;
 
 /// <summary>
 /// One look of Windows' desktop acrylic (<c>DesktopAcrylicController</c>): what the panel's backdrop is told to draw for a
-/// level of Settings › App › Background transparency (<see cref="PanelBackdrop"/>).
+/// level of Settings › Panel › Background transparency (<see cref="PanelBackdrop"/>).
 /// </summary>
 /// <remarks>
 /// The acrylic is Windows' own frosted glass: the screen behind the window, blurred, then a luminosity layer that evens out
@@ -23,7 +23,7 @@ namespace BetterClipboard.Core.Presentation;
 public readonly record struct AcrylicLook(uint TintColor, float TintOpacity, float LuminosityOpacity, uint FallbackColor);
 
 /// <summary>
-/// The rules of the panel's "Background transparency" (Settings › App, CLAUDE.md §2.58): a level from 0 to 100, and the
+/// The rules of the panel's "Background transparency" (Settings › Panel, CLAUDE.md §2.58): a level from 0 to 100, and the
 /// acrylic look each level gives in the light and the dark theme.
 /// </summary>
 /// <remarks>

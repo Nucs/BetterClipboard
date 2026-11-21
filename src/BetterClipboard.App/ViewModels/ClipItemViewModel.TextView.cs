@@ -8,7 +8,7 @@ using Microsoft.UI.Xaml;
 namespace BetterClipboard.App.ViewModels;
 
 /// <summary>
-/// What a card knows about its text: how many lines of it the card shows (Settings › Shortcut › Lines per card), the text
+/// What a card knows about its text: how many lines of it the card shows (Settings › Panel › Lines per card), the text
 /// its text block is given for them, and for the text viewer (the eye's viewer and the hover peek of a long text,
 /// ClipboardFlyout.TextPreview.cs) whether it has text to show and whether the card shows less than all of it.
 /// </summary>

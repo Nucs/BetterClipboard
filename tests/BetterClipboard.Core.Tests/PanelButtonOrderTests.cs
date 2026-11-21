@@ -5,7 +5,7 @@ using BetterClipboard.Core.Settings;
 namespace BetterClipboard.Core.Tests;
 
 /// <summary>
-/// Tests for the order of the panel header's buttons (Settings › Shortcut › Buttons in the panel, its up and down arrows;
+/// Tests for the order of the panel header's buttons (Settings › Panel › Buttons in the panel, its up and down arrows;
 /// CLAUDE.md §2.58): the order shown from the stored one, where a move puts a button and which moves are possible, what is
 /// stored, and the setting's reading, normalizing and file name. The Settings button is in no order: it always ends the
 /// header.

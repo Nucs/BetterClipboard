@@ -479,7 +479,7 @@ Hotkey → `ForegroundContext.Capture()` on the input thread (target HWND + Win3
 `GetGUIThreadInfo`, or which window to ask for its accessibility caret, §2.64 + cursor + a Stopwatch timestamp,
 `CapturedAt`) → UI at **High** dispatcher priority: for *Next to the text cursor*, an app that keeps no Win32 caret
 (Chromium, Firefox, the console) is asked for its accessibility caret, at most 250 ms (since 2026-11-21, §2.64); the panel,
-already drawn with its list current while it was cloaked, is moved to the caret (or where *Settings › Shortcut › Panel
+already drawn with its list current while it was cloaked, is moved to the caret (or where *Settings › Panel › Panel
 position* says: next to the mouse, or centered on the main or the current screen, §2.38), activated and uncloaked in one
 frame (§2.27; focus to the search box; keystrokes must never leak into the app below); only a list that is not current is
 reloaded afterwards → Enter/click → the item's formats, read while its card was selected → `ReplayFormats.Prepare`
@@ -493,7 +493,7 @@ panel away (since 2026-11-15, §2.52: before, all of that came before the Ctrl+V
 
 **Since 2026-11-20 the panel leaves the keyboard with the app by default** (§2.59): it is shown and uncloaked without
 being activated, the app keeps the foreground and its editing (a rename in File Explorer), and a hook gives the panel
-the keys it acts on. The paste's re-activation of the target then finds it in front already. *Settings › Shortcut ›
+the keys it acts on. The paste's re-activation of the target then finds it in front already. *Settings › Panel ›
 Leave the keyboard with your app* brings the way described above back.
 
 **Over Start or Search** (since 2026-11-20, §2.61) the panel opens beside it, Start stays open, and the paste goes into its
@@ -7707,6 +7707,70 @@ first version (the lookup ended "LATE" at 110 ms, on the input thread), and 6.4 
   that Firefox's life, as screen readers, password managers and Windows' own features do.
 - Not run: the owner's PC, a real GPU, several monitors, Narrator running.
 
+### 2.65 Settings regrouped: the Panel and Capture sections (2026-11-21)
+
+User request (2026-11-21): "Look at the settings and settings rows we have, we developed a bunch of settings and they are
+now all scattered around / Provide me in a dash-list current and then the suggested and i'll approve
+reordering/regrouping". Claude listed the nine sections with their cards and suggested eleven, with three optional flips
+(Theme stays in App; Pause capturing stays first in Privacy; Command line stays in App). The owner: "Reorder and
+translate if any text added/changed." — the suggestion as it stood, no flip.
+
+**The page now** (`SettingsWindow.xaml`, top to bottom; 47 cards, the Updates section holding one per edition):
+
+| Section | Cards |
+|---|---|
+| Shortcut | Open BetterClipboard, Take over shortcuts owned by Windows, Release from Explorer |
+| **Panel** (new) | Panel position, Leave the keyboard with your app, Show pinned items first, Lines per card, Buttons in the panel, Theme, Background transparency |
+| Pasting | Paste after choosing an item, Move pasted items to the top |
+| **Capture** (new) | Pause capturing, Record images, Record copied files, Preserve app-specific formats, Capture reliability |
+| History | Maximum items, Keep items for (days), Largest item (MB), History size budget (MB), Keep temporary pictures for (days) |
+| Privacy | Ignored apps, Forgotten forever, Encrypted history, Command line (bclip), Clear history |
+| Windows clipboard | Windows' own clipboard history, Import from Windows |
+| Integrations | ShareX screenshots, Snipping Tool and Win+PrtScn, Notepad++ unsaved tabs, Files opened in Notepad++, Win+R history, Pwsh tab, Cmd tab, Claude Code prompts, Codex prompts, Everything |
+| App | Language, Start with Windows, Data folder, About BetterClipboard |
+| Updates | Check for updates automatically (the Microsoft Store edition: Updates from the Microsoft Store) |
+| Third party | Works with, Built with |
+
+**What moved:**
+- To Panel: Panel position, Leave the keyboard with your app, Buttons in the panel and Lines per card from Shortcut;
+  Show pinned items first from Pasting; Theme and Background transparency from App. The theme also colors Settings and
+  the other windows; it stands with the panel's other looks (the first flip, not taken).
+- To Capture: Pause capturing and Capture reliability from Privacy; Record images, Record copied files and Preserve
+  app-specific formats from History, which keeps only its limits and the temporary pictures' days.
+- To Privacy: Command line (bclip) from App: while it is on, any program running as the user can read the history.
+- Within their sections: Take over shortcuts owned by Windows right under Open BetterClipboard (its state line "Turn on
+  the takeover below" now points at the very next card), and Everything last in Integrations, in the order of the
+  panel's tabs.
+
+**How:**
+- The page's XAML only. Every card element is the same byte for byte, with the comments above it (a scratch script
+  compared each card's element before and after); the section titles and their comments are new or rewritten, and one
+  card comment's words about its place changed (Panel position). Nothing in the code depends on the order: the search
+  reads the sections from the page (`SettingsWindow.Search.cs`), the Microsoft Store edition removes its cards by name
+  (`SettingsWindow.Store.cs`), and the budget's notification scrolls to `HistoryBudgetCard` by name.
+- Two new strings, the section titles "Panel" and "Capture", in all five catalogs with their descriptions: 面板, Панель,
+  Panel, חלונית and 采集, Запись, Captura, קליטה, the words the catalogs already used for the panel ("Panel position")
+  and for capturing ("Pause capturing", "Capture reliability").
+- 63 translator descriptions in `en.json` name their card's new place, and the History, Privacy and App titles'
+  descriptions list their new contents. No translation changed.
+- Code comments and one log line name the new places ("… the panel takes the keys it acts on (Settings › Panel).").
+- No card was renamed, so the texts that send people to a card by its name ("Settings › Forgotten forever", "Settings ›
+  Release from Explorer") still lead there.
+
+**The notes and the Store:** the 0.2.12 notes name the new paths and gain a paragraph, **Settings regrouped.** Its first
+sentence had to stay short: the Store's "What's new" is 1,499 of 1,500 characters with it, and the first wording made
+`ConvertTo-StoreNotes` fall back to the lead-ins alone (275 characters). A paragraph added to the notes from now on must
+shorten another, or the Store gets lead-ins only.
+
+**Not changed** (the owner's rule on the README since 2026-11-20): README.md's Settings list under *Use*, which describes
+the nine sections of before, its three paths to moved cards (*Settings › Pasting* for the pinned order, *Settings ›
+Shortcut › Panel position*, *Settings › Shortcut › Lines per card*), and the same lines of the four translations. The
+website's guides name only cards that did not move.
+
+**Earlier sections** name the places of their time; the table above maps them.
+
+**Verified:** see §5.
+
 ---
 
 ## 3. Build · run · test
@@ -10349,6 +10413,10 @@ kit by a scratch generator, session 66cdd808):
 
 ## 6. Roadmap / known gaps
 
+- **The README after the Settings regroup** (2026-11-21, §2.65): its Settings list under *Use* still describes the nine
+  sections of before, and three paths name moved cards' old places (*Settings › Pasting* for the pinned order,
+  *Settings › Shortcut › Panel position*, *Settings › Shortcut › Lines per card*), in all five languages. Changed only
+  on the owner's word (§4's README rule as the owner set it on 2026-11-20).
 - **Above Start with Windows' UI access** (2026-11-21, §2.63), next steps:
   - the owner's PC: switching their copy to `-UIAccess` adds a certificate to their trusted roots, moves the copy to
     Program Files and makes every update ask for administrator rights: their call (asked in the reply of 2026-11-21);

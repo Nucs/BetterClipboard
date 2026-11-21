@@ -258,7 +258,7 @@ public sealed partial class ClipboardFlyout : Window
         // The remembered tab, the arrow keys beyond Up and Down, and the mouse selecting rows: ClipboardFlyout.Navigation.cs.
         InitializeNavigation();
 
-        // The panel that opens without taking the keyboard from the app (Settings › Shortcut): ClipboardFlyout.Focusless.cs.
+        // The panel that opens without taking the keyboard from the app (Settings › Panel): ClipboardFlyout.Focusless.cs.
         InitializeFocusless();
         ItemsList.Loaded += (_, _) => HookScrollViewer();
 
@@ -513,7 +513,7 @@ public sealed partial class ClipboardFlyout : Window
             SuspendPointerSelection();
 
             // With the keyboard, or without it — the app the user types in keeps it, and the panel takes the keys it acts on
-            // (Settings › Shortcut, ClipboardFlyout.Focusless.cs). Decided before the panel shows, so a key typed right away
+            // (Settings › Panel, ClipboardFlyout.Focusless.cs). Decided before the panel shows, so a key typed right away
             // is already taken.
             BeginSummonMode(context);
 

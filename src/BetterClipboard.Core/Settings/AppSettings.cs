@@ -376,7 +376,7 @@ public sealed record AppSettings
     public bool KeepPanelOpen { get; init; }
 
     /// <summary>
-    /// The panel header's buttons hidden in Settings › Shortcut › Buttons in the panel, as <see cref="Presentation.PanelButton"/>
+    /// The panel header's buttons hidden in Settings › Panel › Buttons in the panel, as <see cref="Presentation.PanelButton"/>
     /// names. By default only the trash (<see cref="Presentation.PanelButton.Clear"/>) is hidden: Clear history starts
     /// unticked. An empty list means every button shows. The Settings button is never among them.
     /// </summary>
@@ -406,7 +406,7 @@ public sealed record AppSettings
     public IReadOnlyList<string> HiddenPanelButtons { get; init; } = [nameof(Presentation.PanelButton.Clear)];
 
     /// <summary>
-    /// The panel header's buttons in the order the user arranged them (Settings › Shortcut › Buttons in the panel, the up and
+    /// The panel header's buttons in the order the user arranged them (Settings › Panel › Buttons in the panel, the up and
     /// down arrows; CLAUDE.md §2.58), left to right, as <see cref="Presentation.PanelButton"/> names; empty while they stand
     /// in the default order. The Settings button is never among them: it always ends the header.
     /// </summary>
@@ -501,7 +501,7 @@ public sealed record AppSettings
     public int FlyoutHeight { get; init; } = DefaultFlyoutHeight;
 
     /// <summary>
-    /// How many lines of its text each card in the panel shows before the rest is cut off with "…" (Settings › Shortcut ›
+    /// How many lines of its text each card in the panel shows before the rest is cut off with "…" (Settings › Panel ›
     /// Lines per card), <see cref="MinLinesPerCard"/> to <see cref="MaxLinesPerCard"/>; <see cref="DefaultLinesPerCard"/>
     /// until the user picks another number. A card that shows less than its whole text still gets the eye, the dotted line
     /// under its text and the hover peek, which show all of it.
@@ -872,7 +872,7 @@ public sealed record AppSettings
     public IReadOnlyList<string> SeededIgnoredApps { get; init; } = [];
 
     /// <summary>
-    /// Where the panel appears at every summon (Settings › Shortcut › Panel position): next to the text cursor (the
+    /// Where the panel appears at every summon (Settings › Panel › Panel position): next to the text cursor (the
     /// default, like Win+V), next to the mouse, or centered on a screen (<see cref="CenterOnMainScreen"/> says which).
     /// </summary>
     /// <remarks>
@@ -904,7 +904,7 @@ public sealed record AppSettings
     public AppTheme Theme { get; init; } = AppTheme.System;
 
     /// <summary>
-    /// How much of what lies behind the panel shows through its frosted glass (Settings › App › Background transparency,
+    /// How much of what lies behind the panel shows through its frosted glass (Settings › Panel › Background transparency,
     /// CLAUDE.md §2.58): <see cref="Presentation.PanelBackdrop.MinLevel"/> (0, the most frosted) to
     /// <see cref="Presentation.PanelBackdrop.MaxLevel"/> (100, the clearest); <see cref="Presentation.PanelBackdrop.DefaultLevel"/>
     /// (50) is Windows' own acrylic, the panel's look before the setting existed.

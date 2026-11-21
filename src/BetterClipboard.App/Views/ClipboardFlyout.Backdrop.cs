@@ -4,7 +4,7 @@ using BetterClipboard.Core.Presentation;
 namespace BetterClipboard.App.Views;
 
 /// <summary>
-/// The panel's frosted glass and how see-through it is: Settings › App › Background transparency (CLAUDE.md §2.58).
+/// The panel's frosted glass and how see-through it is: Settings › Panel › Background transparency (CLAUDE.md §2.58).
 /// </summary>
 /// <remarks>
 /// <para>

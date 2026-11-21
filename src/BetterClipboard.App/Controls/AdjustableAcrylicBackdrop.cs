@@ -10,7 +10,7 @@ namespace BetterClipboard.App.Controls;
 
 /// <summary>
 /// The panel's background: Windows' desktop acrylic, as the stock <see cref="DesktopAcrylicBackdrop"/> draws it, with how
-/// strongly its frost covers the blurred screen behind set by Settings › App › Background transparency (<see cref="Level"/>,
+/// strongly its frost covers the blurred screen behind set by Settings › Panel › Background transparency (<see cref="Level"/>,
 /// CLAUDE.md §2.58). Set on <c>Window.SystemBackdrop</c>; serves that one window.
 /// </summary>
 /// <remarks>
@@ -232,7 +232,7 @@ public sealed partial class AdjustableAcrylicBackdrop : SystemBackdrop
         controller.SetSystemBackdropConfiguration(configuration);
         controller.AddSystemBackdropTarget(controllerTarget);
         Apply(force: true);
-        // Windows' own switch and Settings › App › Theme both arrive here (the panel's content changed its actual theme). In
+        // Windows' own switch and Settings › Panel › Theme both arrive here (the panel's content changed its actual theme). In
         // high contrast the controller draws the contrast theme's background whatever the theme says (WinUI's configuration
         // read "light" under High Contrast Black in the test desktop), so the line names high contrast alone then.
         string look = configuration.IsHighContrast ? "high contrast" : appliedLight == true ? "the light theme" : "the dark theme";

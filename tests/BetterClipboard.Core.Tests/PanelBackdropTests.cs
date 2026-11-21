@@ -5,7 +5,7 @@ using BetterClipboard.Core.Settings;
 namespace BetterClipboard.Core.Tests;
 
 /// <summary>
-/// Tests for the panel's Background transparency (Settings › App, CLAUDE.md §2.58): the default is Windows' own acrylic, the
+/// Tests for the panel's Background transparency (Settings › Panel, CLAUDE.md §2.58): the default is Windows' own acrylic, the
 /// scale runs from the most frosted to the clearest glass without ever leaving the glass, every level keeps the theme's
 /// colors, and the setting's default, clamping, round trip and file name.
 /// </summary>
