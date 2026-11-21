@@ -693,10 +693,19 @@ public sealed partial class AppController
             return;
         }
 
-        pasteTarget = context;
-
         // One snapshot for both halves of the placement (where, and which screen when centered).
         var settings = Settings.Current;
+
+        // "Next to the text cursor" over an app that keeps no Win32 caret (Chromium, Firefox, the classic console): its
+        // accessibility caret is asked for here, on the UI thread and before the panel shows, never on the shortcut's input
+        // thread, which runs the keyboard hook (CLAUDE.md §2.64). The other placements never ask: no wait, and Firefox's
+        // accessibility stays off.
+        if (PlacesByCaret(settings.Placement))
+        {
+            context = context.WithAccessibleCaret(AccessibleCaret.DefaultDeadline);
+        }
+
+        pasteTarget = context;
         EnsureFlyout().ShowAt(context, settings.Placement, settings.CenterOnMainScreen);
 
         // The looks that may show or hide a tab come after the panel, never before it: the tabs follow when they land, as
@@ -1570,6 +1579,20 @@ public sealed partial class AppController
             MaxItemBytes = current.MaxItemSizeMB * 1024L * 1024L,
         };
     }
+
+    /// <summary>
+    /// Whether a panel position puts the panel by the text caret, so that a summon must find the caret: "Next to the text
+    /// cursor", and any value no version knows, which <see cref="FlyoutPositioner.ChooseScreen"/> also counts as it.
+    /// </summary>
+    /// <remarks>
+    /// Only these placements make a summon ask an app without a Win32 caret for its accessibility caret
+    /// (<see cref="ForegroundContext.WithAccessibleCaret"/>), which can hold the panel up to
+    /// <see cref="AccessibleCaret.DefaultDeadline"/> and starts Firefox's accessibility.
+    /// </remarks>
+    /// <param name="placement">The placement (<see cref="AppSettings.Placement"/>).</param>
+    /// <returns><see langword="true"/> unless the panel goes next to the mouse or centered.</returns>
+    private static bool PlacesByCaret(FlyoutPlacement placement) =>
+        placement is not (FlyoutPlacement.NearCursor or FlyoutPlacement.CenterScreen);
 
     /// <summary>Reacts to settings changes (any thread; marshals UI work).</summary>
     /// <param name="sender">The store.</param>

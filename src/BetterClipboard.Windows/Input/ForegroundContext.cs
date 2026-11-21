@@ -30,14 +30,35 @@ public readonly record struct ScreenRect(int Left, int Top, int Right, int Botto
 }
 
 /// <summary>
+/// A lookup of an app's accessibility (MSAA) caret that a summon may still make (<see cref="ForegroundContext.WithAccessibleCaret"/>):
+/// the window to ask, and the bounds of the window in front, which the caret must lie on.
+/// </summary>
+/// <param name="Window">
+/// The window to ask: the focus window of the window in front, else the window in front itself (a console window, whose
+/// thread <c>GetGUIThreadInfo</c> refuses).
+/// </param>
+/// <param name="Within">The bounds of the window in front, in physical screen pixels; a caret outside them is none.</param>
+public readonly record struct AccessibleCaretQuery(nint Window, ScreenRect Within);
+
+/// <summary>
 /// Snapshot of "where the user was" at the moment the hotkey fired: the window to paste back into and
 /// the caret/cursor position to place the flyout next to.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Must be captured <b>before</b> BetterClipboard activates its own window — afterwards the foreground
-/// window is ours. The caret is only known for apps using the Win32 system caret (classic Win32, WPF,
-/// WinForms, and Chromium/Firefox, which maintain an accessibility caret); for others
-/// <see cref="Caret"/> is <see langword="null"/> and the cursor position is used.
+/// window is ours.
+/// </para>
+/// <para>
+/// <b>Where the caret is known</b> (measured 2026-11-21, issue #10, CLAUDE.md §2.64): apps with a Win32 system caret
+/// (classic Win32 edit boxes such as Notepad's, the Run box and Explorer's rename box, WinForms, WPF), read with
+/// <c>GetGUIThreadInfo</c>; and, for a summon that places the panel by the caret (<see cref="WithAccessibleCaret"/>), apps
+/// whose caret only Microsoft Active Accessibility reports (<see cref="AccessibleCaret"/>): Chromium browsers and apps built
+/// on Chromium, Firefox, and the classic console. Chromium never keeps a Win32 caret, and Firefox keeps one only while its
+/// accessibility runs — until 2026-11-21 this remark said both did, and in them the panel followed the mouse. Windows
+/// Terminal and XAML/WinUI text boxes report neither: for them <see cref="Caret"/> is <see langword="null"/> and the cursor
+/// position is used.
+/// </para>
 /// </remarks>
 /// <param name="TargetWindow">Foreground top-level window to paste into (0 when unknown, e.g. opened from the tray).</param>
 /// <param name="TargetProcessId">Process of <paramref name="TargetWindow"/>.</param>
@@ -45,6 +66,19 @@ public readonly record struct ScreenRect(int Left, int Top, int Right, int Botto
 /// <param name="Cursor">Mouse cursor position.</param>
 public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, ScreenRect? Caret, ScreenPoint Cursor)
 {
+    /// <summary>
+    /// The accessibility (MSAA) caret lookup a summon may still make: set by <see cref="Capture"/> when the window in front
+    /// has no Win32 caret; <see langword="null"/> otherwise, and once <see cref="WithAccessibleCaret"/> made it.
+    /// </summary>
+    /// <remarks>
+    /// Recorded, not made, on the shortcut's thread: that thread also runs the keyboard hook that takes a shortcut over from
+    /// Explorer, and a hook's callback cannot run while its thread waits. Every key on the PC would wait for the lookup, and
+    /// Windows silently removes a hook that keeps it waiting too long (CLAUDE.md §2.2, §2.64). Not recorded for Start or
+    /// Search (the panel opens beside them, caret or not), nor for this process's own windows (the lookup would wait for
+    /// the thread that has to answer it).
+    /// </remarks>
+    public AccessibleCaretQuery? CaretQuery { get; init; }
+
     /// <summary>
     /// When the context was captured, as a <see cref="System.Diagnostics.Stopwatch"/> timestamp — for a shortcut, a few
     /// microseconds after the key reached BetterClipboard — so the panel can log how long it took to appear. 0 for a context
@@ -107,6 +141,12 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
     /// Captures the current foreground window, its caret, the cursor, and whether the window is a shell surface above every
     /// app window (<see cref="Surface"/>).
     /// </summary>
+    /// <remarks>
+    /// The caret comes from <c>GetGUIThreadInfo</c> when the window's thread has a Win32 caret. Without one, the context only
+    /// records which window to ask for its accessibility caret (<see cref="CaretQuery"/>); a summon that places the panel by
+    /// the caret asks on the UI thread (<see cref="WithAccessibleCaret"/>). Nothing here waits for another app, so it is safe
+    /// on the shortcut's thread, which also runs the keyboard hook.
+    /// </remarks>
     /// <returns>The context.</returns>
     public static ForegroundContext Capture()
     {
@@ -121,7 +161,8 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
 
         ScreenRect? caret = null;
         var info = new GUITHREADINFO { cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf<GUITHREADINFO>() };
-        if (thread != 0 && GetGUIThreadInfo(thread, ref info) && info.hwndCaret != 0)
+        bool threadInfo = thread != 0 && GetGUIThreadInfo(thread, ref info);
+        if (threadInfo && info.hwndCaret != 0)
         {
             var topLeft = new POINT { X = info.rcCaret.Left, Y = info.rcCaret.Top };
             var bottomRight = new POINT { X = info.rcCaret.Right, Y = info.rcCaret.Bottom };
@@ -134,11 +175,58 @@ public sealed record ForegroundContext(nint TargetWindow, uint TargetProcessId, 
         // Two calls into user32 (the window's band and rectangle): read here, on the shortcut's thread, while the surface is
         // still the window in front; the panel decides on the UI thread where it may open.
         var surface = ShellSurfaces.Describe(foreground);
+
+        // No Win32 caret: Chromium (Chrome, Edge, apps built on it), Firefox (until its accessibility runs) and the classic
+        // console report theirs only through MSAA (issue #10). Only noted here, for the summon to ask on the UI thread
+        // (CaretQuery says why). Not for Start or Search (the panel opens beside them, caret or not), nor for this process's
+        // own windows. A console window reports cmd.exe's thread, which GetGUIThreadInfo refuses: the window in front is asked.
+        AccessibleCaretQuery? query = null;
+        if (caret is null && foreground != 0 && surface.Kind == ShellSurfaceKind.None &&
+            processId != (uint)Environment.ProcessId && GetWindowRect(foreground, out var bounds))
+        {
+            nint asked = threadInfo && info.hwndFocus != 0 ? info.hwndFocus : foreground;
+            query = new AccessibleCaretQuery(asked, new ScreenRect(bounds.Left, bounds.Top, bounds.Right, bounds.Bottom));
+        }
+
         return new ForegroundContext(foreground, processId, caret, new ScreenPoint(cursor.X, cursor.Y))
         {
             CapturedAt = now,
             PageFaultsAtCapture = faults,
             Surface = surface,
+            CaretQuery = query,
         };
+    }
+
+    /// <summary>
+    /// This context with the accessibility (MSAA) caret of the app it names, when <see cref="Capture"/> found no Win32 caret
+    /// there (<see cref="CaretQuery"/>): asks the app (<see cref="AccessibleCaret.Read"/>) and waits up to
+    /// <paramref name="deadline"/> for the answer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Call it only for a summon that places the panel by the caret ("Next to the text cursor"): a lookup costs time (the
+    /// first into a process up to about 150 ms in a test desktop, later ones 1–10 ms), and the first in a Firefox window
+    /// starts Firefox's accessibility service.
+    /// </para>
+    /// <para>
+    /// Blocks the calling thread, without pumping messages, for up to <paramref name="deadline"/>: call it on the UI thread
+    /// that opens the panel, never on the shortcut's input thread (<see cref="CaretQuery"/> says why). Call it before the
+    /// panel takes the foreground: a Chromium window that lost the keyboard reports its caret hidden. The summon's log line
+    /// counts the wait in its "queued" stage.
+    /// </para>
+    /// </remarks>
+    /// <param name="deadline">The longest wait (<see cref="AccessibleCaret.DefaultDeadline"/>).</param>
+    /// <returns>
+    /// This context when it has a caret already or nothing to ask; otherwise a copy with the caret the app reported, or none
+    /// (<see cref="AccessibleCaret.Read"/> says when), and no query left, so asking again asks nothing.
+    /// </returns>
+    public ForegroundContext WithAccessibleCaret(TimeSpan deadline)
+    {
+        if (Caret is not null || CaretQuery is not { } query)
+        {
+            return this;
+        }
+
+        return this with { Caret = AccessibleCaret.Read(query.Window, query.Within, deadline), CaretQuery = null };
     }
 }
