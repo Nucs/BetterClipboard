@@ -372,6 +372,26 @@ def main():
         code, output = run(GENERATOR, "--kit", long_reason, "--template", TEMPLATE, "--output", folder / "y.csv")
         check("and the generator writes nothing for such a kit (exit 1)", code == 1 and not (folder / "y.csv").exists(), output[-200:])
 
+        # The notes for certification go to the Store with every release (submit-store.ps1), so the kit's check holds
+        # them to Partner Center's 2,000 characters, every line break counted as two (the strict reading).
+        check("a line break counts as two characters in the notes' length",
+              store_listing.counted_notes_length("a\nb\r\nc") == 7, str(store_listing.counted_notes_length("a\nb\r\nc")))
+        long_notes = broken("long-notes", kit.certification_notes, kit.certification_notes + " x" * 40)
+        code, output = run(CHECKER, long_notes)
+        check("notes for certification over 2,000 characters fail the check (exit 1)",
+              code == 1 and "notes for certification over" in output, output[-200:])
+        # Each "\nz" adds two characters as written and three counted, so these notes are under 2,000 as written and
+        # over it counted: only the strict reading refuses them.
+        room = store_listing.CERTIFICATION_NOTES_AT_MOST - store_listing.counted_notes_length(kit.certification_notes)
+        extra = "\nz" * (room // 3 + 1)
+        written = len(kit.certification_notes + extra)
+        tight_notes = broken("tight-notes", kit.certification_notes, kit.certification_notes + extra)
+        code, output = run(CHECKER, tight_notes)
+        check("notes under 2,000 characters as written, but over it with line breaks counted as two, fail the check",
+              written <= store_listing.CERTIFICATION_NOTES_AT_MOST and code == 1
+              and "notes for certification over" in output,
+              f"{written} characters as written; {output[-200:]}")
+
         long_feature = broken("long-feature", english.features[0], english.features[0] + " and more" * 30)
         code, output = run(CHECKER, long_feature)
         check("a feature over 200 characters fails the check", code == 1 and "English" in output, output[-200:])

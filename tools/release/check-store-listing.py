@@ -13,9 +13,11 @@ every language at once:
                          screenshots serves all of them)
     copyright line       present (the English section states it for every language), at most 200 characters
     runFullTrust reason  present, at most 500 characters (Partner Center refuses a longer one when the page is saved)
-    certification notes  present
+    certification notes  present, at most 2,000 characters with every line break counted as two (the release
+                         pipeline sends them with every version; submit-store.ps1 checks the same before sending)
 
-The limits are Microsoft's, read on 2026-11-12 and 2026-11-13 (docs/microsoft-store.md, "Sources"). A kit whose
+The limits are Microsoft's, read on 2026-11-12 and 2026-11-13 (docs/microsoft-store.md, "Sources"), except the notes'
+2,000, which Microsoft does not document: developers who publish there report it. A kit whose
 layout changed fails loudly instead of passing empty.
 
 Usage:  python tools/release/check-store-listing.py [docs/store-listing.md]
@@ -48,7 +50,8 @@ def main():
               f"{len(listing.search_terms)} search terms ({words} words), "
               f"{len(listing.captions)} captions (longest {longest_caption})")
     print(f"copyright: {len(kit.copyright)} characters; runFullTrust justification: {len(kit.justification)}; "
-          f"notes for certification: {len(kit.certification_notes)}")
+          f"notes for certification: {len(kit.certification_notes)} "
+          f"({store_listing.counted_notes_length(kit.certification_notes)} with line breaks counted as two)")
 
     problems = kit.problems()
     for language, problem in problems:

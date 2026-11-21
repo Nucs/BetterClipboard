@@ -147,6 +147,30 @@ public sealed class ClipboardCaptureTests : IDisposable
     }
 
     /// <summary>
+    /// Another program changing our own write without emptying the clipboard — File Explorer's rename box does it at every
+    /// paste into it (CLAUDE.md §2.59) — leaves BetterClipboard's window the owner: the content is still ours, so nothing is
+    /// recorded (no copy "by BetterClipboard", no second use), and the next real copy is captured.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task OwnWrite_ChangedWithoutEmptying_IsStillOwn()
+    {
+        using var monitor = StartMonitor();
+        using var producer = new ClipboardProducer(isolation);
+
+        await monitor.WriteAsync([new ClipFormatData(ClipFormatNames.UnicodeText, UnicodeTextCodec.Encode("pasted from history"))]);
+        await WaitUntil(monitor, () => monitor.Statistics.SelfWrites == 1);
+        Assert.True(await producer.ChangeWithoutEmptyingAsync("touched by the paste target"), "SetClipboardData without EmptyClipboard was refused.");
+        Assert.Equal("touched by the paste target", await producer.ReadTextAsync());
+        await WaitUntil(monitor, () => monitor.Statistics.SelfWrites == 2);
+        await producer.WriteBurstAsync(["copied by another app"]);
+        await WaitUntil(monitor, () => captured.Count == 1);
+
+        Assert.Equal(["copied by another app"], captured.ToArray());
+        await WaitUntil(monitor, () => Balanced(monitor.Statistics));
+    }
+
+    /// <summary>
     /// A delay-rendered copy (data promised, produced on demand) is rendered by the producer while we read
     /// it immediately after the notification.
     /// </summary>

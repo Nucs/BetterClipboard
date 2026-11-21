@@ -48,7 +48,10 @@ public sealed partial class AppController
     /// </summary>
     private void StartSnipping()
     {
-        snipping = new WindowsScreenshotsIntegration(History, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L);
+        snipping = new WindowsScreenshotsIntegration(History, () => Settings.Current.MaxItemSizeMB * 1024L * 1024L)
+        {
+            CatchUpLimit = () => Settings.Current.MaxScreenshotsCatchUp,
+        };
         snipping.StatusChanged += (_, _) => ui.TryEnqueue(() => SnippingStatusChanged?.Invoke(this, EventArgs.Empty));
         _ = StartSnippingAsync(snipping, Settings.Current.ImportWindowsScreenshots);
     }

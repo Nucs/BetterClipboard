@@ -33,9 +33,15 @@ namespace BetterClipboard.App.Views;
 /// <b>The armed card</b> (<see cref="ArmCard"/>, rule: <see cref="PanelNavigation.ArmedRow{T}"/>). Every load of the list —
 /// a summon, a search, another tab, another group — selects the newest copy, the card a plain Enter pastes. With pinned
 /// cards listed first (<see cref="AppSettings.PinnedOnTop"/>, the default) that is the first card below them, not the top
-/// pin: Win+V and Enter paste the copy just made, and Up from it goes to the lowest pin (user report, 2026-11-08). The list
-/// still stands at its top, pins in view, unless the pins push the armed card out of the top's view: then it stops just low
-/// enough to show that card whole (<see cref="ScrollToTopShowing"/>).
+/// pin: Win+V and Enter paste the copy just made, and Up from it goes to the lowest pin (user report, 2026-11-08).
+/// </para>
+/// <para>
+/// <b>Where the list stands then</b> (rule: <see cref="PanelNavigation.PinsOutOfView"/>). While it shows the plain history —
+/// Win+V, any tab, a search cleared, a group view left — the armed card stands at the top and the pins above it are out of
+/// view: scrolling up or Up shows them (user request, 2026-11-15). A short list gets just enough empty room below its last
+/// card for that (<see cref="ScrollPinsOutOfView"/>). A search or a group view stands at its top with the pins in view, and
+/// stops just low enough to show the armed card whole when the pins push it out of the top's view
+/// (<see cref="ScrollToTopShowing"/>).
 /// </para>
 /// <para>
 /// <b>The arrow keys</b> (rules: <see cref="PanelNavigation"/>). The search box keeps the keyboard focus the whole time, so
@@ -157,6 +163,19 @@ public sealed partial class ClipboardFlyout
     /// <summary>Whether <see cref="pointerMovedHandler"/> is on the list right now (only while the keyboard owns the selection).</summary>
     private bool watchingPointerMoves;
 
+    /// <summary>
+    /// The empty room below the list's last card, in DIPs (<see cref="SetListRoom"/>): what a short list needs for its
+    /// newest copy to reach the top with the pins out of view (<see cref="ScrollPinsOutOfView"/>), 0 otherwise. Kept until
+    /// the next load or summon positions the list again, which works it out anew.
+    /// </summary>
+    private double listRoom;
+
+    /// <summary>
+    /// The list's bottom padding as the XAML sets it, read the first time <see cref="SetListRoom"/> changes the padding;
+    /// <see langword="null"/> until then. The room goes on top of it.
+    /// </summary>
+    private double? listBottomPadding;
+
     /// <summary>Whether the groups column can be walked with the arrow keys: it is open and holds at least one group.</summary>
     private bool CanWalkGroups => groupsPaneOpen && ViewModel.Groups.Count > 0;
 
@@ -183,6 +202,27 @@ public sealed partial class ClipboardFlyout
                 OnSearchTextEdited();
             }
         };
+
+        ViewModel.Reloaded += ViewModel_ReloadedEmpty;
+    }
+
+    /// <summary>
+    /// Takes back the room below the last card (<see cref="SetListRoom"/>) when a load leaves the list empty: there is no
+    /// card to arm then, so <see cref="ArmCard"/> does not run, and the room a short list was given before would stay —
+    /// under an empty state in the list's footer, enough to let it scroll.
+    /// </summary>
+    /// <remarks>
+    /// A handler of its own beside the one that arms the card (the constructor's): that one acts only on a list that has
+    /// cards, this one only on a list that has none, so their order does not matter.
+    /// </remarks>
+    /// <param name="sender">The view model.</param>
+    /// <param name="e">Unused.</param>
+    private void ViewModel_ReloadedEmpty(object? sender, EventArgs e)
+    {
+        if (ViewModel.Items.Count == 0)
+        {
+            SetListRoom(0);
+        }
     }
 
     /// <summary>
@@ -309,6 +349,9 @@ public sealed partial class ClipboardFlyout
         SelectFilter(start);
         PlaceTabStripForShow();
         arrowNavigating = false;
+
+        // A tab clicked in the last use no longer holds the Menu key (ClipboardFlyout.SearchFocus.cs).
+        ForgetClickedTab();
         LeaveGroupsNavigation();
     }
 
@@ -341,33 +384,161 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Selects the armed card (<see cref="ArmedIndex"/>) after a load of the list, so a plain Enter pastes the newest copy, and
-    /// brings the list back to its top. Below pinned cards, the list stops at its top only while that shows the armed card
-    /// whole (<see cref="ScrollToTopShowing"/>).
+    /// puts the list where a load starts: below pinned cards in the plain history, with that card at the top and the pins
+    /// above it out of view (<see cref="ScrollPinsOutOfView"/>); in a search or a group view, at its top, stopping only low
+    /// enough to show the armed card whole when the pins fill the top's view (<see cref="ScrollToTopShowing"/>).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The rule between the two is <see cref="PanelNavigation.PinsOutOfView"/>, asked with what the list shows now: the
+    /// search box's text and the groups shown. A load that finishes while the user types on has the newer text in the box;
+    /// the load that text starts arms the list again when it finishes.
+    /// </para>
+    /// <para>
     /// The top card (no pins listed first, or nothing but pins) goes through <see cref="SelectIndex"/>, exactly as every load
     /// selected it before pins were skipped: <c>ScrollIntoView</c> of the top card is the list's top. Only a card below pins
-    /// takes the measured path.
+    /// takes a measured path. Every path but the pins-out-of-view one takes back the room a short list was given below its
+    /// last card (<see cref="SetListRoom"/>), so a search or a group view never scrolls into empty space.
+    /// </para>
     /// </remarks>
     /// <returns>
-    /// <see langword="true"/> when the armed card sits below pinned cards and this scrolled the list itself (to its top, or
-    /// just low enough); <see langword="false"/> when it selected the top card the old way, or nothing in an empty list — a
-    /// caller that wants the list at its very top (the hidden panel's reset) then scrolls there itself.
+    /// <see langword="true"/> when the armed card sits below pinned cards and this scrolled the list itself (the pins out of
+    /// view, or to its top or just low enough); <see langword="false"/> when it selected the top card the old way, or nothing
+    /// in an empty list — a caller that wants the list at its very top (the hidden panel's reset) then scrolls there itself.
     /// </returns>
     private bool ArmCard()
     {
         int index = ArmedIndex();
         if (index <= 0)
         {
+            SetListRoom(0);
             SelectIndex(0); // a no-op for an empty list
             return false;
         }
 
         // Selected without SelectIndex's ScrollIntoView: brought into view from wherever the list stands, the card would end
-        // at the top edge of a list left scrolled down, with every pin above it — where Up goes next — out of sight.
+        // at an edge of the list chosen by where it stood before, not by the rule below.
         ItemsList.SelectedIndex = index;
-        ScrollToTopShowing(index);
+        if (PanelNavigation.PinsOutOfView(!string.IsNullOrWhiteSpace(ViewModel.SearchText), ViewModel.IsGroupView))
+        {
+            ScrollPinsOutOfView(index);
+        }
+        else
+        {
+            SetListRoom(0);
+            ScrollToTopShowing(index);
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// Scrolls the list so the row at <paramref name="index"/> (the armed card) stands at the top of the view, every row
+    /// above it — the pins — out of view, where scrolling up or Up reaches them. Gives a short list just enough room below
+    /// its last card for that (<see cref="PanelNavigation.RoomBelowRows"/>), and takes back room it no longer needs. Without
+    /// animation.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured, not left to <c>ScrollIntoView</c>.</b> <c>ListView.ScrollIntoView</c> with leading alignment would put the
+    /// row at the top too, but it can finish on a later layout pass — after the frame that shows the panel — and it stops
+    /// where the list ends, short of the top in a short list. The row's top is taken in the coordinates of the scroll
+    /// viewer's content, which is what a vertical offset counts in, so the answer does not depend on where the list stood.
+    /// </para>
+    /// <para>
+    /// <b>From the top first,</b> as <see cref="ScrollToTopShowing"/> does: the rows laid out and realized are then the ones
+    /// near it, where the armed card sits just below the pins. Rows further down may not be realized yet, and the list
+    /// estimates their height; the room computed from such an estimate can be off. So the positioning runs again once the
+    /// list stands at the row, where every row down to a short list's end is in view and measured, and stops as soon as
+    /// the room holds and the offset is reached — at most three passes.
+    /// </para>
+    /// <para>
+    /// <b>Fallback</b> to <c>ScrollIntoView</c> with leading alignment, which brings the row in by itself: no scroll viewer
+    /// or viewport yet (the list's template is not applied: a summon before the warm-up), and a row that has no container
+    /// after the layout — many pins above it, or every load before the panel's first time on screen, when the cloaked
+    /// window lays out none of the list's rows (<see cref="ScrollToTopShowing"/>'s remarks). The summon positions the list
+    /// again once the panel is on screen (<see cref="ResetListPosition"/>).
+    /// </para>
+    /// </remarks>
+    /// <param name="index">The row to put at the top (the armed card); within the list, below at least one row.</param>
+    private void ScrollPinsOutOfView(int index)
+    {
+        var card = ViewModel.Items[index];
+        if (scrollViewer is not { } viewer || viewer.Content is not UIElement content)
+        {
+            ItemsList.ScrollIntoView(card, ScrollIntoViewAlignment.Leading);
+            return;
+        }
+
+        viewer.ChangeView(null, 0, null, disableAnimation: true);
+        ItemsList.UpdateLayout();
+        if (viewer.ViewportHeight <= 0)
+        {
+            ItemsList.ScrollIntoView(card, ScrollIntoViewAlignment.Leading);
+            return;
+        }
+
+        for (int pass = 0; pass < 3; pass++)
+        {
+            if (ItemsList.ContainerFromIndex(index) is not FrameworkElement row)
+            {
+                // Not realized near the top (many pins above it): the list brings it in, then it is measured where it is.
+                ItemsList.ScrollIntoView(card, ScrollIntoViewAlignment.Leading);
+                ItemsList.UpdateLayout();
+                if (ItemsList.ContainerFromIndex(index) is not FrameworkElement brought)
+                {
+                    return; // ScrollIntoView finishes by itself; the summon positions the list again once it is on screen
+                }
+
+                row = brought;
+            }
+
+            double top = row.TransformToVisual(content).TransformPoint(default).Y;
+            double room = PanelNavigation.RoomBelowRows(top, viewer.ExtentHeight, viewer.ViewportHeight, listRoom);
+
+            // Within a unit of the room in place counts as held: layout rounding to physical pixels can move the extent by a
+            // fraction, and a room rounded up from it would otherwise swing between two neighbors on every pass.
+            bool roomHolds = Math.Abs(room - listRoom) <= 1;
+            if (!roomHolds)
+            {
+                SetListRoom(room);
+                ItemsList.UpdateLayout();
+            }
+
+            viewer.ChangeView(null, top, null, disableAnimation: true);
+            ItemsList.UpdateLayout();
+            if (roomHolds && viewer.VerticalOffset >= top - 0.5)
+            {
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Sets the empty room below the list's last card (<see cref="listRoom"/>), on top of the bottom padding the list has in
+    /// XAML. A no-op when it is the room in place.
+    /// </summary>
+    /// <remarks>
+    /// The list's padding is where the room goes: the ListView template hands <c>Padding</c> to the <c>ItemsPresenter</c>
+    /// inside its scroll viewer (WinUI 2.3.9's generic.xaml), so the room scrolls with the cards, below the last one and its
+    /// footer, and lengthens the scroll range. Changing it lays the list out again, which the caller does when it needs the
+    /// new extent at once.
+    /// </remarks>
+    /// <param name="room">The room, in DIPs; 0 for none. Negative or non-finite values count as 0.</param>
+    private void SetListRoom(double room)
+    {
+        room = double.IsFinite(room) && room > 0 ? room : 0;
+        if (room == listRoom)
+        {
+            return;
+        }
+
+        var padding = ItemsList.Padding;
+
+        // The XAML's own bottom padding, read before any room was added (listRoom is still 0 then) and kept under the room.
+        listBottomPadding ??= padding.Bottom;
+        listRoom = room;
+        ItemsList.Padding = new Thickness(padding.Left, padding.Top, padding.Right, listBottomPadding.Value + room);
     }
 
     /// <summary>
@@ -524,7 +695,8 @@ public sealed partial class ClipboardFlyout
         }
 
         // When a tab itself has the keyboard (the user tabbed or clicked into the strip), the focus moves along with the
-        // selection: left behind, its focus rectangle would sit on a tab that is no longer the selected one.
+        // selection: left behind, its focus rectangle would sit on a tab that is no longer the selected one. Since 2026-11-21
+        // no tab takes the focus (ClipboardFlyout.SearchFocus.cs), so this stays for one that gets it anyway.
         bool focusInStrip = Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is SelectorBarItem;
 
         // Reloads the list (which arms its newest copy, ArmCard), and glides the strip to the tab while the panel is open.
@@ -533,6 +705,12 @@ public sealed partial class ClipboardFlyout
         if (focusInStrip)
         {
             visible[next].Focus(FocusState.Programmatic);
+        }
+
+        // A tab clicked just before: the Menu key's hold moves along with the selection, as the clicked tab's focus once did.
+        if (clickedTab is not null)
+        {
+            clickedTab = visible[next];
         }
     }
 

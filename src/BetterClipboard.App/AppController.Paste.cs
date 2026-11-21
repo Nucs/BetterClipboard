@@ -28,6 +28,12 @@ namespace BetterClipboard.App;
 /// idle until the target has taken the paste; and only then come the rest of putting the panel away
 /// (<see cref="Views.ClipboardFlyout.FinishPuttingAway"/>) and the item's bump to the top.
 /// </para>
+/// <para>
+/// <b>A pinned panel</b> (CLAUDE.md §2.55) pastes the same way, without being put away: it stays on screen, always on top and
+/// no longer active, and the target is the window of another app the user was last in, which a foreground tracker keeps in
+/// <see cref="pasteTarget"/> while it shows (<see cref="NoteForeignForeground"/>). The bump updates the card in place, so
+/// nothing moves under the mouse for the next click.
+/// </para>
 /// </remarks>
 public sealed partial class AppController
 {
@@ -54,6 +60,12 @@ public sealed partial class AppController
 
     /// <summary>Whether a paste was logged this session (the first one always is, see <see cref="LogPaste"/>).</summary>
     private bool pasteLogged;
+
+    /// <summary>
+    /// Whether this session has logged that a choice only copied because "Paste after choosing an item" is off
+    /// (<see cref="LogWhyNotPasted"/>): said once, since with the setting off every choice copies by design.
+    /// </summary>
+    private bool pasteOffLogged;
 
     /// <summary>
     /// Starts reading the formats of the card the panel just selected, so a paste of it finds them in memory: the read (a
@@ -158,16 +170,27 @@ public sealed partial class AppController
     /// <remarks>
     /// <para>
     /// UI thread: the panel is cloaked and marked away (<see cref="Views.ClipboardFlyout.PutAwayForPaste"/>), so its own
-    /// deactivation does nothing more. Then off the UI thread, which handles that deactivation (WinUI's own work, page faults
+    /// deactivation does nothing more — or, pinned, it stays on screen and its deactivation leaves it up. Then off the UI
+    /// thread, which handles that deactivation (WinUI's own work, page faults
     /// included) in parallel: the clipboard is written first, while nothing else competes with it; then the target is
     /// activated (this process still owns the foreground, so any of its threads may hand it on) and gets
-    /// <see cref="PasteInjector.SettleTime"/> before the Ctrl+V. The UI thread then stays free for
-    /// <see cref="FinishAfterPaste"/> before the panel's put-away finishes (<see cref="Views.ClipboardFlyout.FinishPuttingAway"/>)
-    /// — at once when nothing was pasted.
+    /// <see cref="PasteInjector.SettleTime"/> before the Ctrl+V — longer when its input thread is busy, and Ctrl stays down
+    /// until that thread took the V (CLAUDE.md §2.54). The UI thread then stays free for <see cref="FinishAfterPaste"/> before
+    /// the panel's put-away finishes (<see cref="Views.ClipboardFlyout.FinishPuttingAway"/>) — at once when nothing was pasted.
+    /// </para>
+    /// <para>
+    /// For a paste, keys the user types from the start until Ctrl is up again are held back and typed after the pasted text
+    /// (<see cref="PasteKeyGuard"/>): a fast "Enter, Enter" submits what was pasted, and nothing lands in the panel on its way
+    /// out or as Ctrl+key.
     /// </para>
     /// <para>
     /// When a step fails, the target still gets the foreground back (from here, if the delivery failed before activating it),
     /// and the exception reaches the caller, which logs it.
+    /// </para>
+    /// <para>
+    /// A paste that only copies says why in the log (<see cref="LogWhyNotPasted"/>: the setting is off, or no window was
+    /// captured), and so does one whose window closed meanwhile (<see cref="PasteOutcome.NoTarget"/>); the injector logs its
+    /// own refusals. Content-free.
     /// </para>
     /// </remarks>
     /// <param name="formats">The formats to put on the clipboard (already prepared for a paste).</param>
@@ -181,31 +204,62 @@ public sealed partial class AppController
     private async Task DeliverAsync(IReadOnlyList<ClipFormatData> formats, bool paste, PasteTimeline timeline)
     {
         nint target = pasteTarget?.TargetWindow ?? 0;
-        bool inject = paste && Settings.Current.PasteOnSelect && target != 0;
+        bool pasteOnSelect = Settings.Current.PasteOnSelect;
+        bool inject = paste && pasteOnSelect && target != 0;
+
+        // A choice that was meant to paste and only copies says why (content-free): until 2026-11-18 these ended without a
+        // line, and one lost paste in the 0.2.12 QA could not be explained afterwards (CLAUDE.md §6).
+        if (paste && !inject)
+        {
+            LogWhyNotPasted(pasteOnSelect);
+        }
+
         var panel = flyout;
         var writer = monitor ?? throw new InvalidOperationException("The clipboard monitor is not running.");
         panel?.PutAwayForPaste();
-        timeline.Mark("panel away");
+
+        // A pinned panel stays on screen and only lost its overlays (CLAUDE.md §2.55): the stage is named for what happened,
+        // so a slow paste's log line tells the two apart.
+        timeline.Mark(panel?.IsOpen == true ? "panel kept" : "panel away");
         bool activated = false;
         PasteOutcome? outcome = null;
         try
         {
             outcome = await Task.Run(async () =>
             {
-                await writer.WriteAsync(formats).ConfigureAwait(false);
-                timeline.Mark("clipboard");
-                long activatedAt = 0;
-                if (target != 0)
+                // From the Enter until the paste's Ctrl is up again, keys the user types are held back and typed after the
+                // pasted text, in their order (CLAUDE.md §2.54): typed now, they would go to the panel on its way out (it
+                // still has the keyboard until the target is activated), or reach the target before the paste. The
+                // injector joins this engagement. Not for a window that runs as administrator: the paste into it is
+                // refused, and Windows would drop the held keys typed into it again (UIPI), where the user's own reach it.
+                var guard = inject && !ProcessIntegrity.IsAboveCurrent(target) ? PasteKeyGuard.TryGetShared() : null;
+                bool guarding = guard is not null && await guard.EngageAsync().ConfigureAwait(false);
+                try
                 {
-                    ForegroundHelper.Activate(target);
-                    activatedAt = Stopwatch.GetTimestamp();
-                    activated = true;
-                    timeline.Mark("target");
-                }
+                    await writer.WriteAsync(formats).ConfigureAwait(false);
+                    timeline.Mark("clipboard");
+                    long activatedAt = 0;
+                    if (target != 0)
+                    {
+                        ForegroundHelper.Activate(target);
+                        activatedAt = Stopwatch.GetTimestamp();
+                        activated = true;
+                        timeline.Mark("target");
+                    }
 
-                return inject
-                    ? await PasteInjector.PasteIntoWithOutcomeAsync(target, activatedAt, timeline).ConfigureAwait(false)
-                    : (PasteOutcome?)null;
+                    return inject
+                        ? await PasteInjector.PasteIntoWithOutcomeAsync(target, activatedAt, timeline).ConfigureAwait(false)
+                        : (PasteOutcome?)null;
+                }
+                finally
+                {
+                    // The injector released Ctrl before it returned: the held keys follow the paste (or, when nothing was
+                    // pasted, go to whatever window has the keyboard).
+                    if (guarding)
+                    {
+                        timeline.KeysHeldBack += (await guard!.ReleaseAsync().ConfigureAwait(false)).Held;
+                    }
+                }
             });
         }
         finally
@@ -226,6 +280,12 @@ public sealed partial class AppController
             panel?.FinishPuttingAway();
         }
 
+        // The injector says nothing when the window the panel came from is gone (closed while the panel showed).
+        if (outcome == PasteOutcome.NoTarget)
+        {
+            AppLog.Info("Not pasted: the window the panel was opened from is gone. The item is on the clipboard.");
+        }
+
         if (outcome == PasteOutcome.TargetElevated && elevatedPasteNotified.Add(target))
         {
             tray?.ShowNotification(
@@ -240,21 +300,52 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Logs how long a paste took from the key to the Ctrl+V, stage by stage — the session's first one always, later ones
-    /// only when slow (<see cref="PasteTimeline.SlowPaste"/>) — so a "pasting takes a moment" report can be checked against
-    /// the log. Content-free: stage names and times.
+    /// Logs why a choice that was meant to paste only copies: "Paste after choosing an item" is off (once per session, since
+    /// then every choice copies by design), or no window was captured to paste into (the panel was opened from the tray, or
+    /// nothing had the foreground when the shortcut came). Content-free.
+    /// </summary>
+    /// <param name="pasteOnSelect">The "Paste after choosing an item" setting at the time of the choice.</param>
+    /// <remarks>
+    /// Without these lines a paste that delivered nothing left no trace: a report like "Enter did nothing" could not be told
+    /// apart from a key that never arrived (the paste QA of 0.2.12, 2026-11-18, CLAUDE.md §6). Info, not a warning: both are
+    /// everyday outcomes, and warnings stay a health signal.
+    /// </remarks>
+    private void LogWhyNotPasted(bool pasteOnSelect)
+    {
+        if (!pasteOnSelect)
+        {
+            if (!pasteOffLogged)
+            {
+                pasteOffLogged = true;
+                AppLog.Info("Copied only: \"Paste after choosing an item\" is off in Settings (said once per session).");
+            }
+
+            return;
+        }
+
+        AppLog.Info("Copied only: no window to paste into was captured when the panel opened (it was opened from the tray, or no window had the foreground at the shortcut).");
+    }
+
+    /// <summary>
+    /// Logs how long a paste took from the key to the Ctrl+V, stage by stage, and how long Ctrl stayed down after it — the
+    /// session's first one always, later ones only when slow (<see cref="PasteTimeline.SlowPaste"/>), when Ctrl was released
+    /// before the window answered that it took the keys (CLAUDE.md §2.54: the one case left in which a paste may type "v"), or
+    /// when keys the user typed meanwhile were held back — so a report about pasting can be checked against the log.
+    /// Content-free: stage names, times and counts.
     /// </summary>
     /// <param name="timeline">The finished paste's timeline.</param>
     private void LogPaste(PasteTimeline timeline)
     {
         var total = timeline.Total;
-        if (!PasteTimeline.ShouldLog(total, firstOfSession: !pasteLogged))
+        bool releasedEarly = timeline.ControlHeld is not null && !timeline.ControlHeldUntilTaken;
+        if (!PasteTimeline.ShouldLog(total, firstOfSession: !pasteLogged) && !releasedEarly && timeline.KeysHeldBack == 0)
         {
             return;
         }
 
         // Part of a log line, so English whatever the interface language.
-        AppLog.Info($"Pasted: Ctrl+V sent {PasteTimeline.Milliseconds(total)} ms after the key ({timeline.DescribeStages()}){(pasteLogged ? " (slow)" : " (first paste)")}.");
+        string kind = !pasteLogged ? " (first paste)" : total >= PasteTimeline.SlowPaste ? " (slow)" : string.Empty;
+        AppLog.Info($"Pasted: Ctrl+V sent {PasteTimeline.Milliseconds(total)} ms after the key ({timeline.DescribeStages()}){timeline.DescribeHold()}{kind}.");
         pasteLogged = true;
     }
 }

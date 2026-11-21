@@ -110,6 +110,74 @@ public sealed class QuietProcess : IDisposable
     }
 
     /// <summary>
+    /// Starts a program through the shell (<c>ShellExecuteEx</c>) instead of <c>CreateProcess</c>: the only way to start one
+    /// whose manifest asks for UI access, as a copy installed with <c>install.ps1 -UIAccess</c> is (<see cref="Input.UiAccess"/>,
+    /// CLAUDE.md §2.63) — <c>CreateProcess</c> answers 740 for it, and the shell hands it to Windows' AppInfo service, which
+    /// starts it with UI access.
+    /// </summary>
+    /// <param name="executablePath">The program's full path.</param>
+    /// <param name="arguments">Its arguments, already quoted where they need it.</param>
+    /// <param name="workingDirectory">Its working folder.</param>
+    /// <returns>The started process; dispose it to close its handle (the process keeps running).</returns>
+    /// <remarks>
+    /// <para>
+    /// <b>No launch feedback only from the background.</b> The shell takes no <c>STARTF_FORCEOFFFEEDBACK</c>, so whether the
+    /// "app starting" pointer shows is Windows' own choice. Measured in a test desktop (2026-11-21): a start from a process
+    /// that was not in front showed no busy pointer while the new process went 3 s without a message; the same start from
+    /// the process in front showed it the whole time. The silent restart (the one caller) happens only while BetterClipboard
+    /// has no window in front.
+    /// </para>
+    /// <para>
+    /// The program gets this process's rights (the AppInfo service adds UI access when the program asks for it), inherits no
+    /// handle, and gets this process's environment.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">A path is empty.</exception>
+    /// <exception cref="Win32Exception">Windows refused to start it (missing file, no access, a signature it does not trust).</exception>
+    /// <exception cref="InvalidOperationException">The shell started something but handed back no process to follow.</exception>
+    public static QuietProcess StartThroughShell(string executablePath, string arguments, string workingDirectory)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(executablePath);
+        ArgumentException.ThrowIfNullOrEmpty(workingDirectory);
+        bool started;
+        nint process;
+        unsafe
+        {
+            fixed (char* file = executablePath)
+            fixed (char* parameters = arguments ?? string.Empty)
+            fixed (char* directory = workingDirectory)
+            {
+                var info = new SHELLEXECUTEINFOW
+                {
+                    cbSize = (uint)sizeof(SHELLEXECUTEINFOW),
+
+                    // The process handle back, no error box (the caller logs), and the whole start done before returning:
+                    // the caller's thread may go on to other work at once.
+                    fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_FLAG_NO_UI | SEE_MASK_NOASYNC,
+                    lpFile = file,
+                    lpParameters = parameters,
+                    lpDirectory = directory,
+                    nShow = SW_SHOWNORMAL,
+                };
+                started = ShellExecuteEx(ref info);
+                process = info.hProcess;
+            }
+        }
+
+        if (!started)
+        {
+            throw new Win32Exception(Marshal.GetLastPInvokeError(), $"Starting {Path.GetFileName(executablePath)} through the shell failed.");
+        }
+
+        if (process == 0)
+        {
+            throw new InvalidOperationException($"The shell started {Path.GetFileName(executablePath)} but handed back no process.");
+        }
+
+        return new QuietProcess(process, (int)GetProcessId(process));
+    }
+
+    /// <summary>
     /// Builds a Unicode environment block: this process's variables with <paramref name="additions"/> laid over them,
     /// sorted by name without regard to case (what Windows expects of a block), each <c>name=value</c> ended by a NUL, and
     /// one more NUL at the end.

@@ -174,6 +174,20 @@ public sealed class TextViewSource
 /// so the switch can hide.
 /// </para>
 /// <para>
+/// <b>A document reads like its source</b> (the owner's request, 2026-11-16: "we need mono font so we will see ascii tables
+/// formatted by default just because of the font"). Since a text no language is recognized in is Markdown, a table copied
+/// from a terminal opens as a document. So it is drawn in the code font, the font as copied uses
+/// (<see cref="TextViewStyle.Default"/>), and its lines keep their layout (<see cref="MarkdownParseOptions.KeepLayout"/>):
+/// indentation, tabs, and dashed lines that touch text. A table that holds no Markdown then shows exactly as copied, while
+/// headings, lists, emphasis, links, code blocks and tables are still drawn.
+/// </para>
+/// <para>
+/// <b>Tables wherever they stand</b> (the owner's request, 2026-11-20). A quote holds blocks of its own
+/// (<see cref="MarkdownQuote"/>), so a transcript that quotes every message draws the tables, headings and lists inside;
+/// a table indented under a list item stays in the item; and a code block that holds no code (Markdown or plain text) has
+/// its tables drawn too (<see cref="ResolveCodeBlocks"/>).
+/// </para>
+/// <para>
 /// <b>Size limits.</b> Markdown is drawn up to <see cref="MarkdownMaxChars"/>; a longer text is shown as plain text. Code is
 /// colored up to <see cref="SyntaxHighlighter.DefaultMaxChars"/>; past that, in the default color.
 /// <see cref="IsLimited"/> tells the viewer to say so.
@@ -217,7 +231,7 @@ public sealed class TextViewRendering
     /// <summary>Whether the view is the formatted one (the switch's state), as opposed to as copied.</summary>
     public bool Formatted { get; private init; }
 
-    /// <summary>Whether the view is a drawn Markdown document (no line numbers, prose font); otherwise a code document.</summary>
+    /// <summary>Whether the view is a drawn Markdown document (no line numbers; headings, lists and links drawn); otherwise a code document.</summary>
     public bool IsDocument { get; private init; }
 
     /// <summary>Whether the text is shown re-indented (XML or JSON, formatted).</summary>
@@ -237,6 +251,12 @@ public sealed class TextViewRendering
 
     /// <summary>The Markdown document's blocks (empty for a code document).</summary>
     public IReadOnlyList<MarkdownBlock> Blocks { get; private init; } = [];
+
+    /// <summary>
+    /// Whether the Markdown document holds a table, also inside a quote: its layout then depends on the text width
+    /// (<see cref="TextViewStyle.TextWidth"/>), so a viewer whose lines start or stop wrapping draws the document again.
+    /// </summary>
+    public bool HasTables { get; private init; }
 
     /// <summary>Where each line of <see cref="DisplayText"/> starts (code documents; empty for a Markdown document): the gutter's positions.</summary>
     public IReadOnlyList<int> LineStarts { get; private init; } = [];
@@ -269,7 +289,11 @@ public sealed class TextViewRendering
             bool drawable = text.Length <= MarkdownMaxChars;
             if (formatted && drawable)
             {
-                var blocks = MarkdownParser.Parse(text, new MarkdownParseOptions(KeepLineBreaks: true, MaxLength: MarkdownMaxChars));
+                // Every line as it was laid out: the document is drawn in the code font (TextViewStyle.Default), where an
+                // ASCII table's columns of blanks line up only if its lines keep their indentation, tabs and dashed rules.
+                var parsed = MarkdownParser.Parse(text, new MarkdownParseOptions(KeepLineBreaks: true, MaxLength: MarkdownMaxChars, KeepLayout: true));
+                var languages = new Dictionary<MarkdownCodeBlock, TextLanguage>(ReferenceEqualityComparer.Instance);
+                var blocks = ResolveCodeBlocks(parsed, languages, cancellationToken);
                 var view = new TextViewRendering
                 {
                     Language = language,
@@ -278,9 +302,10 @@ public sealed class TextViewRendering
                     HasFormattedAlternative = true,
                     DisplayText = text,
                     Blocks = blocks,
+                    HasTables = ContainsTable(blocks),
                     Pages = [new TextViewPage(0, 0, text.Length, 0)],
                 };
-                view.ColorCodeBlocks(cancellationToken);
+                view.ColorCodeBlocks(languages, cancellationToken);
                 return view;
             }
 
@@ -291,6 +316,12 @@ public sealed class TextViewRendering
         bool reindent = formatted && reindentedText is not null;
         return CodeView(reindent ? reindentedText! : text, language, language, formatted, hasAlternative: reindentedText is not null, isLimited: false, reindent, cancellationToken);
     }
+
+    /// <summary>Whether blocks hold a table, at any depth of quotes.</summary>
+    /// <param name="blocks">The blocks.</param>
+    /// <returns>Whether one of them is a table, or a quote that holds one.</returns>
+    private static bool ContainsTable(IReadOnlyList<MarkdownBlock> blocks) =>
+        blocks.Any(block => block is MarkdownTable || (block is MarkdownQuote quote && ContainsTable(quote.Blocks)));
 
     /// <summary>Makes a code document view: its tokens and line starts.</summary>
     /// <param name="text">The text to show.</param>
@@ -323,17 +354,89 @@ public sealed class TextViewRendering
     }
 
     /// <summary>
-    /// Colors the code blocks of a Markdown document: as the language their fence names, else as the language guessed from
-    /// their code (none when the guess is Markdown, or the block is too long to guess).
+    /// Finds the language of every code block of a Markdown document, those inside quotes included: the language its fence
+    /// names, else the one guessed from its code (plain text when the block is too long to guess). A block that holds no
+    /// code — Markdown or plain text, such as a transcript's tool output or a Markdown file shown in a fence — is cut at its
+    /// tables, which are then drawn as tables (<see cref="MarkdownParser.SplitTables"/>); code in a programming language
+    /// is left whole, so a table inside a string literal stays the code it is.
     /// </summary>
+    /// <param name="blocks">The parsed blocks, or a quote's own.</param>
+    /// <param name="languages">Receives every code block of the result with its language, for <see cref="ColorCodeBlocks"/>.</param>
+    /// <param name="cancellationToken">Stops a long run.</param>
+    /// <returns>The blocks with those code blocks cut; the very same list when nothing was cut.</returns>
+    /// <exception cref="OperationCanceledException">The caller cancelled.</exception>
+    /// <remarks>
+    /// The owner's request (2026-11-20): "The transcript in my clipboard has &gt; or code block and in them a markdown
+    /// table. we should be rendering that table too even if its nested or quoted or whatever". A code block's other lines
+    /// stay code; only its tables change. Each block's language is found once, here, and coloring reuses it.
+    /// </remarks>
+    private static IReadOnlyList<MarkdownBlock> ResolveCodeBlocks(IReadOnlyList<MarkdownBlock> blocks, Dictionary<MarkdownCodeBlock, TextLanguage> languages, CancellationToken cancellationToken)
+    {
+        // Built only once a block changes: a document whose code blocks hold no tables keeps its list.
+        List<MarkdownBlock>? changed = null;
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            IReadOnlyList<MarkdownBlock>? replacement = null;
+            switch (blocks[i])
+            {
+                case MarkdownQuote quote:
+                {
+                    var inner = ResolveCodeBlocks(quote.Blocks, languages, cancellationToken);
+                    if (!ReferenceEquals(inner, quote.Blocks))
+                    {
+                        replacement = [quote with { Blocks = inner }];
+                    }
+
+                    break;
+                }
+
+                case MarkdownCodeBlock code:
+                {
+                    var language = TextLanguages.FromFenceInfo(code.Info)
+                        ?? (code.Code.Length <= FenceGuessMaxChars ? TextLanguageDetector.Detect(code.Code) : TextLanguage.PlainText);
+                    var pieces = language is TextLanguage.Markdown or TextLanguage.PlainText ? MarkdownParser.SplitTables(code) : [code];
+
+                    // The pieces of one block share its language: cutting out a table never changes how the rest is colored.
+                    foreach (var piece in pieces.OfType<MarkdownCodeBlock>())
+                    {
+                        languages[piece] = language;
+                    }
+
+                    if (pieces.Count != 1 || !ReferenceEquals(pieces[0], code))
+                    {
+                        replacement = pieces;
+                    }
+
+                    break;
+                }
+            }
+
+            if (replacement is not null)
+            {
+                changed ??= new List<MarkdownBlock>(blocks.Take(i));
+                changed.AddRange(replacement);
+            }
+            else
+            {
+                changed?.Add(blocks[i]);
+            }
+        }
+
+        return changed ?? blocks;
+    }
+
+    /// <summary>
+    /// Colors the code blocks of a Markdown document as the languages <see cref="ResolveCodeBlocks"/> found: none for
+    /// Markdown and plain text.
+    /// </summary>
+    /// <param name="languages">Every code block of the document, quotes' included, with its language.</param>
     /// <param name="cancellationToken">Stops a long run.</param>
     /// <exception cref="OperationCanceledException">The caller cancelled.</exception>
-    private void ColorCodeBlocks(CancellationToken cancellationToken)
+    private void ColorCodeBlocks(IReadOnlyDictionary<MarkdownCodeBlock, TextLanguage> languages, CancellationToken cancellationToken)
     {
-        foreach (var block in Blocks.OfType<MarkdownCodeBlock>())
+        foreach (var (block, language) in languages)
         {
-            var language = TextLanguages.FromFenceInfo(block.Info)
-                ?? (block.Code.Length <= FenceGuessMaxChars ? TextLanguageDetector.Detect(block.Code) : TextLanguage.PlainText);
             blockTokens[block] = language is TextLanguage.Markdown or TextLanguage.PlainText
                 ? []
                 : SyntaxHighlighter.Tokenize(block.Code, language, SyntaxHighlighter.DefaultMaxChars, cancellationToken);

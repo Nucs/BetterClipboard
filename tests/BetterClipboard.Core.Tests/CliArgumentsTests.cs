@@ -146,6 +146,37 @@ public sealed class CliArgumentsTests
         Assert.Equal(3, Parse("wait", "-t", "3").Request!.TimeoutSeconds);
     }
 
+    /// <summary>
+    /// delete takes several ids at once (one id still travels as <c>Id</c>, so a single delete reads the same to every
+    /// server), never with --recent, at most <see cref="CliArguments.MaxDeleteIds"/>; list and search take --sort.
+    /// </summary>
+    [Fact]
+    public void Delete_SeveralIds_AndSort()
+    {
+        var many = Parse("rm", "812", "640", "77").Request!;
+        Assert.Equal((CliCommands.Delete, (long?)null), (many.Command, many.Id));
+        Assert.Equal([812L, 640L, 77L], many.Ids!);
+        var one = Parse("delete", "5").Request!;
+        Assert.Equal((5L, (IReadOnlyList<long>?)null), (one.Id!.Value, one.Ids));
+
+        Assert.NotNull(Parse("delete", "1", "x").Error);
+        Assert.NotNull(Parse("delete", "1", "0").Error);
+        Assert.NotNull(Parse("delete", "1", "2", "-r", "1").Error);
+        Assert.Null(Parse(["delete", .. Enumerable.Range(1, CliArguments.MaxDeleteIds).Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture))]).Error);
+        Assert.Contains("at most 1000 ids", Parse(["delete", .. Enumerable.Range(1, CliArguments.MaxDeleteIds + 1).Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture))]).Error, StringComparison.Ordinal);
+        Assert.NotNull(Parse("pin", "1", "2").Error); // only delete takes several
+
+        Assert.Equal("size", Parse("list", "--sort", "size").Request!.Sort);
+        Assert.Equal("size", Parse("list", "--sort=Largest").Request!.Sort);
+        Assert.Equal("recent", Parse("search", "report", "--sort", " recent ").Request!.Sort);
+        Assert.Null(Parse("list").Request!.Sort);
+        Assert.Contains("Unknown sort", Parse("list", "--sort", "alphabetical").Error, StringComparison.Ordinal);
+
+        Assert.Contains("--sort size", CliArguments.Help(CliCommands.List), StringComparison.Ordinal);
+        Assert.Contains("bclip delete 812 640 77", CliArguments.Help(CliCommands.Delete), StringComparison.Ordinal);
+        Assert.Contains("Freeing space when the history size budget fills up", CliArguments.Help(null), StringComparison.Ordinal);
+    }
+
     /// <summary>Parses with the fixed clock.</summary>
     /// <param name="args">Arguments.</param>
     /// <returns>The invocation.</returns>

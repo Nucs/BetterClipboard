@@ -32,6 +32,14 @@
     as administrator on a PC that has a copy for every user, it updates that copy. Such a copy does not update or
     check for updates by itself: an administrator runs the installer again.
 
+    Above Start and Search (-UIAccess, in PowerShell as administrator): Windows draws Start, Search and the notification
+    center above every app window, and lets only a program with "UI access" (as its own clipboard history and the On-Screen
+    Keyboard have) open above them. Windows grants it to a program in Program Files whose signature this PC trusts, so the
+    installer puts BetterClipboard in Program Files and signs it with a certificate it makes for this PC alone: its private
+    key never leaves memory and is thrown away once the program is signed, and only the certificate, which then signs
+    nothing else, goes into this PC's trusted root certificates. Without it the panel opens beside Start and Search. The app's
+    update button keeps it (each update asks for administrator rights once); -NoUIAccess takes it away again.
+
     Your clipboard history lives in %LOCALAPPDATA%\BetterClipboard (encrypted, bound to this PC and
     your Windows account) and is never touched by install or update; -Uninstall keeps it unless
     -RemoveData is given.
@@ -40,7 +48,8 @@
     exists (a plain request for this project's public release list; nothing about you, your PC or your clipboard
     is sent) and light up an update button when one does. Nothing is downloaded until you approve it. Settings >
     Updates switches the daily question off, and so does installing with -NoUpdateCheck. An approved update runs
-    this script from the new release's own zip as:
+    this script from the new release's own zip (as administrator, after Windows' consent prompt, for a copy in a folder only
+    administrators may change, such as one with UI access) as:
 
       install.ps1 -Update -Package <zip> -PackageSha256 <hash> -InstallDir <folder> -ResultPath <file> -LogPath <file>
 
@@ -51,9 +60,11 @@
     Release to install: 'latest' (default) or a version such as 0.1.0 / v0.1.0.
 
 .PARAMETER InstallDir
-    Target folder. Default: %LOCALAPPDATA%\Programs\BetterClipboard; for every user (-AllUsers) the folder of the copy
-    already installed for every user, else Program Files\BetterClipboard. A relative path is relative to the folder
-    you run the installer from.
+    Target folder. Default: the folder of the copy you installed before, so running the installer again updates it where
+    it is; else %LOCALAPPDATA%\Programs\BetterClipboard, or Program Files\BetterClipboard with -UIAccess. For every user
+    (-AllUsers): the folder of the copy already installed for every user, else Program Files\BetterClipboard. A relative
+    path is relative to the folder you run the installer from. Installing your copy into another folder moves it: the
+    folder of the copy it replaces is removed (your history and settings are elsewhere and stay).
 
 .PARAMETER AllUsers
     Install (or with -Uninstall, remove) the copy for every user of this PC instead of one for you. Needs PowerShell as
@@ -61,6 +72,19 @@
     user's desktop, and when an administrator's run finds a copy for every user to update. The options that set one
     person's things (-Hotkey, -TakeOverWinV, -NoTakeOverWinV) work only when the signed-in user installs; -AddToPath then
     changes the PATH of every user, and -NoUpdateCheck has nothing to do: a copy for every user never checks by itself.
+
+.PARAMETER UIAccess
+    Give BetterClipboard Windows' UI access, so its panel opens above Start and Search as Windows' own clipboard history
+    does (without it, the panel opens beside them). Needs PowerShell as administrator and BetterClipboard 0.2.12 or
+    newer. BetterClipboard goes to Program Files (Windows grants UI access nowhere else) - a copy of yours installed
+    elsewhere moves there - and is signed with a certificate the installer makes for this PC alone and adds to its trusted
+    root certificates (the certificate's private key is thrown away at once, so it signs nothing else). Updates keep it:
+    the app's update button asks for administrator rights once per update, and running the installer again (as
+    administrator) keeps it too.
+
+.PARAMETER NoUIAccess
+    Take Windows' UI access away from a copy that has it (-UIAccess): the panel opens beside Start and Search again, and
+    the certificate leaves this PC's trusted root certificates. The copy stays in its folder.
 
 .PARAMETER TakeOverWinV
     Kept for older command lines: taking over Win+V is what the installer does by default now. Given on an
@@ -114,7 +138,8 @@
     Explorer restart); the Installed-apps entry and installer.json only get the new version, and only when they
     belong to that folder. Only programs running from that folder are closed, and BetterClipboard is started
     again in the background when it was running. It cannot be combined with the options that change those things
-    (-Hotkey, -TakeOverWinV, -NoTakeOverWinV, -AddToPath, -NoStartup, -NoShortcut, -NoUpdateCheck).
+    (-Hotkey, -TakeOverWinV, -NoTakeOverWinV, -AddToPath, -NoStartup, -NoShortcut, -NoUpdateCheck, -UIAccess,
+    -NoUIAccess); a copy with Windows' UI access keeps it.
 
 .PARAMETER ResultPath
     Write the outcome to this file as JSON (version, ok, error, finishedUtc), before BetterClipboard is started
@@ -129,8 +154,10 @@
     Remove BetterClipboard (files, shortcut, startup entry, Installed-apps entry). While BetterClipboard's Chocolatey
     package stays installed, the startup entry starts that copy instead of being removed. Win+V - and every other
     Win+ shortcut BetterClipboard released from Explorer - is given back to Windows (use -KeepWinVReleased
-    to keep them released). With -AllUsers it removes the copy for every user (Settings > Apps runs it that way), and
-    asks for administrator rights when it does not have them.
+    to keep them released). With -AllUsers it removes the copy for every user (Settings > Apps runs it that way). For that
+    copy, and for one in a folder only administrators may change (Program Files: a copy with UI access), it asks for
+    administrator rights when it does not have them; the certificate that gave a copy UI access leaves this PC's trusted
+    root certificates with it.
 
 .PARAMETER RemoveData
     With -Uninstall: also delete the history, settings and logs folder, and the temporary pictures in
@@ -168,6 +195,12 @@
     In PowerShell as administrator: installs or updates BetterClipboard for every user of this PC.
 
 .EXAMPLE
+    & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -UIAccess
+
+    In PowerShell as administrator: installs or updates your copy in Program Files with Windows' UI access, so its panel
+    opens above Start and Search.
+
+.EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\install.ps1 -Package .\BetterClipboard-0.2.6-win-x64.zip
 
     Installs from a release zip you downloaded (put SHA256SUMS.txt next to it and it is verified first).
@@ -188,6 +221,14 @@ param(
 
     # In both parameter sets: it picks the copy an install sets up and the copy an uninstall removes.
     [switch] $AllUsers,
+
+    # Windows' UI access (CLAUDE.md section 2.63): given, taken away, or - with neither - kept as the installed copy has it.
+    # Two switches rather than one that may be $false: under `irm ... | iex` nothing tells "-UIAccess:$false" from "not given".
+    [Parameter(ParameterSetName = 'Install')]
+    [switch] $UIAccess,
+
+    [Parameter(ParameterSetName = 'Install')]
+    [switch] $NoUIAccess,
 
     [Parameter(ParameterSetName = 'Install')]
     [switch] $TakeOverWinV,
@@ -298,6 +339,13 @@ $HotkeyOptionsMinimumVersion = [version] '0.2.6'
 # The first release that checks for updates by itself and whose BetterClipboard.exe knows --set-update-check, which
 # -NoUpdateCheck runs. Older versions have no check to switch off (and would start normally on the unknown argument).
 $UpdateCheckMinimumVersion = [version] '0.2.6'
+# The first release whose app is safe with Windows' UI access: it lowers its integrity level to the user's normal one at
+# start, opens its panel above Start and Search, and starts its own helpers and restarts the way such a program must
+# (CLAUDE.md section 2.63). -UIAccess refuses older releases; a re-run of one over a copy with UI access installs it without.
+$UiAccessMinimumVersion = [version] '0.2.12'
+# The subject of the certificates this installer makes to sign BetterClipboard for UI access (New-UiAccessCertificate). Only
+# this installer gives a certificate this subject, so it finds and removes its own by it and never touches another one.
+$UiAccessCertificateSubject = 'CN=BetterClipboard UI access (this PC)'
 # What -ResultPath reports: the version this run installs (known once the release or package is identified), and
 # whether the outcome was written already - it must be on disk before BetterClipboard is started again.
 $script:ResultVersion = ''
@@ -788,7 +836,7 @@ function Undo-FailedSwap([string] $Staging, [string] $Previous, [bool] $WasRunni
     # After the app's own update it comes back the way it ran, in the background (a plain start opens Settings).
     $restarted = $false
     if ($WasRunning -and (Test-Path $Exe)) {
-        if ($Update) { Start-AppAsBefore $Exe } else { Start-AppUnelevated $Exe }
+        if ($Update) { Start-AppAfterUpdate $Exe } else { Start-AppUnelevated $Exe }
         $restarted = $true
     }
 
@@ -1771,23 +1819,30 @@ function Remove-FromMachinePath([string] $Directory) {
 function Invoke-ElevatedUninstall {
     <#
     .SYNOPSIS
-        Runs this very script again as administrator to remove the copy for every user, and waits for it.
+        Runs this very script again as administrator to remove the copy for every user, or a copy of one user in a folder
+        only administrators may change, and waits for it.
     .DESCRIPTION
-        Settings > Apps starts the uninstall command of the PC's entry with the user's normal rights, and removing a
-        Program Files folder and HKEY_LOCAL_MACHINE entries needs an administrator: Windows asks for consent (or for an
-        administrator's credentials) once. The same PowerShell (5.1 or 7) runs the elevated copy, with the same options.
+        Settings > Apps starts the uninstall command of an entry with the user's normal rights, and removing a Program
+        Files folder (the copy for every user, or a copy with UI access), HKEY_LOCAL_MACHINE entries and a trusted root
+        certificate needs an administrator: Windows asks for consent (or for an administrator's credentials) once. The same
+        PowerShell (5.1 or 7) runs the elevated copy, with the same options. A copy of one user with UI access belongs to an
+        administrator's account (only one may install it), so the consent prompt runs it as that same account, with the same
+        records.
     .NOTES
         Throws when the script is no file (irm | iex), when the user declines the prompt, or when the elevated run fails.
     #>
+    $what = if ($script:ForAllUsers) { 'BetterClipboard for every user' } else { "BetterClipboard from $InstallDir" }
     if (-not $PSCommandPath) {
-        throw 'Removing BetterClipboard for every user needs an administrator: run PowerShell as administrator and try again.'
+        throw "Removing $what needs an administrator: run PowerShell as administrator and try again."
     }
 
-    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Uninstall', '-AllUsers', '-InstallDir', "`"$InstallDir`"")
+    $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Uninstall')
+    if ($script:ForAllUsers) { $arguments += '-AllUsers' }
+    $arguments += @('-InstallDir', "`"$InstallDir`"")
     if ($RemoveData) { $arguments += '-RemoveData' }
     if ($KeepWinVReleased) { $arguments += '-KeepWinVReleased' }
     if ($KeepProcessId) { $arguments += @('-KeepProcessId', "$KeepProcessId") }
-    Write-Step 'Asking for administrator rights to remove BetterClipboard for every user'
+    Write-Step "Asking for administrator rights to remove $what"
     try {
         $process = Start-Process -FilePath (Get-Process -Id $PID).Path -ArgumentList $arguments -Verb RunAs -PassThru
     }
@@ -1902,6 +1957,557 @@ function Set-UpdateCheck([string] $Exe, [bool] $Enabled) {
     }
 }
 
+function Test-ElevatedOverUac {
+    <#
+    .SYNOPSIS
+        Whether this run is elevated while UAC is on: the administrator's elevated token, which a program started from here
+        would get too, instead of the user's normal one.
+    .DESCRIPTION
+        With UAC off (EnableLUA 0) an administrator's every program runs with the full token, the app included, so starting
+        it directly changes nothing; with UAC on, only Explorer starts it with the user's normal rights (Start-AppThroughExplorer).
+    .OUTPUTS
+        System.Boolean.
+    #>
+    if (-not (Test-Elevated)) {
+        return $false
+    }
+
+    $lua = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System' -Name EnableLUA -ErrorAction SilentlyContinue
+    return -not ($lua -and $lua.PSObject.Properties['EnableLUA'] -and [int] $lua.EnableLUA -eq 0)
+}
+
+function Test-FolderWritable([string] $Path) {
+    <#
+    .SYNOPSIS
+        Whether this run may create files in $Path: a file with a name nothing else uses is created and deleted.
+    .DESCRIPTION
+        How the installer tells that a copy lives where only administrators may change it (Program Files, where a copy with
+        UI access lives), the way the app's updater tells it (ScriptUpdateInstaller.NeedsAdministrator): its install, update
+        and uninstall then need PowerShell as administrator. A folder that does not exist counts as writable: there is
+        nothing to protect, and creating it says the rest.
+    .PARAMETER Path
+        The folder.
+    .OUTPUTS
+        System.Boolean. $false only when Windows denies the write.
+    #>
+    if (-not $Path -or -not (Test-Path -LiteralPath $Path -PathType Container)) {
+        return $true
+    }
+
+    $probe = Join-Path $Path ".betterclipboard-write-probe-$([Guid]::NewGuid().ToString('N'))"
+    try {
+        $stream = [IO.File]::Open($probe, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $stream.Dispose()
+        Remove-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+        return $true
+    }
+    catch [UnauthorizedAccessException] {
+        return $false
+    }
+    catch {
+        # Another failure (a full disk, a name in use) is not about rights: the install that follows says what is wrong.
+        return $true
+    }
+}
+
+function Test-UiAccessFolder([string] $Path) {
+    <#
+    .SYNOPSIS
+        Whether Windows would grant UI access to a program in $Path: it must be in a secure folder (Program Files).
+    .DESCRIPTION
+        The security setting "Only elevate UIAccess applications that are installed in secure locations" is on by
+        default, and refuses UI access to a program anywhere else, since anyone who may write its folder could put a DLL
+        of their own next to it. Program Files (64-bit and 32-bit) is the secure place for an app; the Windows folder is the
+        other, and no place for one.
+    .PARAMETER Path
+        The install folder.
+    .OUTPUTS
+        System.Boolean.
+    #>
+    if (-not $Path) {
+        return $false
+    }
+
+    $full = [IO.Path]::GetFullPath($Path).TrimEnd('\') + '\'
+    $roots = @((Get-ProgramFilesFolder), $env:ProgramFiles, ${env:ProgramFiles(x86)}) | Where-Object { $_ } | Select-Object -Unique
+    foreach ($root in $roots) {
+        if ($full.StartsWith($root.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Initialize-ManifestResource {
+    <#
+    .SYNOPSIS
+        Compiles the small helper that reads and rewrites a program's own manifest (RT_MANIFEST #1) once per session.
+    .DESCRIPTION
+        The manifest says whether Windows starts the program with UI access (requestedExecutionLevel uiAccess). It is a
+        resource inside BetterClipboard.exe, read with the module loaded as data only (no code of it runs) and rewritten with
+        Windows' resource update calls, which keep every other resource and leave the file's code untouched (the .NET SDK
+        writes the program's resources the same way when it builds it).
+    #>
+    if ('BetterClipboardInstaller.ManifestResource' -as [type]) {
+        return
+    }
+
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace BetterClipboardInstaller
+{
+    /// <summary>Reads and writes a program's own application manifest (RT_MANIFEST, id 1).</summary>
+    public static class ManifestResource
+    {
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr FindResourceEx(IntPtr module, IntPtr type, IntPtr name, ushort language);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern uint SizeofResource(IntPtr module, IntPtr resource);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr LoadResource(IntPtr module, IntPtr resource);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern IntPtr LockResource(IntPtr data);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern bool FreeLibrary(IntPtr module);
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)] static extern IntPtr BeginUpdateResource(string file, bool deleteExisting);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern bool UpdateResource(IntPtr update, IntPtr type, IntPtr name, ushort language, byte[] data, uint size);
+        [DllImport("kernel32.dll", SetLastError = true)] static extern bool EndUpdateResource(IntPtr update, bool discard);
+
+        // RT_MANIFEST, and the id of a program's own manifest (CREATEPROCESS_MANIFEST_RESOURCE_ID).
+        const int ManifestType = 24;
+        const int ProgramManifestId = 1;
+
+        // LOAD_LIBRARY_AS_DATAFILE | LOAD_LIBRARY_AS_IMAGE_RESOURCE: the file is mapped for its resources; none of its code runs.
+        const uint AsData = 0x00000002 | 0x00000020;
+
+        /// <summary>The manifest's text and the language it is stored under (neutral, or US English).</summary>
+        public static string Read(string path, out ushort language)
+        {
+            IntPtr module = LoadLibraryEx(path, IntPtr.Zero, AsData);
+            if (module == IntPtr.Zero)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not read " + path + ".");
+            }
+
+            try
+            {
+                foreach (ushort candidate in new ushort[] { 0, 1033 })
+                {
+                    IntPtr resource = FindResourceEx(module, (IntPtr)ManifestType, (IntPtr)ProgramManifestId, candidate);
+                    if (resource == IntPtr.Zero)
+                    {
+                        continue;
+                    }
+
+                    uint size = SizeofResource(module, resource);
+                    IntPtr data = LockResource(LoadResource(module, resource));
+                    byte[] bytes = new byte[size];
+                    Marshal.Copy(data, bytes, 0, (int)size);
+                    language = candidate;
+                    return Encoding.UTF8.GetString(bytes).TrimStart('\uFEFF');
+                }
+
+                throw new InvalidOperationException(path + " holds no application manifest.");
+            }
+            finally
+            {
+                FreeLibrary(module);
+            }
+        }
+
+        /// <summary>Replaces the manifest (the file must not be running or loaded elsewhere).</summary>
+        public static void Write(string path, ushort language, string text)
+        {
+            byte[] bytes = Encoding.UTF8.GetBytes(text);
+            IntPtr update = BeginUpdateResource(path, false);
+            if (update == IntPtr.Zero)
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not open " + path + " to change its manifest.");
+            }
+
+            if (!UpdateResource(update, (IntPtr)ManifestType, (IntPtr)ProgramManifestId, language, bytes, (uint)bytes.Length))
+            {
+                int error = Marshal.GetLastWin32Error();
+                EndUpdateResource(update, true);
+                throw new Win32Exception(error, "Could not change the manifest of " + path + ".");
+            }
+
+            if (!EndUpdateResource(update, false))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not save the manifest of " + path + ".");
+            }
+        }
+    }
+}
+'@
+}
+
+function Test-UiAccessProgram([string] $Exe) {
+    <#
+    .SYNOPSIS
+        Whether $Exe's manifest asks Windows for UI access: a copy this installer gave UI access (-UIAccess).
+    .DESCRIPTION
+        The program itself is the record: an update or a re-run reads it before replacing the files and gives the new
+        program UI access again (Grant-UiAccess). Never throws: a missing or unreadable program asks for nothing.
+    .PARAMETER Exe
+        A BetterClipboard.exe.
+    .OUTPUTS
+        System.Boolean.
+    #>
+    if (-not $Exe -or -not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
+        return $false
+    }
+
+    try {
+        Initialize-ManifestResource
+        $language = [uint16] 0
+        $text = [BetterClipboardInstaller.ManifestResource]::Read($Exe, [ref] $language)
+        return $text -match 'uiAccess\s*=\s*"true"'
+    }
+    catch {
+        return $false
+    }
+}
+
+function Set-UiAccessRequest([string] $Exe, [bool] $Enabled) {
+    <#
+    .SYNOPSIS
+        Rewrites $Exe's manifest so that it asks Windows for UI access, or no longer does, and checks that it took.
+    .DESCRIPTION
+        Releases from 0.2.12 on declare requestedExecutionLevel asInvoker with uiAccess="false", so only that value changes;
+        an older manifest without the element gets one. Changing the file removes any signature it had, so the caller
+        signs it afterwards (Grant-UiAccess). A program that asks for UI access without a signature this PC trusts does not
+        start at all, which is why Grant-UiAccess works on a copy and moves it into place only once it is signed.
+    .PARAMETER Exe
+        The program to change (not running).
+    .PARAMETER Enabled
+        $true to ask for UI access, $false to ask for none.
+    #>
+    Initialize-ManifestResource
+    $language = [uint16] 0
+    $text = [BetterClipboardInstaller.ManifestResource]::Read($Exe, [ref] $language)
+    $value = if ($Enabled) { 'true' } else { 'false' }
+    if ($text -match '<requestedExecutionLevel\b[^>]*\buiAccess\s*=') {
+        $text = [regex]::Replace($text, '(<requestedExecutionLevel\b[^>]*\buiAccess\s*=\s*")[^"]*(")', "`${1}$value`${2}")
+    }
+    elseif ($text -match '<requestedExecutionLevel\b') {
+        $text = ([regex] '<requestedExecutionLevel\b').Replace($text, "<requestedExecutionLevel uiAccess=`"$value`"", 1)
+    }
+    else {
+        $trust = "  <trustInfo xmlns=`"urn:schemas-microsoft-com:asm.v3`">`r`n    <security>`r`n      <requestedPrivileges>`r`n" +
+            "        <requestedExecutionLevel level=`"asInvoker`" uiAccess=`"$value`"/>`r`n      </requestedPrivileges>`r`n    </security>`r`n  </trustInfo>`r`n"
+        $text = $text.Replace('</assembly>', "$trust</assembly>")
+    }
+
+    [BetterClipboardInstaller.ManifestResource]::Write($Exe, $language, $text)
+    if ((Test-UiAccessProgram $Exe) -ne $Enabled) {
+        throw "The manifest of $Exe did not take the change."
+    }
+}
+
+function New-UiAccessCertificate {
+    <#
+    .SYNOPSIS
+        Makes a self-signed code-signing certificate for this PC's copy of BetterClipboard, with a private key that exists
+        only in this process's memory.
+    .DESCRIPTION
+        Windows grants UI access only to a program whose signature chains to a certificate this PC trusts. The key is never
+        written to a certificate store or a file: once the program is signed and the key is gone (the caller disposes it),
+        the certificate can sign nothing else, so trusting it trusts this one program and nothing more. Code signing is its
+        only use, and it cannot issue other certificates. Valid for 50 years: a signature without a timestamp is valid as long
+        as its certificate is.
+    .OUTPUTS
+        PSCustomObject with Certificate (an X509Certificate2 with its private key) and Key (the RSA key, to dispose).
+    #>
+    $x509 = 'System.Security.Cryptography.X509Certificates'
+    $key = New-Object System.Security.Cryptography.RSACng 3072
+    $request = New-Object "$x509.CertificateRequest" ($UiAccessCertificateSubject, $key, [System.Security.Cryptography.HashAlgorithmName]::SHA256, [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+    $usages = New-Object System.Security.Cryptography.OidCollection
+    [void] $usages.Add((New-Object System.Security.Cryptography.Oid '1.3.6.1.5.5.7.3.3'))
+    $request.CertificateExtensions.Add((New-Object "$x509.X509EnhancedKeyUsageExtension" ($usages, $true)))
+    $request.CertificateExtensions.Add((New-Object "$x509.X509BasicConstraintsExtension" ($false, $false, 0, $true)))
+    $request.CertificateExtensions.Add((New-Object "$x509.X509KeyUsageExtension" ([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature, $true)))
+    $certificate = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays(-1), [DateTimeOffset]::Now.AddYears(50))
+    return [pscustomobject]@{ Certificate = $certificate; Key = $key }
+}
+
+function Get-UiAccessSigner([string] $Exe) {
+    <#
+    .SYNOPSIS
+        The thumbprint of the certificate this installer signed $Exe with for UI access, or '' when it carries no such
+        signature.
+    .DESCRIPTION
+        Each signing makes a certificate of its own (New-UiAccessCertificate), so the thumbprint names exactly the one to
+        take out of the trusted roots when that program is replaced or removed - never the certificate of another copy with
+        UI access, which would then no longer start at all. Read from the signature the program carries (Grant-UiAccess puts
+        the certificate in it), so it works also when the certificate has left the trusted roots already. Never throws.
+    .PARAMETER Exe
+        A BetterClipboard.exe.
+    .OUTPUTS
+        System.String.
+    #>
+    if (-not $Exe -or -not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
+        return ''
+    }
+
+    try {
+        $signer = (Get-AuthenticodeSignature -LiteralPath $Exe).SignerCertificate
+        if ($signer -and $signer.Subject -eq $UiAccessCertificateSubject) {
+            return $signer.Thumbprint
+        }
+    }
+    catch {
+        # A signature that cannot be read names no certificate of ours.
+        return ''
+    }
+
+    return ''
+}
+
+function Remove-UiAccessCertificate([string] $Thumbprint) {
+    <#
+    .SYNOPSIS
+        Takes one certificate this installer made for UI access out of this PC's trusted root certificates.
+    .DESCRIPTION
+        Only a certificate with this installer's subject ($UiAccessCertificateSubject) is removed, so a thumbprint that names
+        anything else changes nothing. Needs administrator rights (the trusted roots are the PC's).
+    .PARAMETER Thumbprint
+        The certificate's thumbprint (Get-UiAccessSigner); '' removes nothing.
+    .OUTPUTS
+        System.Boolean: whether a certificate was removed.
+    #>
+    if (-not $Thumbprint) {
+        return $false
+    }
+
+    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store ('Root', 'LocalMachine')
+    $store.Open('ReadWrite')
+    try {
+        $removed = $false
+        foreach ($certificate in @($store.Certificates | Where-Object { $_.Thumbprint -eq $Thumbprint -and $_.Subject -eq $UiAccessCertificateSubject })) {
+            $store.Remove($certificate)
+            $removed = $true
+        }
+
+        return $removed
+    }
+    finally {
+        $store.Close()
+    }
+}
+
+function Grant-UiAccess([string] $Exe, [string] $Previous = '') {
+    <#
+    .SYNOPSIS
+        Gives this PC's copy of BetterClipboard Windows' UI access: its panel then opens above Start and Search, as
+        Windows' own clipboard history does (CLAUDE.md section 2.63).
+    .DESCRIPTION
+        In order, on a copy of the program next to it, so a failure leaves the installed program as it was:
+          1. its manifest asks for UI access (Set-UiAccessRequest);
+          2. a certificate made for it alone (New-UiAccessCertificate) goes into this PC's trusted roots, public part only;
+          3. the copy is signed with it, the certificate inside the signature, and the signature checked (a program that
+             asks for UI access without a valid signature would not start at all);
+          4. the key is thrown away, the copy replaces the program, and the certificate of the program this one replaced
+             leaves the trusted roots.
+        Windows then starts the program with UI access from Program Files (Test-UiAccessFolder), through the shell, the
+        Start menu or the startup entry. Needs administrator rights (the trusted roots are the PC's).
+    .PARAMETER Exe
+        The installed BetterClipboard.exe (not running).
+    .PARAMETER Previous
+        The thumbprint of the certificate the program this one replaced was signed with (Get-UiAccessSigner, read before
+        the swap), taken out of the trusted roots once the new program is in place; '' for none.
+    #>
+    $work = "$Exe.uiaccess"
+    Copy-Item -LiteralPath $Exe -Destination $work -Force
+    $made = $null
+    $added = ''
+    try {
+        Set-UiAccessRequest $work $true
+        $made = New-UiAccessCertificate
+        $trusted = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 (, $made.Certificate.RawData)
+        $trusted.FriendlyName = 'BetterClipboard UI access'
+        $store = New-Object System.Security.Cryptography.X509Certificates.X509Store ('Root', 'LocalMachine')
+        $store.Open('ReadWrite')
+        try {
+            $store.Add($trusted)
+        }
+        finally {
+            $store.Close()
+        }
+
+        $added = $trusted.Thumbprint
+
+        # -IncludeChain All: the certificate travels inside the signature, so Get-UiAccessSigner can name it later without
+        # the trusted roots.
+        $signature = Set-AuthenticodeSignature -LiteralPath $work -Certificate $made.Certificate -HashAlgorithm SHA256 -IncludeChain All
+        if ($signature.Status -ne 'Valid') {
+            throw "the signature is not valid ($($signature.StatusMessage))"
+        }
+
+        Move-Item -LiteralPath $work -Destination $Exe -Force
+
+        # The program in place needs this certificate from now on; the one of the program it replaced has no use left.
+        $kept = $added
+        $added = ''
+        if ($Previous -and $Previous -ne $kept) {
+            $null = Remove-UiAccessCertificate $Previous
+        }
+    }
+    finally {
+        if ($made) {
+            $made.Certificate.Dispose()
+            $made.Key.Dispose()
+        }
+
+        # A certificate of a program that was not put in place is of no use: it goes again.
+        if ($added) {
+            $null = Remove-UiAccessCertificate $added
+        }
+
+        Remove-Item -LiteralPath $work -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Get-RecordedCopy {
+    <#
+    .SYNOPSIS
+        The folder of this account's own copy that an earlier install recorded and that still holds BetterClipboard.exe,
+        or ''.
+    .DESCRIPTION
+        installer.json's installDir first (not when it records an install for every user), else the Installed-apps entry's
+        InstallLocation. A run without -InstallDir uses this folder, so running the installer again updates the copy where
+        it is (a copy with UI access lives in Program Files, not in %LOCALAPPDATA%\Programs) and an uninstall removes it.
+        Until 2026-11-21 such a run always used %LOCALAPPDATA%\Programs, and a copy installed with -InstallDir elsewhere got
+        a second copy next to it.
+    .OUTPUTS
+        System.String: the folder without a trailing separator, or ''.
+    #>
+    $candidates = @()
+    $state = Read-InstallerState
+    if ($state -and $state.PSObject.Properties['installDir'] -and $state.installDir -and -not ($state.PSObject.Properties['allUsers'] -and $state.allUsers)) {
+        $candidates += [string] $state.installDir
+    }
+
+    $entry = Get-ItemProperty -Path $UninstallKeyPath -ErrorAction SilentlyContinue
+    if ($entry -and $entry.PSObject.Properties['InstallLocation'] -and $entry.InstallLocation) {
+        $candidates += [string] $entry.InstallLocation
+    }
+
+    foreach ($candidate in $candidates) {
+        $folder = $candidate.TrimEnd('\', '/')
+        if ($folder -and (Test-Path -LiteralPath (Join-Path $folder $ExeName) -PathType Leaf)) {
+            return $folder
+        }
+    }
+
+    return ''
+}
+
+function Start-AppThroughExplorer([string] $Exe, [string] $Arguments) {
+    <#
+    .SYNOPSIS
+        Starts BetterClipboard through Explorer with arguments, so it gets the user's normal rights and environment also
+        from an elevated run - and, for a copy with UI access, Windows' AppInfo service gives it that access.
+    .DESCRIPTION
+        Explorer opens a temporary shortcut that holds the arguments (Explorer takes no arguments for a program itself).
+        The shortcut is deleted once BetterClipboard runs, or after 20 s.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe.
+    .PARAMETER Arguments
+        Its arguments (--background).
+    #>
+    $link = Join-Path ([IO.Path]::GetTempPath()) "BetterClipboard-start-$([Guid]::NewGuid().ToString('N')).lnk"
+    $before = @(Get-Process -Name $AppName -ErrorAction SilentlyContinue | ForEach-Object { $_.Id })
+    $shell = New-Object -ComObject WScript.Shell
+    $shortcut = $shell.CreateShortcut($link)
+    $shortcut.TargetPath = $Exe
+    $shortcut.Arguments = $Arguments
+    $shortcut.WorkingDirectory = Split-Path -Parent $Exe
+    $shortcut.Save()
+    try {
+        Start-Process -FilePath explorer.exe -ArgumentList "`"$link`""
+        $deadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $deadline) {
+            if (@(Get-Process -Name $AppName -ErrorAction SilentlyContinue | Where-Object { $before -notcontains $_.Id }).Count -gt 0) {
+                break
+            }
+
+            Start-Sleep -Milliseconds 250
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $link -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Start-AppAfterUpdate([string] $Exe) {
+    <#
+    .SYNOPSIS
+        Starts BetterClipboard again in the notification area after an -Update: the way it ran before.
+    .DESCRIPTION
+        Directly (Start-AppAsBefore: the rights and the environment of the app that asked) - except from an installer
+        that runs as administrator while UAC is on, which the app starts for a copy in a folder only administrators may
+        change (ScriptUpdateInstaller, CLAUDE.md section 2.63): what it starts directly would run as administrator too, so
+        Explorer starts it with the user's normal rights, and with UI access for a copy that has it
+        (Start-AppThroughExplorer). The environment is Explorer's then; the installer's own was the account's already
+        (Windows gives an elevated program no other).
+    .PARAMETER Exe
+        The installed BetterClipboard.exe.
+    #>
+    if (Test-ElevatedOverUac) {
+        Start-AppThroughExplorer $Exe '--background'
+    }
+    else {
+        Start-AppAsBefore $Exe
+    }
+}
+
+function Update-UiAccess([string] $Exe, [bool] $Give, [string] $Previous) {
+    <#
+    .SYNOPSIS
+        After the new files are in place: gives the new program Windows' UI access, or takes the certificate of the program
+        it replaced out of this PC's trusted roots when it is not to have UI access any more.
+    .DESCRIPTION
+        Runs before BetterClipboard is started again, and after every step that runs the new program directly
+        (--set-hotkeys, --set-update-check): Windows refuses to start a program that asks for UI access that way (error 740,
+        "the requested operation requires elevation"), and starts it only through the shell. A failure only warns: the new
+        version is installed, and opens its panel beside Start and Search as one without UI access does.
+    .PARAMETER Exe
+        The installed BetterClipboard.exe (not running).
+    .PARAMETER Give
+        Whether it is to have UI access.
+    .PARAMETER Previous
+        The certificate of the program it replaced (Get-UiAccessSigner), or ''.
+    .OUTPUTS
+        System.Boolean: whether the program has UI access now.
+    #>
+    if ($Give) {
+        Write-Step "Giving BetterClipboard Windows' UI access, so its panel opens above Start and Search"
+        try {
+            Grant-UiAccess -Exe $Exe -Previous $Previous
+            return $true
+        }
+        catch {
+            Write-Warning "BetterClipboard was installed without Windows' UI access ($($_.Exception.Message)): its panel opens beside Start and Search. Run the installer again with -UIAccess to try once more."
+        }
+    }
+
+    # The program that certificate signed is gone, and nothing else may use it.
+    if ($Previous) {
+        try {
+            if ((Remove-UiAccessCertificate $Previous) -and -not $Give) {
+                Write-Note "BetterClipboard runs without Windows' UI access now; its certificate left this PC's trusted root certificates."
+            }
+        }
+        catch {
+            Write-Warning "The certificate that gave the previous version UI access could not be taken out of this PC's trusted root certificates ($($_.Exception.Message))."
+        }
+    }
+
+    return $false
+}
+
 function Complete-Update([string] $Exe, [string] $Semver, [bool] $WasRunning) {
     <#
     .SYNOPSIS
@@ -1911,7 +2517,9 @@ function Complete-Update([string] $Exe, [string] $Semver, [bool] $WasRunning) {
         Nothing here may fail the update - the new version is already installed - so bookkeeping problems only warn.
         The Installed-apps entry and installer.json are touched only when they name this install folder: an update
         of one copy must not rewrite another copy's records. Everything else an install sets up (shortcut, startup
-        entry, PATH, Explorer's shortcuts) is left exactly as the user has it.
+        entry, PATH, Explorer's shortcuts) is left exactly as the user has it. BetterClipboard comes back the way it ran
+        (Start-AppAfterUpdate): through Explorer when this installer runs as administrator, which the app asks for to update
+        a copy in Program Files.
     .PARAMETER Exe
         The installed BetterClipboard.exe.
     .PARAMETER Semver
@@ -1953,7 +2561,7 @@ function Complete-Update([string] $Exe, [string] $Semver, [bool] $WasRunning) {
 
     if ($WasRunning -and -not $NoLaunch) {
         Write-Step 'Starting BetterClipboard'
-        Start-AppAsBefore $Exe
+        Start-AppAfterUpdate $Exe
     }
 
     Write-Host ''
@@ -1982,14 +2590,29 @@ function Install-BetterClipboard {
 
         Write-Step "Installing for every user of this PC ($script:ScopeReason)"
     }
-    elseif ((Test-Elevated) -and -not $Update) {
+    elseif ((Test-Elevated) -and -not $Update -and -not $UIAccess -and -not (Test-UiAccessProgram (Join-Path $InstallDir $ExeName))) {
         # Not for an update: it runs with whatever rights the app has that asked for it, and changes nothing but that copy.
+        # Nor for a copy with UI access, which only an administrator may install (-UIAccess).
         Write-Warning 'Running elevated. BetterClipboard installs per user; a normal (non-admin) PowerShell is recommended. To install it for every user of this PC instead, add -AllUsers.'
     }
 
     # Contradictions fail here, before anything is downloaded or changed.
     if ($TakeOverWinV -and $NoTakeOverWinV) {
         throw '-TakeOverWinV and -NoTakeOverWinV contradict each other; give one of them (taking over Win+V is the default).'
+    }
+
+    if ($UIAccess -and $NoUIAccess) {
+        throw '-UIAccess and -NoUIAccess contradict each other; give one of them.'
+    }
+
+    # Windows' UI access (CLAUDE.md section 2.63): signing the program and trusting its certificate are the PC's business,
+    # and Windows grants the access only in Program Files (Test-UiAccessFolder).
+    if ($UIAccess -and -not (Test-Elevated)) {
+        throw "Windows' UI access (-UIAccess) needs an administrator: run PowerShell as administrator and try again. The installer then puts BetterClipboard in Program Files and signs it with a certificate it adds to this PC's trusted ones."
+    }
+
+    if ($UIAccess -and -not (Test-UiAccessFolder $InstallDir)) {
+        throw "Windows gives UI access only to a program in Program Files, and $InstallDir is not there. Leave -InstallDir out (BetterClipboard then goes to $(Join-Path (Get-ProgramFilesFolder) $AppName)), or name a folder in Program Files."
     }
 
     if ($NoTakeOverWinV -and @(@($Hotkey) | Where-Object { Test-IsWinV $_ }).Count -gt 0) {
@@ -2016,6 +2639,8 @@ function Install-BetterClipboard {
         if ($NoStartup) { $given += '-NoStartup' }
         if ($NoShortcut) { $given += '-NoShortcut' }
         if ($NoUpdateCheck) { $given += '-NoUpdateCheck' }
+        if ($UIAccess) { $given += '-UIAccess' }
+        if ($NoUIAccess) { $given += '-NoUIAccess' }
         if ($given.Count -gt 0) {
             throw "-Update only replaces the files of an installed copy, so it cannot be combined with $($given -join ', '). Run the installer without -Update for those."
         }
@@ -2023,6 +2648,12 @@ function Install-BetterClipboard {
         if (-not (Test-Path -LiteralPath (Join-Path $InstallDir $ExeName))) {
             throw "There is no BetterClipboard in $InstallDir to update. Run the installer without -Update to install it."
         }
+    }
+
+    # A copy where only administrators may change files (Program Files: one with UI access) is installed and updated by
+    # PowerShell as administrator; without it the run would stop halfway, at the first file it may not write.
+    if (-not (Test-Elevated) -and -not (Test-FolderWritable (Split-Path -Parent $InstallDir))) {
+        throw "$InstallDir is in a folder only administrators may change, and this PowerShell does not run as administrator. Run it as administrator (BetterClipboard's own update button asks for that by itself)."
     }
 
     $chocolateyCopy = Get-ChocolateyCopy
@@ -2043,6 +2674,24 @@ function Install-BetterClipboard {
     if ($storeEdition) {
         $histories = if ($storeEdition.SharesHistory) { 'Both use the same history, in %LOCALAPPDATA%\BetterClipboard.' } else { 'The two keep separate histories.' }
         Write-Warning "BetterClipboard's Microsoft Store edition is also installed for this account, and only one BetterClipboard is meant to be installed. While this copy is installed, the Store edition does not start with Windows, and the next time it is opened it offers to take this copy's place (it then uninstalls this copy). To keep this copy, uninstall the Store edition in Settings > Apps > Installed apps; to keep the Store edition, just open it. $histories"
+    }
+
+    # Windows' UI access (CLAUDE.md section 2.63): -UIAccess gives it, -NoUIAccess takes it away, and with neither the new
+    # version keeps what the copy it replaces had. Read now, before the swap replaces the program that says so - with the
+    # certificate that program was signed with, which leaves the trusted roots when it is replaced (Update-UiAccess).
+    $exe = Join-Path $InstallDir $ExeName
+    $hadUiAccess = Test-UiAccessProgram $exe
+    $previousSigner = Get-UiAccessSigner $exe
+
+    # This account's copy installed in another folder before (Get-RecordedCopy): this install takes its place, and its
+    # folder goes once this one is set up - a move, to Program Files for UI access for one. Not on an update, which replaces
+    # one known copy, and not for the copy for every user, which is not this account's own.
+    $movedFrom = ''
+    if (-not $Update -and -not $script:ForAllUsers) {
+        $recordedCopy = Get-RecordedCopy
+        if ($recordedCopy -and -not (Test-SamePath $recordedCopy $InstallDir)) {
+            $movedFrom = $recordedCopy
+        }
     }
 
     $arch = Get-OsArchitecture
@@ -2085,6 +2734,21 @@ function Install-BetterClipboard {
     }
 
     $script:ResultVersion = $semver
+
+    # UI access only for a release whose app is safe with it ($UiAccessMinimumVersion); asked for, an older one is refused
+    # before anything is downloaded, and kept from the copy it replaces, it is installed without.
+    $giveUiAccess = [bool] ($UIAccess -or ($hadUiAccess -and -not $NoUIAccess))
+    if ($giveUiAccess) {
+        $comparableUiAccess = ConvertTo-ComparableVersion $semver
+        if ($null -eq $comparableUiAccess -or $comparableUiAccess -lt $UiAccessMinimumVersion) {
+            if ($UIAccess) {
+                throw "-UIAccess needs BetterClipboard $UiAccessMinimumVersion or newer, and this release is $tag. Install a newer one, or leave -UIAccess out."
+            }
+
+            Write-Warning "BetterClipboard $tag cannot use Windows' UI access (it needs $UiAccessMinimumVersion or newer), so it is installed without: its panel opens beside Start and Search."
+            $giveUiAccess = $false
+        }
+    }
 
     # The shortcuts this run sets, if any. Settings are read now, while the running app still owns them unchanged.
     $configured = Get-ConfiguredHotkeys
@@ -2229,7 +2893,9 @@ function Install-BetterClipboard {
 
     if ($Update) {
         # The files are replaced, and that is all an update does: the shortcut, the startup entry, the PATH and
-        # Explorer's shortcuts stay as the user has them.
+        # Explorer's shortcuts stay as the user has them. A copy with UI access keeps it: the new program gets it before
+        # it starts (Complete-Update starts it).
+        $null = Update-UiAccess -Exe $exe -Give $giveUiAccess -Previous $previousSigner
         Complete-Update -Exe $exe -Semver $semver -WasRunning $wasRunning
         return
     }
@@ -2269,6 +2935,9 @@ function Install-BetterClipboard {
         }
     }
 
+    # After every step above that runs the new program directly, which Windows refuses for one that asks for UI access.
+    $uiAccessGranted = Update-UiAccess -Exe $exe -Give $giveUiAccess -Previous $previousSigner
+
     if (-not $NoShortcut -and $script:ForAllUsers) {
         # Every user's Start menu, where the Chocolatey package (installed elevated) keeps its shortcut under this name.
         $shortcutTarget = Get-ShortcutTarget $AllUsersShortcutPath
@@ -2304,8 +2973,10 @@ function Install-BetterClipboard {
     }
 
     # A re-run over this very copy is an update: it keeps what was chosen in Settings since the earlier install (Start with
-    # Windows turned off, a Win+letter shortcut given back to Windows). See Test-Reinstall.
-    $reinstall = Test-Reinstall (Read-InstallerState) $InstallDir
+    # Windows turned off, a Win+letter shortcut given back to Windows). See Test-Reinstall. So is a move of this account's
+    # copy to another folder ($movedFrom): the same copy, somewhere else.
+    $earlierState = Read-InstallerState
+    $reinstall = (Test-Reinstall $earlierState $InstallDir) -or ($movedFrom -and (Test-Reinstall $earlierState $movedFrom))
 
     if (-not $NoStartup -and $script:ForAllUsers) {
         # The entry for every user. The one value is shared with the Chocolatey package's copy, which writes it when someone
@@ -2396,6 +3067,29 @@ function Install-BetterClipboard {
         }
     }
 
+    # The copy this one replaces (Get-RecordedCopy): closed with every other BetterClipboard of the session before the swap,
+    # and no record names it any more - so its folder goes, the way an update replaces the folder it updates. The history
+    # and settings are in the data folder and stay. A PATH entry for it moves to this copy, so bclip keeps working.
+    if ($movedFrom) {
+        Write-Step "Removing the copy this one replaces ($movedFrom)"
+        $movedSigner = Get-UiAccessSigner (Join-Path $movedFrom $ExeName)
+        try {
+            Remove-Item -LiteralPath $movedFrom -Recurse -Force
+        }
+        catch {
+            Write-Warning "Could not delete $movedFrom ($($_.Exception.Message)). Close any window or console open in that folder and delete it manually."
+        }
+
+        if ($movedSigner -and (Test-Elevated)) {
+            try { $null = Remove-UiAccessCertificate $movedSigner } catch { Write-Warning "The certificate of the copy in $movedFrom stays in this PC's trusted root certificates ($($_.Exception.Message))." }
+        }
+
+        if (Remove-FromUserPath $movedFrom) {
+            [void] (Add-ToUserPath $InstallDir)
+            Write-Note "Your PATH names $InstallDir instead now (for bclip)."
+        }
+    }
+
     # Take over the Win+letter shortcuts BetterClipboard answers to (Win+V by default): Explorer stops registering
     # them, so BetterClipboard registers them directly. And with -NoTakeOverWinV, a released Win+V goes back to
     # Windows: no BetterClipboard shortcut uses it, so it would do nothing at all.
@@ -2483,6 +3177,10 @@ function Install-BetterClipboard {
 
     if ($script:ForAllUsers) {
         Write-AllUsersSummary -Exe $exe -Semver $semver -Effective $effective
+        if ($uiAccessGranted) {
+            Write-Note "Its panel opens above Start and Search for every user (Windows' UI access)."
+        }
+
         return
     }
 
@@ -2496,6 +3194,11 @@ function Install-BetterClipboard {
     }
     elseif ($NoTakeOverWinV) {
         Write-Note 'Win+V stays with Windows. Settings > Shortcut adds or removes shortcuts any time.'
+    }
+
+    if ($uiAccessGranted) {
+        Write-Note "Its panel opens above Start and Search (Windows' UI access). Its update button asks for administrator"
+        Write-Note 'rights once per update; running the installer again with -NoUIAccess takes UI access away.'
     }
 
     if ($AddToPath) {
@@ -2558,6 +3261,16 @@ function Write-AllUsersSummary([string] $Exe, [string] $Semver, $Effective) {
 
 function Uninstall-BetterClipboard {
     $exe = Join-Path $InstallDir $ExeName
+
+    # A copy in a folder only administrators may change (Program Files: one with UI access) is removed by this script run
+    # again as administrator, as the copy for every user is: Settings > Apps starts the uninstall with normal rights.
+    if (-not (Test-Elevated) -and -not (Test-FolderWritable (Split-Path -Parent $InstallDir))) {
+        Invoke-ElevatedUninstall
+        return
+    }
+
+    # Read before the folder goes: the certificate that signed this copy for UI access leaves the trusted roots with it.
+    $uiAccessSigner = Get-UiAccessSigner $exe
     $null = Stop-RunningApp $exe
 
     Write-Step 'Removing the startup entry, shortcut and Installed-apps entry'
@@ -2625,6 +3338,17 @@ function Uninstall-BetterClipboard {
             # Everything else is already undone; only the files remain. Say so plainly instead of failing
             # with a raw sharing violation.
             Write-Warning "Could not delete $InstallDir ($($_.Exception.Message)). Close any window or console open in that folder and delete it manually."
+        }
+    }
+
+    if ($uiAccessSigner) {
+        try {
+            if (Remove-UiAccessCertificate $uiAccessSigner) {
+                Write-Note "The certificate that gave it UI access left this PC's trusted root certificates."
+            }
+        }
+        catch {
+            Write-Warning "The certificate that gave it UI access could not be taken out of this PC's trusted root certificates ($($_.Exception.Message))."
         }
     }
 
@@ -2714,6 +3438,8 @@ function Uninstall-BetterClipboardForAllUsers {
     }
 
     $exe = Join-Path $InstallDir $ExeName
+    # Read before the folder goes: the certificate that signed this copy for UI access leaves the trusted roots with it.
+    $uiAccessSigner = Get-UiAccessSigner $exe
     # Only what runs from this folder: a copy of one user in this session is another install and keeps running.
     $null = Stop-InstalledApp $exe
     $stopped = Stop-AllUsersCopyElsewhere $InstallDir
@@ -2793,6 +3519,17 @@ function Uninstall-BetterClipboardForAllUsers {
         }
     }
 
+    if ($uiAccessSigner) {
+        try {
+            if (Remove-UiAccessCertificate $uiAccessSigner) {
+                Write-Note "The certificate that gave it UI access left this PC's trusted root certificates."
+            }
+        }
+        catch {
+            Write-Warning "The certificate that gave it UI access could not be taken out of this PC's trusted root certificates ($($_.Exception.Message))."
+        }
+    }
+
     if ($RemoveData) {
         Write-Step "Deleting history, settings and logs in $DataDir"
         if (Test-Path $DataDir) { Remove-Item -Path $DataDir -Recurse -Force }
@@ -2820,15 +3557,25 @@ if ($LogPath) { $LogPath = Resolve-FileSystemPath $LogPath }
 # Who this run is for (every user, or this account), then the folder that goes with it.
 Resolve-InstallScope
 if (-not $InstallDir) {
-    $InstallDir = if (-not $script:ForAllUsers) {
-        Join-Path $env:LOCALAPPDATA 'Programs\BetterClipboard'
-    }
-    elseif (Get-AllUsersCopy) {
+    # This account's copy installed before, wherever that was (Get-RecordedCopy): running the installer again updates it
+    # where it is, and -Uninstall removes it.
+    $recordedCopy = if ($script:ForAllUsers -or $Update) { '' } else { Get-RecordedCopy }
+    $InstallDir = if ($script:ForAllUsers -and (Get-AllUsersCopy)) {
         # The copy for every user that exists already, wherever an administrator put it.
         Get-AllUsersCopy
     }
-    else {
+    elseif ($script:ForAllUsers) {
         Join-Path (Get-ProgramFilesFolder) $AppName
+    }
+    elseif ($UIAccess -and -not ($recordedCopy -and (Test-UiAccessFolder $recordedCopy))) {
+        # Windows grants UI access only in Program Files: this account's copy goes there, and moves there from where it was.
+        Join-Path (Get-ProgramFilesFolder) $AppName
+    }
+    elseif ($recordedCopy) {
+        $recordedCopy
+    }
+    else {
+        Join-Path $env:LOCALAPPDATA 'Programs\BetterClipboard'
     }
 }
 

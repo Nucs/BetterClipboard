@@ -17,8 +17,18 @@ public sealed partial class FlyoutViewModel
     /// <summary>Search placeholder of the shell tabs, where the words also narrow the shell's own history.</summary>
     public const string ShellSearchPlaceholder = "Search commands you typed…";
 
-    /// <summary>The live commands behind the shell tab's last load (all that matched, before the cap), newest first.</summary>
+    /// <summary>The live commands behind the shell tab's last load (all that matched the search), newest first.</summary>
     private IReadOnlyList<ShellCommand> lastShellCommands = [];
+
+    /// <summary>
+    /// The shell tab's merged rows of its last load, handed out as cards a page at a time as the list scrolls
+    /// (<see cref="LoadMoreShellRows"/>); empty outside a shell tab. Every live command and every kept entry since
+    /// 2026-11-21 (CLAUDE.md §2.62), where a tab used to show the newest 500 commands and 200 kept entries, all as cards.
+    /// </summary>
+    private RowPages<ShellTabRow> shellPages = RowPages<ShellTabRow>.Empty;
+
+    /// <summary>The next synthetic (negative) id for a live command's card; continues across pages so ids stay unique.</summary>
+    private long nextCommandCardId = -1;
 
     /// <summary>
     /// Whether the list is a shell tab's merged view: the Pwsh or Cmd filter in the regular view (in a group view the
@@ -60,18 +70,14 @@ public sealed partial class FlyoutViewModel
             return;
         }
 
-        // Built first, then swapped in card by card: a cleared list leaves a stale selection bar (ReplaceItems). A kept
-        // command typed again since shows that newer time, the one its place in the list follows.
-        var cards = new List<ClipItemViewModel>(rows.Count);
-        long syntheticId = -1;
-        foreach (var row in rows)
-        {
-            cards.Add(row.Entry is { } stored ? CreateItem(stored, row.Time) : ClipItemViewModel.ForCommand(row.Command!, syntheticId--));
-        }
-
-        ReplaceItems(cards);
+        // Every row is merged; its cards are built a page at a time (RowPages): the first page now, the rest as the list
+        // scrolls (LoadMoreShellRows). Built first, then swapped in card by card: a cleared list leaves a stale selection bar
+        // (ReplaceItems).
+        shellPages = new RowPages<ShellTabRow>(rows);
+        nextCommandCardId = -1;
+        ReplaceItems(ShellCards(shellPages.Next(PageSize)));
         loaded = Items.Count;
-        hasMore = false;
+        hasMore = shellPages.HasMore;
         HasPatternError = false;
         UpdateEmptyState();
         Reloaded?.Invoke(this, EventArgs.Empty);
@@ -79,10 +85,48 @@ public sealed partial class FlyoutViewModel
     }
 
     /// <summary>
-    /// Loads a shell tab's rows: the stored entries kept from it and the shell's live commands, both narrowed by the
-    /// search box (same toggles as the history), merged newest first without forgotten or hidden commands
-    /// (<see cref="ShellTab.Merge"/>), the live ones capped at <see cref="ShellTab.MaxCommands"/>.
+    /// Appends the next page of the shell tab's merged rows as cards (scrolled near the end). Nothing is read: the last load
+    /// merged every row already.
     /// </summary>
+    private void LoadMoreShellRows()
+    {
+        foreach (var card in ShellCards(shellPages.Next(PageSize)))
+        {
+            Items.Add(card);
+        }
+
+        loaded = Items.Count;
+        hasMore = shellPages.HasMore;
+    }
+
+    /// <summary>
+    /// The cards of a page of shell-tab rows: a kept command's history entry (showing the newer time when it was typed again
+    /// since it was kept — the time its place follows), or a live command (a fresh negative id each).
+    /// </summary>
+    /// <param name="rows">The rows, in display order.</param>
+    /// <returns>The cards, in the same order.</returns>
+    private List<ClipItemViewModel> ShellCards(IReadOnlyList<ShellTabRow> rows)
+    {
+        var cards = new List<ClipItemViewModel>(rows.Count);
+        foreach (var row in rows)
+        {
+            cards.Add(row.Entry is { } stored ? CreateItem(stored, row.Time) : ClipItemViewModel.ForCommand(row.Command!, nextCommandCardId--));
+        }
+
+        return cards;
+    }
+
+    /// <summary>
+    /// Loads a shell tab's rows: every stored entry kept from it and every live command the shell remembers, both narrowed by
+    /// the search box (same toggles as the history), merged newest first without forgotten or hidden commands
+    /// (<see cref="ShellTab.Merge"/>).
+    /// </summary>
+    /// <remarks>
+    /// Until 2026-11-21 the live commands were capped at the newest 500 and the stored entries at 200, so most of a long
+    /// PowerShell history could not be reached from the tab; the owner chose every row, loaded as the list scrolls
+    /// (CLAUDE.md §2.62). The shell's commands are read whole anyway (PowerShell's file is parsed at once, the Cmd tab's
+    /// kept list is in memory): only the cards cost, and they are built a page at a time.
+    /// </remarks>
     /// <param name="cancellationToken">Cancels a superseded load.</param>
     /// <returns>The rows in display order.</returns>
     /// <exception cref="OperationCanceledException">Superseded by a newer load.</exception>
@@ -92,12 +136,11 @@ public sealed partial class FlyoutViewModel
     {
         var shell = CurrentShell;
         var history = controller.History;
-        var storedTask = history.QueryAsync(new ClipQuery
+        var storedTask = QueryEveryEntryAsync(new ClipQuery
         {
             SearchText = SearchText,
             SearchOptions = CurrentSearchOptions,
             Filter = Filter,
-            Limit = ShellTab.MaxStoredEntries,
             PinnedFirst = false, // the merge orders them
             HiddenRows = HiddenRows,
         }, cancellationToken);
@@ -117,16 +160,12 @@ public sealed partial class FlyoutViewModel
             return matcher is null ? all : all.Where(c => matcher.IsMatch(c.ClipboardText, cancellationToken)).ToList();
         }, cancellationToken);
 
-        // Room for the ones the merge drops (hidden, forgotten, also stored) so the tab still shows a full page.
-        var candidates = matching.Take(ShellTab.MaxCommands + ShellTab.MaxStoredEntries).ToList();
+        // One query per 500 commands (ClipStore.FindForgotten), however long the history.
         var hidden = ShellTab.ParseHidden(await history.GetStateValueAsync(ShellTab.HiddenStateName(shell)));
-        var forgotten = await history.FindForgottenAsync(candidates.Select(c => c.Fingerprint).ToList());
+        var forgotten = await history.FindForgottenAsync(matching.Select(c => c.Fingerprint).ToList());
         var stored = await storedTask;
         lastShellCommands = matching;
-        var rows = ShellTab.Merge(stored, candidates, hidden, forgotten, controller.Settings.Current.PinnedOnTop, newestTyped);
-
-        // The live half is capped; every stored row stays (one whose place lies past the cap follows the last command).
-        return ShellTab.CapCommands(rows, ShellTab.MaxCommands);
+        return ShellTab.Merge(stored, matching, hidden, forgotten, controller.Settings.Current.PinnedOnTop, newestTyped);
     }
 
     /// <summary>The empty shell tab's wording: no matches, or how the tab fills (and why it may not).</summary>
@@ -155,11 +194,16 @@ public sealed partial class FlyoutViewModel
     }
 
     /// <summary>The shell tab's footer: how many commands, from where, and how many kept.</summary>
-    /// <returns>E.g. "500 of 2,952 commands in PowerShell's history · 3 kept" or "12 Command Prompt commands · 1 open window".</returns>
+    /// <returns>
+    /// E.g. "2,949 of 2,952 commands in PowerShell's history · 3 kept" (the three kept ones show as their entries) or
+    /// "12 Command Prompt commands · 1 open window".
+    /// </returns>
     private string ShellStatusText()
     {
-        int live = Items.Count(i => i.Command is not null);
-        int stored = Items.Count - live;
+        // Every row of the load, the ones whose cards are not built yet included: the numbers do not depend on how far the
+        // list was scrolled.
+        int live = Items.Count(i => i.Command is not null) + shellPages.CountRemaining(r => r.Command is not null);
+        int stored = Items.Count(i => i.Command is null) + shellPages.CountRemaining(r => r.Command is null);
         var kept = stored > 0 ? UiText.Format($" · {stored:N0} kept") : string.Empty;
         int total = lastShellCommands.Count;
         if (CurrentShell == ShellKind.PowerShell)

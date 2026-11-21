@@ -1,4 +1,6 @@
 using System.IO.Compression;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using BetterClipboard.Core.Updates;
@@ -354,17 +356,217 @@ public sealed class UpdateInstallerTests : IDisposable
         Assert.False(File.Exists(request.ResultPath));
     }
 
+    /// <summary>
+    /// For a copy in a folder only administrators may change (Program Files, where one with UI access lives, CLAUDE.md §2.63)
+    /// the same contract command line goes to the same Windows PowerShell, started by the shell with the <c>runas</c> verb
+    /// (one consent prompt): no window, the temp folder as working folder, and every argument whole once Windows splits the
+    /// line again - also the test folder's space, quote, ampersand, percent signs and non-ASCII letter.
+    /// </summary>
+    [Fact]
+    public void ElevatedStartInfo_IsTheContractCommandLine_ThroughTheShell()
+    {
+        var request = Request(Path.Combine(root, "pkg", "BetterClipboard-9.9.9-win-x64.zip"), installDirectory: Path.Combine(root, "Program Files", "BetterClipboard") + @"\");
+        var script = Path.Combine(request.WorkDirectory, "install.ps1");
+        var installer = new ScriptUpdateInstaller();
+
+        var elevated = installer.CreateElevatedStartInfo(request, script);
+        var plain = installer.CreateStartInfo(request, script);
+
+        Assert.Equal(ScriptUpdateInstaller.DefaultPowerShellPath, elevated.FileName);
+        Assert.True(elevated.UseShellExecute);
+        Assert.Equal("runas", elevated.Verb);
+        Assert.Equal(System.Diagnostics.ProcessWindowStyle.Hidden, elevated.WindowStyle);
+        Assert.Equal(Path.GetTempPath(), elevated.WorkingDirectory);
+        Assert.Empty(elevated.ArgumentList);
+        Assert.Equal(plain.ArgumentList, Split(elevated.Arguments));
+    }
+
+    /// <summary>
+    /// The shell takes one command line, joined here with the rules <c>ProcessStartInfo.ArgumentList</c> uses: whatever the
+    /// argument holds - spaces, tabs, quotes, backslashes before a quote or at the end, nothing at all - Windows' own
+    /// splitter (<c>CommandLineToArgvW</c>, the rules PowerShell's -File reads by) gives every argument back whole.
+    /// </summary>
+    /// <param name="argument">One argument, between two plain ones.</param>
+    [Theory]
+    [InlineData("plain")]
+    [InlineData(@"C:\Program Files\BetterClipboard")]
+    [InlineData(@"C:\Program Files\BetterClipboard\")]
+    [InlineData(@"C:\a\\")]
+    [InlineData("say \"hi\"")]
+    [InlineData(@"a\""b")]
+    [InlineData(@"a\\""b")]
+    [InlineData(@"\\server\share\x y")]
+    [InlineData("tab\there")]
+    [InlineData("")]
+    [InlineData("\"")]
+    [InlineData(@"\")]
+    [InlineData("100% & 'q' \u00E9 \u05E9\u05DC\u05D5\u05DD")]
+    public void JoinArguments_EveryArgumentComesBackWhole(string argument)
+    {
+        string[] arguments = ["-First", argument, "-Last"];
+
+        Assert.Equal(arguments, Split(ScriptUpdateInstaller.JoinArguments(arguments)));
+    }
+
+    /// <summary>
+    /// Administrator rights are needed exactly when Windows refuses this account a new file next to the install folder,
+    /// where the installer puts the new version and renames the old one: a folder the account may write is updated as
+    /// always, one with a deny rule for it (Program Files to an account that is not elevated) needs them, and a folder
+    /// whose parent does not exist leaves the installer to say what is wrong. The probe leaves nothing behind.
+    /// </summary>
+    [Fact]
+    public void NeedsAdministrator_OnlyWhenWindowsDeniesTheWrite()
+    {
+        var writable = Directory.CreateDirectory(Path.Combine(root, "writable")).FullName;
+        Assert.False(ScriptUpdateInstaller.NeedsAdministrator(Path.Combine(writable, "BetterClipboard")));
+        Assert.Empty(Directory.GetFileSystemEntries(writable));
+
+        Assert.False(ScriptUpdateInstaller.NeedsAdministrator(Path.Combine(root, "missing parent", "BetterClipboard")));
+
+        var (locked, undo) = LockedFolder();
+        try
+        {
+            Assert.True(ScriptUpdateInstaller.NeedsAdministrator(Path.Combine(locked, "BetterClipboard") + @"\"));
+        }
+        finally
+        {
+            undo();
+        }
+
+        Assert.Empty(Directory.GetFileSystemEntries(locked));
+    }
+
+    /// <summary>
+    /// A copy that needs administrator rights is never handed to an installer that would then start BetterClipboard as
+    /// administrator (a release before <see cref="ElevatedUpdate.MinimumVersion"/>, such as the way back from a development
+    /// build): the update stops with a message that names the installer command, before any process is started.
+    /// </summary>
+    /// <returns>A task completing when the refusal was checked.</returns>
+    [Fact]
+    public async Task Start_ElevatedUpdateToAnOlderInstaller_IsRefused()
+    {
+        var package = WritePackage("BetterClipboard-0.2.11-win-x64.zip", ("install.ps1", Encoding.ASCII.GetBytes(ReportingScript)));
+        var (locked, undo) = LockedFolder();
+        UpdateException ex;
+        try
+        {
+            var request = Request(package, Path.Combine(locked, "BetterClipboard"), new SemanticVersion(0, 2, 11));
+            ex = await Assert.ThrowsAsync<UpdateException>(() => new ScriptUpdateInstaller().StartAsync(request, TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(request.ResultPath));
+        }
+        finally
+        {
+            undo();
+        }
+
+        Assert.Equal(UpdateFailure.Installer, ex.Failure);
+        Assert.Equal(UpdateMessages.Format(UpdateMessages.ElevatedUpdateTooOld, "0.2.11"), ex.Message);
+    }
+
+    /// <summary>
+    /// An isolated instance (<c>BETTERCLIPBOARD_DATA_DIR</c>) never runs an installer as administrator: Windows would start it
+    /// with the account's own environment, so its exit request and its records would reach the regular instance instead.
+    /// </summary>
+    /// <returns>A task completing when the refusal was checked.</returns>
+    [Fact]
+    public async Task Start_ElevatedUpdateOfAnIsolatedInstance_IsRefused()
+    {
+        var package = WritePackage("BetterClipboard-9.9.9-win-x64.zip", ("install.ps1", Encoding.ASCII.GetBytes(ReportingScript)));
+        var (locked, undo) = LockedFolder();
+        var previous = Environment.GetEnvironmentVariable(Core.AppPaths.DataDirectoryVariable);
+        UpdateException ex;
+        try
+        {
+            Environment.SetEnvironmentVariable(Core.AppPaths.DataDirectoryVariable, Path.Combine(root, "data dir"));
+            var request = Request(package, Path.Combine(locked, "BetterClipboard"));
+            ex = await Assert.ThrowsAsync<UpdateException>(() => new ScriptUpdateInstaller().StartAsync(request, TestContext.Current.CancellationToken));
+            Assert.False(File.Exists(request.ResultPath));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(Core.AppPaths.DataDirectoryVariable, previous);
+            undo();
+        }
+
+        Assert.Equal(UpdateFailure.Installer, ex.Failure);
+        Assert.Contains("isolated instance", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Makes a folder in the test's folder that this account may not create files in: a deny rule for the account's own SID,
+    /// which holds for an elevated administrator too (CI runs elevated), as Program Files holds against a normal one.
+    /// </summary>
+    /// <returns>
+    /// The folder, and the action that takes the rule away again, so the test's folder can be deleted (call it in a
+    /// <c>finally</c>).
+    /// </returns>
+    private (string Folder, Action Undo) LockedFolder()
+    {
+        var locked = Directory.CreateDirectory(Path.Combine(root, $"locked {Guid.NewGuid():N}"));
+        var deny = new FileSystemAccessRule(
+            WindowsIdentity.GetCurrent().User!,
+            FileSystemRights.CreateFiles | FileSystemRights.AppendData | FileSystemRights.WriteData,
+            InheritanceFlags.None,
+            PropagationFlags.None,
+            AccessControlType.Deny);
+        var security = locked.GetAccessControl();
+        security.AddAccessRule(deny);
+        locked.SetAccessControl(security);
+        return (locked.FullName, () =>
+        {
+            security.RemoveAccessRule(deny);
+            locked.SetAccessControl(security);
+        });
+    }
+
+    /// <summary>Splits a command line like Windows programs do (<c>CommandLineToArgvW</c>).</summary>
+    /// <param name="commandLine">The arguments, without the program.</param>
+    /// <returns>The arguments.</returns>
+    /// <exception cref="System.ComponentModel.Win32Exception">The line could not be split.</exception>
+    private static string[] Split(string commandLine)
+    {
+        // A program name first: CommandLineToArgvW reads the first token by other rules (no backslash escapes).
+        nint argv = CommandLineToArgvW("powershell.exe " + commandLine, out int count);
+        if (argv == 0)
+        {
+            throw new System.ComponentModel.Win32Exception(System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+        }
+
+        try
+        {
+            return [.. Enumerable.Range(1, count - 1).Select(i => System.Runtime.InteropServices.Marshal.PtrToStringUni(System.Runtime.InteropServices.Marshal.ReadIntPtr(argv, i * IntPtr.Size))!)];
+        }
+        finally
+        {
+            LocalFree(argv);
+        }
+    }
+
+    /// <summary><c>CommandLineToArgvW</c>: the shell's reference command-line splitter.</summary>
+    /// <param name="lpCmdLine">The command line.</param>
+    /// <param name="pNumArgs">Receives the argument count.</param>
+    /// <returns>An array of string pointers, freed with <see cref="LocalFree"/>; 0 on failure.</returns>
+    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode, SetLastError = true)]
+    private static extern nint CommandLineToArgvW(string lpCmdLine, out int pNumArgs);
+
+    /// <summary>Frees the array <see cref="CommandLineToArgvW"/> returned.</summary>
+    /// <param name="hMem">The array.</param>
+    /// <returns>0 on success.</returns>
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern nint LocalFree(nint hMem);
+
     /// <summary>Builds a request whose working, result and log paths lie in the test's folder.</summary>
     /// <param name="package">The package's path.</param>
     /// <param name="installDirectory">The folder the update would replace.</param>
+    /// <param name="version">The version to install; 9.9.9 when <see langword="null"/>.</param>
     /// <returns>The request.</returns>
-    private UpdateInstallRequest Request(string package, string installDirectory)
+    private UpdateInstallRequest Request(string package, string installDirectory, SemanticVersion? version = null)
     {
         var work = Path.Combine(root, "data dir", "updates");
         return new UpdateInstallRequest(
             package,
             Sha256,
-            new SemanticVersion(9, 9, 9),
+            version ?? new SemanticVersion(9, 9, 9),
             installDirectory,
             work,
             Path.Combine(work, "result.json"),

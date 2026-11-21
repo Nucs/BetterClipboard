@@ -52,6 +52,12 @@ COPYRIGHT_AT_MOST = 200
 # "The justification must be 500 characters or fewer": Partner Center's own words when the first, 993-character
 # one was saved (2026-11-13). The page saves nothing and says so only in red under the box.
 JUSTIFICATION_AT_MOST = 500
+# The notes for certification: Microsoft documents no limit, but developers who publish there report 2,000 characters
+# (public pull requests, 2026; one went over it), one of them unsure whether a line break counts as one character or
+# two. So they are counted with every line break as two (CRLF): what fits that way fits either way. The release
+# pipeline sends these notes with every version (tools/release/submit-store.ps1), which checks the same before
+# sending.
+CERTIFICATION_NOTES_AT_MOST = 2000
 
 # U+200E LEFT-TO-RIGHT MARK, built from its number on purpose: written as a character or as an escape it has ended up
 # in files as the raw, invisible character before, where no diff shows it.
@@ -211,7 +217,25 @@ class Kit:
                           f"(it has {len(self.justification)})"))
         if not self.certification_notes:
             found.append(("kit", "notes for certification missing"))
+        elif counted_notes_length(self.certification_notes) > CERTIFICATION_NOTES_AT_MOST:
+            found.append(("kit", f"notes for certification over {CERTIFICATION_NOTES_AT_MOST} characters with every "
+                          f"line break counted as two (they have {counted_notes_length(self.certification_notes)})"))
         return found
+
+
+def counted_notes_length(text):
+    """The length of the notes for certification as Partner Center may count it: every line break as two characters.
+
+    Partner Center's limit for these notes is known only from developers who hit it, and whether it counts a line
+    break as LF or as CRLF is not known; counting CRLF is the strict reading, so notes that fit it fit either way.
+
+    Args:
+        text: The notes, with LF or CRLF line breaks.
+
+    Returns:
+        The number of characters with each line break counted as CRLF.
+    """
+    return len(text.replace("\r\n", "\n").replace("\n", "\r\n"))
 
 
 def _between(text, start, end):

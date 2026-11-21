@@ -121,4 +121,25 @@ public sealed class PointerSelectionGate
     /// like after a move.
     /// </summary>
     public void Activate() => IsPointerActive = true;
+
+    /// <summary>
+    /// Whether the cursor at a position counts as moved since the last <c>Suspend</c>: <see cref="Observe"/>'s answer,
+    /// without its effect. For questions that must not hand the selection to the mouse, such as whether the panel's hover
+    /// peeks may start their countdown (a peek must not open under a mouse that lies still while the panel changed under
+    /// it: a viewer that closed, a summon, a reload).
+    /// </summary>
+    /// <param name="x">The cursor's horizontal screen position, in pixels.</param>
+    /// <param name="y">The cursor's vertical screen position, in pixels.</param>
+    /// <returns>
+    /// <see langword="true"/> when the mouse owns the selection already, or the cursor is farther than the threshold from
+    /// the recorded spot on either axis; <see langword="false"/> while it is not, and while no spot is known (a
+    /// <see cref="Suspend(int)"/> without a position, which only <see cref="Observe"/> completes).
+    /// </returns>
+    /// <remarks>
+    /// Unlike <see cref="Observe"/>, it never changes the gate: a peek's question must not take the selection for the row
+    /// under the mouse before the selection's own handler has seen the move, which would then find the gate open and the
+    /// row's selection skipped.
+    /// </remarks>
+    public bool HasMoved(int x, int y) =>
+        IsPointerActive || (hasAnchor && (Math.Abs((long)x - anchorX) > threshold || Math.Abs((long)y - anchorY) > threshold));
 }

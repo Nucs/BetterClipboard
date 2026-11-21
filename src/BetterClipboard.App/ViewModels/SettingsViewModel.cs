@@ -52,6 +52,18 @@ public sealed partial class SettingsViewModel : ObservableObject
     private string? recordedHotkeyText;
 
     /// <summary>
+    /// How long the Background transparency slider must rest before its level is saved: long enough that a drag saves once,
+    /// short enough that closing Settings right after a change rarely needs <see cref="Close"/>'s save.
+    /// </summary>
+    private static readonly TimeSpan BackgroundTransparencySaveDelay = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>The level the slider shows and the panel previews, not saved yet; <see langword="null"/> when saved.</summary>
+    private int? pendingBackgroundTransparency;
+
+    /// <summary>Saves the slider's level once it rested (<see cref="BackgroundTransparencySaveDelay"/>); created at its first move.</summary>
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? backgroundTransparencyTimer;
+
+    /// <summary>
     /// Creates the view model and loads the current settings/status.
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -63,6 +75,11 @@ public sealed partial class SettingsViewModel : ObservableObject
         // "Alt+Win+V" once saved, so the box would change under the user right after picking it.
         HotkeyPresets = new[] { "Win+V", "Win+Alt+V", "Ctrl+Shift+V", "Ctrl+Alt+V", "Ctrl+`", "Alt+Insert" }
             .Select(preset => HotkeyGesture.TryParse(preset, out var gesture) ? gesture.ToString() : preset)
+            .ToArray();
+
+        // One place per listed button; Load fills them with the saved order.
+        PanelButtonRows = Enumerable.Range(0, PanelButtons.All.Count(IsPanelButtonListed))
+            .Select(position => new PanelButtonRowViewModel(position, SetPanelButtonShown))
             .ToArray();
         Load(controller.Settings.Current);
         RefreshSystemStatus();
@@ -220,6 +237,13 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial bool PasteOnSelect { get; set; }
 
+    /// <summary>
+    /// Settings › Panel › Leave the keyboard with your app (<see cref="AppSettings.LeaveFocusInApp"/>, CLAUDE.md §2.59):
+    /// the panel opens without taking the keyboard from the app the user types in. Takes effect at the next summon.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool LeaveFocusInApp { get; set; }
+
     /// <summary>See <see cref="AppSettings.MoveToTopOnPaste"/>.</summary>
     [ObservableProperty]
     public partial bool MoveToTopOnPaste { get; set; }
@@ -252,9 +276,34 @@ public sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     public partial int PlacementIndex { get; set; }
 
+    /// <summary>
+    /// Settings › Panel › Buttons in the panel (CLAUDE.md §2.55, §2.58): one row per header button Settings lists, top to
+    /// bottom as the header runs left to right, each with its box (shown or hidden) and its up and down arrows. Fixed places,
+    /// built once; <see cref="RefreshPanelButtonRows"/> puts the saved order and boxes into them (see
+    /// <see cref="PanelButtonRowViewModel"/>'s remarks for why rows are places). The update button has no row in a copy
+    /// without an update system (the Microsoft Store edition: <see cref="IsPanelButtonListed"/>).
+    /// </summary>
+    /// <remarks>An array on purpose, like <see cref="WorksWith"/>: a plain array is what WinRT's list marshaling handles most directly.</remarks>
+    public IReadOnlyList<PanelButtonRowViewModel> PanelButtonRows { get; }
+
+    /// <summary>
+    /// Settings › Panel › Lines per card (<see cref="AppSettings.LinesPerCard"/>, CLAUDE.md §2.57): how many lines of its
+    /// text each card in the panel shows, 1 to 40. A double, as the number box's value is.
+    /// </summary>
+    [ObservableProperty]
+    public partial double LinesPerCard { get; set; } = AppSettings.DefaultLinesPerCard;
+
     /// <summary>Index into System / Light / Dark.</summary>
     [ObservableProperty]
     public partial int ThemeIndex { get; set; }
+
+    /// <summary>
+    /// Settings › Panel › Background transparency's slider: <see cref="AppSettings.BackgroundTransparency"/>, 0 (most frosted)
+    /// to 100 (clearest), 50 the usual look (CLAUDE.md §2.58). Each step shows on the panel at once and is saved once the
+    /// slider rests (<see cref="OnBackgroundTransparencyChanged(double)"/>).
+    /// </summary>
+    [ObservableProperty]
+    public partial double BackgroundTransparency { get; set; } = PanelBackdrop.DefaultLevel;
 
     /// <summary>
     /// Index into <see cref="LanguageOptions"/>: 0 is "Use Windows setting", then every offered language. A change is
@@ -435,13 +484,24 @@ public sealed partial class SettingsViewModel : ObservableObject
             CaptureFiles = settings.CaptureFiles;
             PreserveAllFormats = settings.PreserveAllFormats;
             PasteOnSelect = settings.PasteOnSelect;
+            LeaveFocusInApp = settings.LeaveFocusInApp;
             MoveToTopOnPaste = settings.MoveToTopOnPaste;
             PinnedOnTop = settings.PinnedOnTop;
             ImportWindowsHistoryOnStartup = settings.ImportWindowsHistoryOnStartup;
             IsCapturePaused = settings.IsCapturePaused;
             IgnoredAppsText = string.Join(Environment.NewLine, settings.IgnoredApps);
             PlacementIndex = PlacementIndexOf(settings);
+            RefreshPanelButtonRows(settings);
+            LinesPerCard = settings.LinesPerCard;
             ThemeIndex = (int)settings.Theme;
+
+            // Not over a value the slider holds and has not saved yet: another setting saved meanwhile would put the thumb
+            // back for a moment (its own save comes when it rests, and loads it again).
+            if (pendingBackgroundTransparency is null)
+            {
+                BackgroundTransparency = settings.BackgroundTransparency;
+            }
+
             // A saved tag this build does not ship (a newer version's language) shows as "Use Windows setting", which is
             // also what it means here (UiText.Resolve).
             LanguageIndex = Math.Max(0, LanguageOptions.ToList().FindIndex(option =>
@@ -455,6 +515,7 @@ public sealed partial class SettingsViewModel : ObservableObject
             ShowEverythingTab = settings.ShowEverythingTab;
             ShowPowerShellTab = settings.ShowPowerShellTab;
             ShowCmdTab = settings.ShowCmdTab;
+            LoadListLimits(settings);
             KeepClaudeCodePrompts = settings.KeepClaudeCodePrompts;
             KeepCodexPrompts = settings.KeepCodexPrompts;
             RecordRunHistory = settings.RecordRunHistory;
@@ -470,6 +531,9 @@ public sealed partial class SettingsViewModel : ObservableObject
             RefreshShellHistoryStatus();
             RefreshPromptsStatus();
             RefreshUpdateStatus();
+
+            // A changed limit rewords History's "Now:" lines at once, from the numbers read last (no I/O).
+            ApplyRetentionLines();
         }
         finally
         {
@@ -1213,6 +1277,10 @@ public sealed partial class SettingsViewModel : ObservableObject
     /// <param name="value">New value.</param>
     partial void OnPasteOnSelectChanged(bool value) => Update(s => s with { PasteOnSelect = value });
 
+    /// <summary>Persists the change; the next summon opens the panel the chosen way (ClipboardFlyout.Focusless.cs).</summary>
+    /// <param name="value">New value.</param>
+    partial void OnLeaveFocusInAppChanged(bool value) => Update(s => s with { LeaveFocusInApp = value });
+
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>
     partial void OnMoveToTopOnPasteChanged(bool value) => Update(s => s with { MoveToTopOnPaste = value });
@@ -1282,6 +1350,166 @@ public sealed partial class SettingsViewModel : ObservableObject
         FlyoutPlacement.CenterScreen => settings.CenterOnMainScreen ? 2 : 3,
         _ => 0,
     };
+
+    /// <summary>
+    /// Persists the lines per card; the controller then applies them to the panel, also while it shows
+    /// (<c>ClipboardFlyout.ApplyCardLines</c>). A number box cleared by hand reports NaN, which keeps the saved value; one
+    /// out of range is kept in range by the settings (<see cref="AppSettings.Normalize"/>), as the box itself does.
+    /// </summary>
+    /// <param name="value">New value.</param>
+    partial void OnLinesPerCardChanged(double value)
+    {
+        if (!double.IsNaN(value))
+        {
+            Update(s => s with { LinesPerCard = (int)Math.Round(value) });
+        }
+    }
+
+    /// <summary>
+    /// Persists one ticked or unticked box of Settings › Panel › Buttons in the panel, keeping the others as stored
+    /// (<see cref="PanelButtons.WithShown"/>); the controller then applies the header (<c>ClipboardFlyout.ApplyHeaderButtons</c>).
+    /// Unticking the pin also lets the panel close after pasting again (<see cref="AppSettings.PanelStaysOpen"/>).
+    /// </summary>
+    /// <param name="button">The button.</param>
+    /// <param name="shown">Whether it shows.</param>
+    private void SetPanelButtonShown(PanelButton button, bool shown) =>
+        Update(s => s with { HiddenPanelButtons = PanelButtons.WithShown(s.HiddenPanelButtons, button, shown) });
+
+    /// <summary>
+    /// Settings' up or down arrow on a row of Buttons in the panel: moves that row's button one listed place left (up) or
+    /// right (down) in the panel's header (<see cref="PanelButtons.Move"/>), saves the order
+    /// (<see cref="AppSettings.PanelButtonOrder"/>, empty again for the default order), and shows it in the rows at once, so
+    /// the window can give the keyboard to the arrow that follows the button (CLAUDE.md §2.58).
+    /// </summary>
+    /// <param name="position">The row whose arrow was pressed (<see cref="PanelButtonRowViewModel.Position"/>).</param>
+    /// <param name="later"><see langword="true"/> for the down arrow (right in the panel), <see langword="false"/> for up (left).</param>
+    /// <returns>
+    /// The row the button stands in afterwards; <paramref name="position"/> itself when it could not move (the top row's up
+    /// arrow, the bottom row's down arrow, a position out of range).
+    /// </returns>
+    public int MovePanelButton(int position, bool later)
+    {
+        if (position < 0 || position >= PanelButtonRows.Count)
+        {
+            return position;
+        }
+
+        var button = PanelButtonRows[position].Button;
+        var order = PanelButtons.Arrange(controller.Settings.Current.PanelButtonOrder);
+        if (!PanelButtons.CanMove(order, button, later, IsPanelButtonListed))
+        {
+            return position;
+        }
+
+        var moved = PanelButtons.Move(order, button, later, IsPanelButtonListed);
+        Update(s => s with { PanelButtonOrder = PanelButtons.ToStored(moved) });
+
+        // At once, not when the settings change comes back through the window (queued): the window moves the keyboard next,
+        // and needs the rows to say where the button is now. The queued load then puts the same values in again.
+        RefreshPanelButtonRows(controller.Settings.Current);
+        for (int row = 0; row < PanelButtonRows.Count; row++)
+        {
+            if (PanelButtonRows[row].Button == button)
+            {
+                return row;
+            }
+        }
+
+        return position;
+    }
+
+    /// <summary>
+    /// Puts the saved order and boxes into the rows of Buttons in the panel: the listed buttons in the order the header shows
+    /// them (<see cref="PanelButtons.Arrange"/>), each with its tick and which arrows can move it. Changes no setting.
+    /// </summary>
+    /// <param name="settings">The settings snapshot.</param>
+    private void RefreshPanelButtonRows(AppSettings settings)
+    {
+        var order = PanelButtons.Arrange(settings.PanelButtonOrder);
+        var listed = order.Where(IsPanelButtonListed).ToArray();
+        for (int row = 0; row < PanelButtonRows.Count && row < listed.Length; row++)
+        {
+            var button = listed[row];
+            PanelButtonRows[row].Assign(
+                button,
+                !PanelButtons.IsHidden(settings.HiddenPanelButtons, button),
+                PanelButtons.CanMove(order, button, later: false, IsPanelButtonListed),
+                PanelButtons.CanMove(order, button, later: true, IsPanelButtonListed));
+        }
+    }
+
+    /// <summary>
+    /// Whether Settings lists a header button: every one, except the update button in the Microsoft Store edition, whose
+    /// updates come from the Store (it has no update button to show, hide or move; CLAUDE.md §2.47).
+    /// </summary>
+    /// <param name="button">The button.</param>
+    /// <returns><see langword="true"/> when it has a row.</returns>
+    private static bool IsPanelButtonListed(PanelButton button) => button != PanelButton.Updates || !AppController.IsStoreEdition;
+
+    /// <summary>
+    /// The slider moved (a drag's step, an arrow key, a click on the track): the panel shows the level at once
+    /// (<see cref="AppController.PreviewBackgroundTransparency"/>), and the level is saved once the slider rested for
+    /// <see cref="BackgroundTransparencySaveDelay"/>. Saving every step would make Settings reload after each one
+    /// (<c>SettingsWindow.OnSettingsChanged</c> → <see cref="Load"/>, which reads the registry and more), and stutter the drag.
+    /// </summary>
+    /// <param name="value">The slider's value; NaN is ignored.</param>
+    partial void OnBackgroundTransparencyChanged(double value)
+    {
+        if (loading || double.IsNaN(value))
+        {
+            return;
+        }
+
+        int level = PanelBackdrop.Normalize((int)Math.Round(value));
+        controller.PreviewBackgroundTransparency(level);
+        pendingBackgroundTransparency = level;
+        if (backgroundTransparencyTimer is null)
+        {
+            backgroundTransparencyTimer = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+            backgroundTransparencyTimer.Interval = BackgroundTransparencySaveDelay;
+            backgroundTransparencyTimer.IsRepeating = false;
+            backgroundTransparencyTimer.Tick += BackgroundTransparencyTimer_Tick;
+        }
+
+        backgroundTransparencyTimer.Stop();
+        backgroundTransparencyTimer.Start();
+    }
+
+    /// <summary>The slider rested: saves the level it shows.</summary>
+    /// <param name="sender">The timer.</param>
+    /// <param name="args">Unused.</param>
+    private void BackgroundTransparencyTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args) => SaveBackgroundTransparency();
+
+    /// <summary>
+    /// Saves the level the slider shows when it has not been saved yet (<see cref="AppSettings.BackgroundTransparency"/>); the
+    /// settings change then reaches the panel as usual. Nothing to do otherwise.
+    /// </summary>
+    private void SaveBackgroundTransparency()
+    {
+        backgroundTransparencyTimer?.Stop();
+        if (pendingBackgroundTransparency is not { } level)
+        {
+            return;
+        }
+
+        pendingBackgroundTransparency = null;
+        Update(s => s with { BackgroundTransparency = level });
+    }
+
+    /// <summary>
+    /// The window is closing: saves a slider level not saved yet (Settings closed within a moment of the last step), and lets
+    /// go of the timer: a handler on a timer that refers to this object would keep it, and the window with it, in memory
+    /// (CLAUDE.md §4, the timers of a closed window). Called from <c>SettingsWindow.OnClosed</c>.
+    /// </summary>
+    public void Close()
+    {
+        SaveBackgroundTransparency();
+        if (backgroundTransparencyTimer is not null)
+        {
+            backgroundTransparencyTimer.Tick -= BackgroundTransparencyTimer_Tick;
+            backgroundTransparencyTimer = null;
+        }
+    }
 
     /// <summary>Persists the change.</summary>
     /// <param name="value">New value.</param>

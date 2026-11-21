@@ -321,6 +321,84 @@ public sealed class CliCommandProcessorTests : IAsyncLifetime
         Assert.Equal(CliErrorCodes.BadRequest, (await Run(new CliRequest { Command = CliCommands.List, ProtocolVersion = 99 })).ErrorCode);
     }
 
+    /// <summary>
+    /// list and search with --sort size: the largest first, pins not hoisted; an item in groups carries how many; an
+    /// unknown order is refused.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task List_SortBySize_LargestFirst()
+    {
+        var small = await AddText("BC-TEST sized small", TestData.Now.AddHours(-3), pin: true);
+        var big = await AddText("BC-TEST sized " + new string('b', 5000), TestData.Now.AddHours(-2));
+        var middle = await AddText("BC-TEST sized " + new string('m', 1000), TestData.Now.AddHours(-1));
+        var group = await history.CreateGroupAsync("Work", Presentation.GroupIconCatalog.All[0].Glyph);
+        await history.AddToGroupAsync([middle.Id], group.Id);
+
+        var bySize = (await Run(new CliRequest { Command = CliCommands.List, Sort = "size" })).Items!;
+        Assert.Equal([big.Id, middle.Id, small.Id], bySize.Select(i => i.Id));
+        Assert.Equal([(int?)null, 1, null], bySize.Select(i => i.Groups));
+        Assert.True(bySize[0].SizeBytes > bySize[1].SizeBytes);
+
+        var recent = (await Run(new CliRequest { Command = CliCommands.List })).Items!;
+        Assert.Equal([middle.Id, big.Id, small.Id], recent.Select(i => i.Id));
+        Assert.Equal([big.Id, middle.Id], (await Run(new CliRequest { Command = CliCommands.Search, Query = "sized", Sort = "size", Limit = 2 })).Items!.Select(i => i.Id));
+        Assert.Equal(CliErrorCodes.BadRequest, (await Run(new CliRequest { Command = CliCommands.List, Sort = "alphabetical" })).ErrorCode);
+    }
+
+    /// <summary>
+    /// delete with several ids: those that exist go in one call and the message says how much was freed and which ids
+    /// were not there; none existing is "not found"; more than the bound is refused.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Delete_SeveralIds()
+    {
+        var a = await AddText("BC-TEST delete a", TestData.Now.AddMinutes(-3));
+        var b = await AddText("BC-TEST delete b", TestData.Now.AddMinutes(-2));
+        var kept = await AddText("BC-TEST delete kept", TestData.Now.AddMinutes(-1));
+
+        var deleted = await Run(new CliRequest { Command = CliCommands.Delete, Ids = [a.Id, 999_999, b.Id, a.Id] });
+        Assert.True(deleted.Ok);
+        Assert.Equal([a.Id, b.Id], deleted.Items!.Select(i => i.Id));
+        Assert.Equal($"Deleted 2 items ({CliOutput.FormatBytes(a.SizeBytes + b.SizeBytes)}). Not found: 999999.", deleted.Message);
+        Assert.Equal([kept.Id], (await Run(new CliRequest { Command = CliCommands.List })).Items!.Select(i => i.Id));
+
+        var none = await Run(new CliRequest { Command = CliCommands.Delete, Ids = [999_999, 999_998] });
+        Assert.Equal(CliErrorCodes.NotFound, none.ErrorCode);
+        Assert.Equal("None of these history items exists: 999999, 999998.", none.Error);
+
+        var one = await Run(new CliRequest { Command = CliCommands.Delete, Ids = [kept.Id] });
+        Assert.StartsWith("Deleted 1 item (", one.Message, StringComparison.Ordinal);
+
+        var tooMany = Enumerable.Range(1, CliArguments.MaxDeleteIds + 1).Select(i => (long)i).ToArray();
+        Assert.Equal(CliErrorCodes.BadRequest, (await Run(new CliRequest { Command = CliCommands.Delete, Ids = tooMany })).ErrorCode);
+    }
+
+    /// <summary>
+    /// status reports the history's limits as Settings sets them: the budget used against the budget (in per cent), what
+    /// the limits count and what pins and groups hold apart; absent limits are absent, not zero.
+    /// </summary>
+    /// <returns>A task.</returns>
+    [Fact]
+    public async Task Status_ReportsTheBudget()
+    {
+        var counted = await AddText("BC-TEST counted " + new string('c', 3000), TestData.Now.AddMinutes(-2));
+        var pinned = await AddText("BC-TEST pinned", TestData.Now.AddMinutes(-1), pin: true);
+        settings = settings with { MaxTotalSizeMB = 1, MaxItems = 10, RetentionDays = 3 };
+
+        var budget = (await Run(new CliRequest { Command = CliCommands.Status })).Status!.Budget!;
+        Assert.Equal((counted.SizeBytes, (long?)(1024 * 1024), 1L, (int?)10, 1L, pinned.SizeBytes, (int?)3), (budget.UsedBytes, budget.BudgetBytes, budget.CountedItems, budget.MaxItems, budget.ProtectedItems, budget.ProtectedBytes, budget.KeepDays));
+        Assert.Equal(Math.Round(counted.SizeBytes * 100.0 / (1024 * 1024), 1), budget.PercentUsed);
+        Assert.Equal(counted.SizeBytes, budget.LargestItemBytes);
+        Assert.True(budget.DatabaseBytes > 0);
+
+        settings = settings with { MaxTotalSizeMB = 0, MaxItems = 0, RetentionDays = 0 };
+        var unlimited = (await Run(new CliRequest { Command = CliCommands.Status })).Status!.Budget!;
+        Assert.Equal(((long?)null, (double?)null, (int?)null, (int?)null), (unlimited.BudgetBytes, unlimited.PercentUsed, unlimited.MaxItems, unlimited.KeepDays));
+        Assert.Throws<ArgumentNullException>(() => CliCommandProcessor.ToBudget(null!, settings));
+    }
+
     /// <summary>Runs a request with the test's cancellation token.</summary>
     /// <param name="request">Request.</param>
     /// <returns>The response.</returns>

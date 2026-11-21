@@ -4,16 +4,19 @@ What is in Partner Center for BetterClipboard, and where each answer comes from:
 listing texts in the five languages the package declares (Store policy 10.7 asks for a description in each).
 [`microsoft-store.md`](microsoft-store.md) has the reasons and the steps around it.
 
-**State (2026-11-13):** the name is reserved (Store ID `9PHL574X9BF9`, publisher "Nucs"), and the product's first
-submission is a draft that holds everything below. This file is the source: change a text here, check it, and
-import it (§4).
+**State (2026-11-20):** the app is published (Store ID `9PHL574X9BF9`, publisher "Nucs";
+https://apps.microsoft.com/detail/9PHL574X9BF9), certified on 2026-11-15, and its listings hold everything below.
+This file is the source: change a text here, check it, and import it (§4). The notes for certification (§1) need no
+import: every release sends them, and the product's own notes page is kept the same text by hand.
 
 Limits are Microsoft's, from its documentation (read 2026-11-12; sources at the end of `microsoft-store.md`) and
 from Partner Center's own pages (2026-11-13): description up to 10,000 characters of plain text, without web
 addresses; short description best under 270 characters; up to 20 product features of at most 200 characters each;
 up to 7 search terms of at most 40 characters and 21 words in all; captions up to 200 characters; "What's new" up
 to 1,500 characters and left empty for a first submission; the `runFullTrust` justification up to 500 characters;
-at least one screenshot per language.
+at least one screenshot per language. The notes for certification: up to 2,000 characters, which Microsoft does not
+document (developers who publish there report it); the checks count every line break as two
+characters, in case it counts them that way.
 
 **Search terms are judged by policy 10.1.3**: at most seven, relevant, and never another product's title unless you
 publish it. Certification failed on that once (report of 2026-11-13, read 2026-11-15): "Win+V" counted as the title
@@ -95,6 +98,20 @@ BetterClipboard is a clipboard history manager, a classic desktop app (WinUI 3).
 ### Additional testing information
 
 *Supplemental info › Additional Testing Information*; the submission options page links to it. No credentials.
+
+This block goes to two places, and both must say it, true for the version being released:
+
+- **The page above**, which belongs to the product (`/products/9PHL574X9BF9/suppinfo/additionaltestinginfo`, headed
+  "Notes for Certification", a text box of at most 6,000 characters). It lives outside every submission: the testers
+  of every later submission read what it holds, saving it starts no submission, and only a person changes it. After
+  any change of this block, paste it there before the next tag. It holds this block since 2026-11-20 (until then the
+  v0.2.11 text, which said the history leaves with the app).
+- **The submission's own field**, `notesForCertification`, which the Store's API sets: every release sends this
+  block there by itself (`tools/release/submit-store.ps1`, since 2026-11-20). The API does not show the page: the
+  published submission's field read empty while the page held 1,770 characters.
+
+At most 2,000 characters with every line break counted as two (developers report that limit for the notes; the page
+itself takes 6,000); `check-store-listing.py` and the script both refuse more.
 
 **Notes for certification**
 
@@ -453,6 +470,8 @@ A listing is a promise. When a release changes what the app does, change the lis
 a new tab or kind of item goes into the description and the features; a new data source also goes into the README's
 *Privacy* section, which is the privacy policy the listing points at. The Store edition makes no network request;
 if that ever changes, the description's "Nothing is sent anywhere" and the certification notes must change first.
+The notes for certification reach the Store's API with the release itself and the product's notes page by hand
+(§1); the listing texts only through an import, below.
 
 After any edit of the texts, run `python tools/release/check-store-listing.py`: it checks every language's short
 description, description, features, search terms and captions against the Store's limits (§3's fenced blocks and

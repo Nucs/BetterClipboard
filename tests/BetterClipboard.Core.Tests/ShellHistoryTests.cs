@@ -149,17 +149,106 @@ public sealed class CmdHistoryTests
             again);
     }
 
-    /// <summary>Only one-line, non-blank commands within the length limit are kept; the list keeps the newest <see cref="CmdHistory.MaxKept"/>.</summary>
+    /// <summary>
+    /// A window seen for the first time (every start, the silent restart after Settings closed, the Cmd tab's view of open
+    /// windows) puts each command the list does not keep just below the next newer command of the window, so a limit's trim
+    /// holds: under a limit of 2 the kept newest stay, never the window's older commands (CLAUDE.md §2.62: in the live check
+    /// they replaced the newest two); a command typed after the kept ones still comes first; and after Delete stored a
+    /// command typed since stays above the window's older ones.
+    /// </summary>
     [Fact]
-    public void Remember_SkipsUnkeepableAndTrims()
+    public void Remember_AWindowSeenFirst_KeepsItsOrderAgainstWhatIsKept()
+    {
+        string[] window = ["BC-TEST 1", "BC-TEST 2", "BC-TEST 3", "BC-TEST 4", "BC-TEST 5", "BC-TEST 6"];
+        var seenAt = Now.AddHours(-1);
+        var trimmed = CmdHistory.Trim(CmdHistory.Remember([], window, typedAgain: true, seenAt), 2);
+        Assert.Equal(["BC-TEST 6", "BC-TEST 5"], trimmed.Select(k => k.Text));
+
+        // A restart reads the window as one seen for the first time: the limit keeps the same two.
+        Assert.Equal(trimmed, CmdHistory.Remember(trimmed, window, typedAgain: false, Now, limit: 2));
+
+        // Without a limit the dropped ones come back below the kept ones, in the window's order, each counted once.
+        var unlimited = CmdHistory.Remember(trimmed, window, typedAgain: false, Now);
+        Assert.Equal(["BC-TEST 6", "BC-TEST 5", "BC-TEST 4", "BC-TEST 3", "BC-TEST 2", "BC-TEST 1"], unlimited.Select(k => k.Text));
+        Assert.All(unlimited, k => Assert.Equal(1, k.Count));
+        Assert.Equal(trimmed[1].LastSeen.AddMilliseconds(-1), unlimited[2].LastSeen);
+
+        // A command typed while the window was not read comes first: it is the window's newest.
+        Assert.Equal(
+            [new KeptCommand("BC-TEST 7", 1, Now), trimmed[0]],
+            CmdHistory.Remember(trimmed, [.. window, "BC-TEST 7"], typedAgain: false, Now, limit: 2));
+
+        // After Delete stored, a command typed since stays above the window's older ones.
+        IReadOnlyList<KeptCommand> sinceDelete = [new("BC-TEST 7", 1, seenAt.AddMinutes(5))];
+        Assert.Equal(
+            ["BC-TEST 7", "BC-TEST 6", "BC-TEST 5", "BC-TEST 4", "BC-TEST 3", "BC-TEST 2", "BC-TEST 1"],
+            CmdHistory.Remember(sinceDelete, [.. window, "BC-TEST 7"], typedAgain: false, Now).Select(k => k.Text));
+    }
+
+    /// <summary>
+    /// The reader's memory (CLAUDE.md §2.62), which outlives a restart: a command's fingerprint is exact and holds no text
+    /// (known answers from Python's hashlib), a read compares with a remembered one through fingerprints exactly as through
+    /// texts, and the memory round-trips in process-id order; a malformed line loses only its own window.
+    /// </summary>
+    [Fact]
+    public void ReaderMemory_FingerprintsCompareAndRoundTrip()
+    {
+        Assert.Equal("cec5334840dcf924", CmdHistory.Fingerprint("BC-TEST a"));
+        Assert.Equal("1bf64bb91de7fb85", CmdHistory.Fingerprint("BC-TEST שלום\tx"));
+        Assert.NotEqual(CmdHistory.Fingerprint("BC-TEST a"), CmdHistory.Fingerprint("bc-test a"));
+
+        static List<string> Prints(params string[] commands) => commands.Select(CmdHistory.Fingerprint).ToList();
+        Assert.Equal(["BC-TEST c"], CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST a", "BC-TEST b", "BC-TEST c"]));
+        Assert.Equal(["BC-TEST c"], CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST b", "BC-TEST c"]));
+        Assert.Empty(CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST a", "BC-TEST b"]));
+        Assert.Equal(["BC-TEST a"], CmdHistory.NewSinceRead(Prints("BC-TEST a", "BC-TEST b"), ["BC-TEST a", "BC-TEST b", "BC-TEST a"]));
+
+        var memory = new Dictionary<(uint ProcessId, long StartTicks), IReadOnlyList<string>>
+        {
+            [(4321, 638_000_000_000_000_000)] = Prints("BC-TEST a", "BC-TEST b"),
+            [(12, 638_000_000_000_000_001)] = [],
+        };
+        var text = CmdHistory.FormatWindows(memory);
+        Assert.StartsWith("12\t638000000000000001\t\n4321\t", text, StringComparison.Ordinal);
+        var read = CmdHistory.ParseWindows(text);
+        Assert.Equal(2, read.Count);
+        Assert.Equal(memory[(4321, 638_000_000_000_000_000)], read[(4321, 638_000_000_000_000_000)]);
+        Assert.Empty(read[(12, 638_000_000_000_000_001)]);
+
+        // A process id that is no number, a fingerprint that is none, a window given twice: each loses only its line.
+        var damaged = "x\t1\t\n7\t8\tnot-a-print\n9\t10\t" + CmdHistory.Fingerprint("BC-TEST a") + "\n9\t10\t\n";
+        var survived = CmdHistory.ParseWindows(damaged);
+        Assert.Equal([(9u, 10L)], survived.Keys);
+        Assert.Single(survived[(9, 10)]);
+        Assert.Empty(CmdHistory.ParseWindows(null));
+        Assert.Empty(CmdHistory.ParseWindows(string.Empty));
+    }
+
+    /// <summary>
+    /// Only one-line, non-blank commands within the length limit are kept. The list keeps every one by default — 1,005 here,
+    /// above the 1,000 kept until 2026-11-21 (CLAUDE.md §2.62) — and the newest under a limit, in memory and when written.
+    /// </summary>
+    [Fact]
+    public void Remember_SkipsUnkeepable_KeepsEveryCommandOrTheNewestUnderALimit()
     {
         var kept = CmdHistory.Remember([], ["  ", "BC-TEST x\ny", new string('x', CmdHistory.MaxCommandLength + 1), "BC-TEST ok"], typedAgain: true, Now);
         Assert.Equal(["BC-TEST ok"], kept.Select(k => k.Text));
 
-        var many = Enumerable.Range(0, CmdHistory.MaxKept + 5).Select(i => $"BC-TEST {i}").ToList();
-        var trimmed = CmdHistory.Remember([], many, typedAgain: true, Now);
-        Assert.Equal(CmdHistory.MaxKept, trimmed.Count);
-        Assert.Equal($"BC-TEST {CmdHistory.MaxKept + 4}", trimmed[0].Text);
+        var many = Enumerable.Range(0, 1005).Select(i => $"BC-TEST {i}").ToList();
+        var all = CmdHistory.Remember([], many, typedAgain: true, Now);
+        Assert.Equal(1005, all.Count);
+        Assert.Equal("BC-TEST 1004", all[0].Text);
+        Assert.Equal(1005, CmdHistory.ParseKept(CmdHistory.FormatKept(all)).Count);
+
+        var limited = CmdHistory.Remember([], many, typedAgain: true, Now, limit: 1000);
+        Assert.Equal(1000, limited.Count);
+        Assert.Equal("BC-TEST 1004", limited[0].Text);
+        Assert.Equal("BC-TEST 5", limited[^1].Text);
+
+        // Written under a limit, and a lowered limit applied at once (CmdHistorySource.ApplyLimitAsync): the newest stay.
+        Assert.Equal(["BC-TEST 1004", "BC-TEST 1003", "BC-TEST 1002"], CmdHistory.ParseKept(CmdHistory.FormatKept(all, limit: 3)).Select(k => k.Text));
+        Assert.Equal(["BC-TEST 1004", "BC-TEST 1003"], CmdHistory.Trim(all, 2).Select(k => k.Text));
+        Assert.Equal(1005, CmdHistory.Trim(all, 0).Count);
     }
 
     /// <summary>The kept list round-trips (a tab inside a command included); malformed lines lose only themselves.</summary>
@@ -236,23 +325,26 @@ public sealed class ShellTabTests
         Assert.Equal(["BC-TEST cd src", "#1", "#2", "BC-TEST ls"], Describe(typedSince));
     }
 
-    /// <summary>The live commands are capped; every stored entry stays, also one placed after the last command shown.</summary>
+    /// <summary>
+    /// Every live command and every stored entry is a row: 3,000 commands here, where a tab showed the newest 500 until
+    /// 2026-11-21 (CLAUDE.md §2.62; the panel now turns rows into cards a page at a time).
+    /// </summary>
     [Fact]
-    public void CapCommands_KeepsEveryStoredEntry()
+    public void Merge_ShowsEveryCommand()
     {
-        var rows = new List<ShellTabRow>
-        {
-            new(null, Command("BC-TEST a")),
-            new(Entry(1, "BC-TEST kept", TestData.Now), null),
-            new(null, Command("BC-TEST b")),
-            new(null, Command("BC-TEST c")),
-            new(Entry(2, "BC-TEST old", TestData.Now.AddDays(-1)), null),
-        };
+        // Command Prompt commands: they carry the times the merge places stored entries among (PowerShell's carry none).
+        var live = Enumerable.Range(0, 3000)
+            .Select(i => new ShellCommand(ShellKind.Cmd, $"BC-TEST {i}", 1, TestData.Now.AddMinutes(-i), ShellSources.CmdName))
+            .ToList();
+        var stored = new[] { Entry(1, "BC-TEST kept", TestData.Now.AddMinutes(-2500.5)), Entry(2, "BC-TEST old", TestData.Now.AddDays(-30)) };
 
-        Assert.Equal(["BC-TEST a", "#1", "BC-TEST b", "#2"], Describe(ShellTab.CapCommands(rows, 2)));
-        Assert.Equal(["#1", "#2"], Describe(ShellTab.CapCommands(rows, 0)));
-        Assert.Throws<ArgumentOutOfRangeException>(() => ShellTab.CapCommands(rows, -1));
-        Assert.Throws<ArgumentNullException>(() => ShellTab.CapCommands(null!, 1));
+        var rows = ShellTab.Merge(stored, live, [], new HashSet<string>(), pinnedFirst: false);
+        Assert.Equal(3002, rows.Count);
+        Assert.Equal(3000, rows.Count(r => r.Command is not null));
+
+        // Each stored entry where its time falls: past the old cap of 500 commands, and after every command.
+        Assert.Equal(2501, rows.ToList().FindIndex(r => r.Entry?.Id == 1));
+        Assert.Equal(3001, rows.ToList().FindIndex(r => r.Entry?.Id == 2));
     }
 
     /// <summary>A live command that is also stored shows once (as the entry); a forgotten one never; a repeat once.</summary>
@@ -280,19 +372,30 @@ public sealed class ShellTabTests
         Assert.Single(ShellTab.Merge([], [thrice], hidden, new HashSet<string>(), false));
     }
 
-    /// <summary>Hides round-trip newest first, keep only the newest <see cref="ShellTab.MaxHidden"/>, and skip damaged lines.</summary>
+    /// <summary>
+    /// Hides round-trip newest first and skip damaged lines. Every hide is kept by default — 1,003 here, above the 1,000 kept
+    /// until 2026-11-21 (CLAUDE.md §2.62) — and the newest under a limit; reading never trims, so a raised limit loses nothing.
+    /// </summary>
     [Fact]
-    public void Hidden_RoundTripsNewestFirstAndTrims()
+    public void Hidden_RoundTripsNewestFirst_KeepsEveryHideOrTheNewestUnderALimit()
     {
         IReadOnlyList<HiddenCommand> hidden = [];
-        for (int i = 0; i < ShellTab.MaxHidden + 3; i++)
+        for (int i = 0; i < 1003; i++)
         {
             hidden = ShellTab.Hide(hidden, $"hash{i}", i + 1);
         }
 
-        Assert.Equal(ShellTab.MaxHidden, hidden.Count);
-        Assert.Equal(new HiddenCommand($"hash{ShellTab.MaxHidden + 2}", ShellTab.MaxHidden + 3), hidden[0]);
+        Assert.Equal(1003, hidden.Count);
+        Assert.Equal(new HiddenCommand("hash1002", 1003), hidden[0]);
         Assert.Equal(hidden, ShellTab.ParseHidden(ShellTab.FormatHidden(hidden)));
+
+        var limited = ShellTab.Hide(hidden, "hash-new", 1, limit: 1000);
+        Assert.Equal(1000, limited.Count);
+        Assert.Equal(new HiddenCommand("hash-new", 1), limited[0]);
+        Assert.Equal(new HiddenCommand("hash4", 5), limited[^1]);
+        Assert.Equal(3, ShellTab.ParseHidden(ShellTab.FormatHidden(hidden, limit: 3)).Count);
+        Assert.Equal([new HiddenCommand("hash1002", 1003), new HiddenCommand("hash1001", 1002)], ShellTab.Trim(hidden, 2));
+        Assert.Equal(1003, ShellTab.Trim(hidden, 0).Count);
 
         // Hiding a hash again moves it to the front with the new count.
         var again = ShellTab.Hide(hidden, "hash5", 99);

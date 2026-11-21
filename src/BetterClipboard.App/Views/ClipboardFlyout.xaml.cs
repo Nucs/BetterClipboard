@@ -1,6 +1,7 @@
 using BetterClipboard.Core.Localization;
 using System.Diagnostics;
 using System.Numerics;
+using BetterClipboard.App.Controls;
 using BetterClipboard.App.Interop;
 using BetterClipboard.App.ViewModels;
 using BetterClipboard.Core.Content;
@@ -162,6 +163,12 @@ public sealed partial class ClipboardFlyout : Window
     /// </summary>
     private int enterSerial;
 
+    /// <summary>
+    /// Whether the Enter being waited on (<see cref="enterPending"/>) has had an ignored repeat logged: one line per paste, so
+    /// an Enter held down (dozens of key repeats) does not fill the log. Cleared whenever an Enter starts a paste.
+    /// </summary>
+    private bool enterIgnoredLogged;
+
     /// <summary>Whether the groups column is showing (mirrors <see cref="AppSettings.ShowGroupsPane"/>).</summary>
     private bool groupsPaneOpen;
 
@@ -216,8 +223,20 @@ public sealed partial class ClipboardFlyout : Window
         // The update button left of Pause, and the dialog it opens: ClipboardFlyout.Update.cs.
         InitializeUpdateButton();
 
+        // The pin's tip, which points at the pin while the pinned panel shows until the user closes it:
+        // ClipboardFlyout.KeepOpenTip.cs. Before the header is applied, which asks whether the tip is due.
+        InitializeKeepOpenTip();
+
+        // The pin left of it, and the buttons Settings hides: ClipboardFlyout.KeepOpen.cs. After the update button, whose
+        // visibility it applies too.
+        ApplyHeaderButtons();
+
         // A click on a tooltip must not cost the panel its keyboard: ClipboardFlyout.ToolTipKeyboard.cs.
         InitializeToolTipKeyboardGuard();
+
+        // No element of the panel but the search box takes the keyboard focus; its popups do, and give it back:
+        // ClipboardFlyout.SearchFocus.cs.
+        InitializeSearchFocusGuard();
 
         // The selected card's formats are read ahead, so Enter pastes without waiting for the store: ClipboardFlyout.Paste.cs.
         InitializePaste();
@@ -242,6 +261,9 @@ public sealed partial class ClipboardFlyout : Window
 
         // The remembered tab, the arrow keys beyond Up and Down, and the mouse selecting rows: ClipboardFlyout.Navigation.cs.
         InitializeNavigation();
+
+        // The panel that opens without taking the keyboard from the app (Settings › Panel): ClipboardFlyout.Focusless.cs.
+        InitializeFocusless();
         ItemsList.Loaded += (_, _) => HookScrollViewer();
 
         // The very first summon runs ShowAt and OnActivated before the XAML tree is loaded, when Focus() is a silent no-op,
@@ -250,7 +272,8 @@ public sealed partial class ClipboardFlyout : Window
         // the keyboard the moment it exists, if the panel is showing.
         SearchBox.Loaded += (_, _) =>
         {
-            if (IsOpen && openPopups == 0)
+            // Not while the panel shows without the keyboard: the app the user types in keeps it (ClipboardFlyout.Focusless.cs).
+            if (IsOpen && openPopups == 0 && !focusless)
             {
                 SearchBox.Focus(FocusState.Programmatic);
             }
@@ -270,8 +293,9 @@ public sealed partial class ClipboardFlyout : Window
         // while they are listed first (ArmCard; Up from it reaches the pins). Unconditionally: a reload patches the list
         // (FlyoutViewModel.ApplyEntries) instead of clearing it, so a card that is still listed keeps its selection, which
         // may no longer be the armed one (it used to be lost with the clear), and the list keeps its scroll position (the
-        // clear used to reset it): ArmCard also brings the list back to its top. Callers that keep a card selected across
-        // their reload (a history change, a prompt tab) select it again after awaiting the reload.
+        // clear used to reset it): ArmCard also puts the list back where a load starts — the armed card at the top with the
+        // pins out of view in the plain history, the list's top in a search or a group view. Callers that keep a card
+        // selected across their reload (a history change, a prompt tab) select it again after awaiting the reload.
         ViewModel.Reloaded += (_, _) =>
         {
             // The rows changed under a mouse that may lie on the list: until it really moves, it must not take the
@@ -355,6 +379,12 @@ public sealed partial class ClipboardFlyout : Window
                 await Task.WhenAny(loaded.Task, Task.Delay(TimeSpan.FromSeconds(5)));
             }
 
+            // x:Bind of a Window starts at its first activation (the generated code subscribes to Activated), and the warm-up
+            // never activates: bound now, the picture it prepares shows the panel's real state — no "Paused" chip and no
+            // "Start Everything" for a frame at the first summon (CLAUDE.md §6), and none at all while the panel leaves the
+            // keyboard with the app (ClipboardFlyout.Focusless.cs). Idempotent: the first activation finds them running.
+            Bindings?.Initialize();
+
             if (!presented)
             {
                 // The view and the list the first summon shows, loaded now (the list is otherwise empty until a summon).
@@ -371,6 +401,9 @@ public sealed partial class ClipboardFlyout : Window
             {
                 AppWindow.Hide();
             }
+
+            // Always on top before any summon, which may come while Start is open (ClipboardFlyout.ShellSurface.cs).
+            KeepTopmostWhileConcealed();
 
             AppLog.Info($"Panel prepared for the first Win+V in {started.ElapsedMilliseconds} ms{(cloaking ? string.Empty : " (DWM does not cloak it: hidden between uses)")}.");
         }
@@ -408,8 +441,9 @@ public sealed partial class ClipboardFlyout : Window
 
         var cursor = ForegroundContext.CursorOnly().Cursor;
         var (workArea, scale) = MonitorLookup.FromPoint(cursor);
-        // The same arithmetic as ShowAt (the column added in whole pixels after the list's size), so the sizes match exactly.
-        var (width, height) = FlyoutSizing.ToPixels(settings.FlyoutWidth, settings.FlyoutHeight, scale, extraWidthDip: 0);
+        // The same arithmetic as ShowAt (the column added in whole pixels after the list's size, the width at least what the
+        // header's buttons need), so the sizes match exactly.
+        var (width, height) = FlyoutSizing.ToPixels(PanelWidthDip(settings), settings.FlyoutHeight, scale, extraWidthDip: 0);
         if (settings.ShowGroupsPane)
         {
             width += (int)Math.Round(GroupsPaneDip * scale);
@@ -421,8 +455,9 @@ public sealed partial class ClipboardFlyout : Window
     /// <summary>
     /// Shows the flyout for a summon: positions it by the placement setting (next to the caret by default;
     /// ClipboardFlyout.Placement.cs), puts it on screen at once with the list as it was prepared while concealed
-    /// (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately). The list is
-    /// reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
+    /// (ClipboardFlyout.Summon.cs), and takes focus (search box focused so the user can type immediately) — or, in the mode
+    /// that leaves the keyboard with the app the user types in, takes only the keys it acts on (ClipboardFlyout.Focusless.cs).
+    /// The list is reloaded afterwards only when it is not current (a change the background refresh has not caught up with).
     /// </summary>
     /// <param name="context">Caret/cursor snapshot.</param>
     /// <param name="placement">Placement preference (<see cref="AppSettings.Placement"/>).</param>
@@ -481,6 +516,11 @@ public sealed partial class ClipboardFlyout : Window
             // selects no row until it has really left the spot it is on now, so the armed card stays the selected one.
             SuspendPointerSelection();
 
+            // With the keyboard, or without it — the app the user types in keeps it, and the panel takes the keys it acts on
+            // (Settings › Panel, ClipboardFlyout.Focusless.cs). Decided before the panel shows, so a key typed right away
+            // is already taken.
+            BeginSummonMode(context);
+
             // On screen in one step: no fade, no slide, no DWM animation (ClipboardFlyout.Summon.cs has the numbers).
             timeline?.Mark("prepared");
             await PresentAsync(rect, timeline);
@@ -489,11 +529,18 @@ public sealed partial class ClipboardFlyout : Window
                 return; // dismissed again (the shortcut pressed twice) while it waited for a frame
             }
 
+            // A pinned panel follows the window the user is in from now on, for its pastes (ClipboardFlyout.KeepOpen.cs);
+            // until another window takes the foreground, the target is the one the shortcut captured.
+            UpdateForegroundTracking();
+
             // The end of the summon proper, for its log line: the page faults it took and its last stage (LogSummon).
             uint faultsOnScreen = ProcessMemory.PageFaults();
             timeline?.Mark("shown");
             long onScreen = Stopwatch.GetTimestamp();
-            SearchBox.Focus(FocusState.Programmatic);
+            if (!focusless)
+            {
+                SearchBox.Focus(FocusState.Programmatic);
+            }
 
             // The summon "entered" the tab it starts in, although no click selected it: what entering does besides showing
             // the list (the Run tab's rescan, a prompt tab's catch-up) runs now, next to the reload below.
@@ -517,7 +564,7 @@ public sealed partial class ClipboardFlyout : Window
             // Second line of defence for the first summon: if no element of the panel has the keyboard yet (the box's
             // Loaded came before the window was shown, or a focus call lost a race with activation), give it to the box
             // now — never while a popup of ours is open, which owns the keys then.
-            if (IsOpen && openPopups == 0 && Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is null)
+            if (IsOpen && openPopups == 0 && !focusless && Root.XamlRoot is { } root && FocusManager.GetFocusedElement(root) is null)
             {
                 SearchBox.Focus(FocusState.Programmatic);
             }
@@ -526,6 +573,10 @@ public sealed partial class ClipboardFlyout : Window
 
             // The tray menu's "Update…" summons the panel for its update dialog: open it now that the panel is on screen.
             OpenPendingUpdateDialog();
+
+            // A pinned panel whose tip the user never closed shows it again, a moment after the summon
+            // (ClipboardFlyout.KeepOpenTip.cs). Before the update reminder, which gives way to it.
+            UpdateKeepOpenTip();
 
             // Once a week, while an update waits, the update button says so by itself for a few seconds
             // (ClipboardFlyout.UpdateReminder.cs). Asked last, after everything a summon owes the user: the reminder must
@@ -539,11 +590,14 @@ public sealed partial class ClipboardFlyout : Window
     }
 
     /// <summary>
-    /// Takes the flyout off the screen (<see cref="PutAway"/>: cloaked, its window kept ready for the next summon).
+    /// The panel's job is done — an item was copied, a file opened, a command run, a link followed, a paste failed: takes it
+    /// off the screen (<see cref="PutAway"/>: cloaked, its window kept ready for the next summon), unless it stays open after
+    /// use (pinned, CLAUDE.md §2.55), when only its overlays close and the keyboard goes back as asked. The user closing the
+    /// panel themselves is <see cref="CloseByUser"/>, which puts a pinned panel away too.
     /// </summary>
     /// <param name="restoreFocus">
-    /// Re-activate the window the user came from (Esc, the shortcut again, a failed paste); <see langword="false"/> when
-    /// another window is about to take the foreground (a link, a file opened, a command run).
+    /// Re-activate the window the user came from (<i>Copy only</i>, a failed paste); <see langword="false"/> when another
+    /// window is about to take the foreground (a link, a file opened, a command run).
     /// </param>
     public void Dismiss(bool restoreFocus)
     {
@@ -552,15 +606,14 @@ public sealed partial class ClipboardFlyout : Window
             return;
         }
 
-        // The image overlays belong to the open panel: tear them down before it goes away.
-        CloseImageOverlays();
+        if (StaysOpen)
+        {
+            // Pinned: the panel is there to be used again, also after a copy or an opened file (ClipboardFlyout.KeepOpen.cs).
+            KeepOpenAfterUse(restoreFocus);
+            return;
+        }
 
-        // So does the update dialog, a window of its own that would otherwise stay on screen without its panel.
-        CloseUpdateDialog();
-
-        // Off the screen, then the foreground to the target while this process still owns it, then the rest (PutAway's
-        // remarks have why in this order).
-        PutAway(restoreFocus ? controller.PasteTargetWindow : 0, finishSoon: true);
+        CloseByUser(restoreFocus);
     }
 
     /// <summary>Really closes the window during app exit (normal closes are turned into a conceal, <see cref="OnClosing"/>).</summary>
@@ -568,8 +621,21 @@ public sealed partial class ClipboardFlyout : Window
     {
         closingForExit = true;
         CloseImageOverlays();
+
+        // The pin's tip is a window of its own, and its timer and window event refer to this window.
+        DisposeKeepOpenTip();
+
+        // The key and mouse hooks of a panel shown without the keyboard (ClipboardFlyout.Focusless.cs).
+        DisposeFocusless();
+
+        // The WinEvent hook of a pinned panel goes with the window (Windows would remove it with the thread anyway).
+        DisposeForegroundTracking();
         DisposeUpdateButton();
         DisposeToolTipKeyboardGuard();
+
+        // The focus guard listens to a static event, which would keep this window alive and run for every focus move of
+        // the app's other windows.
+        DisposeSearchFocusGuard();
         sizeHook?.Dispose();
         controller.HistoryChanged -= OnHistoryChanged;
         controller.ShareXStatusChanged -= OnShareXStatusChanged;
@@ -598,7 +664,11 @@ public sealed partial class ClipboardFlyout : Window
         presenter.SetBorderAndTitleBar(true, false);
         AppWindow.SetPresenter(presenter);
         AppWindow.IsShownInSwitchers = false;
-        SystemBackdrop = new DesktopAcrylicBackdrop();
+
+        // Windows' acrylic, as the stock DesktopAcrylicBackdrop draws it, with the frost Settings › Background transparency
+        // asks for (ClipboardFlyout.Backdrop.cs); it stays glass while a pinned panel waits behind another app.
+        backdrop = new AdjustableAcrylicBackdrop(controller.Settings.Current.BackgroundTransparency);
+        SystemBackdrop = backdrop;
         WindowInterop.UseRoundedCorners(hwnd);
 
         // No zoom-and-fade from DWM when the window shows or hides: a panel summoned by a key must appear in one frame.
@@ -613,16 +683,38 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Conceals on deactivation (flyout semantics) unless one of our popups took activation.</summary>
+    /// <summary>
+    /// Conceals on deactivation (flyout semantics). While one of the panel's own popups is open, the deactivation could be
+    /// that popup taking the keyboard, so the panel first looks who is in front once the switch is done, and conceals itself
+    /// (with its viewers) when that is another window (ClipboardFlyout.Leaving.cs). A panel that stays open after use
+    /// (pinned) stays up instead, always on top, while the user works in another app, and a click on a card activates it
+    /// again for the next paste (ClipboardFlyout.KeepOpen.cs).
+    /// </summary>
     /// <param name="sender">The window.</param>
     /// <param name="args">Activation data.</param>
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
+        // Without the keyboard (ClipboardFlyout.Focusless.cs) the panel is never the active window: its hooks report where the
+        // user goes, and a deactivation tells nothing. An activation that really put its window in front means it has the
+        // keyboard after all, the usual way: the usual handling then takes over.
+        if (focusless && !KeyboardTakenByActivation(args.WindowActivationState))
+        {
+            return;
+        }
+
         if (args.WindowActivationState == WindowActivationState.Deactivated)
         {
-            if (openPopups == 0 && IsOpen)
+            if (openPopups == 0 && IsOpen && !StaysOpen)
             {
                 Conceal();
+            }
+            else if (IsOpen && openPopups > 0)
+            {
+                // Until 2026-11-20 nothing happened here, and the panel stayed on top of the window the user went to, for
+                // good: it was no longer active, so no later click elsewhere could deactivate it (CLAUDE.md §2.56). The
+                // popup's kind is read now: a menu closes by itself during the switch. A pinned panel stays up itself, as
+                // after any other deactivation, and the look closes only its viewers and peeks (ClipboardFlyout.KeepOpen.cs).
+                ConcealIfUserLeft(DescribeOpenPopups());
             }
 
             return;
@@ -636,7 +728,10 @@ public sealed partial class ClipboardFlyout : Window
         }
     }
 
-    /// <summary>Turns user/system close requests (Alt+F4) into a conceal, so the drawn window is reused by the next summon.</summary>
+    /// <summary>
+    /// Turns user/system close requests (Alt+F4) into a conceal, so the drawn window is reused by the next summon. A close the
+    /// user asked for, so a pinned panel goes away too (<see cref="CloseByUser"/>).
+    /// </summary>
     /// <param name="sender">The app window.</param>
     /// <param name="args">Close data.</param>
     private void OnClosing(AppWindow sender, AppWindowClosingEventArgs args)
@@ -644,7 +739,7 @@ public sealed partial class ClipboardFlyout : Window
         if (!closingForExit)
         {
             args.Cancel = true;
-            Dismiss(restoreFocus: true);
+            CloseByUser(restoreFocus: true);
         }
     }
 
@@ -691,9 +786,10 @@ public sealed partial class ClipboardFlyout : Window
                 {
                     ItemsList.SelectedItem = again;
 
-                    // The reload brought the list to its own armed card (ArmCard), which below many pins lies a screenful
-                    // away from the card selected again here — the copy just pinned with Ctrl+P sits up among the pins.
-                    // Brought back into view, so the user's card stays on screen (the list only moves when it is not).
+                    // The reload brought the list to its own armed card (ArmCard): in the plain history that card stands
+                    // at the top with every pin above it out of view, and below many pins it lies a screenful away anyway
+                    // from the card selected again here — the copy just pinned with Ctrl+P sits up among the pins. Brought
+                    // back into view, so the user's card stays on screen (the list only moves when it is not).
                     ItemsList.ScrollIntoView(again);
                 }
             }
@@ -749,11 +845,20 @@ public sealed partial class ClipboardFlyout : Window
         // Alt alone: AltGr arrives as Ctrl+Alt, and on many layouts AltGr+C/E types a letter (Polish ć, ę, ...).
         bool altOnly = IsKeyDown(VirtualKey.Menu) && !ctrl;
 
+        // A tab clicked last is the one the Menu key opens the menu of, as while a click gave it the focus; any other key
+        // but Left and Right ends that (ClipboardFlyout.SearchFocus.cs). Read before the switch, which acts on the key.
+        var clickedTabForMenu = TakeClickedTabForKey(e.Key, shift);
+
         // A key that repeats because it is held down stops at an edge (the top row, the last tab); only a new press
         // crosses it (PanelNavigation).
         bool repeat = e.KeyStatus.WasKeyDown;
         switch (e.Key)
         {
+            case VirtualKey.Tab when !IsAltOrWindowsKeyDown():
+                // The search box keeps the keyboard (ClipboardFlyout.SearchFocus.cs): Tab and Shift+Tab would only try to move
+                // it on to the next control, which the focus guard refuses anyway. Taken here, so WinUI does not even try. Tab
+                // inside a popup (a menu, a name box) never comes here (IsPopupKey above), and keeps moving between its parts.
+                break;
             case VirtualKey.Down:
                 MoveVertical(1, repeat);
                 break;
@@ -805,6 +910,11 @@ public sealed partial class ClipboardFlyout : Window
                 AppWindow.Move(new PointInt32(moving.WindowStart.X, moving.WindowStart.Y));
                 EndDrag();
                 break;
+            case VirtualKey.Escape when KeepOpenTip.IsOpen:
+                // The pin's tip takes the first Esc, as a viewer does: closed for good, like with its X; the search and the
+                // panel stay (ClipboardFlyout.KeepOpenTip.cs).
+                DismissKeepOpenTip("Esc");
+                break;
             case VirtualKey.Escape:
                 if (!string.IsNullOrEmpty(ViewModel.SearchText))
                 {
@@ -812,7 +922,8 @@ public sealed partial class ClipboardFlyout : Window
                 }
                 else
                 {
-                    Dismiss(restoreFocus: true);
+                    // The user closes the panel: also a pinned one (it opens pinned again at the next summon).
+                    CloseByUser(restoreFocus: true);
                 }
 
                 break;
@@ -866,11 +977,20 @@ public sealed partial class ClipboardFlyout : Window
                 break;
             case VirtualKey.Application:
             case VirtualKey.F10 when shift:
-                if (FindTab(e.OriginalSource as DependencyObject) is { } focusedTab)
+                if ((FindTab(e.OriginalSource as DependencyObject) ?? clickedTabForMenu) is { } focusedTab)
                 {
-                    // A tab has the keyboard (after a click on it): the key is for the tab's menu, the keyboard's way to
-                    // the right-click one (ClipboardFlyout.TabArrangement.cs). Opened below the tab, like a context menu.
-                    ShowTabMenu(focusedTab, focusedTab, new global::Windows.Foundation.Point(8, focusedTab.ActualHeight));
+                    // A tab was just clicked (clickedTab; the focus itself stays in the search box since 2026-11-21,
+                    // ClipboardFlyout.SearchFocus.cs), or — should one ever get it — a tab has the keyboard: the key is for
+                    // the tab's menu, the keyboard's way to the right-click one (ClipboardFlyout.TabArrangement.cs). Opened
+                    // below the tab, like a context menu.
+                    var tabMenu = ShowTabMenu(focusedTab, focusedTab, new global::Windows.Foundation.Point(8, focusedTab.ActualHeight));
+
+                    // The key came from the search box (it keeps the keyboard), whose text box answers it with its own
+                    // Cut/Copy/Paste menu, which would close this one at once: muted until it closes, as for the card menu.
+                    if (e.OriginalSource is TextBox tabKeyBox)
+                    {
+                        MuteContextFlyoutUntilClosed(tabKeyBox, tabMenu);
+                    }
                 }
                 else if (Selected is { } forMenu && ItemsList.ContainerFromItem(forMenu) is FrameworkElement container)
                 {
@@ -1162,6 +1282,11 @@ public sealed partial class ClipboardFlyout : Window
             if (!selectingFilterFromCode)
             {
                 RememberTab(filter);
+
+                // A tab picked by a click is scrolled into view here: WinUI brings a clicked tab into view only when the click
+                // gives it the focus, which the search box keeps since 2026-11-21 (ClipboardFlyout.SearchFocus.cs). A selection
+                // from code reveals its tab itself (SelectFilter).
+                RevealClickedTab();
             }
 
             EnterTab(filter);
@@ -1208,12 +1333,15 @@ public sealed partial class ClipboardFlyout : Window
         _ = controller.History.ClearAsync(includePinned: false);
     }
 
-    /// <summary>Opens settings (and hides the flyout).</summary>
+    /// <summary>
+    /// Opens settings and hides the flyout, also a pinned one: an always-on-top panel would cover Settings, and the pin
+    /// comes back with the next summon.
+    /// </summary>
     /// <param name="sender">Button.</param>
     /// <param name="e">Click data.</param>
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        Dismiss(restoreFocus: false);
+        CloseByUser(restoreFocus: false);
         controller.ShowSettings();
     }
 
@@ -1263,7 +1391,8 @@ public sealed partial class ClipboardFlyout : Window
 
     /// <summary>
     /// Tracks our own popups closing. The mouse may now lie over any row (a menu covers several): it selects none until it
-    /// really moves again, so the card the menu belonged to stays the selected one.
+    /// really moves again, so the card the menu belonged to stays the selected one. The last popup gone, the panel looks
+    /// whether the user went elsewhere meanwhile (ClipboardFlyout.Leaving.cs).
     /// </summary>
     /// <param name="sender">Popup.</param>
     /// <param name="e">Event data.</param>
@@ -1274,10 +1403,16 @@ public sealed partial class ClipboardFlyout : Window
         // A popup going away is not a move of the mouse, but WinUI reports "pointer entered" to the row it uncovers.
         SuspendPointerSelection();
 
-        // A viewer that stays open keeps the keyboard (FocusOpenViewer's remarks); otherwise it goes back to the search.
-        if (!FocusOpenViewer())
+        // A viewer that stays open keeps the keyboard (FocusOpenViewer's remarks); otherwise it goes back to the search —
+        // only while the panel shows and is in front: a menu also closes by itself when the user goes to another window.
+        GiveKeyboardBackAfterPopup();
+
+        // A deactivation while this popup showed may have been looked at while Windows named no foreground window yet;
+        // the popup closing asks again, so the panel does not stay behind on top of the window the user went to. Not for a
+        // pinned panel, which stays up while the user is elsewhere (ClipboardFlyout.KeepOpen.cs).
+        if (openPopups == 0 && !StaysOpen)
         {
-            SearchBox.Focus(FocusState.Programmatic);
+            ConcealIfUserLeft("a popup showed (asked again as the last one closed)");
         }
     }
 
@@ -1342,7 +1477,9 @@ public sealed partial class ClipboardFlyout : Window
         if (item.Pick is null && item.Entry.HasRunHistory)
         {
             menu.Items.Add(MenuItem(UiText.Translate("Run"), RunGlyph, "Ctrl+Enter", () => _ = RunItemAsync(item, asAdministrator: false)));
-            menu.Items.Add(MenuItem(UiText.Translate("Run as administrator"), RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true)));
+            var runAsAdministrator = MenuItem(UiText.Translate("Run as administrator"), RunAsAdministratorGlyph, "Ctrl+Shift+Enter", () => _ = RunItemAsync(item, asAdministrator: true));
+            menu.Items.Add(runAsAdministrator);
+            _ = GrayOutWithoutAdministratorModeAsync(item, runAsAdministrator);
         }
 
         menu.Items.Add(new MenuFlyoutSeparator());
@@ -1367,6 +1504,36 @@ public sealed partial class ClipboardFlyout : Window
         menu.Closed += Popup_Closed;
         menu.ShowAt(target, new FlyoutShowOptions { Position = position });
         return menu;
+    }
+
+    /// <summary>
+    /// Grays out a card menu's "Run as administrator" when Windows has no administrator mode for the card's command — a
+    /// picture, a document, a folder, a link — the way Explorer's own menu offers the item only for programs (the owner's
+    /// choice, 2026-11-21: "Gray out the run as admin when we can't"; CLAUDE.md §2.17).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The item opens enabled and is grayed once the controller has read the command and asked Windows off the UI thread
+    /// (milliseconds: one store read and a few registry reads, during the menu's opening animation). Enabled is the safe
+    /// start: programs and names Windows looks up when they run keep it, and a click before the answer still does the
+    /// right thing — a run asked as administrator opens a target without one normally (RunCommandLauncher.Run), as
+    /// Ctrl+Shift+Enter does on a grayed card.
+    /// </para>
+    /// <para>
+    /// A menu that closed meanwhile is graying an item nobody sees: harmless. Never throws (the controller's question logs
+    /// its own failures and answers "only running tells", which keeps the item enabled).
+    /// </para>
+    /// </remarks>
+    /// <param name="item">The card, with <see cref="ClipEntry.HasRunHistory"/>.</param>
+    /// <param name="runAsAdministrator">Its menu's "Run as administrator" item.</param>
+    /// <returns>A task completing once the item is settled.</returns>
+    private async Task GrayOutWithoutAdministratorModeAsync(ClipItemViewModel item, MenuFlyoutItem runAsAdministrator)
+    {
+        // The continuation comes back on the UI thread (this window's dispatcher), where the item may be changed.
+        if (await controller.CanRunAsAdministratorAsync(item.Entry) == false)
+        {
+            runAsAdministrator.IsEnabled = false;
+        }
     }
 
     /// <summary>
@@ -1660,6 +1827,11 @@ public sealed partial class ClipboardFlyout : Window
     /// After the wait the armed match is selected — the first one, or the first below the pinned matches while pins are
     /// listed first (<see cref="ArmCard"/>) — unless the user moved the selection meanwhile. A second Enter while this
     /// waits is ignored, so one keystroke never pastes twice.
+    /// <para>
+    /// Every way it ends without pasting is logged, content-free: an Enter ignored as a repeat (once per paste), the panel
+    /// put away while the search settled, no card to paste. Since 2026-11-18: one lost paste in the 0.2.12 QA left no line
+    /// and could not be explained (CLAUDE.md §6).
+    /// </para>
     /// </remarks>
     /// <param name="ctrl">Ctrl was held (run a Win+R command).</param>
     /// <param name="shift">Shift was held (paste as plain text, or run as administrator).</param>
@@ -1670,12 +1842,21 @@ public sealed partial class ClipboardFlyout : Window
     /// <returns>A task completing when the paste or run started; failures are logged, never thrown.</returns>
     private async Task PasteBestMatchAsync(bool ctrl, bool shift, long pressedAt)
     {
+        // Each way an Enter ends without pasting says so in the log, content-free (CLAUDE.md §6: one lost paste in the 0.2.12
+        // QA left no line, so it could not be explained afterwards).
         if (enterPending)
         {
+            if (!enterIgnoredLogged)
+            {
+                enterIgnoredLogged = true;
+                AppLog.Info("Enter ignored: the previous Enter's paste is still under way.");
+            }
+
             return;
         }
 
         enterPending = true;
+        enterIgnoredLogged = false;
         int serial = ++enterSerial;
         try
         {
@@ -1684,19 +1865,36 @@ public sealed partial class ClipboardFlyout : Window
             timeline.Mark("search");
             if (!IsOpen)
             {
-                return; // dismissed while the search ran: nothing is pasted behind the user's back
+                // Dismissed while the search ran: nothing is pasted behind the user's back.
+                AppLog.Info("Not pasted: the panel was put away while its search was settling.");
+                return;
             }
 
             // Fall back to the card a load arms if the selection was lost (e.g. mid-reload): the same card the list would
             // show selected, never a pin above the newest copy.
             int armed = ArmedIndex();
-            if ((Selected ?? (armed >= 0 ? ViewModel.Items[armed] : null)) is { } toPaste)
+            if ((Selected ?? (armed >= 0 ? ViewModel.Items[armed] : null)) is not { } toPaste)
+            {
+                AppLog.Info("Not pasted: no card was selected and the list armed none (it was empty).");
+            }
+            else
             {
                 // Ctrl+Enter on a Win+R command runs it like the Run dialog (Ctrl+Shift+Enter as administrator);
                 // on any other card it pastes, as it always did.
                 if (ctrl && toPaste.Pick is null && toPaste.Entry.HasRunHistory)
                 {
-                    await RunItemAsync(toPaste, asAdministrator: shift);
+                    // The program's window must be able to come to the front (TakeKeyboardBeforeLaunchAsync says why only
+                    // the keys need this). A no-op when the panel already has the keyboard.
+                    await TakeKeyboardBeforeLaunchAsync(shift ? "Ctrl+Shift+Enter runs a Win+R command" : "Ctrl+Enter runs a Win+R command");
+                    if (!IsOpen)
+                    {
+                        // Only beside Start or Search, whose closing is awaited: the shortcut pressed again meanwhile.
+                        AppLog.Info("Not run: the panel was put away while Start or Search closed before the run.");
+                    }
+                    else
+                    {
+                        await RunItemAsync(toPaste, asAdministrator: shift);
+                    }
                 }
                 else
                 {
@@ -1948,8 +2146,9 @@ public sealed partial class ClipboardFlyout : Window
             var size = AppWindow.Size;
             var current = new ScreenRect(position.X, position.Y, position.X + size.Width, position.Y + size.Height);
             int extra = (int)Math.Round(GroupsPaneDip * Scale);
+            // Beside Start or Search the column grows away from it, never under it (ClipboardFlyout.ShellSurface.cs).
             var next = open
-                ? FlyoutPositioner.ExtendLeft(current, extra, MonitorLookup.FromWindow(hwnd).WorkArea)
+                ? FlyoutPositioner.ExtendLeft(current, extra, ClearOfSurface(MonitorLookup.FromWindow(hwnd).WorkArea, current))
                 : FlyoutPositioner.ShrinkLeft(current, extra);
             AppWindow.MoveAndResize(new RectInt32(next.Left, next.Top, next.Width, next.Height));
             windowShift = next.Left - current.Left;
@@ -2391,6 +2590,13 @@ public sealed partial class ClipboardFlyout : Window
         flyout.Opened += (s, e) =>
         {
             Popup_Opened(s, e);
+
+            // A name is typed: a panel shown without the keyboard takes it now (ClipboardFlyout.Focusless.cs).
+            if (nameBox is not null)
+            {
+                TakeKeyboard("a group's name box");
+            }
+
             nameBox?.Focus(FocusState.Programmatic);
         };
         flyout.Closed += Popup_Closed;
@@ -2458,6 +2664,9 @@ public sealed partial class ClipboardFlyout : Window
         flyout.Opened += (s, e) =>
         {
             Popup_Opened(s, e);
+
+            // A name is typed: a panel shown without the keyboard takes it now (ClipboardFlyout.Focusless.cs).
+            TakeKeyboard("a group's name box");
             box.Focus(FocusState.Programmatic);
             box.SelectAll();
         };
@@ -2614,7 +2823,10 @@ public sealed partial class ClipboardFlyout : Window
     /// still open for another try.
     /// </summary>
     /// <param name="item">A card with <see cref="ClipEntry.HasRunHistory"/>.</param>
-    /// <param name="asAdministrator">Run elevated (Windows asks for consent; the panel's window owns the prompt).</param>
+    /// <param name="asAdministrator">
+    /// Run elevated where Windows can (Windows asks for consent; the panel's window owns the prompt). A target Windows has no
+    /// administrator mode for — the cards whose menu item is grayed — opens normally, as Win+R's Ctrl+Shift+Enter does.
+    /// </param>
     /// <returns>A task completing when the command started or failed (never throws).</returns>
     private async Task RunItemAsync(ClipItemViewModel item, bool asAdministrator)
     {
@@ -2722,11 +2934,21 @@ public sealed partial class ClipboardFlyout : Window
         return null;
     }
 
-    /// <summary>Whether a key is down on the UI thread.</summary>
+    /// <summary>
+    /// Whether a key is down: as the UI thread sees it, or — while the panel shows without the keyboard — as the keyboard has
+    /// it now (ClipboardFlyout.Focusless.cs).
+    /// </summary>
     /// <param name="key">Key.</param>
     /// <returns><see langword="true"/> when down.</returns>
-    private static bool IsKeyDown(VirtualKey key) =>
-        InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+    /// <remarks>
+    /// A thread's key state follows the key messages it reads. Without the keyboard the panel's thread reads none — the keys go
+    /// to the app the user types in — so Shift held for a Shift+click on a card, or Ctrl for a Ctrl+click on a group, would
+    /// read as up. The keyboard's own state is the answer then.
+    /// </remarks>
+    private bool IsKeyDown(VirtualKey key) =>
+        focusless
+            ? FocuslessPanelInput.IsPhysicallyDown((uint)key)
+            : InputKeyboardSource.GetKeyStateForCurrentThread(key).HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
 
     /// <summary>
     /// Whether Alt or a Windows key is down on the UI thread: a key pressed with one of them is Windows' or another
@@ -2734,7 +2956,7 @@ public sealed partial class ClipboardFlyout : Window
     /// key is never a pick of a group (<see cref="PickGroupByKey"/>).
     /// </summary>
     /// <returns><see langword="true"/> when Alt, the left or the right Windows key is down.</returns>
-    private static bool IsAltOrWindowsKeyDown() =>
+    private bool IsAltOrWindowsKeyDown() =>
         IsKeyDown(VirtualKey.Menu) || IsKeyDown(VirtualKey.LeftWindows) || IsKeyDown(VirtualKey.RightWindows);
 
     /// <summary>x:Bind helper: paused chip visibility.</summary>

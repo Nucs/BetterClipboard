@@ -39,6 +39,37 @@ public sealed class CliProtocolTests : IDisposable
         Assert.Contains("\n", CliJson.Serialize(response, indented: true), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The members of 2026-11-20 travel: several ids and an order in a request, the budget in a status, an item's group
+    /// count; absent ones stay off the wire, so an older client or server sees nothing new.
+    /// </summary>
+    [Fact]
+    public void Json_CarriesIdsSortBudgetAndGroups()
+    {
+        var request = new CliRequest { Command = CliCommands.Delete, Ids = [812, 640, 77], Sort = "size" };
+        var json = CliJson.Serialize(request);
+        Assert.Contains("\"ids\":[812,640,77]", json, StringComparison.Ordinal);
+        Assert.Contains("\"sort\":\"size\"", json, StringComparison.Ordinal);
+        var back = CliJson.DeserializeRequest(json);
+        Assert.Equal([812L, 640L, 77L], back.Ids!);
+        Assert.Equal("size", back.Sort);
+        Assert.DoesNotContain("\"ids\"", CliJson.Serialize(new CliRequest { Command = CliCommands.Delete, Id = 5 }), StringComparison.Ordinal);
+
+        var response = new CliResponse
+        {
+            Ok = true,
+            Items = [new CliItem { Id = 7, Kind = "text", Preview = "p", Groups = 2 }],
+            Status = new CliStatus { Version = "0.2.12", Budget = new CliBudget { UsedBytes = 10, BudgetBytes = 100, PercentUsed = 10, CountedItems = 1, DatabaseBytes = 4096 } },
+        };
+        var wire = CliJson.Serialize(response);
+        Assert.Contains("\"budget\":{", wire, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"maxItems\"", wire, StringComparison.Ordinal);
+        var answer = CliJson.DeserializeResponse(wire);
+        Assert.Equal(2, answer.Items!.Single().Groups);
+        Assert.Equal((10L, (long?)100, (double?)10, 4096L), (answer.Status!.Budget!.UsedBytes, answer.Status.Budget.BudgetBytes, answer.Status.Budget.PercentUsed, answer.Status.Budget.DatabaseBytes));
+        Assert.Null(CliJson.DeserializeResponse(CliJson.Serialize(new CliResponse { Ok = true, Items = [new CliItem { Id = 1, Preview = "p" }] })).Items!.Single().Groups);
+    }
+
     /// <summary>The pipe name is stable per user and session, case-insensitive in the SID, and hides the SID.</summary>
     [Fact]
     public void PipeName_IsPerUserAndSession()

@@ -22,7 +22,11 @@ public static class ProcessIntegrity
     /// <summary>The level of an elevated app ("Run as administrator").</summary>
     public const int High = 0x3000;
 
-    /// <summary>This process's level, read once (it cannot change while the process runs).</summary>
+    /// <summary>
+    /// This process's level, read once. It changes at most once, at the very start: a copy that runs with UI access lowers
+    /// its own level to Medium before anything else (<see cref="UiAccess.LowerIntegrityIfGranted"/>), so the first read here
+    /// already sees the lowered level.
+    /// </summary>
     private static readonly Lazy<int?> CurrentLevel = new(() => OfProcessHandle(GetCurrentProcess()));
 
     /// <summary>The integrity level of this process, or <see langword="null"/> when it cannot be read.</summary>
@@ -89,34 +93,42 @@ public static class ProcessIntegrity
 
         try
         {
-            GetTokenInformation(token, TokenIntegrityLevel, 0, 0, out int size);
-            if (size <= 0)
-            {
-                return null;
-            }
-
-            nint buffer = Marshal.AllocHGlobal(size);
-            try
-            {
-                if (!GetTokenInformation(token, TokenIntegrityLevel, buffer, size, out _))
-                {
-                    return null;
-                }
-
-                // TOKEN_MANDATORY_LABEL starts with SID_AND_ATTRIBUTES, whose first member is the label's SID; the level is
-                // its last sub-authority (S-1-16-12288 = High).
-                nint sid = Marshal.ReadIntPtr(buffer);
-                int count = Marshal.ReadByte(GetSidSubAuthorityCount(sid));
-                return count == 0 ? null : Marshal.ReadInt32(GetSidSubAuthority(sid, (uint)(count - 1)));
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(buffer);
-            }
+            return OfToken(token);
         }
         finally
         {
             CloseHandle(token);
+        }
+    }
+
+    /// <summary>Reads the integrity level from a token.</summary>
+    /// <param name="token">A token opened with <see cref="TOKEN_QUERY"/> (not closed here).</param>
+    /// <returns>The level, or <see langword="null"/> when it cannot be read.</returns>
+    internal static int? OfToken(nint token)
+    {
+        GetTokenInformation(token, TokenIntegrityLevel, 0, 0, out int size);
+        if (size <= 0)
+        {
+            return null;
+        }
+
+        nint buffer = Marshal.AllocHGlobal(size);
+        try
+        {
+            if (!GetTokenInformation(token, TokenIntegrityLevel, buffer, size, out _))
+            {
+                return null;
+            }
+
+            // TOKEN_MANDATORY_LABEL starts with SID_AND_ATTRIBUTES, whose first member is the label's SID; the level is
+            // its last sub-authority (S-1-16-12288 = High).
+            nint sid = Marshal.ReadIntPtr(buffer);
+            int count = Marshal.ReadByte(GetSidSubAuthorityCount(sid));
+            return count == 0 ? null : Marshal.ReadInt32(GetSidSubAuthority(sid, (uint)(count - 1)));
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
         }
     }
 }

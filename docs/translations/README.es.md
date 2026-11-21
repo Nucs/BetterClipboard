@@ -5,6 +5,7 @@
 [![CI](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml/badge.svg)](https://github.com/Nucs/BetterClipboard/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Nucs/BetterClipboard?sort=semver)](https://github.com/Nucs/BetterClipboard/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](../../LICENSE)
+[![Docs](https://img.shields.io/badge/docs-nucs.github.io-6366F1)](https://nucs.github.io/BetterClipboard/)
 
 [ENG](../../README.md) / [简体中文](README.zh-CN.md) / [Русский](README.ru.md) / **Español** / [עברית](README.he.md)
 
@@ -15,88 +16,104 @@
 <div align="center">
 
 **El historial del portapapeles de Win+V que Windows debió traer de serie.** El mismo atajo, el mismo panel junto a tu cursor, pero recuerda todo, sobrevive a los reinicios, busca al instante y lo guarda todo cifrado en tu PC.
-También guarda lo que otras herramientas olvidan: tus capturas de pantalla, tus comandos de Win+R, el historial de tu shell y los prompts que envías a Claude Code y Codex.
+
+[Instalación](#install) · [Funciones](#features) · [Uso](#use) · [Documentación](https://nucs.github.io/BetterClipboard/) · [Versiones](https://github.com/Nucs/BetterClipboard/releases/latest)
 
 </div>
 
 <p align="center">
-  <img src="../images/panel.png" width="461" alt="El panel de BetterClipboard, abierto con Win+V. A la izquierda, la columna de grupos con tres iconos de grupo. Arriba, los botones del encabezado (actualizar, pausa, grupos, borrar, configuración), el cuadro de búsqueda con sus interruptores Aa, W y .* y las pestañas Todo, Anclados, Texto, Imágenes, Vínculos, Archivos y Recortes, con una flecha que desplaza hacia las demás. Tarjetas: una respuesta anclada del Bloc de notas, una captura de Recortes con su botón de ojo, un vínculo de GitHub desde Microsoft Edge, el color #7C3AED con su muestra y dos archivos del Explorador de archivos.">
+  <img src="../images/hero.gif" width="760" alt="El panel de BetterClipboard, abierto con Win+V, ensanchándose hasta que se ven todas las pestañas y volviendo a estrecharse. A la izquierda, la columna de grupos. Arriba, los botones del encabezado, el cuadro de búsqueda con sus interruptores Aa, W y .* y las pestañas: Todo, Anclados, Texto, Imágenes, Vínculos, Archivos, ShareX, Recortes, Notepad++, Ejecutar, Pwsh, Cmd, Claude, Codex y Everything. Tarjetas: dos elementos anclados, una captura de Recortes, un texto y un vínculo copiados en Google Chrome.">
 </p>
 
 <a id="features"></a>
 ## Funciones
 
-- **Reemplaza Win+V.** El mismo atajo, y el panel aparece al instante junto a tu cursor de texto: se mantiene dibujado y al día mientras está oculto, así que Win+V solo tiene que mostrarlo ([Cómo funciona](#how-it-works)). El instalador libera Win+V del Explorador; una copia que ejecutas sin el instalador lo intercepta con un hook de teclado. Agrega más atajos, o deja Win+V para Windows y elige los tuyos: presiona cualquier tecla o combinación en *Configuración › Atajo de teclado* (incluidas las teclas del teclado numérico y multimedia, F13–F24 y la tecla Copilot), y los atajos que usaste antes quedan a un clic ([Elegir atajos](#choosing-shortcuts)).
-- **Recuerda todo, también después de reiniciar.** 10.000 elementos de forma predeterminada, cada uno de hasta 64 MB, con un límite de tamaño total y un límite de antigüedad opcional, todo ajustable. Win+V guarda 25 elementos de hasta 4 MB, y un reinicio borra todo salvo lo anclado.
-- **Todo tipo de copia**, con la aplicación de origen y la hora en cada tarjeta, y pestañas que filtran por tipo y por origen. Lo que vuelves a copiar sube arriba en vez de duplicarse ([Pestañas](#tabs)):
-  - **Texto, texto enriquecido y HTML, vínculos y colores** con su muestra.
-  - **Los textos largos** muestran sus primeras cuatro líneas, y una fina línea de puntos y un ojo indican que hay más. Deja el mouse sobre el texto para leerlo entero, o presiona `F3` para abrir un visor que dibuja Markdown, colorea código en 22 lenguajes, vuelve a sangrar XML y JSON, ajusta y numera las líneas y abre copias de varios megabytes página a página ([Vista previa de texto](#text-previews)).
-  - **Archivos** copiados en el Explorador y **rutas copiadas como texto** (`C:\…`, `~/.bashrc`, `src/app/main.cs`), que se siguen pegando como texto ([Rutas en la pestaña Archivos](#paths-in-the-files-tab)).
-  - **Imágenes** con miniaturas. Deja el mouse sobre una para verla a tamaño completo, o ábrela en un visor con zoom y desplazamiento ([Vista previa de imágenes](#image-previews)). La misma imagen en PNG o en mapa de bits es un solo elemento. Una captura de pantalla recuerda el archivo en el que se guardó: haz clic derecho para copiar su ruta, copiarla como archivo, abrirla o abrir su carpeta, y *Guardar en carpeta temporal y* hace lo mismo con cualquier imagen ([Imágenes y sus archivos](#pictures-and-their-files)).
-  - **El historial propio de Windows:** lo que Win+V todavía recuerda, incluido lo anclado, se importa en cada inicio. Lo que eliminas en BetterClipboard no se vuelve a importar.
-  - **ShareX:** cada captura que guarda [ShareX](https://getsharex.com), en el momento en que se guarda.
-  - **Recortes:** cada captura que guardan el guardado automático de Recortes y `Win+PrtScn`.
-  - **Notepad++:** el texto de las pestañas «new» sin guardar de [Notepad++](https://notepad-plus-plus.org/), actualizado mientras las editas, y la ruta completa de cada archivo que abres en Notepad++.
-  - **Ejecutar:** cada comando que ejecutas con `Win+R`, también después de que la lista de 26 de Windows lo olvide. `Ctrl+Enter` lo vuelve a ejecutar (`Ctrl+Shift+Enter`: como administrador).
-  - **Pwsh:** todo el historial de comandos de PowerShell, también los comandos antiguos a los que ya no llega su flecha hacia arriba.
-  - **Cmd:** los comandos que escribes en las ventanas del Símbolo del sistema, que se conservan después de cerrar la ventana.
-  - **Claude y Codex:** cada prompt que envías a Claude Code y Codex, guardado para siempre.
-  - **Everything:** los archivos que abres desde [Everything](https://www.voidtools.com/), para pegarlos como archivo o como ruta.
+- **Reemplaza <kbd>Win</kbd>+<kbd>V</kbd>.** El mismo atajo abre el panel al instante, junto a tu cursor de texto. Agrega más atajos, con cualquier tecla o combinación, o deja Win+V para Windows y elige los tuyos ([Tomar Win+V](#taking-over-winv)).
+- **Recuerda todo, también después de reiniciar.** 10.000 elementos de hasta 64 MB cada uno de forma predeterminada, todo ajustable. Win+V guarda 25 elementos de hasta 4 MB, y un reinicio borra todo salvo lo anclado.
+- **Todo tipo de copia,** con la aplicación y la hora en cada tarjeta. Lo que vuelves a copiar sube arriba en vez de duplicarse ([Pestañas](#tabs)):
+  - **Texto, vínculos y colores**, texto enriquecido y HTML.
+  - **Textos largos** completos: deja el mouse sobre uno para leerlo, o presiona <kbd>F3</kbd> para abrir un visor que dibuja Markdown y colorea el código ([Vista previa de texto](#text-previews)).
+  - **Imágenes** con una vista a tamaño completo y un visor con zoom ([Vista previa de imágenes](#image-previews)). Una captura de pantalla recuerda su archivo, para pegarla como archivo o abrir su carpeta ([Imágenes y sus archivos](#pictures-and-their-files)).
+  - **Archivos** copiados en el Explorador y **rutas** copiadas como texto ([Rutas en la pestaña Archivos](#paths-in-the-files-tab)).
+  - **El historial propio de Windows**, incluido lo anclado, importado en cada inicio. Lo que eliminas aquí no se vuelve a importar.
+  - **Pestañas para otras aplicaciones,** cada una con su propio interruptor. BetterClipboard solo lee sus orígenes, y la pestaña de una aplicación que no tienes permanece oculta ([Pestañas para otras aplicaciones](#tabs-for-other-apps)):
+    - **ShareX** y **Recortes:** cada captura que guardan, en el momento en que se guarda.
+    - **Notepad++:** sus pestañas «new» sin guardar, actualizadas mientras las editas, y cada archivo que abres en él.
+    - **Ejecutar:** cada comando de <kbd>Win</kbd>+<kbd>R</kbd>, también después de que la lista de 26 de Windows lo olvide.
+    - **Pwsh** y **Cmd:** todo el historial de PowerShell y los comandos que escribes en las ventanas del Símbolo del sistema, que se conservan después de cerrar la ventana.
+    - **Claude** y **Codex:** cada prompt que envías a Claude Code y Codex, guardado para siempre.
+    - **Everything:** los archivos que abres desde [Everything](https://www.voidtools.com/), para pegarlos como archivo o como ruta.
+- **Búsqueda instantánea** en cualquier idioma, con los interruptores de VS Code: coincidir mayúsculas y minúsculas, palabra completa y expresión regular ([Búsqueda](#search)). Win+V no tiene búsqueda.
+- **Hecho para el teclado.** <kbd>Enter</kbd> pega en la aplicación de la que viniste, <kbd>Shift</kbd>+<kbd>Enter</kbd> pega texto sin formato, y las flechas recorren los elementos, las pestañas y tus grupos ([Uso](#use)).
+- **Pega un elemento tras otro.** Ancla el panel y se queda abierto: cada elemento en el que haces clic va a la aplicación en la que estuviste por última vez ([Uso](#use)).
+- **Un panel a tu medida.** Muévelo, cambia su tamaño, muestra de 1 a 40 líneas de cada texto, reordena u oculta sus pestañas y sus botones; se abre en la pestaña que usaste por última vez ([Pestañas](#tabs)).
+- **Anclados y grupos.** Ancla lo que reutilizas y reúne cosas en grupos con tus propios iconos. Los elementos anclados y agrupados sobreviven a todos los límites ([Grupos](#groups)).
+- **Poca memoria.** Después de cada uso libera la memoria que ya no necesita y mantiene listo solo lo que necesita el próximo Win+V ([Cómo funciona](#how-it-works)).
+- **Lee cada copia.** Las copias separadas por 2 ms o más se guardan todas. Las más rápidas se sobrescriben unas a otras antes de que cualquier aplicación pueda leerlas: se guarda la última y las demás se cuentan ([Cómo funciona](#how-it-works)).
+- **Privado.** Sin telemetría y sin cuenta; la única solicitud que hace por su cuenta es una comprobación diaria de actualizaciones, que un interruptor desactiva. El historial se guarda cifrado, las copias que las aplicaciones marcan como privadas y 46 administradores de contraseñas quedan fuera, y *Olvidar para siempre* deja fuera un secreto para siempre ([Privacidad](#privacy)).
+- **Una línea de comandos, `bclip`,** para scripts y agentes de IA: lista, busca, aplica grep y lee tu historial, o espera tu próxima copia, con salida en JSON ([Línea de comandos](#command-line-for-scripts-and-ai-agents)).
+- **Se instala con una línea**, por usuario y sin derechos de administrador, o para todos los usuarios de una PC ([Instalación](#install)).
+- **Actualizaciones cuando tú lo apruebas.** El botón de actualización se ilumina cuando sale una versión nueva, y no se instala nada hasta que lo dices ([Actualizaciones](#updates)).
+- **En tu idioma:** English, 简体中文, Русский, Español y עברית, en cada descarga. El primer inicio pregunta cuál.
+- **Configuración en la que puedes buscar**, incluso con erratas, para todo, desde el tema hasta dónde se abre el panel ([Uso](#use)).
 
-  Las últimas ocho son pestañas para otras aplicaciones. Cada una tiene su propio interruptor y está activada de forma predeterminada, BetterClipboard solo lee su origen, y la pestaña de una aplicación que no tienes permanece oculta ([Pestañas para otras aplicaciones](#tabs-for-other-apps)). *Eliminar lo guardado…* en la tarjeta de cada una en la configuración muestra lo que BetterClipboard guardó de ella, parte por parte y con ejemplos, y elimina lo que marques; los archivos propios de la otra aplicación nunca se tocan.
-- **Búsqueda instantánea** en cualquier idioma, incluidos hebreo, CJK y emoji, con los interruptores de VS Code: coincidir mayúsculas y minúsculas (`Alt+C`), palabra completa (`Alt+W`) y expresión regular (`Alt+E`) ([Búsqueda](#search)). Win+V no tiene búsqueda.
-- **Hecho para el teclado.** `Enter` pega en la aplicación de la que viniste y `Shift+Enter` pega texto sin formato. `↑` `↓` recorren los elementos, `←` `→` recorren las pestañas en círculo, y `↑` desde el primer elemento entra en tus grupos. `Ctrl+1` … `Ctrl+9` pegan el elemento n, `Ctrl+P` ancla, `Del` elimina, `F3` muestra un elemento completo, y la tecla de menú abre el menú de un elemento (solo copiar, abrir el vínculo, mostrar en el Explorador, …). `Esc` devuelve el foco a donde estabas ([Uso](#use)).
-- **Un panel a tu medida.** Se abre en la pestaña que usaste por última vez, también después de reiniciar. Arrastra cualquier espacio vacío para moverlo, y arrastra un borde para cambiar su tamaño: desde entonces se abre con ese tamaño. Las pestañas que no caben se desplazan de lado con las flechas ‹ ›, la rueda del mouse o arrastrando. Haz clic derecho en una pestaña para moverla a la izquierda o a la derecha, ocultarla u ocultarla junto con sus elementos en todas las listas; *Mostrar todas las ocultas* las devuelve, y tu orden se conserva ([Pestañas](#tabs)). El mouse selecciona el elemento sobre el que está.
-- **Anclados y grupos.** Ancla lo que reutilizas: los elementos anclados aparecen arriba, y el panel igualmente se abre en tu copia más reciente, justo debajo de ellos, así que `Win+V` `Enter` pega lo último que copiaste y `↑` llega a los anclados. Crea grupos con tus propios iconos, arrastra tarjetas sobre ellos y muestra un grupo o varios a la vez (`Ctrl+clic`, `Shift+clic`, o `Space` sobre un grupo al que llegas con las flechas). Los elementos anclados y agrupados sobreviven a todos los límites, y *Borrar* los conserva ([Grupos](#groups)).
-- **Poca memoria.** Después de cada uso devuelve la memoria que ya no necesita y mantiene listo solo lo que necesita tu próximo Win+V. Lo que deja atrás la configuración también vuelve: unos segundos después de cerrarla, BetterClipboard se reemplaza en silencio por una copia nueva, y no se abre ni parpadea nada ([Cómo funciona](#how-it-works)).
-- **Lee cada copia al instante.** Las copias separadas por 2 ms o más se guardan todas. Un programa que copia más rápido sobrescribe sus propias copias antes de que cualquier aplicación, Win+V incluido, pueda leerlas: BetterClipboard guarda la última y cuenta las demás (*Configuración › Fiabilidad de la captura*).
-- **Privado.** Sin telemetría y sin cuenta. Lo único que consulta por su cuenta a un servidor es la lista pública de sus versiones en GitHub, una vez al día, para avisarte de actualizaciones; un interruptor también lo desactiva ([Privacidad](#privacy)).
-  - **Cifrado en reposo:** todo el historial (ChaCha20-Poly1305), con una clave que solo tu cuenta en esta PC puede abrir ([Cómo funciona](#how-it-works)). Win+V cifra solo lo anclado.
-  - **Las copias privadas quedan fuera:** las copias que las aplicaciones marcan como privadas nunca se registran, y 46 administradores de contraseñas y aplicaciones de autenticación se ignoran desde el principio. *Pausar la captura* y *Aplicaciones ignoradas* cubren el resto.
-  - **Olvidar para siempre** elimina un elemento y nunca vuelve a registrar su contenido, sea cual sea la aplicación que lo copie ([Olvidar para siempre](#forget-forever)).
-- **Una línea de comandos para scripts y agentes de IA.** `bclip` lista tu historial, busca en él y le aplica grep, imprime cualquier elemento byte a byte, pone texto en el portapapeles, espera tu próxima copia y busca en tus prompts archivados, con salida en JSON. Está desactivada de forma predeterminada ([Línea de comandos](#command-line-for-scripts-and-ai-agents)).
-- **Se instala con una línea.** Por usuario, sin derechos de administrador, con comprobación SHA-256, Windows 10 (2004 o posterior) y Windows 11, x64 y ARM64, sin nada más que instalar; desde entonces se inicia con Windows. Como administrador, o desde Intune o una herramienta RMM, se instala para todos los usuarios de una PC, y cada usuario puede igualmente desactivar el inicio al iniciar sesión para sí mismo. Al desinstalarlo conservas tu historial, salvo que pidas lo contrario ([Instalación](#install)). Una edición para Microsoft Store está lista, en la certificación de Microsoft, y usa el mismo historial ([Edición de Microsoft Store](#microsoft-store-edition)).
-- **Actualizaciones cuando tú lo apruebas.** El botón de actualización del encabezado del panel, a la izquierda de Pausa, se resalta cuando hay una versión más nueva en GitHub, y una vez por semana su información sobre herramientas lo avisa por sí sola durante unos segundos. Un clic muestra la decisión —*Actualizar y reiniciar* o *Más tarde*— con las notas de la versión debajo. Solo entonces se descarga la actualización, se comprueba con el SHA-256 de la versión y se instala en su lugar, también en una carpeta que extrajiste del zip de la versión: BetterClipboard se reinicia solo, y tu historial se conserva ([Actualizaciones](#updates)).
-- **En tu idioma.** Inglés, chino simplificado (简体中文), ruso (Русский), español (Español) y hebreo (עברית), todos en cada descarga. El primer inicio muestra los idiomas con sus banderas, con el idioma de Windows ya seleccionado: un clic en la marca verde y toda la aplicación lo habla. Una actualización desde una versión que todavía no preguntaba también pregunta una vez. *Configuración › Aplicación › Idioma* lo cambia después: elige un idioma y presiona *Reiniciar ahora*. El hebreo se lee de derecha a izquierda dentro del diseño habitual. Lo que copias, los nombres de archivo y los nombres que das a los grupos nunca se traducen.
-- **Configuración en la que puedes buscar.** Escribe en el cuadro de la parte superior de la configuración (`Ctrl+F`) y la página deja solo las opciones que coinciden, en su sitio, con las letras coincidentes resaltadas. Cuenta cualquier palabra de una opción —su título, descripción, sección, botones y opciones— y también las iniciales («lde» para *Liberar del Explorador*) y las erratas (los nombres en inglés también se buscan, así que «pasword» también sirve). `Esc` devuelve toda la página a donde estaba.
-- **Configuración para lo demás:** iniciar con Windows, el tema (claro, oscuro o el de Windows), dónde se abre el panel (junto al cursor de texto o al mouse, o en el centro de la pantalla principal o de la pantalla en la que escribes, con varios monitores y a cualquier escala) y una página que acredita cada aplicación con la que funciona y cada componente que incluye, con sus vínculos oficiales.
+<table>
+<tr>
+<td width="33%" align="center"><img src="../images/gallery/regex-search.png" alt="El panel buscando con una expresión regular: el interruptor .* activado y los elementos que coinciden."><br><sub><b>Búsqueda,</b> también con expresiones regulares</sub></td>
+<td width="34%" align="center"><img src="../images/gallery/group-view.png" alt="El panel mostrando un grupo, NumSharp, con la columna de grupos abierta a la izquierda."><br><sub><b>Grupos</b> para lo que reutilizas</sub></td>
+<td width="33%" align="center"><img src="../images/gallery/claude-tab.png" alt="La pestaña Claude: prompts enviados a Claude Code, los más recientes primero, con su proyecto y cuándo se enviaron."><br><sub><b>Tus prompts</b> para Claude Code y Codex</sub></td>
+</tr>
+</table>
+<table>
+<tr>
+<td width="50%" align="center"><img src="../images/gallery/text-viewer.png" alt="El visor de texto mostrando una nota en Markdown: títulos, listas y código dibujados en color."><br><sub><b>El visor de texto:</b> Markdown dibujado, código en color</sub></td>
+<td width="50%" align="center"><img src="../images/gallery/image-viewer.png" alt="El visor de imágenes mostrando una captura de pantalla ampliada, con el nombre, el formato, el tamaño y la carpeta de su archivo encima."><br><sub><b>El visor de imágenes,</b> con el archivo de la imagen</sub></td>
+</tr>
+</table>
 
 <a id="install"></a>
 ## Instalación
 
-Windows 10 versión 2004 o posterior / Windows 11, x64 o ARM64. No hay nada más que instalar (la versión es autónoma). En PowerShell:
+Windows 10 (versión 2004 o posterior) o Windows 11, x64 o ARM64.
+
+- **PowerShell**, sin derechos de administrador. Toma Win+V, así que el Explorador se reinicia una vez:
+
+  ```powershell
+  irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
+  ```
+
+- **Microsoft Store**, firmada por Microsoft y actualizada por la tienda:
+  <a href="https://apps.microsoft.com/detail/9PHL574X9BF9"><img src="https://get.microsoft.com/images/es%20dark.svg" width="160" alt="Descargar desde Microsoft Store" align="absmiddle"></a>
+  o `winget install 9PHL574X9BF9 --source msstore`
+- **Portátil**: extrae el zip de la [versión más reciente](https://github.com/Nucs/BetterClipboard/releases/latest) donde quieras y ejecuta `BetterClipboard.exe`. No se instala nada.
+
+<details>
+<summary><b>Instalación avanzada</b></summary>
+
+Pasa las opciones del instalador a través de un bloque de script:
 
 ```powershell
-irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1 | iex
-```
-
-El instalador descarga la [versión](https://github.com/Nucs/BetterClipboard/releases/latest) más reciente para tu arquitectura, **comprueba su SHA-256**, la instala por usuario en `%LOCALAPPDATA%\Programs\BetterClipboard` (sin derechos de administrador), agrega un acceso directo en el menú Inicio, hace que BetterClipboard se inicie con Windows y lo registra en *Configuración › Aplicaciones › Aplicaciones instaladas*. También **toma Win+V**: el Explorador deja de registrarlo y se reinicia una vez (la barra de tareas parpadea y las ventanas de carpetas abiertas se cierran). Consulta [Tomar Win+V](#taking-over-winv). Ejecutarlo de nuevo actualiza en el mismo lugar y conserva lo que cambiaste en la configuración (*Iniciar con Windows* desactivado, Win+V devuelto a Windows), igual que el botón de actualización de la propia aplicación ([Actualizaciones](#updates)); tu historial nunca se toca. Funciona desde cualquier carpeta, también una en la que no puedes escribir, y al terminar deja tu PowerShell en esa carpeta.
-
-En su primer inicio, BetterClipboard te pregunta tu idioma: English, 简体中文, Русский, Español o עברית, cada uno con su bandera, con el idioma de Windows ya seleccionado. Presiona la marca verde (o `Enter`) y todo se abre en ese idioma. Si actualizas desde una versión que todavía no preguntaba, el primer inicio después de la actualización pregunta una vez.
-
-Una vez al día, la aplicación instalada pregunta a GitHub si hay una versión más nueva. No se envía nada sobre ti, tu PC o tu portapapeles, y no se instala nada sin tu aprobación ([Privacidad](#privacy)). `-NoUpdateCheck` instala con esa comprobación desactivada.
-
-Opciones (pásalas a través de un bloque de script):
-
-```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -NoTakeOverWinV -Hotkey Win+Alt+V
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -NoTakeOverWinV
 ```
 
 | Opción | Efecto |
 |---|---|
-| `-NoTakeOverWinV` | Dejar Win+V para Windows. Entonces BetterClipboard se abre con los atajos de `-Hotkey`, o con Win+Alt+V. Si Win+V se había liberado antes, el Explorador lo recupera. |
-| `-Hotkey A, B, …` | Los atajos que abren BetterClipboard, por ejemplo `-Hotkey Win+Alt+V, Ctrl+Alt+F9`. Win+V va primero salvo que se indique `-NoTakeOverWinV`. Cada uno se toma de la misma forma que Win+V (consulta [Tomar Win+V](#taking-over-winv)). |
-| `-TakeOverWinV` | El valor predeterminado. Se conserva para líneas de comandos antiguas; si tus atajos ya no incluyen Win+V, vuelve a agregar Win+V. Al ejecutarlo de nuevo, también recupera el Win+V que devolviste a Windows en la configuración. |
-| `-AddToPath` | Agregar la carpeta de instalación a tu PATH de usuario para que las terminales puedan ejecutar `bclip` (consulta [Línea de comandos](#command-line-for-scripts-and-ai-agents)). |
-| `-NoUpdateCheck` | Instalar con la comprobación automática de actualizaciones desactivada: así BetterClipboard nunca consulta GitHub por su cuenta. *Configuración › Actualizaciones* tiene *Comprobar ahora* y el interruptor para volver a activarla. |
-| `-Version 0.1.0` | Instalar una versión concreta en lugar de la más reciente. |
-| `-Package <zip>` | Instalar desde un zip de versión en el disco en lugar de descargar uno (una instalación sin conexión). Coloca el `SHA256SUMS.txt` de la versión junto al zip, o indica `-PackageSha256 <hash>`, y se comprueba primero. |
-| `-AllUsers` | Instalar para todos los usuarios de esta PC (en PowerShell como administrador); consulta [Para todos los usuarios de una PC](#for-every-user-of-a-pc). |
-| `-InstallDir <path>` | Instalar en otro lugar. |
-| `-NoStartup` / `-NoShortcut` / `-NoLaunch` | No iniciar con Windows / no crear el acceso directo del menú Inicio / no abrir la aplicación después de instalar. |
-| `-Uninstall [-RemoveData]` | Quitar la aplicación (el historial se conserva salvo con `-RemoveData`, que también elimina las imágenes temporales). |
+| `-NoTakeOverWinV` | Dejar Win+V para Windows (entonces BetterClipboard se abre con Win+Alt+V, o con tu `-Hotkey`) |
+| `-Hotkey A, B, …` | Tus propios atajos, por ejemplo `-Hotkey Win+Alt+V, Ctrl+Alt+F9` |
+| `-AllUsers` | Para todos los usuarios de la PC, como administrador ([más abajo](#for-every-user-of-a-pc)) |
+| `-AddToPath` | Poner `bclip` en tu PATH |
+| `-NoUpdateCheck` | Sin comprobación diaria de actualizaciones |
+| `-Version X.Y.Z` / `-Package <zip>` | Una versión concreta / un zip de versión en el disco |
+| `-InstallDir <path>` | Otra carpeta |
+| `-NoStartup` / `-NoShortcut` / `-NoLaunch` | Sin inicio con Windows / sin acceso directo / sin abrirla al terminar |
+| `-Uninstall [-RemoveData]` | Quitarla (`-RemoveData`: también el historial) |
 
-¿Prefieres hacerlo a mano? Descarga el zip para tu arquitectura y `SHA256SUMS.txt` de la versión, comprueba el hash (`Get-FileHash .\BetterClipboard-*.zip`), extráelo donde quieras y ejecuta `BetterClipboard.exe`. Las versiones aún no están firmadas con código, así que Windows puede decir *Windows protegió su PC* ante una copia descargada así: comprueba el hash y luego elige *Más información › Ejecutar de todas formas*. Consulta [Política de firma de código](#code-signing-policy).
+Una descarga portátil: compara `Get-FileHash .\BetterClipboard-*.zip` con el `SHA256SUMS.txt` de la versión. Las versiones aún no están firmadas con código, así que si SmartScreen la detiene, elige *Más información › Ejecutar de todas formas*.
+
+</details>
+
+Todas las demás formas (Intune y herramientas RMM, Chocolatey):
+[el sitio de documentación](https://nucs.github.io/BetterClipboard/docs/ways-to-install.html) (en inglés).
 
 <a id="for-every-user-of-a-pc"></a>
 ### Para todos los usuarios de una PC
@@ -107,26 +124,14 @@ En PowerShell como administrador:
 & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Nucs/BetterClipboard/main/install.ps1))) -AllUsers
 ```
 
-- **Lo que configura:** la aplicación en `Program Files\BetterClipboard`, en una carpeta que solo los administradores pueden cambiar; un acceso directo en el menú Inicio, una entrada en *Aplicaciones instaladas* y el inicio con Windows para todos los usuarios. Cada usuario que inicia sesión encuentra BetterClipboard en marcha, con su propio historial cifrado en su propio perfil.
-- **Cada usuario decide por sí mismo:** desactivar *Configuración › Aplicación › Iniciar con Windows* detiene el inicio al iniciar sesión solo para ese usuario. La entrada propia de inicio con Windows de un usuario, si la tiene, tiene prioridad, así que BetterClipboard nunca se inicia dos veces.
-- **Se elige solo** cuando no es el usuario que inició sesión quien instala: cuando el instalador se ejecuta como SYSTEM (Intune, una herramienta RMM) o con las credenciales de un administrador en el escritorio de otra persona. Una copia en el perfil de esa cuenta no le serviría a nadie que inicie sesión en la PC.
-- **Lo que sigue siendo de cada usuario:** Win+V y los demás atajos. BetterClipboard toma Win+V con su hook de teclado para todos, y cada usuario puede liberarlo del Explorador en *Configuración › Atajo de teclado*. `-Hotkey` y `-NoTakeOverWinV` solo se aplican cuando instala el usuario que inició sesión. `-AddToPath` agrega la carpeta al PATH de todos los usuarios.
-- **Actualizaciones:** esta copia no se reemplaza a sí misma ni busca actualizaciones por su cuenta, porque sus usuarios pueden no ser administradores. Un administrador vuelve a ejecutar el mismo comando: ejecutado como administrador en una PC con una copia para todos los usuarios, el instalador actualiza esa copia. *Configuración › Actualizaciones › Comprobar ahora* sigue diciéndote si hay una versión nueva, y el cuadro de diálogo de actualización copia el comando.
-
-El [paquete de Chocolatey](../../packaging/chocolatey) sigue la misma regla para el inicio con Windows. Si lo instala el usuario que inició sesión, la entrada es suya. Si lo instala SYSTEM u otra cuenta, o con `/AllUsersStartup`, es para todos los usuarios.
+Cada persona que inicia sesión obtiene BetterClipboard, con su propio historial. Cuando el instalador se ejecuta como SYSTEM (Intune, herramientas RMM), lo hace por sí solo.
 
 <a id="microsoft-store-edition"></a>
 ### Edición de Microsoft Store
 
-**Todavía no está en la tienda.** La edición está compilada y probada ([docs/microsoft-store.md](../microsoft-store.md)), y Microsoft está certificando su primer envío. Esto es lo que es:
+<a href="https://apps.microsoft.com/detail/9PHL574X9BF9"><img src="https://get.microsoft.com/images/es%20dark.svg" width="160" alt="Descargar desde Microsoft Store"></a>
 
-- **La instala y la actualiza la tienda.** Microsoft firma el paquete, así que Windows no muestra ninguna advertencia de «editor desconocido». La aplicación en sí no hace ninguna solicitud de red, porque la actualiza la tienda.
-- **Pregunta primero.** El primer inicio pregunta tu idioma y luego muestra una bienvenida con dos interruptores, *Abrir con Win+V* e *Iniciar con Windows*. No se registra nada ni se toma ningún atajo hasta que presionas *Empezar*.
-- **Win+V sin cambios en el sistema.** Mientras se ejecuta, responde a Win+V con el hook de teclado; ciérrala y Win+V vuelve a ser de Windows al instante. *Liberar del Explorador* no forma parte de esta edición.
-- **Un solo historial para todas las formas de instalarlo.** La edición de la tienda guarda tu historial en `%LOCALAPPDATA%\BetterClipboard`, la carpeta que usan el instalador, Chocolatey y una copia portátil, así que al cambiar entre ellos conservas tu historial, tus elementos anclados y tu configuración. Una vez por versión de Windows comprueba que lo que escribe llega de verdad a esa carpeta; si no es así, usa su propia carpeta y lo dice en *Configuración › Carpeta de datos*.
-- **Una copia a la vez.** Lo previsto es que solo haya un BetterClipboard instalado. Cuando la edición de la tienda encuentra una copia que instalaste con el instalador, te dice lo que hará y comprueba que puede hacerlo. *Pasar a esta edición* cierra esa copia y la desinstala (lo que devuelve Win+V a Windows); tu historial se queda donde está. (Si usa su propia carpeta, primero copia tu historial y tu configuración, comprueba la copia y quita la carpeta antigua al final; si un paso falla, tu historial se queda donde estaba.) Una copia para todos los usuarios, o la copia de Chocolatey, la quita un administrador: la edición de la tienda dice cómo y espera. El instalador, a su vez, te avisa cuando la edición de la tienda está instalada.
-- **`bclip` funciona en cualquier terminal** sin entrada en el PATH, una vez que activas la línea de comandos.
-- **Quitarla** conserva tu historial, como cualquier otra desinstalación: elimina `%LOCALAPPDATA%\BetterClipboard` para quitarlo para siempre (*Configuración › Carpeta de datos › Abrir* te la muestra). Solo un historial en la carpeta propia de la edición se va con la aplicación.
+Firmada por Microsoft y actualizada por la tienda. Pregunta antes de registrar nada, responde a Win+V mientras se ejecuta sin cambiar ninguna configuración de Windows y comparte tu historial con todas las demás formas de instalarlo.
 
 <a id="updates"></a>
 ## Actualizaciones
@@ -144,53 +149,62 @@ BetterClipboard se actualiza desde sus [versiones en GitHub](https://github.com/
 - **Si una actualización falla,** la versión instalada se queda en su lugar y sigue funcionando, y el cuadro de diálogo o una notificación dice por qué. Una descarga que no coincide con su suma de comprobación se elimina. Una carpeta de instalación que otro programa mantiene abierta se deja como estaba.
 - **La comprobación:** una vez al día (la primera vez, un minuto después de iniciarse), BetterClipboard pide a GitHub la lista pública de versiones de este proyecto. La solicitud solo indica la versión de la aplicación: no se envía nada sobre ti, tu PC o tu portapapeles ([Privacidad](#privacy)). *Configuración › Actualizaciones* desactiva la comprobación, y también instalar con `-NoUpdateCheck`. *Comprobar ahora* pregunta una vez, diga lo que diga el interruptor.
 - **Omitir esta versión** quita el resaltado y el recordatorio semanal de esa versión. La siguiente versión trae ambos de vuelta.
+
+<details>
+<summary><b>Otros tipos de copia:</b> una compilación de desarrollo, una copia del zip, una copia más nueva, una copia para todos los usuarios, la edición de Microsoft Store</summary>
+
 - **Una compilación de desarrollo** (una versión como `0.2.10-dev.12.gabc1234`, consulta [Compilar desde el código fuente](#build-from-source)) recibe primero las compilaciones publicadas en la carpeta `dev-builds` de su PC: *Compilación de desarrollo disponible*, y *Actualizar y reiniciar* copia la compilación de esa carpeta en vez de descargarla. Si no, siempre se le ofrece la versión más reciente de GitHub, aunque sea más antigua, como camino de vuelta a la versión oficial (*Instalar y reiniciar*). No recibe recordatorio semanal.
 - **Una copia que extrajiste del zip de la versión** se actualiza a sí misma en su propia carpeta, a partir de 0.2.11. *Actualizar y reiniciar* descarga y comprueba la versión como se describe arriba; luego la versión nueva cierra BetterClipboard, reemplaza los archivos de la versión uno a uno y vuelve a iniciarse. Los archivos que no forman parte de la versión (los tuyos, si la carpeta tiene alguno) se quedan como están, y si alguno de sus archivos no se puede reemplazar (otro programa lo mantiene abierto), todos los archivos vuelven a como estaban. Una copia en una carpeta que no puedes cambiar, como Program Files sin derechos de administrador, recibe en su lugar la página de descarga y el comando de instalación.
 - **Una copia más nueva toma el relevo.** Inicia un BetterClipboard más nuevo mientras se ejecuta uno más antiguo (una versión nueva extraída en una carpeta nueva, por ejemplo), y el antiguo se cierra y el nuevo sigue, en lugar de abrirse la configuración del antiguo. Si *Iniciar con Windows* inicia una copia más antigua, o una que ya no existe, pasa a la copia que ejecutas; una entrada que desactivaste en las aplicaciones de inicio de Windows sigue desactivada.
 - **Una copia instalada para todos los usuarios** ni se reemplaza a sí misma ni busca actualizaciones por su cuenta: solo un administrador puede cambiar su carpeta. *Comprobar ahora* sigue preguntando, y el cuadro de diálogo copia el comando para ejecutarlo en PowerShell como administrador ([Para todos los usuarios de una PC](#for-every-user-of-a-pc)).
 - **La edición de Microsoft Store** no tiene botón de actualización y no le pregunta nada a GitHub: la actualiza la tienda, y *Configuración › Actualizaciones de Microsoft Store* abre su página en la tienda.
 
+</details>
+
 <a id="use"></a>
 ## Uso
 
-Presiona **Win+V**. El panel aparece al instante junto a tu cursor de texto, en la pestaña que usaste por última vez, con el foco en el cuadro de búsqueda: solo escribe. Tu copia más reciente está seleccionada, así que `Enter` la pega. Los elementos anclados aparecen encima de ella (*Configuración › Pegado* puede ordenarlos por fecha en su lugar), y `↑` llega a ellos.
+Presiona **Win+V**. El panel aparece al instante junto a tu cursor de texto, en la pestaña que usaste por última vez, con el foco en el cuadro de búsqueda: solo escribe. Se abre en tu copia más reciente, arriba y seleccionada, así que <kbd>Enter</kbd> la pega. Tus elementos anclados están encima de ella, fuera de la vista: desplázate hacia arriba o presiona <kbd>↑</kbd> para verlos (*Configuración › Pegado* puede ordenarlos por fecha en su lugar). Una búsqueda o un grupo empiezan arriba, con sus elementos anclados a la vista.
 
 *Configuración › Atajo de teclado › Posición del panel* lo abre junto al mouse en su lugar, o en el centro de una pantalla: la principal o aquella en la que escribes (con varios monitores, la pantalla de la ventana en la que estabas; después de un clic en el escritorio, la pantalla del mouse).
+
+**El botón de anclar** del encabezado del panel lo mantiene abierto después de pegar: haz clic en un elemento tras otro, y cada uno va a la aplicación en la que estuviste por última vez. Sigue anclado, también después de reiniciar, hasta que vuelvas a hacer clic en él. <kbd>Esc</kbd> sigue cerrando el panel, y <kbd>Win</kbd>+<kbd>V</kbd> trae un panel anclado al frente donde está.
 
 | Tecla | Acción |
 |---|---|
 | *escribir* | Buscar (por subcadena, sin distinguir mayúsculas, incluidos hebreo, CJK y emoji) |
-| `Alt+C` / `Alt+W` / `Alt+E` | Activan o desactivan **Aa** (coincidir mayúsculas y minúsculas), **W** (palabra completa) y **.\*** (expresión regular) del cuadro de búsqueda, o haz clic en ellos. Se quedan como los dejas. |
-| `↑` `↓` `PgUp` `PgDn` | Mueven la selección. El panel se abre en tu copia más reciente, así que `↑` va primero a los elementos anclados que están encima, empezando por el de más abajo. Con la columna de grupos abierta, presiona `↑` en el primer elemento para entrar en los grupos (consulta [Grupos](#groups)). |
-| `Space` / `Enter` en la columna de grupos | Mientras las flechas están en la columna de grupos: quedarse con el grupo bajo el anillo y volver a los elementos. Mientras hay varios grupos abiertos: agregar a la lista el grupo bajo el anillo, o quitarlo (consulta [Grupos](#groups)). En cualquier otro lugar, `Space` escribe un espacio y `Enter` pega. |
-| `←` `→` | Pestaña anterior / siguiente, en círculo: `←` en la primera pestaña va a la última, `→` en la última va a la primera. Mientras editas el texto de búsqueda, mueven su cursor; después de `↑` o `↓` vuelven a cambiar de pestaña. Una tecla mantenida se detiene en la primera o la última pestaña. |
+| <kbd>Alt</kbd>+<kbd>C</kbd> / <kbd>Alt</kbd>+<kbd>W</kbd> / <kbd>Alt</kbd>+<kbd>E</kbd> | Activan o desactivan **Aa** (coincidir mayúsculas y minúsculas), **W** (palabra completa) y **.\*** (expresión regular) del cuadro de búsqueda, o haz clic en ellos. Se quedan como los dejas. |
+| <kbd>↑</kbd> <kbd>↓</kbd> <kbd>PgUp</kbd> <kbd>PgDn</kbd> | Mueven la selección. El panel se abre en tu copia más reciente, así que <kbd>↑</kbd> va primero a los elementos anclados que están encima, empezando por el de más abajo. Con la columna de grupos abierta, presiona <kbd>↑</kbd> en el primer elemento para entrar en los grupos (consulta [Grupos](#groups)). |
+| <kbd>Space</kbd> / <kbd>Enter</kbd> en la columna de grupos | Mientras las flechas están en la columna de grupos: quedarse con el grupo bajo el anillo y volver a los elementos. Mientras hay varios grupos abiertos: agregar a la lista el grupo bajo el anillo, o quitarlo (consulta [Grupos](#groups)). En cualquier otro lugar, <kbd>Space</kbd> escribe un espacio y <kbd>Enter</kbd> pega. |
+| <kbd>←</kbd> <kbd>→</kbd> | Pestaña anterior / siguiente, en círculo: <kbd>←</kbd> en la primera pestaña va a la última, <kbd>→</kbd> en la última va a la primera. Mientras editas el texto de búsqueda, mueven su cursor; después de <kbd>↑</kbd> o <kbd>↓</kbd> vuelven a cambiar de pestaña. Una tecla mantenida se detiene en la primera o la última pestaña. |
 | Mouse sobre un elemento | Lo selecciona. Las pestañas y los iconos de grupo solo se seleccionan con un clic. |
-| `Enter` / clic | Pegar en la aplicación de la que viniste |
-| `Shift+Enter` | Pegar como texto sin formato |
-| `Ctrl+Enter` | En un comando que ejecutaste con Win+R: volver a ejecutarlo (`Ctrl+Shift+Enter`: como administrador) |
-| `Ctrl+1` … `Ctrl+9` | Pegar el elemento n |
-| `Ctrl+P` | Anclar / desanclar (los elementos anclados ignoran la retención y «borrar») |
-| `Del` (o `Shift+Del` mientras buscas) | Eliminar el elemento. En las pestañas Pwsh, Cmd y Everything, ocultar el comando o el archivo hasta que lo vuelvas a usar. En las pestañas Claude y Codex, eliminar el prompt hasta que lo vuelvas a enviar. |
-| `Ctrl+F` | Volver al cuadro de búsqueda |
-| `Ctrl+G` | Mostrar / ocultar la columna de grupos (igual que el botón del marcador) |
-| `F3` | Ver el elemento seleccionado: todo su texto en el visor de texto, o una imagen en el visor de imágenes (consulta [Vista previa de texto](#text-previews)) |
-| `Menu` / `Shift+F10` / clic derecho | Menú del elemento: pegar, pegar como texto sin formato, solo copiar, ver (`F3`), anclar, grupos (agregar / quitar), abrir vínculo / mostrar en el Explorador / mostrar en Everything, ejecutar (comandos de Win+R), el archivo de una imagen (copiar ruta, copiar imagen como archivo, abrir archivo, abrir carpeta) y *Guardar en carpeta temporal y* (consulta [Imágenes y sus archivos](#pictures-and-their-files)), eliminar, olvidar para siempre |
-| Clic derecho en una pestaña (o `Menu` en una pestaña en la que hiciste clic) | Menú de la pestaña: *Mover a la izquierda*, *Mover a la derecha*, *Ocultar pestaña*, *Ocultar pestaña y sus filas del portapapeles*, *Mostrar todas las ocultas*. Un clic derecho en el espacio vacío de las pestañas también ofrece *Mostrar todas las ocultas* (consulta [Pestañas](#tabs)). |
-| `Esc` | Borrar la búsqueda y luego cerrar: el foco vuelve a donde estabas |
-| Arrastrar cualquier espacio vacío | Mover el panel, como arrastrar una barra de título (`Esc` mientras arrastras lo devuelve a su sitio). La próxima vez se abre de nuevo donde indica *Posición del panel*. |
+| <kbd>Enter</kbd> / clic | Pegar en la aplicación de la que viniste |
+| <kbd>Shift</kbd>+<kbd>Enter</kbd> | Pegar como texto sin formato |
+| <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | En un comando que ejecutaste con Win+R: volver a ejecutarlo (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd>: como administrador) |
+| <kbd>Ctrl</kbd>+<kbd>1</kbd> … <kbd>Ctrl</kbd>+<kbd>9</kbd> | Pegar el elemento n |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Anclar / desanclar (los elementos anclados ignoran la retención y «borrar») |
+| <kbd>Del</kbd> (o <kbd>Shift</kbd>+<kbd>Del</kbd> mientras buscas) | Eliminar el elemento. En las pestañas Pwsh, Cmd y Everything, ocultar el comando o el archivo hasta que lo vuelvas a usar. En las pestañas Claude y Codex, eliminar el prompt hasta que lo vuelvas a enviar. |
+| <kbd>Ctrl</kbd>+<kbd>F</kbd> | Volver al cuadro de búsqueda |
+| <kbd>Ctrl</kbd>+<kbd>G</kbd> | Mostrar / ocultar la columna de grupos (igual que el botón del marcador) |
+| <kbd>F3</kbd> | Ver el elemento seleccionado: todo su texto en el visor de texto, o una imagen en el visor de imágenes (consulta [Vista previa de texto](#text-previews)) |
+| <kbd>Menu</kbd> / <kbd>Shift</kbd>+<kbd>F10</kbd> / clic derecho | Menú del elemento: pegar, pegar como texto sin formato, solo copiar, ver (<kbd>F3</kbd>), anclar, grupos (agregar / quitar), abrir vínculo / mostrar en el Explorador / mostrar en Everything, ejecutar (comandos de Win+R), el archivo de una imagen (copiar ruta, copiar imagen como archivo, abrir archivo, abrir carpeta) y *Guardar en carpeta temporal y* (consulta [Imágenes y sus archivos](#pictures-and-their-files)), eliminar, olvidar para siempre |
+| Clic derecho en una pestaña (o <kbd>Menu</kbd> en una pestaña en la que hiciste clic) | Menú de la pestaña: *Mover a la izquierda*, *Mover a la derecha*, *Ocultar pestaña*, *Ocultar pestaña y sus filas del portapapeles*, *Mostrar todas las ocultas*. Un clic derecho en el espacio vacío de las pestañas también ofrece *Mostrar todas las ocultas* (consulta [Pestañas](#tabs)). |
+| <kbd>Esc</kbd> | Borrar la búsqueda y luego cerrar: el foco vuelve a donde estabas |
+| Arrastrar cualquier espacio vacío | Mover el panel, como arrastrar una barra de título (<kbd>Esc</kbd> mientras arrastras lo devuelve a su sitio). La próxima vez se abre de nuevo donde indica *Posición del panel*. |
 | Arrastrar un borde | Cambiar el tamaño del panel. Desde entonces se abre con ese tamaño. |
 | Rueda o arrastre sobre las pestañas | Desplazar las pestañas de lado cuando no caben, o hacer clic en las flechas ‹ › de sus extremos |
 | Dejar el mouse sobre una imagen | Verla a tamaño completo; su botón de ojo abre un visor con zoom (consulta [Vista previa de imágenes](#image-previews)) |
 | Dejar el mouse sobre un texto largo | Leerlo entero y desplazarlo con la rueda (mover el mouse lo cierra); clic derecho para copiarlo o para el menú del elemento; su botón de ojo abre el visor de texto, que se queda abierto (consulta [Vista previa de texto](#text-previews)) |
+| El botón de anclar, a la izquierda del de actualización | Mantener el panel abierto después de pegar, para pegar un elemento tras otro; haz clic otra vez para desanclarlo |
 | El botón de actualización, a la izquierda de Pausa | Abrir el cuadro de diálogo de actualización: las notas de la versión y *Actualizar y reiniciar* cuando existe una versión más nueva (entonces el botón está resaltado; consulta [Actualizaciones](#updates)) |
 
-Escribe y presiona `Enter` tan rápido como quieras: `Enter` espera a que termine la búsqueda y pega su mejor coincidencia, la más reciente que no está anclada cuando las coincidencias ancladas aparecen encima.
+Escribe y presiona <kbd>Enter</kbd> tan rápido como quieras: <kbd>Enter</kbd> espera a que termine la búsqueda y pega su mejor coincidencia, la más reciente que no está anclada cuando las coincidencias ancladas aparecen encima.
 
-**Pegar en una ventana que se ejecuta como administrador** (una terminal con privilegios elevados, por ejemplo): Windows no deja que una aplicación sin derechos de administrador escriba en ella. BetterClipboard pone el elemento en el portapapeles, vuelve a esa ventana y te avisa una vez (con una notificación) para que presiones `Ctrl+V` tú mismo. El propio atajo funciona sobre esas ventanas cuando Win+V está liberado del Explorador (lo que hace el instalador de forma predeterminada).
+**Pegar en una ventana que se ejecuta como administrador** (una terminal con privilegios elevados, por ejemplo): Windows no deja que una aplicación sin derechos de administrador escriba en ella. BetterClipboard pone el elemento en el portapapeles, vuelve a esa ventana y te avisa una vez (con una notificación) para que presiones <kbd>Ctrl</kbd>+<kbd>V</kbd> tú mismo. El propio atajo funciona sobre esas ventanas cuando Win+V está liberado del Explorador (lo que hace el instalador de forma predeterminada).
 
-El icono de la bandeja abre el panel y la configuración. El cuadro de búsqueda de la parte superior de la configuración (`Ctrl+F`) filtra la página mientras escribes, erratas incluidas; `Esc` lo vacía. Sus secciones:
+El icono de la bandeja abre el panel y la configuración. El cuadro de búsqueda de la parte superior de la configuración (<kbd>Ctrl</kbd>+<kbd>F</kbd>) filtra la página mientras escribes, erratas incluidas; <kbd>Esc</kbd> lo vacía. Sus secciones:
 
-- **Atajo de teclado:** las teclas que abren el panel (agrega todas las que quieras: haz clic en el cuadro y presiónalas, o elige una en su menú de sugerencias y atajos usados antes), dónde se abre el panel (junto al cursor de texto, junto al mouse, en el centro de la pantalla principal o en el centro de la pantalla en la que escribes) y la liberación de atajos Win+letra del Explorador ([Elegir atajos](#choosing-shortcuts)).
+- **Atajo de teclado:** las teclas que abren el panel (agrega todas las que quieras: haz clic en el cuadro y presiónalas, o elige una en su menú de sugerencias y atajos usados antes), dónde se abre el panel (junto al cursor de texto, junto al mouse, en el centro de la pantalla principal o en el centro de la pantalla en la que escribes), qué botones muestra su encabezado (todos menos Configuración se pueden ocultar), cuántas líneas de texto muestra cada tarjeta (de 1 a 40) y la liberación de atajos Win+letra del Explorador ([Elegir atajos](#choosing-shortcuts)).
 - **Historial:** cuántos elementos, durante cuántos días, de qué tamaño, qué registrar y cuánto tiempo se conservan las imágenes de *Guardar en carpeta temporal y*.
 - **Pegado:** pegar al elegir un elemento, mover al principio los elementos pegados, anclados primero.
 - **Privacidad:** pausa, aplicaciones ignoradas, *Olvidados para siempre*, fiabilidad de la captura, borrar historial.
@@ -235,18 +249,18 @@ Cada pestaña después de Archivos tiene su propio interruptor en *Configuració
 - *Ocultar pestaña y sus filas del portapapeles* además saca los elementos de la pestaña de todas las listas: Todo, las demás pestañas, las búsquedas. Los elementos que pusiste en un grupo se quedan donde aparecen. El pie del panel dice entonces cuántos están ocultos (`1.240 elementos · 37 ocultos`). No se elimina nada, y `bclip` los sigue listando.
 - *Mostrar todas las ocultas* devuelve todas las pestañas ocultas, con cuántas son, y los elementos ocultos con ellas. Un clic derecho en el espacio vacío de la fila también lo ofrece.
 
-Tu orden y tus pestañas ocultas se conservan, también después de reiniciar. `←` y `→` se saltan las pestañas ocultas.
+Tu orden y tus pestañas ocultas se conservan, también después de reiniciar. <kbd>←</kbd> y <kbd>→</kbd> se saltan las pestañas ocultas.
 
-**El panel se abre en la pestaña que usaste por última vez**, también después de reiniciar. `←` y `→` recorren las pestañas en círculo. Si la pestaña que usaste por última vez no está (su aplicación ya no está, su interruptor está desactivado o la ocultaste), el panel se abre en Todo y vuelve a tu pestaña cuando regresa. El texto de búsqueda y los grupos que abriste no se conservan: cada Win+V empieza con una búsqueda vacía sobre todo tu historial.
+**El panel se abre en la pestaña que usaste por última vez**, también después de reiniciar. <kbd>←</kbd> y <kbd>→</kbd> recorren las pestañas en círculo. Si la pestaña que usaste por última vez no está (su aplicación ya no está, su interruptor está desactivado o la ocultaste), el panel se abre en Todo y vuelve a tu pestaña cuando regresa. El texto de búsqueda y los grupos que abriste no se conservan: cada Win+V empieza con una búsqueda vacía sobre todo tu historial.
 
 <a id="search"></a>
 ### Búsqueda
 
 Escribe para buscar. Una palabra coincide en cualquier parte del texto de un elemento, en cualquier idioma, en mayúsculas o minúsculas. Tres interruptores en el cuadro de búsqueda acotan la búsqueda, como en VS Code:
 
-- **Aa** (`Alt+C`): coincidir mayúsculas y minúsculas.
-- **W** (`Alt+W`): solo palabras completas. Así `log` encuentra «log file», pero no «login» ni «my_log».
-- **.\*** (`Alt+E`): una expresión regular (sintaxis de .NET); `^` y `$` coinciden en cada línea. Un patrón no válido pone en rojo el contorno del interruptor y dice qué está mal.
+- **Aa** (<kbd>Alt</kbd>+<kbd>C</kbd>): coincidir mayúsculas y minúsculas.
+- **W** (<kbd>Alt</kbd>+<kbd>W</kbd>): solo palabras completas. Así `log` encuentra «log file», pero no «login» ni «my_log».
+- **.\*** (<kbd>Alt</kbd>+<kbd>E</kbd>): una expresión regular (sintaxis de .NET); `^` y `$` coinciden en cada línea. Un patrón no válido pone en rojo el contorno del interruptor y dice qué está mal.
 
 Los interruptores se quedan como los dejas, y el texto de búsqueda se borra cada vez que se abre el panel. Funcionan en todas las pestañas y grupos, salvo la pestaña Everything, donde busca el propio Everything.
 
@@ -254,26 +268,26 @@ Los interruptores se quedan como los dejas, y el texto de búsqueda se borra cad
 ### Vista previa de imágenes
 
 - **Vistazo:** deja el mouse sobre una tarjeta de imagen. Tras un momento la imagen aparece a tamaño completo en el centro de la pantalla (hasta el 80% de ella). Mueve el mouse y desaparece.
-- **Visor:** haz clic en el botón de ojo de la esquina inferior derecha de una tarjeta de imagen. La imagen se abre sobre toda la pantalla y se queda hasta que la cierres. Gira la rueda del mouse para hacer zoom hacia el puntero, arrastra para desplazarte y haz doble clic para alternar entre ajustar y ampliar. Ciérralo con `Esc`, con su botón X o con un clic fuera de la imagen.
+- **Visor:** haz clic en el botón de ojo de la esquina inferior derecha de una tarjeta de imagen. La imagen se abre sobre toda la pantalla y se queda hasta que la cierres. Gira la rueda del mouse para hacer zoom hacia el puntero, arrastra para desplazarte y haz doble clic para alternar entre ajustar y ampliar. Ciérralo con <kbd>Esc</kbd>, con su botón X o con un clic fuera de la imagen.
 
 <a id="text-previews"></a>
 ### Vista previa de texto
 
-Una tarjeta muestra las primeras cuatro líneas de un texto. Cuando el texto es más largo, lo indican una fina línea de puntos debajo de ellas y un pequeño ojo en la esquina de la tarjeta.
+Una tarjeta muestra las primeras cuatro líneas de un texto (*Configuración › Atajo de teclado › Líneas por tarjeta* lo cambia de 1 a 40), en una fuente monoespaciada para que las tablas queden alineadas. Cuando el texto es más largo, lo indican una fina línea de puntos debajo de ellas y un pequeño ojo en la esquina de la tarjeta.
 
-- **Vistazo:** deja el mouse sobre el texto de la tarjeta. Tras un momento todo el texto aparece en el centro del panel, coloreado como lo muestra el visor, y la rueda lo desplaza. Mover el mouse lo cierra, y también `Esc`. Un clic derecho con el mouse quieto ofrece *Copiar* y *Seleccionar todo* encima del propio menú del elemento. Un texto de más de 64.000 caracteres muestra su comienzo y lo indica.
-- **Visor:** haz clic en el ojo, presiona `F3` o elige *Ver* en el menú del elemento. La pantalla se oscurece y el texto se abre encima en una tarjeta grande:
-  - **Markdown** se dibuja como un documento: encabezados, listas, tablas, citas, vínculos y bloques de código, cada bloque de código coloreado en su propio lenguaje. Markdown también es como se muestra un texto cuando no se reconoce ningún lenguaje.
+- **Vistazo:** deja el mouse sobre el texto de la tarjeta. Tras un momento todo el texto aparece en el centro del panel, coloreado como lo muestra el visor, y la rueda lo desplaza. Mover el mouse lo cierra, y también <kbd>Esc</kbd>. Un clic derecho con el mouse quieto ofrece *Copiar* y *Seleccionar todo* encima del propio menú del elemento. Un texto de más de 64.000 caracteres muestra su comienzo y lo indica.
+- **Visor:** haz clic en el ojo, presiona <kbd>F3</kbd> o elige *Ver* en el menú del elemento. La pantalla se oscurece y el texto se abre encima en una tarjeta grande:
+  - **Markdown** se dibuja como un documento: encabezados, listas, tablas, citas, vínculos y bloques de código, cada bloque de código coloreado en su propio lenguaje. Markdown también es como se muestra un texto cuando no se reconoce ningún lenguaje. Se dibuja con la misma fuente monoespaciada que *Tal como se copió*, y cada línea conserva sus propios espacios, así que las tablas ASCII quedan alineadas.
   - **El código** se colorea en C#, Java, Kotlin, JavaScript, TypeScript, Python, Ruby, PHP, Go, Rust, C y C++, PowerShell, scripts de shell, archivos por lotes, SQL, CSS, HTML, XML, JSON, YAML, INI y TOML, y diffs. El lenguaje se reconoce solo; el botón de lenguaje elige otro (el reconocido aparece marcado como *(detectado)*).
   - **XML y JSON** se vuelven a sangrar, un elemento o valor por línea; *Tal como se copió* los muestra como se copiaron.
-  - **Ajustar** corta las líneas largas en el borde de la ventana (desactivado, se desplazan de lado), **Números de línea** numera las líneas de código, y **A−** / **A+** (`Ctrl+Minus`, `Ctrl+Plus`, `Ctrl+0`, o `Ctrl` con la rueda) cambian el tamaño del texto. Los tres se recuerdan.
-  - **Las copias de varios megabytes** se abren en páginas de unos 64.000 caracteres, con ‹ › para pasar las páginas (`Ctrl+PageUp`, `Ctrl+PageDown`); los números de línea siguen de una página a otra.
-  - Selecciona y copia como en cualquier sitio. Mover el mouse no lo cierra: lo cierran `Esc`, su botón X o un clic fuera del texto.
+  - **Ajustar** corta las líneas largas en el borde de la ventana y ajusta cada tabla a ella, con las celdas largas partidas dentro de su propia columna (desactivado, las líneas y las tablas se desplazan de lado), **Números de línea** numera las líneas de código, y **A−** / **A+** (<kbd>Ctrl</kbd>+<kbd>Minus</kbd>, <kbd>Ctrl</kbd>+<kbd>Plus</kbd>, <kbd>Ctrl</kbd>+<kbd>0</kbd>, o <kbd>Ctrl</kbd> con la rueda) cambian el tamaño del texto. Los tres se recuerdan.
+  - **Las copias de varios megabytes** se abren en páginas de unos 64.000 caracteres, con ‹ › para pasar las páginas (<kbd>Ctrl</kbd>+<kbd>PageUp</kbd>, <kbd>Ctrl</kbd>+<kbd>PageDown</kbd>); los números de línea siguen de una página a otra.
+  - Selecciona y copia como en cualquier sitio. Mover el mouse no lo cierra: lo cierran <kbd>Esc</kbd>, su botón X o un clic fuera del texto.
 
 <a id="pictures-and-their-files"></a>
 ### Imágenes y sus archivos
 
-Una captura que guardaron ShareX, Recortes o `Win+PrtScn` recuerda el archivo en el que se guardó: su nombre, carpeta, formato, tamaño y fechas se conservan con la imagen en tu historial.
+Una captura que guardaron ShareX, Recortes o <kbd>Win</kbd>+<kbd>PrtScn</kbd> recuerda el archivo en el que se guardó: su nombre, carpeta, formato, tamaño y fechas se conservan con la imagen en tu historial.
 
 - **Haz clic derecho en la imagen.** El menú nombra el archivo, con su formato, su tamaño y cuándo cambió por última vez. Mientras el archivo está en el disco, le siguen cuatro elementos: *Copiar ruta*; *Copiar imagen como archivo*, para pegarla en una carpeta, un correo o un chat como archivo, igual que un archivo copiado en el Explorador de archivos; *Abrir archivo*; y *Abrir carpeta*, el Explorador de archivos con el archivo seleccionado. Un archivo que se movió o se eliminó se indica como tal, y esos cuatro elementos no aparecen.
 - **Cualquier imagen, también una que copiaste desde una aplicación:** *Guardar en carpeta temporal y ›* tiene los mismos cuatro elementos. BetterClipboard primero escribe la imagen como PNG en una carpeta propia dentro de tus archivos temporales (`%TEMP%\BetterClipboard\Images`), con el nombre de su archivo cuando lo tiene. Guardar de nuevo la misma imagen encuentra ese archivo; una copia que editaste desde entonces nunca se sobrescribe.
@@ -306,13 +320,13 @@ Un nombre de carpeta con espacios cuenta cuando parece un nombre (`C:\Program Fi
 
 Reúne en grupos lo que reutilizas: fragmentos, direcciones, vínculos de un proyecto.
 
-- **Abre la columna:** el botón del marcador junto a Pausa (o `Ctrl+G`). El panel se ensancha hacia la izquierda y aparece una columna de iconos. El logotipo del portapapeles de arriba es todo tu historial.
+- **Abre la columna:** el botón del marcador junto a Pausa (o <kbd>Ctrl</kbd>+<kbd>G</kbd>). El panel se ensancha hacia la izquierda y aparece una columna de iconos. El logotipo del portapapeles de arriba es todo tu historial.
 - **Crea un grupo:** presiona **+** abajo, ponle un nombre si quieres y elige un icono.
 - **Llénalo:** arrastra cualquier tarjeta sobre el icono de un grupo. Entonces la tarjeta muestra el icono de ese grupo.
 - **Ábrelo:** haz clic en el icono y el panel muestra solo los elementos de ese grupo (la búsqueda y las pestañas de filtro siguen funcionando dentro). Haz clic otra vez en el icono, o en el logotipo, para volver a todo.
-- **Abre varios:** `Ctrl+clic` en más iconos muestra sus grupos juntos, y `Shift+clic`, una serie de iconos. Se combinan en una sola lista en el orden habitual, con cada elemento una vez, y la búsqueda y las pestañas funcionan sobre ella. Sin teclado: clic derecho en un icono › *Agregar a la vista*.
-- **Con el teclado:** presiona `↑` en el primer elemento. Aparece un anillo en el icono de lo que tienes abierto: el grupo, o el logotipo cuando no hay ningún grupo abierto (todo tu historial). Nada más cambia todavía. Ahora `↑` y `↓` recorren la columna, y cada paso abre aquello en lo que cae: `↓` desde el logotipo abre el primer grupo, y `↑` desde el primer grupo vuelve a mostrar todo tu historial. Para volver a los elementos con el grupo en el que estás, presiona `Enter`, `Space` o `→`, o presiona `↓` en el último grupo. Escribir, o mover el mouse sobre un elemento, también vuelve. Después `Enter` pega el elemento seleccionado.
-- **Varios grupos con el teclado:** mientras hay más de un grupo abierto, `↑` en el primer elemento pone el anillo en el primero de ellos, y luego `↑` y `↓` mueven solo el anillo: tu lista combinada se queda, y `↓` se detiene en el último grupo. Presiona `Space` o `Enter` para agregar a la lista el grupo bajo el anillo, o para quitarlo. Sobre el logotipo, muestran todo tu historial. El pie del panel muestra estas teclas. `→` vuelve a los elementos, donde `Enter` pega de nuevo. `Shift+Enter` pega el elemento seleccionado como texto sin formato en cualquier momento, también mientras el anillo está en la columna de grupos.
+- **Abre varios:** <kbd>Ctrl</kbd>+clic en más iconos muestra sus grupos juntos, y <kbd>Shift</kbd>+clic, una serie de iconos. Se combinan en una sola lista en el orden habitual, con cada elemento una vez, y la búsqueda y las pestañas funcionan sobre ella. Sin teclado: clic derecho en un icono › *Agregar a la vista*.
+- **Con el teclado:** presiona <kbd>↑</kbd> en el primer elemento. Aparece un anillo en el icono de lo que tienes abierto: el grupo, o el logotipo cuando no hay ningún grupo abierto (todo tu historial). Nada más cambia todavía. Ahora <kbd>↑</kbd> y <kbd>↓</kbd> recorren la columna, y cada paso abre aquello en lo que cae: <kbd>↓</kbd> desde el logotipo abre el primer grupo, y <kbd>↑</kbd> desde el primer grupo vuelve a mostrar todo tu historial. Para volver a los elementos con el grupo en el que estás, presiona <kbd>Enter</kbd>, <kbd>Space</kbd> o <kbd>→</kbd>, o presiona <kbd>↓</kbd> en el último grupo. Escribir, o mover el mouse sobre un elemento, también vuelve. Después <kbd>Enter</kbd> pega el elemento seleccionado.
+- **Varios grupos con el teclado:** mientras hay más de un grupo abierto, <kbd>↑</kbd> en el primer elemento pone el anillo en el primero de ellos, y luego <kbd>↑</kbd> y <kbd>↓</kbd> mueven solo el anillo: tu lista combinada se queda, y <kbd>↓</kbd> se detiene en el último grupo. Presiona <kbd>Space</kbd> o <kbd>Enter</kbd> para agregar a la lista el grupo bajo el anillo, o para quitarlo. Sobre el logotipo, muestran todo tu historial. El pie del panel muestra estas teclas. <kbd>→</kbd> vuelve a los elementos, donde <kbd>Enter</kbd> pega de nuevo. <kbd>Shift</kbd>+<kbd>Enter</kbd> pega el elemento seleccionado como texto sin formato en cualquier momento, también mientras el anillo está en la columna de grupos.
 - **Saca cosas:** clic derecho en una tarjeta → *Quitar de …*, o usa *Grupos* en el mismo menú. Haz clic derecho en el icono de un grupo para cambiarle el nombre, cambiar su icono o eliminarlo. Eliminar un grupo nunca elimina sus elementos.
 
 Los elementos de un grupo **se conservan como los anclados**: ningún límite de retención (cantidad, antigüedad, tamaño) los elimina y *Borrar* los salta. Cuando un elemento sale de su último grupo, su reloj de retención vuelve a empezar. No se eliminará solo por ser antiguo, y conserva su lugar en la lista.
@@ -349,12 +363,12 @@ El Explorador solo puede liberar un atajo exacto de Win+letra o Win+dígito: la 
 <a id="choosing-shortcuts"></a>
 ### Elegir atajos
 
-En *Configuración › Atajo de teclado*, haz clic en el cuadro y **presiona el atajo**. El cuadro lo muestra (`Ctrl+Shift+K`), y `Enter` o **Agregar** lo guarda. No se guarda nada antes, así que una combinación presionada por error no cuesta nada. Mientras el cuadro tiene el foco, recibe las teclas aunque sean del Explorador o del propio BetterClipboard: `Win+E` se escribe en el cuadro en lugar de abrir el Explorador de archivos.
+En *Configuración › Atajo de teclado*, haz clic en el cuadro y **presiona el atajo**. El cuadro lo muestra (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd>), y <kbd>Enter</kbd> o **Agregar** lo guarda. No se guarda nada antes, así que una combinación presionada por error no cuesta nada. Mientras el cuadro tiene el foco, recibe las teclas aunque sean del Explorador o del propio BetterClipboard: <kbd>Win</kbd>+<kbd>E</kbd> se escribe en el cuadro en lugar de abrir el Explorador de archivos.
 
-- **Cualquier tecla sirve:** letras, dígitos y signos de puntuación, el teclado numérico (`Ctrl+Alt+Num5`, `Ctrl+NumPlus`), `Pause`, `PrintScreen`, las teclas de bloqueo, la tecla de menú (`Apps`), las teclas multimedia y de volumen, las teclas del navegador, `F1`–`F24` (la tecla Copilot de los portátiles nuevos envía `Shift+Win+F23`) y teclas sin nombre, que se escriben con su código (`0x97`, de teclados de macros).
-- **Las teclas que no hacen nada en un texto pueden ir solas:** `F9`, `Pause`, `MediaPlayPause`. Las teclas que escriben o editan necesitan `Ctrl`, `Alt` o `Win`, porque una `V` sola (o `Shift+V`) como atajo global impediría que esa tecla escriba en todas las aplicaciones.
-- **Rechazadas, con el motivo debajo del cuadro:** `Ctrl+C`, `Ctrl+X`, `Ctrl+V` y `Ctrl+Insert` (copiar tiene que seguir funcionando, y BetterClipboard pega él mismo con `Ctrl+V`), y las teclas que Windows se reserva: `Ctrl+Alt+Delete`, `Win+L`, `Alt+Tab`, `Alt+Esc`, `Ctrl+Esc`, `Ctrl+Shift+Esc` y `Alt+F4`. En el cuadro siguen funcionando (`Alt+Tab` cambia de ventana, `Ctrl+V` pega texto).
-- **Escribir sigue funcionando:** las letras, `Backspace` y `Enter` llegan al cuadro, así que también puedes escribir un nombre como `ctrl + alt + page down` o `0x97`.
+- **Cualquier tecla sirve:** letras, dígitos y signos de puntuación, el teclado numérico (<kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Num5</kbd>, <kbd>Ctrl</kbd>+<kbd>NumPlus</kbd>), <kbd>Pause</kbd>, <kbd>PrintScreen</kbd>, las teclas de bloqueo, la tecla de menú (<kbd>Apps</kbd>), las teclas multimedia y de volumen, las teclas del navegador, <kbd>F1</kbd>–<kbd>F24</kbd> (la tecla Copilot de los portátiles nuevos envía <kbd>Shift</kbd>+<kbd>Win</kbd>+<kbd>F23</kbd>) y teclas sin nombre, que se escriben con su código (`0x97`, de teclados de macros).
+- **Las teclas que no hacen nada en un texto pueden ir solas:** <kbd>F9</kbd>, <kbd>Pause</kbd>, <kbd>MediaPlayPause</kbd>. Las teclas que escriben o editan necesitan <kbd>Ctrl</kbd>, <kbd>Alt</kbd> o <kbd>Win</kbd>, porque una `V` sola (o <kbd>Shift</kbd>+<kbd>V</kbd>) como atajo global impediría que esa tecla escriba en todas las aplicaciones.
+- **Rechazadas, con el motivo debajo del cuadro:** <kbd>Ctrl</kbd>+<kbd>C</kbd>, <kbd>Ctrl</kbd>+<kbd>X</kbd>, <kbd>Ctrl</kbd>+<kbd>V</kbd> y <kbd>Ctrl</kbd>+<kbd>Insert</kbd> (copiar tiene que seguir funcionando, y BetterClipboard pega él mismo con <kbd>Ctrl</kbd>+<kbd>V</kbd>), y las teclas que Windows se reserva: <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Delete</kbd>, <kbd>Win</kbd>+<kbd>L</kbd>, <kbd>Alt</kbd>+<kbd>Tab</kbd>, <kbd>Alt</kbd>+<kbd>Esc</kbd>, <kbd>Ctrl</kbd>+<kbd>Esc</kbd>, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Esc</kbd> y <kbd>Alt</kbd>+<kbd>F4</kbd>. En el cuadro siguen funcionando (<kbd>Alt</kbd>+<kbd>Tab</kbd> cambia de ventana, <kbd>Ctrl</kbd>+<kbd>V</kbd> pega texto).
+- **Escribir sigue funcionando:** las letras, <kbd>Backspace</kbd> y <kbd>Enter</kbd> llegan al cuadro, así que también puedes escribir un nombre como `ctrl + alt + page down` o `0x97`.
 - **El menú junto al cuadro** muestra sugerencias y luego **Usados antes**: todos los atajos que tuviste, el más reciente primero. Una marca señala los que están en uso; haz clic en uno para agregarlo o quitarlo.
 
 <a id="tabs-for-other-apps"></a>
@@ -362,7 +376,7 @@ En *Configuración › Atajo de teclado*, haz clic en el cuadro y **presiona el 
 
 BetterClipboard también guarda lo que otras herramientas de tu PC olvidan o entierran: capturas de pantalla, las pestañas sin guardar de Notepad++, los comandos de Win+R, el historial del shell, los prompts que envías a agentes de programación con IA y los archivos que abres en Everything. Cada origen tiene su propia pestaña y su propio interruptor en *Configuración › Integraciones*. Todos están activados de forma predeterminada, y la pestaña de una aplicación que no tienes permanece oculta. BetterClipboard solo lee estos orígenes; nunca cambia sus archivos ni sus listas. [Privacidad](#privacy) resume lo que lee cada uno.
 
-**Eliminar lo que dejó un origen.** *Eliminar lo guardado…* en cada tarjeta abre un cuadro de diálogo que muestra lo que BetterClipboard guardó de ese origen, una parte por fila: cuántos, de qué tamaño y los ejemplos más recientes (miniaturas para las capturas). Las partes de todos los días están marcadas; los elementos anclados y agrupados, y las listas de comandos o archivos que ocultaste, se conservan salvo que los marques. Cancelar es el botón predeterminado, así que `Enter` no elimina nada. Los archivos de la otra aplicación nunca se tocan (las capturas de ShareX se quedan en las carpetas de ShareX), y lo que eliminaste no se vuelve a importar en la siguiente puesta al día, mientras que las capturas, ejecuciones y prompts nuevos se registran mientras el interruptor esté activado (*Desactivar también “…”* del cuadro de diálogo lo desactiva primero). Para Claude Code y Codex, todo lo que el agente todavía tiene se vuelve a leer al momento mientras el interruptor esté activado.
+**Eliminar lo que dejó un origen.** *Eliminar lo guardado…* en cada tarjeta abre un cuadro de diálogo que muestra lo que BetterClipboard guardó de ese origen, una parte por fila: cuántos, de qué tamaño y los ejemplos más recientes (miniaturas para las capturas). Las partes de todos los días están marcadas; los elementos anclados y agrupados, y las listas de comandos o archivos que ocultaste, se conservan salvo que los marques. Cancelar es el botón predeterminado, así que <kbd>Enter</kbd> no elimina nada. Los archivos de la otra aplicación nunca se tocan (las capturas de ShareX se quedan en las carpetas de ShareX), y lo que eliminaste no se vuelve a importar en la siguiente puesta al día, mientras que las capturas, ejecuciones y prompts nuevos se registran mientras el interruptor esté activado (*Desactivar también “…”* del cuadro de diálogo lo desactiva primero). Para Claude Code y Codex, todo lo que el agente todavía tiene se vuelve a leer al momento mientras el interruptor esté activado.
 
 <p align="center">
   <img src="../images/prompts.png" width="417" alt="La pestaña Claude del panel: prompts enviados a Claude Code en el proyecto Acme, el más reciente primero, cada uno con cuándo se envió; uno se envió 2 veces. Encima, las pestañas están desplazadas hasta Archivos, Recortes, Ejecutar, Pwsh, Cmd, Claude y Codex.">
@@ -371,7 +385,7 @@ BetterClipboard también guarda lo que otras herramientas de tu PC olvidan o ent
 <a id="sharex-screenshots"></a>
 ### Capturas de ShareX
 
-Con [ShareX](https://getsharex.com) instalado, cada captura que guarda está en tu historial en el momento en que se escribe el archivo. El panel recibe una pestaña **ShareX** con esas capturas y todo lo que copiaste desde ShareX. Pega una con `Enter` como cualquier otro elemento.
+Con [ShareX](https://getsharex.com) instalado, cada captura que guarda está en tu historial en el momento en que se escribe el archivo. El panel recibe una pestaña **ShareX** con esas capturas y todo lo que copiaste desde ShareX. Pega una con <kbd>Enter</kbd> como cualquier otro elemento.
 
 - **Dónde busca.** BetterClipboard lee la configuración propia de ShareX:
   - la carpeta personal: el modo portátil, el valor del registro `PersonalPath` o `PersonalPath.cfg`;
@@ -391,7 +405,7 @@ Con [ShareX](https://getsharex.com) instalado, cada captura que guarda está en 
 <a id="snipping-tool-and-winprtscn"></a>
 ### Recortes y Win+PrtScn
 
-Windows guarda tus capturas en *Imágenes › Capturas de pantalla*: el guardado automático de Recortes (`Win+Shift+S`, `PrtScn`) y `Win+PrtScn`. Cada una está en tu historial en el momento en que Windows termina de escribirla, en la pestaña **Recortes**. La pestaña aparece en cuanto tu historial tiene una captura de ellos, y desaparece cuando eliminas la última.
+Windows guarda tus capturas en *Imágenes › Capturas de pantalla*: el guardado automático de Recortes (<kbd>Win</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd>, <kbd>PrtScn</kbd>) y <kbd>Win</kbd>+<kbd>PrtScn</kbd>. Cada una está en tu historial en el momento en que Windows termina de escribirla, en la pestaña **Recortes**. La pestaña aparece en cuanto tu historial tiene una captura de ellos, y desaparece cuando eliminas la última.
 
 - **Un elemento por imagen.** Recortes también copia cada recorte al portapapeles. La copia y el archivo guardado se convierten en un solo elemento.
 - **Nada perdido.** Las capturas guardadas mientras BetterClipboard no se estaba ejecutando llegan en su siguiente inicio, hasta las 100 más recientes. La primera vez, las capturas que ya están en la carpeta no se tocan.
@@ -414,9 +428,9 @@ Windows guarda tus capturas en *Imágenes › Capturas de pantalla*: el guardado
 <a id="winr-history"></a>
 ### Historial de Win+R
 
-Windows solo recuerda tus últimos 26 comandos de Win+R. BetterClipboard guarda cada comando que ejecutas con `Win+R`, en la pestaña **Ejecutar**, empezando por los 26 que Windows recuerda hoy. La pestaña aparece en cuanto tiene un comando: si Windows no recuerda ninguno, con el primero que ejecutes.
+Windows solo recuerda tus últimos 26 comandos de Win+R. BetterClipboard guarda cada comando que ejecutas con <kbd>Win</kbd>+<kbd>R</kbd>, en la pestaña **Ejecutar**, empezando por los 26 que Windows recuerda hoy. La pestaña aparece en cuanto tiene un comando: si Windows no recuerda ninguno, con el primero que ejecutes.
 
-- `Enter` pega un comando. `Ctrl+Enter` lo vuelve a ejecutar, como lo hace el cuadro Ejecutar; `Ctrl+Shift+Enter` lo ejecuta como administrador. Ambos están también en el menú del elemento.
+- <kbd>Enter</kbd> pega un comando. <kbd>Ctrl</kbd>+<kbd>Enter</kbd> lo vuelve a ejecutar, como lo hace el cuadro Ejecutar; <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> lo ejecuta como administrador. Ambos están también en el menú del elemento.
 - La lista propia de Windows nunca se cambia.
 - Windows registra un comando solo cuando se ejecutó correctamente. Cuando vuelves a ejecutar tu comando más reciente, la lista de Windows no cambia, así que esa ejecución no se ve (el comando ya está en la pestaña).
 
@@ -426,16 +440,16 @@ Windows solo recuerda tus últimos 26 comandos de Win+R. BetterClipboard guarda 
 - **Pwsh** muestra el archivo de historial propio de PowerShell: cada comando que escribiste en PowerShell 7 o Windows PowerShell, el más reciente primero. La búsqueda llega a todos, también a los antiguos que la flecha hacia arriba de PowerShell ya no carga.
 - **Cmd** muestra los comandos escritos en tus ventanas del Símbolo del sistema. El Símbolo del sistema los olvida cuando se cierra su ventana, así que BetterClipboard lee tus ventanas abiertas cada 30 segundos y guarda lo que vio. Las ventanas que abren otros programas (herramientas de compilación, agentes de IA) se omiten. Una ventana que se cierra en los 30 segundos posteriores a su última lectura pierde los comandos escritos desde entonces.
 
-Ninguna de las dos pestañas llena tu historial: un comando se convierte en un elemento del historial solo cuando lo pegas, lo copias, lo anclas o lo agregas a un grupo. Aun así aparece una sola vez, en su lugar entre los comandos: arriba solo mientras lo usaste después del más reciente. `Del` oculta un comando hasta que lo vuelvas a escribir, y *Olvidar para siempre* lo deja fuera para siempre. El archivo de PowerShell y las ventanas del Símbolo del sistema nunca se cambian.
+Ninguna de las dos pestañas llena tu historial: un comando se convierte en un elemento del historial solo cuando lo pegas, lo copias, lo anclas o lo agregas a un grupo. Aun así aparece una sola vez, en su lugar entre los comandos: arriba solo mientras lo usaste después del más reciente. <kbd>Del</kbd> oculta un comando hasta que lo vuelvas a escribir, y *Olvidar para siempre* lo deja fuera para siempre. El archivo de PowerShell y las ventanas del Símbolo del sistema nunca se cambian.
 
 <a id="everything"></a>
 ### Everything
 
 Con [Everything](https://www.voidtools.com/) de voidtools instalado, la pestaña **Everything** muestra los archivos y carpetas que abriste desde los resultados de Everything, el más reciente primero y cuántas veces, además de todo lo que copiaste en Everything.
 
-- `Enter` pega el archivo en sí, como lo haría *Copiar* en el Explorador. `Shift+Enter` pega su ruta como texto.
+- <kbd>Enter</kbd> pega el archivo en sí, como lo haría *Copiar* en el Explorador. <kbd>Shift</kbd>+<kbd>Enter</kbd> pega su ruta como texto.
 - El menú del elemento tiene *Abrir*, *Mostrar en el Explorador de archivos* y *Mostrar en Everything*. Los elementos de archivo de cualquier parte de tu historial también reciben *Mostrar en Everything*.
-- `Del` oculta un archivo hasta que lo vuelvas a abrir en Everything. Nunca se cambia nada en Everything.
+- <kbd>Del</kbd> oculta un archivo hasta que lo vuelvas a abrir en Everything. Nunca se cambia nada en Everything.
 - BetterClipboard solo habla con un Everything firmado por voidtools, y le pide tus archivos abiertos solo cuando se carga la pestaña. Mientras Everything no se está ejecutando, la pestaña muestra el historial que Everything guardó en el disco.
 - Everything Lite no tiene una interfaz para esto, así que no es compatible.
 
@@ -446,7 +460,7 @@ Cada prompt que envías a [Claude Code](https://claude.com/product/claude-code) 
 
 - **De dónde:** el `history.jsonl` de Claude Code en su carpeta de configuración (`%USERPROFILE%\.claude`, o `CLAUDE_CONFIG_DIR`), y los archivos de sesión y el historial de Codex en `%USERPROFILE%\.codex` (o `CODEX_HOME`).
 - **Cuándo:** los prompts que enviaste antes se importan en el primer inicio. Después, cada prompt nuevo llega en el momento en que el agente lo escribe; BetterClipboard lee solo los bytes nuevos.
-- **Las pestañas Claude y Codex** muestran una tarjeta por prompt, el más reciente primero, con su carpeta de proyecto, cuándo lo enviaste por última vez y cuántas veces. `Enter` lo pega, `Ctrl+P` lo conserva en tu historial del portapapeles, y `Del` lo elimina hasta que lo vuelvas a enviar. Un prompt que pegaste o anclaste aparece una sola vez, en el momento más tardío entre cuando lo usaste y cuando lo enviaste por última vez.
+- **Las pestañas Claude y Codex** muestran una tarjeta por prompt, el más reciente primero, con su carpeta de proyecto, cuándo lo enviaste por última vez y cuántas veces. <kbd>Enter</kbd> lo pega, <kbd>Ctrl</kbd>+<kbd>P</kbd> lo conserva en tu historial del portapapeles, y <kbd>Del</kbd> lo elimina hasta que lo vuelvas a enviar. Un prompt que pegaste o anclaste aparece una sola vez, en el momento más tardío entre cuando lo usaste y cuando lo enviaste por última vez.
 - **Aparte:** los prompts nunca aparecen en *Todo* y nunca cuentan para los límites de tu historial.
 - **Solo los tuyos:** los subagentes de Codex y las ejecuciones de `codex exec` se dejan fuera. Las imágenes se cuentan, no se guardan.
 - `bclip prompts` los lista y busca en ellos desde una terminal. *Eliminar lo guardado…* en la tarjeta de la configuración elimina lo que se guardó ([Eliminar lo que dejó un origen](#tabs-for-other-apps)).
@@ -456,7 +470,8 @@ Cada prompt que envías a [Claude Code](https://claude.com/product/claude-code) 
 
 `bclip` permite que las terminales, los scripts y los agentes de programación con IA (Claude Code, Codex, Copilot CLI, …) trabajen con tu historial: listarlo, buscar en él y aplicarle grep, leer cualquier elemento exactamente como se copió, volver a poner algo en el portapapeles o esperar tu próxima copia. Se distribuye junto a la aplicación y le pregunta al BetterClipboard en ejecución (nunca abre el historial cifrado por sí mismo), e inicia BetterClipboard en segundo plano si hace falta.
 
-**Está desactivada de forma predeterminada.** Actívala en *Configuración › Línea de comandos (bclip)* y haz clic en *Agregar bclip a PATH* (o instala con `-AddToPath`). Mientras está activada, cualquier programa que se ejecute con tu usuario puede leer tu historial del portapapeles a través de ella: la misma confianza que ya les das a esos programas con tus archivos. Otras cuentas de Windows y la red no pueden conectarse, y cada comando se registra solo por su nombre, nunca con contenido.
+> [!IMPORTANT]
+> **Está desactivada de forma predeterminada.** Actívala en *Configuración › Línea de comandos (bclip)* y haz clic en *Agregar bclip a PATH* (o instala con `-AddToPath`). Mientras está activada, cualquier programa que se ejecute con tu usuario puede leer tu historial del portapapeles a través de ella: la misma confianza que ya les das a esos programas con tus archivos. Otras cuentas de Windows y la red no pueden conectarse, y cada comando se registra solo por su nombre, nunca con contenido.
 
 | Comando | Lo que hace |
 |---|---|
@@ -530,13 +545,13 @@ La investigación detrás de todo esto (cómo está hecho Win+V: el servicio `cb
 
 Aparte de la comprobación de actualizaciones, **este programa no transferirá ninguna información a otros sistemas en red a menos que lo solicite específicamente el usuario o la persona que lo instala o lo opera.**
 
-**La edición de Microsoft Store** no hace ninguna solicitud por su cuenta: no tiene comprobación de actualizaciones, porque la actualiza la tienda. No registra nada hasta que presionas *Empezar* en su ventana de bienvenida. No cambia ninguna configuración de Windows: a Win+V lo responde un hook de teclado mientras la aplicación se ejecuta, y se inicia con Windows mediante la lista de aplicaciones de inicio, donde puedes desactivarla. Su historial está en su propia carpeta de datos de aplicación, que Windows quita cuando la desinstalas. Cuando reemplaza una copia del instalador, con tu visto bueno, copia el historial de esa copia en su propia carpeta y quita la antigua; nada sale de tu PC.
+**La edición de Microsoft Store** no hace ninguna solicitud por su cuenta: no tiene comprobación de actualizaciones, porque la actualiza la tienda. No registra nada hasta que presionas *Empezar* en su ventana de bienvenida. No cambia ninguna configuración de Windows: a Win+V lo responde un hook de teclado mientras la aplicación se ejecuta, y se inicia con Windows mediante la lista de aplicaciones de inicio, donde puedes desactivarla. Su historial está en `%LOCALAPPDATA%\BetterClipboard`, la carpeta que usan todas las formas de instalarlo, y se queda ahí cuando la desinstalas (donde Windows no le deja escribir de verdad en esa carpeta, usa su propia carpeta de datos de aplicación, que Windows quita junto con la aplicación). Cuando reemplaza una copia del instalador, con tu visto bueno, desinstala esa copia y deja tu historial donde está; nada sale de tu PC.
 
 Lo que guarda se queda en tu PC, en el historial cifrado que se describe en [Cómo funciona](#how-it-works). Además del portapapeles, lee algunos otros lugares de tu PC, cada uno tras su propio interruptor en la configuración:
 
 | Origen | Lo que BetterClipboard hace con él | Predeterminado | Opción |
 |---|---|---|---|
-| El portapapeles | Guarda cada copia, salvo las que las aplicaciones marcan como privadas y las copias hechas por *Aplicaciones ignoradas* (los administradores de contraseñas, desde el principio) | Activado | *Pausar la captura*, *Aplicaciones ignoradas* |
+| El portapapeles | Guarda cada copia, salvo las que las aplicaciones marcan como privadas, las copias hechas por *Aplicaciones ignoradas* (los administradores de contraseñas, desde el principio) y las copias que solo tienen espacios, tabulaciones o líneas vacías | Activado | *Pausar la captura*, *Aplicaciones ignoradas* |
 | El historial del portapapeles propio de Windows | Importa en cada inicio lo que Win+V todavía recuerda, incluidos sus elementos anclados | Activado | *Importar desde Windows › Importar automáticamente cada vez que se inicie BetterClipboard* |
 | Las carpetas de capturas de ShareX | Guarda cada captura que guarda ShareX | Activado, mientras ShareX está instalado | *Capturas de ShareX* |
 | La carpeta Capturas de pantalla de Windows | Guarda cada captura que Recortes o Win+PrtScn guardan allí | Activado | *Recortes y Win+PrtScn* |
@@ -549,6 +564,7 @@ Lo que guarda se queda en tu PC, en el historial cifrado que se describe en [Có
 | Claude Code y Codex | Guarda los prompts que les enviaste, leídos de sus propios archivos de historial | Activado | *Prompts de Claude Code*, *Prompts de Codex* |
 
 - **Nada privado en los registros:** registran lo que pasó (cantidades, versiones, errores), nunca lo que copiaste, ejecutaste, escribiste o enviaste. Siempre están en inglés.
+- **Las teclas que pulsas mientras pega:** desde tu Enter hasta que termina su Ctrl+V (una fracción de segundo), BetterClipboard las retiene y las escribe justo después del texto pegado, así ninguna llega como Ctrl+tecla. No se guardan; el registro solo las cuenta.
 - **Las imágenes temporales son archivos normales:** *Guardar en carpeta temporal y* escribe una imagen como un PNG corriente en `%TEMP%\BetterClipboard\Images`, fuera del historial cifrado, para que otras aplicaciones puedan abrirla. BetterClipboard elimina esas imágenes al iniciarse, cuando llevan 30 días sin usarse (*Configuración › Historial*).
 - **La línea de comandos está desactivada de forma predeterminada.** Mientras *Línea de comandos (bclip)* está activada, cualquier programa que se ejecute con tu usuario puede leer el historial a través de ella (consulta [Línea de comandos](#command-line-for-scripts-and-ai-agents)).
 - **Las funciones propias de Windows:** un elemento que pegas va al portapapeles como cualquier copia, así que el historial del portapapeles de Windows y su sincronización entre dispositivos (*Historial del Portapapeles en todos tus dispositivos*) lo tratan como los configuraste en Windows (la [declaración de privacidad](https://privacy.microsoft.com/privacystatement) de Microsoft cubre esas funciones).
@@ -589,7 +605,8 @@ pwsh tools/release/package-msix.ps1 -Version 0.1.0 -Architectures x64 -NewTestCe
                                                   # el paquete de Microsoft Store, firmado para una PC de prueba
 ```
 
-Cuando experimentes, apunta `BETTERCLIPBOARD_DATA_DIR` a una carpeta temporal para que tu historial real quede limpio.
+> [!TIP]
+> Cuando experimentes, apunta `BETTERCLIPBOARD_DATA_DIR` a una carpeta temporal para que tu historial real quede limpio.
 
 Para ejecutar tu propia compilación como tu aplicación instalada, publícala en la carpeta dev-builds de esta PC (`%LOCALAPPDATA%\BetterClipboard\dev-builds`); el botón de actualización de la aplicación instalada la ofrece entonces:
 

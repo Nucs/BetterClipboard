@@ -93,6 +93,18 @@ public sealed partial class ClipboardFlyout
     /// <summary>The share of the work area the viewer uses, in each direction.</summary>
     private const double TextViewerFraction = 0.9;
 
+    /// <summary>The border of the peek's frame and of the viewer's document, in DIPs.</summary>
+    private const double TextFrameBorderDip = 1;
+
+    /// <summary>The peek frame's padding around its header and text, in DIPs (part of <see cref="TextWidthIn"/>).</summary>
+    private static readonly Thickness TextPeekPadding = new(14, 12, 10, 12);
+
+    /// <summary>The viewer document's padding around its header, toolbar, text and status, in DIPs (part of <see cref="TextWidthIn"/>).</summary>
+    private static readonly Thickness TextViewerPadding = new(16, 12, 12, 12);
+
+    /// <summary>Windows' UI settings, for the text size (<see cref="TextScaleFactor"/>); made on first use, on the UI thread.</summary>
+    private static global::Windows.UI.ViewManagement.UISettings? textScaleSettings;
+
     /// <summary>How much one text-size step (a wheel notch, Ctrl+= or Ctrl+-) changes the size: 10 points of percent.</summary>
     private const double TextSizeStep = 0.1;
 
@@ -107,8 +119,20 @@ public sealed partial class ClipboardFlyout
         return File.Exists(Path.Combine(fonts, "CascadiaMono.ttf")) || File.Exists(Path.Combine(userFonts, "CascadiaMono.ttf")) ? "Cascadia Mono" : "Consolas";
     });
 
+    /// <summary>
+    /// The code font's advance per em as drawn here (<see cref="MeasureCodeAdvance"/>), for a table's tab stops and its fit
+    /// (<see cref="TextViewStyle.CodeAdvanceEm"/>); 0 when it could not be measured. Measured on first use, on the UI thread.
+    /// </summary>
+    private static readonly Lazy<double> CodeAdvanceEm = new(MeasureCodeAdvance);
+
     /// <summary>The card whose text the mouse rests on (drives the peek), or <see langword="null"/>.</summary>
     private ClipItemViewModel? textHoverCard;
+
+    /// <summary>
+    /// The text area of <see cref="textHoverCard"/> the countdown started on, or <see langword="null"/>: the peek opens only
+    /// while Windows' cursor is still over it (<see cref="StillOverHoveredCard"/>). Set and forgotten with the card.
+    /// </summary>
+    private FrameworkElement? textHoverElement;
 
     /// <summary>Rest timer for the text peek (created on first use, reused).</summary>
     private DispatcherTimer? textHoverTimer;
@@ -193,6 +217,12 @@ public sealed partial class ClipboardFlyout
         /// <summary>Whether long lines wrap.</summary>
         public bool Wrap { get; set; } = true;
 
+        /// <summary>
+        /// The width the document's text is laid out in while lines wrap, in DIPs (<see cref="TextWidthIn"/>): its tables
+        /// are fitted into it (<see cref="ViewerTextStyle"/>). The document's size is fixed while it is open.
+        /// </summary>
+        public double TextWidth { get; init; }
+
         /// <summary>Whether line numbers show next to code.</summary>
         public bool LineNumbers { get; set; } = true;
 
@@ -245,7 +275,18 @@ public sealed partial class ClipboardFlyout
         public required Button NextPageButton { get; init; }
     }
 
-    /// <summary>The card's 4-line text block trimmed or stopped trimming its preview: the card's cut-off state follows.</summary>
+    /// <summary>
+    /// Makes the cards show as many lines of their text as Settings › Panel › Lines per card says
+    /// (<see cref="Core.Settings.AppSettings.LinesPerCard"/>, CLAUDE.md §2.57), the listed ones in place. Called by the
+    /// controller after every settings change; idempotent and cheap when the number did not change. The view model applied
+    /// the number when the panel was made.
+    /// </summary>
+    public void ApplyCardLines() => ViewModel.ApplyLinesPerCard(controller.Settings.Current.LinesPerCard);
+
+    /// <summary>
+    /// The card's text block (its <c>MaxLines</c> is the card's line count) trimmed or stopped trimming its text: the card's
+    /// cut-off state follows. A change of the line count lays the block out again, which raises this too.
+    /// </summary>
     /// <param name="sender">The text block.</param>
     /// <param name="args">Event data.</param>
     private void CardText_IsTextTrimmedChanged(TextBlock sender, IsTextTrimmedChangedEventArgs args) =>
@@ -277,8 +318,9 @@ public sealed partial class ClipboardFlyout
         }
 
         textHoverCard = card;
+        textHoverElement = sender as FrameworkElement;
         _ = PreloadCardTextAsync(card);
-        RestartTextHoverTimer();
+        RestartTextHoverTimer(e.IsGenerated);
     }
 
     /// <summary>
@@ -301,7 +343,7 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        RestartTextHoverTimer();
+        RestartTextHoverTimer(e.IsGenerated);
     }
 
     /// <summary>The mouse left a card's text before the peek opened: stop waiting.</summary>
@@ -310,8 +352,9 @@ public sealed partial class ClipboardFlyout
     private void TextCard_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         // PointerExited bubbles: crossing from the card's text onto its eye raises it too, with the mouse still on the
-        // card. Only a pointer outside the area has left it.
-        if (IsInside(sender, e))
+        // card. Only a pointer outside the area has left it. A replayed exit over a mouse that never left is no leave
+        // either: while Settings was open WinUI sent one every half second, and no peek ever opened (CLAUDE.md §2.56).
+        if (IsInside(sender, e) || IsReplayedExitOver(sender, e))
         {
             return;
         }
@@ -320,6 +363,7 @@ public sealed partial class ClipboardFlyout
         {
             textHoverTimer?.Stop();
             textHoverCard = null;
+            textHoverElement = null;
         }
     }
 
@@ -463,20 +507,139 @@ public sealed partial class ClipboardFlyout
     /// <returns>The palette.</returns>
     private SyntaxPalette CurrentTextPalette() => Root.ActualTheme == ElementTheme.Light ? SyntaxPalette.Light : SyntaxPalette.Dark;
 
-    /// <summary>The fonts and sizes at a text size.</summary>
+    /// <summary>The fonts and sizes at a text size, and the width a document's tables are fitted into.</summary>
     /// <param name="textSize">The size factor (1 = 100 %).</param>
+    /// <param name="textWidth">
+    /// The width the text is laid out in, in DIPs (<see cref="TextWidthIn"/>), or 0 when lines do not wrap: tables then keep
+    /// their columns' natural widths (<see cref="TextViewStyle.TextWidth"/>).
+    /// </param>
     /// <returns>The style.</returns>
-    private static TextViewStyle CurrentTextStyle(double textSize) => TextViewStyle.Default(CodeFontName.Value).Scaled(textSize);
+    private static TextViewStyle CurrentTextStyle(double textSize, double textWidth = 0) =>
+        TextViewStyle.Default(CodeFontName.Value).Scaled(textSize) with { TextWidth = textWidth, CodeAdvanceEm = CodeAdvanceEm.Value };
+
+    /// <summary>
+    /// Measures the code font's advance per em: a line of 200 digits at 100 DIPs laid out by XAML's own text stack, which
+    /// RichEdit draws with too. Windows' text size is left out (the block does not scale), as the text width divides by it.
+    /// </summary>
+    /// <returns>The advance, or 0 when the measure failed or is not believable (outside 0.3–1.0 em).</returns>
+    /// <remarks>
+    /// Measured, not taken from a table of fonts: the font is whichever Windows has (Cascadia Mono, else Consolas), and a
+    /// font of another version or a substitute keeps its own advance. Logged once, without content.
+    /// </remarks>
+    private static double MeasureCodeAdvance()
+    {
+        const int Count = 200;
+        const double Size = 100;
+        try
+        {
+            var block = new TextBlock
+            {
+                FontFamily = new FontFamily(CodeFontName.Value),
+                FontSize = Size,
+                Text = new string('0', Count),
+                TextWrapping = TextWrapping.NoWrap,
+                IsTextScaleFactorEnabled = false,
+            };
+            block.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+            double em = block.DesiredSize.Width / (Count * Size);
+            if (double.IsFinite(em) && em is > 0.3 and < 1.0)
+            {
+                AppLog.Info($"Text viewer: {CodeFontName.Value} advances {em.ToString("0.0000", System.Globalization.CultureInfo.InvariantCulture)} em a character.");
+                return em;
+            }
+
+            AppLog.Warn($"Text viewer: measuring {CodeFontName.Value} gave {em.ToString(System.Globalization.CultureInfo.InvariantCulture)} em a character; tables are laid out at 0.6.");
+        }
+        catch (Exception ex)
+        {
+            // Tables are then laid out at 0.6 em, a little wide: they fit, with some extra room between columns.
+            AppLog.Warn($"Measuring the text viewer's code font failed: {ex.Message}");
+        }
+
+        return 0;
+    }
+
+    /// <summary>The viewer's fonts and sizes at its text size, with its text width while lines wrap and none while they do not.</summary>
+    /// <param name="state">The viewer.</param>
+    /// <returns>The style.</returns>
+    private static TextViewStyle ViewerTextStyle(TextViewerState state) => CurrentTextStyle(state.TextSize, state.Wrap ? state.TextWidth : 0);
+
+    /// <summary>The peek frame's width on a monitor: <see cref="TextPeekMaxFraction"/> of its work area, at most <see cref="TextPeekMaxWidthDip"/>.</summary>
+    /// <param name="workAreaWidth">The width of the monitor's work area, in DIPs.</param>
+    /// <returns>The width, in DIPs.</returns>
+    private static double TextPeekWidth(double workAreaWidth) => Math.Min(workAreaWidth * TextPeekMaxFraction, TextPeekMaxWidthDip);
+
+    /// <summary>The viewer document's width on a monitor: <see cref="TextViewerFraction"/> of its work area, at most <see cref="TextViewerMaxWidthDip"/>.</summary>
+    /// <param name="workAreaWidth">The width of the monitor's work area, in DIPs.</param>
+    /// <returns>The width, in DIPs.</returns>
+    private static double TextViewerWidth(double workAreaWidth) => Math.Min(workAreaWidth * TextViewerFraction, TextViewerMaxWidthDip);
+
+    /// <summary>
+    /// The width a frame's text is laid out in, in DIPs, for its tables to be fitted into (<see cref="TextViewStyle.TextWidth"/>):
+    /// the frame's width less its border, its padding and the text box's own padding, over Windows' text size.
+    /// </summary>
+    /// <param name="frameWidth">The frame's width, in DIPs (its border included, as a <see cref="Border"/>'s Width is).</param>
+    /// <param name="padding">The frame's padding.</param>
+    /// <returns>The width, at least 1 DIP.</returns>
+    /// <remarks>
+    /// Every DIP is counted: a table laid out wider than the box would have its lines wrapped by RichEdit, its columns out of
+    /// line. The text box's scroll bar takes no width (it lies over the text, WinUI's ScrollViewer template). Windows' text
+    /// size (Settings › Accessibility › Text size) enlarges the box's text; dividing by it fits the table in either case,
+    /// at worst a little narrower than the box allows.
+    /// </remarks>
+    private static double TextWidthIn(double frameWidth, Thickness padding)
+    {
+        double width = frameWidth - (2 * TextFrameBorderDip) - padding.Left - padding.Right - TextPreviewPresenter.HorizontalTextPadding;
+        return Math.Max(1, width / TextScaleFactor());
+    }
+
+    /// <summary>Windows' text size as a factor (1 = 100 %, up to 2.25), or 1 when it cannot be read.</summary>
+    /// <returns>The factor, at least 1.</returns>
+    private static double TextScaleFactor()
+    {
+        try
+        {
+            textScaleSettings ??= new global::Windows.UI.ViewManagement.UISettings();
+            double factor = textScaleSettings.TextScaleFactor;
+            return double.IsFinite(factor) && factor > 1 ? factor : 1;
+        }
+        catch (Exception ex)
+        {
+            // A WinRT call that fails leaves tables at 100 %: they still fit unless the text is enlarged.
+            AppLog.Warn($"Reading Windows' text size failed: {ex.Message}");
+            return 1;
+        }
+    }
 
     /// <summary>Restarts the peek's rest timer (it opens the peek once the mouse has rested long enough).</summary>
-    private void RestartTextHoverTimer()
+    /// <param name="replayed">
+    /// Whether the pointer event behind the call was one of WinUI's replays (<see cref="PointerRoutedEventArgs.IsGenerated"/>):
+    /// such an event may start a countdown, never restart one that runs.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Only once the mouse really moved since the panel last changed under it (<see cref="MouseMovedSincePanelChanged"/>):
+    /// after Esc or the X closed the viewer over a mouse resting where the eye was, WinUI reported the pointer entering the
+    /// card, and this peek opened by itself 450 ms later with the same text (QA, 2026-11-20, CLAUDE.md §2.56).
+    /// </para>
+    /// <para>
+    /// A replay is not a move: while Settings was open, WinUI replayed the pointer to the card every half second, and each
+    /// replay restarting the 450-ms countdown left it a race of a few dozen milliseconds to end in (ClipboardFlyout.Leaving.cs).
+    /// </para>
+    /// </remarks>
+    private void RestartTextHoverTimer(bool replayed)
     {
-        if (!CanShowTextPeek())
+        if (!CanShowTextPeek() || !MouseMovedSincePanelChanged())
         {
             return;
         }
 
         textHoverTimer ??= CreateTextHoverTimer();
+        if (replayed && textHoverTimer.IsEnabled)
+        {
+            return;
+        }
+
         textHoverTimer.Stop();
         textHoverTimer.Start();
     }
@@ -496,12 +659,23 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Whether a text peek may open now: the panel is up, nothing else is open over it (a menu, an overlay), nothing is being
-    /// dragged, and the mouse rests on a cut-off card.
+    /// dragged, the mouse rests on a cut-off card, and the panel does not stand beside Start or Search
+    /// (<see cref="besideSurface"/>: the peek is centered on the panel and up to 900 DIPs wide, so Start would hide part of it).
     /// </summary>
     /// <returns><see langword="true"/> when it may.</returns>
     private bool CanShowTextPeek() =>
-        IsOpen && textPeekPopup is null && textViewer is null && peekPopup is null && viewerPopup is null && drag is null &&
-        draggedClipIds is null && openPopups == 0 && textHoverCard is { IsCutOff: true };
+        IsOpen && !besideSurface && textPeekPopup is null && textViewer is null && peekPopup is null && viewerPopup is null &&
+        drag is null && draggedClipIds is null && openPopups == 0 && textHoverCard is { IsCutOff: true };
+
+    /// <summary>
+    /// Forgets the card the mouse rested on once its countdown ended with the mouse elsewhere: no peek of it opens until
+    /// the mouse comes back over a card, whose "pointer entered" starts a countdown again.
+    /// </summary>
+    private void ForgetTextHover()
+    {
+        textHoverCard = null;
+        textHoverElement = null;
+    }
 
     /// <summary>The key a card's text is cached under: its content (a prompt tab's ids change between loads; its content does not).</summary>
     /// <param name="card">The card.</param>
@@ -715,12 +889,25 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>Opens the peek for the card the mouse rests on, once its text is read and prepared, if the mouse is still there.</summary>
     /// <returns>A task completing when the peek shows or was abandoned (failures are logged, never thrown).</returns>
+    /// <remarks>
+    /// "Still there" is asked of Windows' cursor (<see cref="StillOverHoveredCard"/>) when the countdown ends and again
+    /// right before the peek opens, after the text was read and prepared: after a jump of the mouse from a card's text
+    /// straight out of the panel's window, no exit stopped the countdown (an event at the jump even started it again), and
+    /// the peek opened about half a second later where the mouse no longer was (CLAUDE.md §2.56).
+    /// </remarks>
     private async Task ShowTextPeekAsync()
     {
         try
         {
             if (textHoverCard is not { } card || !CanShowTextPeek() || Root.XamlRoot is null)
             {
+                return;
+            }
+
+            if (!StillOverHoveredCard(textHoverElement))
+            {
+                // The mouse went elsewhere without an exit that stopped the countdown: forget the card, open nothing.
+                ForgetTextHover();
                 return;
             }
 
@@ -735,12 +922,23 @@ public sealed partial class ClipboardFlyout
 
             var settings = controller.Settings.Current;
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(settings.TextViewerTextSize);
+
+            // The tables are fitted into the frame the peek will open in (its width depends only on the monitor).
+            double textWidth = settings.TextViewerWrap ? TextWidthIn(TextPeekWidth(MonitorOverlayGeometry().Width), TextPeekPadding) : 0;
+            var style = CurrentTextStyle(settings.TextViewerTextSize, textWidth);
             var prepared = await PrepareTextAsync(text, PeekMaxChars, null, null, formatted: true, palette, style, position: 0, load.Token).ConfigureAwait(true);
 
             // The mouse may have moved to another card, or the panel gone, while the text was prepared.
             if (load.IsCancellationRequested || textHoverCard != card || !CanShowTextPeek() || Root.XamlRoot is null)
             {
+                return;
+            }
+
+            // Or left the panel while the text was read and prepared: the peek's anchor is where the cursor is when it
+            // opens, so a peek opened now would stay where the mouse went, until the next 15-px move.
+            if (!StillOverHoveredCard(textHoverElement))
+            {
+                ForgetTextHover();
                 return;
             }
 
@@ -809,13 +1007,13 @@ public sealed partial class ClipboardFlyout
         double maxHeight = geometry.Height * TextPeekMaxFraction;
         var frame = new Border
         {
-            Width = Math.Min(geometry.Width * TextPeekMaxFraction, TextPeekMaxWidthDip),
+            Width = TextPeekWidth(geometry.Width),
             MaxHeight = maxHeight,
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
-            Padding = new Thickness(14, 12, 10, 12),
+            Padding = TextPeekPadding,
             CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(TextFrameBorderDip),
             Style = OverlayStyle("OverlayFrameStyle"),
             Child = layout,
         };
@@ -864,9 +1062,10 @@ public sealed partial class ClipboardFlyout
             Child = surface,
         };
 
-        // Counted before it opens (a deactivation as it appears must not conceal the panel); Popup_Closed balances the
-        // count and gives the keyboard back to the panel.
-        popup.Closed += Popup_Closed;
+        // Counted before it opens (a deactivation as it appears must not conceal the panel). HideTextPeek gives the count
+        // back the moment it closes the peek, as HidePeek does for the image peek; TextPeekPopup_Closed then gives the
+        // keyboard back to the panel.
+        popup.Closed += TextPeekPopup_Closed;
         textPeekPopup = popup;
         textPeekCard = card;
         textPeekFrame = frame;
@@ -963,12 +1162,13 @@ public sealed partial class ClipboardFlyout
     /// <remarks>
     /// PointerExited bubbles: the text's own parts raise it whenever the mouse crosses from one to another inside the
     /// peek. Taking each for "left the peek" closed it at the first move over the text (found in the QA, 2026-11-13), so
-    /// only a pointer that is really outside the surface counts.
+    /// only a pointer that is really outside the surface counts. A replayed exit while the cursor is still over the surface
+    /// does not either: WinUI sent one every half second while Settings was open (ClipboardFlyout.Leaving.cs).
     /// </remarks>
     private void TextPeek_PointerExited(object sender, PointerRoutedEventArgs e)
     {
         if (!textPeekMenuOpen && sender is UIElement surface && !e.GetCurrentPoint(surface).Properties.IsLeftButtonPressed &&
-            !IsInside(sender, e))
+            !IsInside(sender, e) && !IsReplayedExitOver(sender, e))
         {
             HideTextPeek();
         }
@@ -1124,9 +1324,9 @@ public sealed partial class ClipboardFlyout
             return;
         }
 
-        // Cleared first: closing raises Closed (the count, the keyboard), and a late pointer event must find no peek. The
-        // text surface leaves this peek's layout now (not when Closed comes): the next peek may want it at once, and an
-        // element has one parent.
+        // Cleared first: closing raises Closed (the keyboard), and a late pointer event must find no peek. The text surface
+        // leaves this peek's layout now (not when Closed comes): the next peek may want it at once, and an element has one
+        // parent.
         if (textPeekPresenter is not null)
         {
             textPeekLayout?.Children.Remove(textPeekPresenter.View);
@@ -1139,7 +1339,37 @@ public sealed partial class ClipboardFlyout
         textPeekAnchor = null;
         textPeekMenuOpen = false;
         textHoverCard = null;
+        textHoverElement = null;
         popup.IsOpen = false;
+
+        // The count goes back now, not when Closed comes: WinUI raises Closed later, and Root_PreviewKeyDown asks
+        // IsPopupKey right after this closed a peek for a key. With the count still held, that key counted as the peek's
+        // and was dropped: with the mouse resting on a long card's text, Enter, the arrows, Del and Esc did nothing, and
+        // the peek opened again under the resting mouse half a second later, so every Enter was lost until the mouse moved
+        // (paste QA on 0.2.12, 2026-11-18). The image peek has always given its count back this way (HidePeek).
+        openPopups = Math.Max(0, openPopups - 1);
+
+        // A peek opens again only once the mouse moves (MouseMovedSincePanelChanged), asked now: the "pointer entered"
+        // WinUI reports for the card this peek uncovers can come before Closed does (CLAUDE.md §2.56).
+        SuspendPointerSelection();
+    }
+
+    /// <summary>
+    /// The text peek's popup closed (<see cref="HideTextPeek"/> closes it, and gave its count back already): does what
+    /// <see cref="Popup_Closed"/> does for the panel's other popups, without touching the count.
+    /// </summary>
+    /// <param name="sender">The closed popup.</param>
+    /// <param name="e">Unused.</param>
+    /// <remarks>
+    /// A popup going away is not a move of the mouse, but WinUI reports "pointer entered" to the card it uncovers: the mouse
+    /// must not take the selection from the keyboard for it. The keyboard goes to a viewer that is still open (the text
+    /// viewer F3 opened from this peek), else back to the search box, while the panel shows and is in front
+    /// (<see cref="GiveKeyboardBackAfterPopup"/>: the peek also closes when the user leaves the panel).
+    /// </remarks>
+    private void TextPeekPopup_Closed(object? sender, object e)
+    {
+        SuspendPointerSelection();
+        GiveKeyboardBackAfterPopup();
     }
 
     /// <summary>
@@ -1184,6 +1414,10 @@ public sealed partial class ClipboardFlyout
     /// <returns>A task completing when the text shows or the load failed (failures are logged and shown, never thrown).</returns>
     private async Task ShowTextViewerAsync(ClipItemViewModel card)
     {
+        // A viewer is read with keys (Esc, the page keys, Ctrl+wheel, a selection's Ctrl+C): a panel shown without the
+        // keyboard takes it now, the usual way (ClipboardFlyout.Focusless.cs).
+        TakeKeyboard("the text viewer");
+
         if (Root.XamlRoot is null)
         {
             return;
@@ -1209,7 +1443,7 @@ public sealed partial class ClipboardFlyout
             }
 
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(state.TextSize);
+            var style = ViewerTextStyle(state);
             var prepared = await PrepareTextAsync(text, int.MaxValue, null, null, state.Formatted, palette, style, position: 0, token).ConfigureAwait(true);
             if (textViewer != state || token.IsCancellationRequested)
             {
@@ -1341,7 +1575,7 @@ public sealed partial class ClipboardFlyout
         layout.Children.Add(content);
         layout.Children.Add(status);
 
-        double width = Math.Min(geometry.Width * TextViewerFraction, TextViewerMaxWidthDip);
+        double width = TextViewerWidth(geometry.Width);
         double height = geometry.Height * TextViewerFraction;
         double left = Math.Clamp((Root.ActualWidth / 2) - geometry.OffsetX - (width / 2), 0, Math.Max(0, geometry.Width - width));
         double top = Math.Clamp((Root.ActualHeight / 2) - geometry.OffsetY - (height / 2), 0, Math.Max(0, geometry.Height - height));
@@ -1352,9 +1586,9 @@ public sealed partial class ClipboardFlyout
             HorizontalAlignment = HorizontalAlignment.Left,
             VerticalAlignment = VerticalAlignment.Top,
             Margin = new Thickness(left, top, 0, 0),
-            Padding = new Thickness(16, 12, 12, 12),
+            Padding = TextViewerPadding,
             CornerRadius = new CornerRadius(8),
-            BorderThickness = new Thickness(1),
+            BorderThickness = new Thickness(TextFrameBorderDip),
             Style = OverlayStyle("OverlayFrameStyle"),
             Child = layout,
         };
@@ -1389,6 +1623,7 @@ public sealed partial class ClipboardFlyout
             Content = content,
             TextSize = settings.TextViewerTextSize,
             Wrap = settings.TextViewerWrap,
+            TextWidth = TextWidthIn(width, TextViewerPadding),
             LineNumbers = settings.TextViewerLineNumbers,
             Ring = ring,
             FormattedButton = formattedButton,
@@ -1413,7 +1648,18 @@ public sealed partial class ClipboardFlyout
         wrapButton.Click += (_, _) =>
         {
             state.Wrap = wrapButton.IsChecked == true;
-            presenter.SetWrap(state.Wrap);
+            if (state.View is { HasTables: true })
+            {
+                // A table is fitted into the text width while lines wrap and keeps its natural width while they do not,
+                // so the document is drawn again. Show applies the new wrapping with the new text: switched on over the
+                // old, wider grid, it would wrap the grid's lines out of line for the moment the drawing takes.
+                _ = RerenderTextViewerAsync(state, keepPosition: true);
+            }
+            else
+            {
+                presenter.SetWrap(state.Wrap);
+            }
+
             controller.Settings.Update(s => s with { TextViewerWrap = state.Wrap });
         };
         linesButton.Click += (_, _) =>
@@ -1560,7 +1806,7 @@ public sealed partial class ClipboardFlyout
         try
         {
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(state.TextSize);
+            var style = ViewerTextStyle(state);
             var prepared = await PreparePageAsync(source, view, pageIndex, palette, style, token).ConfigureAwait(true);
             if (textViewer == state && !token.IsCancellationRequested)
             {
@@ -1672,7 +1918,7 @@ public sealed partial class ClipboardFlyout
             // The place to come back to, in the text (the page it lies on is the one prepared).
             int? position = keepPosition ? textViewerPresenter?.FirstVisiblePosition() : null;
             var palette = CurrentTextPalette();
-            var style = CurrentTextStyle(state.TextSize);
+            var style = ViewerTextStyle(state);
             var prepared = await PrepareTextAsync(source.Text, int.MaxValue, source, state.Language, state.Formatted, palette, style, position ?? 0, token).ConfigureAwait(true);
             if (textViewer == state && !token.IsCancellationRequested)
             {
@@ -1807,6 +2053,11 @@ public sealed partial class ClipboardFlyout
             controller.Settings.Update(s => s with { TextViewerTextSize = state.TextSize });
         }
 
+        // The mouse rests where Esc, the X or the backdrop's click left it, often on the card whose eye opened the viewer:
+        // no peek may open there before it moves (MouseMovedSincePanelChanged). Asked now, before the popup goes: the
+        // "pointer entered" WinUI reports for the uncovered card came before Popup_Closed and opened the text peek with the
+        // same text 450 ms later, 4 of 4 times in the QA (CLAUDE.md §2.56).
+        SuspendPointerSelection();
         state.Popup.IsOpen = false; // raises Closed → Popup_Closed (the count, the keyboard)
     }
 }

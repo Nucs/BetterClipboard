@@ -193,7 +193,7 @@ public sealed class PortableUpdateInstaller : IUpdateInstaller
     {
         try
         {
-            return Process.Start(info) ?? throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.PortableHelperNotStarted, "no process"));
+            return Process.Start(info) ?? throw new UpdateException(UpdateFailure.Installer, UpdateMessages.Format(UpdateMessages.PortableHelperNotStarted, UpdateMessages.NoProcess));
         }
         catch (Exception ex) when (ex is Win32Exception or InvalidOperationException or IOException)
         {

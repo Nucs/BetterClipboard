@@ -2,7 +2,7 @@
 <#
 .SYNOPSIS
     Sends a new version of BetterClipboard to the Microsoft Store: a new submission made from the published one, with
-    the new packages and "What's new", committed for certification.
+    the new packages, "What's new" and the listing kit's notes for certification, committed for certification.
 
 .DESCRIPTION
     The release pipeline's last step for the Microsoft Store edition (docs/microsoft-store.md, CLAUDE.md section 3.5).
@@ -12,8 +12,11 @@
       1. signs in as the Microsoft Entra application that the developer account trusts (client credentials);
       2. reads the app; a submission that is still pending is deleted, because the Store allows one at a time;
       3. creates a submission, which the Store fills with a copy of the published one (listings, pricing, age
-         ratings, notes for certification: all of that stays as it is);
-      4. marks the published packages for removal and lists the new ones; sets "What's new" from the release notes;
+         ratings: all of that stays as it is);
+      4. marks the published packages for removal and lists the new ones; sets "What's new" from the release notes,
+         and the submission's notes for certification from the listing kit (docs/store-listing.md), so that field
+         says what is true for this version instead of what the copy brought along (the notes Partner Center's
+         pages show testers are a product page of their own, kept by hand: see -ListingKit);
       5. uploads the packages (one ZIP, in blocks) to the address the Store gave;
       6. commits the submission and waits until the Store accepted or refused it. Certification itself takes hours
          or days and is not waited for.
@@ -61,8 +64,30 @@
     characters, the Store's limit for "What's new in this version". Without the file, "What's new" is left empty.
 
 .PARAMETER NotesLanguage
-    The listing language that gets the notes. Default: en-us. Every other language's "What's new" is emptied, so that
-    no listing keeps the notes of an older version.
+    The listing language that gets the notes. Default: en-us. Every language without notes of this release (here or in
+    -TranslatedNotesDirectory) has its "What's new" emptied, so that no listing keeps the notes of an older version.
+
+.PARAMETER TranslatedNotesDirectory
+    A folder of this release's notes in other languages, one file per language named by the app's catalog tag
+    (zh-Hans.md): the notes alone, without a language line, stamp or footer, as tools/release/release_notes.py compose
+    --store-dir writes them. Each goes to the listing of the same language (the tag in lower case: zh-Hans to zh-hans),
+    shortened by that language's punctuation (CLAUDE.md section 2.67). Without it only -NotesLanguage gets notes.
+
+.PARAMETER ListingKit
+    The listing kit (docs/store-listing.md, relative to the repository unless rooted). Its "Notes for certification"
+    block, the fenced text block under that bold line, becomes the submission's notes for certification (Partner
+    Center's Additional Testing Information page), replacing the published version's. Read in every mode, before
+    anything is sent: a kit that is missing, has no such block, or whose notes are over Partner Center's 2,000
+    characters with every line break counted as two, ends the script with exit code 2. Check mode says whether the
+    published notes are the kit's.
+    Footgun: this field is not what Partner Center's pages show the Store's testers. Those read the product's
+    Supplemental info > Additional Testing Information page, which lives outside every submission and which this API
+    does not read (measured 2026-11-20: the published submission's field was empty while that page held the notes).
+    Keep that page the kit's text by hand whenever the kit's notes change (docs/store-listing.md, section 1).
+
+.PARAMETER KeepCertificationNotes
+    Send the published version's notes for certification unchanged, and do not read the listing kit. For a version
+    whose notes somebody wrote in Partner Center on purpose; the kit should then be made to say the same.
 
 .PARAMETER KeepPending
     Fail instead of deleting a submission that is still pending (for example one somebody is preparing by hand).
@@ -113,6 +138,12 @@ param(
 
     [string] $NotesLanguage = 'en-us',
 
+    [string] $TranslatedNotesDirectory,
+
+    [string] $ListingKit = 'docs/store-listing.md',
+
+    [switch] $KeepCertificationNotes,
+
     [switch] $KeepPending,
 
     [ValidateRange(1, 240)]
@@ -128,6 +159,12 @@ $ErrorActionPreference = 'Stop'
 
 # The Store's limit for "What's new in this version" (Partner Center refuses more).
 $NotesLimit = 1500
+
+# The limit for the notes for certification. Microsoft documents none; developers who publish there report 2,000
+# characters (one went over it), one of them unsure whether a line break counts once or twice. They are counted with
+# every line break as two (CRLF), the strict reading, as tools/release/store_listing.py counts them for the kit's
+# check.
+$CertificationNotesLimit = 2000
 
 # Azure Blob Storage takes a blob in blocks; 4 MiB is the largest block every version of its API accepts, and the
 # upload address the Store hands out names an old version.
@@ -224,14 +261,26 @@ function ConvertTo-StoreNotes {
         title, code blocks, tables and the code signing paragraph are left out; every other paragraph becomes one
         line, its lead-in and its first sentence; Markdown marks are removed. Too long: the lead-ins alone; still too
         long: cut at the last whole line that fits, with an ellipsis.
+        Chinese notes (CLAUDE.md section 2.67) follow Chinese punctuation: a sentence ends at a full-width 。！？ as well,
+        a lead-in and its sentence join without a blank, a lead-in ends with 。, and the fixes are counted as
+        "修复：共 N 项。". The rules are the same for every other language, which they were written for in English.
     .PARAMETER Markdown
         The notes.
     .PARAMETER Limit
         The most characters the result may have.
+    .PARAMETER Language
+        The notes' language, an app catalog tag (en, zh-Hans); anything starting with "zh" takes the Chinese rules.
+        Default: en.
     .OUTPUTS
         System.String. May be empty when the notes hold nothing to say.
     #>
-    param([string] $Markdown, [int] $Limit = 1500)
+    param([string] $Markdown, [int] $Limit = 1500, [string] $Language = 'en')
+
+    # Chinese writes full-width stops and no blank between sentences; "Fixed" is "修复".
+    $chinese = $Language -match '^zh'
+    $sentenceEnd = if ($chinese) { '^(.+?(?:[.!?](?=\s|$)|[。！？]))' } else { '^(.+?[.!?])(\s|$)' }
+    $stop = if ($chinese) { '。' } else { '.' }
+    $join = if ($chinese) { '' } else { ' ' }
 
     $text = ($Markdown -replace "`r`n?", "`n")
     # Fenced code blocks (the install command) go as a whole.
@@ -274,24 +323,28 @@ function ConvertTo-StoreNotes {
         }
         $lead = & $clean $lead
         $plain = & $clean $plain
-        $sentence = if ($plain -match '^(.+?[.!?])(\s|$)') { $Matches[1] } else { $plain }
+        $sentence = if ($plain -match $sentenceEnd) { $Matches[1] } else { $plain }
         # A sentence that introduced the bullets ("... with four choices:") stands alone here.
-        $sentence = $sentence -replace ':$', '.'
+        $sentence = $sentence -replace '[:：]$', $stop
         if (-not $lead -and -not $sentence) { continue }
 
         # "Fixed" is followed by one bullet per fix and no sentence of its own: say how many.
         $bullets = @($lines | Where-Object { $_ -match '^[-*+]\s+' }).Count
-        if ($lead -match '^Fix' -and -not $sentence -and $bullets -gt 0) {
+        if ($chinese -and $lead -match '^修复' -and -not $sentence -and $bullets -gt 0) {
+            $lead = "$($lead.TrimEnd('。', '：', '.', ':'))："
+            $sentence = "共 $bullets 项。"
+        }
+        elseif ($lead -match '^Fix' -and -not $sentence -and $bullets -gt 0) {
             $lead = "$($lead.TrimEnd('.', ':')):"
             $sentence = if ($bullets -eq 1) { '1 fix.' } else { "$bullets fixes." }
         }
-        if ($lead -and $lead -notmatch '[.!?:]$') { $lead += '.' }
+        if ($lead -and $lead -notmatch '[.!?:。！？：]$') { $lead += $stop }
         $items.Add(@{ Lead = $lead; Sentence = $sentence })
     }
     if ($items.Count -eq 0) { return '' }
 
-    $long = @($items | ForEach-Object { '• ' + ((@($_.Lead, $_.Sentence) | Where-Object { $_ }) -join ' ') })
-    $short = @($items | ForEach-Object { '• ' + $(if ($_.Lead) { $_.Lead -replace ':$', '.' } else { $_.Sentence }) })
+    $long = @($items | ForEach-Object { '• ' + ((@($_.Lead, $_.Sentence) | Where-Object { $_ }) -join $join) })
+    $short = @($items | ForEach-Object { '• ' + $(if ($_.Lead) { $_.Lead -replace '[:：]$', $stop } else { $_.Sentence }) })
     foreach ($candidate in @($long, $short)) {
         $joined = $candidate -join "`n"
         if ($joined.Length -le $Limit) { return $joined }
@@ -306,6 +359,63 @@ function ConvertTo-StoreNotes {
         $length += $line.Length + 1
     }
     return (($kept -join "`n") + "`n…").Trim()
+}
+
+function Get-CertificationNotes {
+    <#
+    .SYNOPSIS
+        Reads the notes for certification from the listing kit and checks them against Partner Center's limit.
+    .DESCRIPTION
+        The notes are the fenced text block right under the kit's "**Notes for certification**" line, read with the
+        same pattern as tools/release/store_listing.py, so the kit's check (check-store-listing.py, in CI) and this
+        script agree on the text. Line breaks become LF and surrounding white space goes. The length is counted with
+        every line break as two characters, the strict reading of the limit (see $CertificationNotesLimit).
+    .PARAMETER Path
+        The listing kit.
+    .PARAMETER Limit
+        The most characters the notes may have, line breaks counted as two.
+    .OUTPUTS
+        System.String. The notes, never empty.
+    .NOTES
+        Throws StoreExit with exit code 2 for a kit that does not exist, has no such block, or whose notes are too
+        long: all of that is found before anything is sent.
+    #>
+    param([string] $Path, [int] $Limit)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw [StoreExit]::new(2, "The listing kit does not exist: $Path. Its notes for certification go with every submission (or pass -KeepCertificationNotes). Nothing was sent.")
+    }
+    $text = (Get-Content -LiteralPath $Path -Raw -Encoding utf8) -replace "`r`n?", "`n"
+    # store_listing.py's pattern: the bold line and the rest of its line, then the block's opening fence after any
+    # blank lines, then everything up to the first closing fence.
+    $found = [regex]::Match($text, '(?s)\*\*Notes for certification\*\*[^\n]*\n\s*```text\n(.*?)\n```')
+    $notes = if ($found.Success) { $found.Groups[1].Value.Trim() } else { '' }
+    if (-not $notes) {
+        throw [StoreExit]::new(2, "The listing kit has no notes for certification (a fenced text block under **Notes for certification**): $Path. Nothing was sent.")
+    }
+    $counted = $notes.Replace("`n", "`r`n").Length
+    if ($counted -gt $Limit) {
+        throw [StoreExit]::new(2, "The listing kit's notes for certification have $counted characters with every line break counted as two; Partner Center takes at most $Limit. Shorten them in $Path. Nothing was sent.")
+    }
+    return $notes
+}
+
+function Test-SameNotes {
+    <#
+    .SYNOPSIS
+        Whether two notes for certification say the same, whatever their line breaks and surrounding white space.
+    .DESCRIPTION
+        Notes typed or pasted into Partner Center's page may come back with CRLF where the kit has LF; that is no
+        difference worth reporting.
+    .PARAMETER Left
+        One text (may be empty).
+    .PARAMETER Right
+        The other text (may be empty).
+    .OUTPUTS
+        System.Boolean. True when both are the same text, letter case included.
+    #>
+    param([string] $Left, [string] $Right)
+    return (($Left -replace "`r`n?", "`n").Trim()) -ceq (($Right -replace "`r`n?", "`n").Trim())
 }
 
 function Get-StoreToken {
@@ -513,6 +623,8 @@ try {
 
     $packages = @()
     $notes = ''
+    # Listing language (lower case) to its "What's new", for the languages in -TranslatedNotesDirectory.
+    $translatedNotes = [ordered]@{}
     if ($Mode -ne 'Check') {
         if ($Version -notmatch '^\d+\.\d+\.\d+([-+][0-9A-Za-z.-]+)?$') { throw [StoreExit]::new(2, '-Version must be the release version (X.Y.Z).') }
         if ($Version -match '-') { throw [StoreExit]::new(2, "A pre-release ($Version) is not sent to the Store: its customers get every published version.") }
@@ -538,6 +650,32 @@ try {
             if (-not (Test-Path -LiteralPath $ReleaseNotesFile)) { throw [StoreExit]::new(2, "The release notes file does not exist: $ReleaseNotesFile") }
             $notes = ConvertTo-StoreNotes -Markdown (Get-Content -LiteralPath $ReleaseNotesFile -Raw -Encoding utf8) -Limit $NotesLimit
         }
+
+        # The notes in other languages, each for the listing of its language (zh-Hans.md for zh-hans).
+        if ($TranslatedNotesDirectory) {
+            if (-not (Test-Path -LiteralPath $TranslatedNotesDirectory -PathType Container)) {
+                throw [StoreExit]::new(2, "The folder of translated notes does not exist: $TranslatedNotesDirectory")
+            }
+            foreach ($file in @(Get-ChildItem -LiteralPath $TranslatedNotesDirectory -Filter '*.md' -File | Sort-Object Name)) {
+                $tag = $file.BaseName
+                if ($tag -notmatch '^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$') {
+                    throw [StoreExit]::new(2, "$($file.Name) is not named by a language's catalog tag (zh-Hans.md). Nothing was sent.")
+                }
+                $translatedNotes[$tag.ToLowerInvariant()] = ConvertTo-StoreNotes -Markdown (Get-Content -LiteralPath $file.FullName -Raw -Encoding utf8) -Limit $NotesLimit -Language $tag
+            }
+        }
+    }
+
+    # The notes for certification, from the listing kit. Read in every mode, before anything leaves this PC: a kit
+    # that cannot be sent would otherwise be found only after a submission was created, and Check is the way to learn
+    # that before a release.
+    $certificationNotes = $null
+    if (-not $KeepCertificationNotes) {
+        if (-not $ListingKit) {
+            throw [StoreExit]::new(2, '-ListingKit is empty: pass the listing kit, or -KeepCertificationNotes to keep the published notes for certification. Nothing was sent.')
+        }
+        $kitPath = if ([IO.Path]::IsPathRooted($ListingKit)) { $ListingKit } else { Join-Path $root $ListingKit }
+        $certificationNotes = Get-CertificationNotes -Path $kitPath -Limit $CertificationNotesLimit
     }
 
     # --- Credentials ---------------------------------------------------------------------------------------------------
@@ -572,7 +710,8 @@ try {
     $publishedVersions = @()
     if ($published) {
         $publishedText = Invoke-Store -Http $http -Token $token -Method GET -Uri ([Uri]::new($api, "/v1.0/my/applications/$ProductId/submissions/$($published['id'])"))
-        $publishedPackages = [System.Text.Json.Nodes.JsonNode]::Parse($publishedText)['applicationPackages']
+        $publishedSubmission = [System.Text.Json.Nodes.JsonNode]::Parse($publishedText)
+        $publishedPackages = $publishedSubmission['applicationPackages']
         if ($publishedPackages) {
             foreach ($entry in $publishedPackages) {
                 $parsedVersion = $null
@@ -580,6 +719,21 @@ try {
             }
         }
         Write-Step "Published package version(s): $(if ($publishedVersions) { ($publishedVersions | Sort-Object -Unique) -join ', ' } else { 'none listed' })"
+
+        # Whether the testers of the next submission read other notes than the published version's: in Check mode the
+        # way to see, before a release, that it changes them. Lengths only; the notes themselves stay out of the log.
+        if ($null -ne $certificationNotes) {
+            $publishedNotes = if ($publishedSubmission['notesForCertification']) { $publishedSubmission['notesForCertification'].ToString() } else { '' }
+            if (Test-SameNotes $publishedNotes $certificationNotes) { Write-Step 'Notes for certification: the published ones are the listing kit''s' }
+            elseif (-not $publishedNotes.Trim()) {
+                # What the real Store answered for BetterClipboard (2026-11-20): Partner Center keeps the notes its
+                # testers read on the product's Additional Testing Information page, outside every submission, and
+                # this API never showed them (the published submission's field read empty while that page held
+                # 1,770 characters). So the page is kept the kit's text by hand, and this field is the API's copy.
+                Write-Step "Notes for certification: the published submission holds none; a submission from this script sends the listing kit's ($($certificationNotes.Length) characters). The notes Partner Center shows testers are on the product's Additional Testing Information page, which this API does not read: keep that page the kit's text by hand (docs/store-listing.md, section 1)"
+            }
+            else { Write-Step "Notes for certification: the published ones ($($publishedNotes.Length) characters) are not the listing kit's ($($certificationNotes.Length) characters); a submission from this script sends the kit's" }
+        }
     }
 
     if ($Mode -eq 'Check') {
@@ -636,7 +790,13 @@ try {
         $list.Add($node)
     }
 
-    # "What's new": this release's notes in one language, nothing in the others (never an older version's notes).
+    # "What's new": this release's notes in each language it has them in, nothing in the others (never an older
+    # version's notes).
+    $whatsNew = [ordered]@{}
+    if ($notes) { $whatsNew[$NotesLanguage.ToLowerInvariant()] = $notes }
+    foreach ($entry in $translatedNotes.GetEnumerator()) {
+        if ($entry.Value) { $whatsNew[$entry.Key] = $entry.Value }
+    }
     $listings = $submission['listings']
     $languages = @()
     if ($listings) {
@@ -644,15 +804,28 @@ try {
             $base = $listing.Value['baseListing']
             if (-not $base) { continue }
             $languages += $listing.Key
-            $text = if ($listing.Key -ieq $NotesLanguage) { $notes } else { '' }
+            $text = $whatsNew[$listing.Key.ToLowerInvariant()]
+            if ($null -eq $text) { $text = '' }
             $base['releaseNotes'] = [System.Text.Json.Nodes.JsonValue]::Create($text)
         }
     }
-    if ($notes -and @($languages | Where-Object { $_ -ieq $NotesLanguage }).Count -eq 0) {
-        Write-Warning "The listing has no language '$NotesLanguage' (it has: $($languages -join ', ')), so ""What's new"" stays empty."
+    foreach ($language in @($whatsNew.Keys)) {
+        if (@($languages | Where-Object { $_ -ieq $language }).Count -eq 0) {
+            Write-Warning "The listing has no language '$language' (it has: $($languages -join ', ')), so its ""What's new"" is not sent."
+        }
+    }
+    $whatsNewSummary = if ($whatsNew.Count -gt 0) { (@($whatsNew.GetEnumerator() | ForEach-Object { "$($_.Value.Length) in $($_.Key)" }) -join ', ') } else { 'none' }
+
+    # Notes for certification: the kit's, true for this version. The copy the Store made holds the published
+    # submission's (empty for BetterClipboard's first, whose notes went onto the product's Additional Testing
+    # Information page), and a release that changes what the app does must not carry stale ones along.
+    $testerNotes = 'kept as published (-KeepCertificationNotes)'
+    if ($null -ne $certificationNotes) {
+        $submission['notesForCertification'] = [System.Text.Json.Nodes.JsonValue]::Create($certificationNotes)
+        $testerNotes = "from the listing kit ($($certificationNotes.Length) characters)"
     }
 
-    Write-Step "Updating submission $submissionId`: $($packages.Count) package(s) of version $newVersion, ""What's new"" of $($notes.Length) character(s) in $NotesLanguage"
+    Write-Step "Updating submission $submissionId`: $($packages.Count) package(s) of version $newVersion, ""What's new"" characters: $whatsNewSummary, notes for certification $testerNotes"
     $submissionUri = [Uri]::new($api, "/v1.0/my/applications/$ProductId/submissions/$submissionId")
     [void] (Invoke-Store -Http $http -Token $token -Method PUT -Uri $submissionUri -Body $submission.ToJsonString())
 

@@ -21,9 +21,6 @@ public sealed partial class FlyoutViewModel
     /// <summary>The prompt tabs' key hints: Enter pastes the prompt; Ctrl+P keeps it pinned; Delete removes it from the archive.</summary>
     public const string PromptKeyHint = "↵ paste · Ctrl+P pin · Del delete";
 
-    /// <summary>Most kept prompts (history entries) a prompt tab loads to merge with the archive.</summary>
-    public const int MaxKeptPrompts = 200;
-
     /// <summary>Archive rows loaded so far in the current prompt tab (the next page's offset).</summary>
     private int promptOffset;
 
@@ -80,14 +77,13 @@ public sealed partial class FlyoutViewModel
         var agent = CurrentAgent;
         var history = controller.History;
         bool pinnedFirst = controller.Settings.Current.PinnedOnTop;
-        var stored = await history.QueryAsync(new ClipQuery
+        // Every kept prompt (CLAUDE.md §2.62: until 2026-11-21 the 200 most recently used, so an older one could not be
+        // reached): the merge places each where its time falls among the archive's pages, a page not loaded yet included.
+        var stored = await QueryEveryEntryAsync(new ClipQuery
         {
             SearchText = SearchText,
             SearchOptions = CurrentSearchOptions,
             Filter = Filter,
-            Limit = MaxKeptPrompts,
-
-            // With pins first, every pin is among the ones loaded; without, the most recently used ones are.
             PinnedFirst = pinnedFirst,
             HiddenRows = HiddenRows,
         }, cancellationToken);

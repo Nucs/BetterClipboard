@@ -536,10 +536,15 @@
             <!--
                 The panel's search box (AutoSuggestBox.TextBoxStyle): WinUI's AutoSuggestBoxTextBoxStyle template
                 (Microsoft.WindowsAppSDK.WinUI 2.3.9 generic.xaml), copied unchanged except for one more column. That
-                column, between the clear (X) button and the magnifier, shows the TextBox's Description — which the
+                column, between the clear (X) button and the query button, shows the TextBox's Description — which the
                 flyout sets to its search options (Aa / W / .*), and which the stock template would show *below* the
                 box. The toggles thus sit inside the box at a fixed spot (the X appears to their left while there is
-                text), and the typed text and the placeholder end before them. Keep the rest in step with WinUI when
+                text), and the typed text and the placeholder end before them. The query button is the magnifier a
+                QueryIcon brings; the panel sets none since 2026-11-21 (it searches as you type, CLAUDE.md §2.6.2), so
+                WinUI collapses the button, its Auto column takes no room, and the toggles end at the box's right edge,
+                4 DIPs in (the last column, AutoSuggestBoxRightButtonMargin). The button stays in this copy all the
+                same: the Focused state's storyboard targets it by name and could not start without it, and a copy kept
+                as WinUI ships it stays easy to compare at the next upgrade. Keep the rest in step with WinUI when
                 upgrading it: a stale copy keeps old visuals, it does not break.
             -->
             <Style

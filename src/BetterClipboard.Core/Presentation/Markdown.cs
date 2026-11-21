@@ -37,12 +37,25 @@ public sealed record MarkdownInline(string Text, MarkdownStyle Style = MarkdownS
 public abstract record MarkdownBlock;
 
 /// <summary>
-/// A paragraph of text.
+/// A paragraph of text. A quoted paragraph is a paragraph inside a <see cref="MarkdownQuote"/>.
 /// </summary>
 /// <param name="Inlines">Its runs.</param>
 /// <param name="Indent">How many list levels it is indented by (a second paragraph inside a list item); 0 for body text.</param>
-/// <param name="IsQuote">Whether it is a block quote (<c>&gt; text</c>).</param>
-public sealed record MarkdownParagraph(IReadOnlyList<MarkdownInline> Inlines, int Indent = 0, bool IsQuote = false) : MarkdownBlock;
+public sealed record MarkdownParagraph(IReadOnlyList<MarkdownInline> Inlines, int Indent = 0) : MarkdownBlock;
+
+/// <summary>
+/// A block quote (<c>&gt; text</c>): the blocks inside it, read as Markdown of their own — paragraphs, headings, lists,
+/// code blocks, tables, rules, and quotes nested in it (<c>&gt; &gt; text</c>).
+/// </summary>
+/// <param name="Blocks">The blocks inside it, in reading order; never empty (a quote of nothing but blank lines is left out).</param>
+/// <param name="Indent">How many list levels it is indented by (a quote inside a list item); 0 outside a list.</param>
+/// <remarks>
+/// Until 2026-11-20 a quote was one paragraph of its lines' text, so whatever it held showed as its raw marks: the owner's
+/// Codex transcripts quote every message, and their tables came out as lines of bars ("we should be rendering that table
+/// too even if its nested or quoted or whatever"). A renderer draws the blocks one level further right than the quote's
+/// own place, in a quote's look; nesting is bounded by <see cref="MarkdownParser.MaxNesting"/>.
+/// </remarks>
+public sealed record MarkdownQuote(IReadOnlyList<MarkdownBlock> Blocks, int Indent = 0) : MarkdownBlock;
 
 /// <summary>
 /// A heading (<c>## text</c>).
@@ -82,7 +95,26 @@ public sealed record MarkdownCodeBlock(string Code, int Indent = 0, string? Info
 /// The most characters parsed; the rest is cut off. The release notes' <see cref="MarkdownParser.MaxLength"/> by default;
 /// the text viewer allows more, since its text comes from the user's own history, not the network.
 /// </param>
-public sealed record MarkdownParseOptions(bool KeepLineBreaks = false, int MaxLength = MarkdownParser.MaxLength);
+/// <param name="KeepLayout">
+/// Every line keeps its own layout, for a text read in a monospace font where columns of blanks line up (the text viewer,
+/// since 2026-11-16): an ASCII table, PowerShell's, psql's or pandas' output, a box drawn with dashes. Implies
+/// <paramref name="KeepLineBreaks"/>. What it keeps:
+/// <list type="bullet">
+/// <item><description>
+/// The indentation of a paragraph's and a quote's lines, and of a list item's further lines: a top-level paragraph's lines
+/// keep all of theirs, a list item's lines what lies right of the item's text. CommonMark drops it.
+/// </description></item>
+/// <item><description>The tabs inside those lines, and a backslash that ends one (CommonMark's hard-break mark).</description></item>
+/// <item><description>
+/// A line of three or more <c>-</c>, <c>*</c> or <c>_</c> that touches text — the line of a paragraph right above it, or a
+/// line of plain text right below it while no list item or quote is open — stays a line of that text: a table's header
+/// rule, a dashed border. Standing on its own (blank lines or other blocks around it), it is still a rule.
+/// </description></item>
+/// </list>
+/// The rest is Markdown as usual: headings, list items, fences, tables, emphasis and links are read the same way, and a
+/// heading's and a list item's own first line are trimmed as before.
+/// </param>
+public sealed record MarkdownParseOptions(bool KeepLineBreaks = false, int MaxLength = MarkdownParser.MaxLength, bool KeepLayout = false);
 
 /// <summary>
 /// One row of a table.
@@ -94,14 +126,19 @@ public sealed record MarkdownTableRow(IReadOnlyList<IReadOnlyList<MarkdownInline
 /// A table (<c>| a | b |</c> lines with a <c>|---|---|</c> line under the first).
 /// </summary>
 /// <param name="Rows">Its rows; the first one is the header.</param>
-public sealed record MarkdownTable(IReadOnlyList<MarkdownTableRow> Rows) : MarkdownBlock;
+/// <param name="Indent">
+/// How many list levels it is indented by: a table indented to a list item's text belongs to that item, like a fence
+/// there; 0 outside a list.
+/// </param>
+public sealed record MarkdownTable(IReadOnlyList<MarkdownTableRow> Rows, int Indent = 0) : MarkdownBlock;
 
 /// <summary>A horizontal rule (<c>---</c>).</summary>
 public sealed record MarkdownRule : MarkdownBlock;
 
 /// <summary>
 /// Reads the Markdown of release notes into blocks the update dialog can draw with plain text controls: paragraphs,
-/// headings, lists, code blocks, tables and rules, with bold, italic, code, strikethrough and links inside.
+/// headings, lists, code blocks, tables, rules and block quotes (which hold blocks of their own), with bold, italic, code,
+/// strikethrough and links inside. The text viewer reads clipboard texts with it too (<see cref="MarkdownParseOptions"/>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -112,13 +149,20 @@ public sealed record MarkdownRule : MarkdownBlock;
 /// </para>
 /// <para>
 /// <b>Never throws, never hangs.</b> The text comes from the network. Input is cut at <see cref="MaxLength"/>, emphasis
-/// and links nest at most <see cref="MaxNesting"/> deep, a paragraph longer than <see cref="MaxInlineLength"/> is taken
-/// as plain text, and a search for a closing mark that failed once is not repeated — so the work stays proportional to the
-/// text for well-formed notes and bounded for any other.
+/// and links nest at most <see cref="MaxNesting"/> deep, and so do block quotes (a deeper quote mark is text), a paragraph
+/// longer than <see cref="MaxInlineLength"/> is taken as plain text, and a search for a closing mark that failed once is
+/// not repeated — so the work stays proportional to the text for well-formed notes and bounded for any other.
+/// </para>
+/// <para>
+/// <b>Blocks inside blocks</b> (2026-11-20). A block quote's lines, without one level of quote marks, are read again as
+/// Markdown, so a quote holds tables, headings, lists, code and quotes like a document does (<see cref="MarkdownQuote"/>);
+/// a table or a quote indented to a list item's text stays inside that item. Before, a quote was one paragraph and a table
+/// always ended the list, so a quoted table showed as lines of bars.
 /// </para>
 /// <para>
 /// It follows CommonMark and GitHub's flavor where release notes rely on them, and is simpler elsewhere: no setext
-/// headings, no reference links, no nested block quotes, no indented code blocks (an indented line is text).
+/// headings, no reference links, no indented code blocks (an indented line is text), and a list item's first line is
+/// never a quote (<c>- &gt; text</c> keeps its mark as text).
 /// </para>
 /// </remarks>
 public static class MarkdownParser
@@ -152,7 +196,8 @@ public static class MarkdownParser
     public static IReadOnlyList<MarkdownBlock> Parse(string? markdown) => Parse(markdown, new MarkdownParseOptions());
 
     /// <summary>
-    /// Parses Markdown into blocks, with options beyond CommonMark's defaults (kept line breaks, a larger size limit).
+    /// Parses Markdown into blocks, with options beyond CommonMark's defaults (kept line breaks, a kept layout, a larger size
+    /// limit).
     /// </summary>
     /// <param name="markdown">The text; may be <see langword="null"/> or empty.</param>
     /// <param name="options">How to read it.</param>
@@ -161,10 +206,9 @@ public static class MarkdownParser
     public static IReadOnlyList<MarkdownBlock> Parse(string? markdown, MarkdownParseOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var blocks = new List<MarkdownBlock>();
         if (string.IsNullOrWhiteSpace(markdown))
         {
-            return blocks;
+            return new List<MarkdownBlock>();
         }
 
         int maxLength = Math.Max(0, options.MaxLength);
@@ -174,16 +218,44 @@ public static class MarkdownParser
         }
 
         var lines = markdown.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').Split('\n');
+        return ParseLines(lines, options, nesting: 0);
+    }
+
+    /// <summary>
+    /// Parses source lines into blocks: a whole document's, or a block quote's own (its lines without one level of quote
+    /// marks, read by the same rules, so a quote holds whatever a document can).
+    /// </summary>
+    /// <param name="lines">The source lines, without their line ends.</param>
+    /// <param name="options">How to read them.</param>
+    /// <param name="nesting">
+    /// How many block quotes the lines are inside. A quote mark that would nest deeper than <see cref="MaxNesting"/> is
+    /// read as text, so no input recurses without end, and each line is read at most that many times over.
+    /// </param>
+    /// <returns>The blocks in reading order; empty when the lines hold nothing but blanks.</returns>
+    private static List<MarkdownBlock> ParseLines(string[] lines, MarkdownParseOptions options, int nesting)
+    {
+        var blocks = new List<MarkdownBlock>();
         var pending = new PendingText();
         var levels = new List<ListLevel>();
         bool afterBlank = false;
         bool previousHardBreak = false;
+
+        // Whether the line before was a block quote's last line. A rule-like line right under a quote is a rule: it can
+        // neither go on the quote's text (CommonMark's lazy lines are text only) nor, with a kept layout, be taken as a
+        // line of the text below it, since the quote was open when it came.
+        bool afterQuote = false;
+
+        // A kept layout implies kept line breaks: a line's own indentation means nothing once it is joined to the line above.
+        bool keepLayout = options.KeepLayout;
+        bool keepBreaks = options.KeepLineBreaks || keepLayout;
 
         for (int i = 0; i < lines.Length; i++)
         {
             var line = ExpandTabs(lines[i]);
             int indent = CountIndent(line);
             var trimmed = line.Trim();
+            bool quoteAbove = afterQuote;
+            afterQuote = false;
 
             if (trimmed.Length == 0)
             {
@@ -247,7 +319,11 @@ public static class MarkdownParser
                 continue;
             }
 
-            if (indent <= 3 && IsRule(trimmed))
+            // With a kept layout, a rule-like line that touches text is a line of that text (a table's header rule, a dashed
+            // border); it then goes past the block starts below to the text, since a spaced "- - -" must not become a list
+            // item.
+            bool ruleLike = indent <= 3 && IsRule(trimmed);
+            if (ruleLike && !(keepLayout && !quoteAbove && RuleTouchesText(lines, i, pending.Kind)))
             {
                 Flush(blocks, pending);
                 levels.Clear();
@@ -257,10 +333,18 @@ public static class MarkdownParser
                 continue;
             }
 
+            // A block indented to the open list item's text belongs to that item, as a fence there does: the list goes on
+            // after it, and the block is drawn under the item's text. Anywhere else it ends the list.
+            bool inItem = levels.Count > 0 && indent >= levels[^1].ContentIndent;
+
             if (trimmed[0] == '|' && i + 1 < lines.Length && IsTableSeparator(lines[i + 1].Trim()))
             {
                 Flush(blocks, pending);
-                levels.Clear();
+                if (!inItem)
+                {
+                    levels.Clear();
+                }
+
                 var rows = new List<MarkdownTableRow> { ReadTableRow(trimmed) };
                 for (i += 2; i < lines.Length && lines[i].TrimStart().StartsWith('|'); i++)
                 {
@@ -269,35 +353,42 @@ public static class MarkdownParser
 
                 // The loop stopped on the first line that is not a row: look at it again.
                 i--;
-                blocks.Add(new MarkdownTable(rows));
+                blocks.Add(new MarkdownTable(rows, inItem ? levels.Count : 0));
                 afterBlank = false;
                 previousHardBreak = false;
                 continue;
             }
 
-            if (indent <= 3 && trimmed[0] == '>')
+            // A block quote: its marks may stand up to three blanks right of the margin, or of the open list item's text
+            // when it is inside that item. Its lines are read in one go and parsed again as the quote's own Markdown.
+            int quoteBase = inItem ? levels[^1].ContentIndent : 0;
+            if (trimmed[0] == '>' && indent - quoteBase <= 3 && nesting < MaxNesting)
             {
-                var quoted = trimmed.AsSpan(1).TrimStart().ToString();
-                if (pending.Kind == PendingKind.Quote && !afterBlank)
+                Flush(blocks, pending);
+                var quoted = new List<string>();
+                i = ReadQuote(lines, i, quoteBase, quoted);
+                if (!inItem)
                 {
-                    pending.Append(quoted, previousHardBreak || options.KeepLineBreaks);
-                }
-                else
-                {
-                    Flush(blocks, pending);
                     levels.Clear();
-                    pending.Start(PendingKind.Quote, quoted);
+                }
+
+                // A quote of nothing but blank lines has nothing to draw, and a renderer would show its bar alone.
+                var quoteBlocks = ParseLines([.. quoted], options, nesting + 1);
+                if (quoteBlocks.Count > 0)
+                {
+                    blocks.Add(new MarkdownQuote(quoteBlocks, inItem ? levels.Count : 0));
                 }
 
                 afterBlank = false;
-                previousHardBreak = EndsWithHardBreak(line);
+                previousHardBreak = false;
+                afterQuote = true;
                 continue;
             }
 
             // A numbered item starts a list in the middle of a paragraph only as "1." (CommonMark's rule): a wrapped
-            // line of prose that happens to begin with "2026. " stays prose.
-            if (TryReadListItem(trimmed, out var marker, out int markerWidth, out var itemText) &&
-                (afterBlank || pending.Kind is not (PendingKind.Paragraph or PendingKind.Quote) || !char.IsAsciiDigit(marker[0]) || marker == "1."))
+            // line of prose that happens to begin with "2026. " stays prose. A rule-like line that got here is text.
+            if (!ruleLike && TryReadListItem(trimmed, out var marker, out int markerWidth, out var itemText) &&
+                (afterBlank || pending.Kind is not PendingKind.Paragraph || !char.IsAsciiDigit(marker[0]) || marker == "1."))
             {
                 Flush(blocks, pending);
 
@@ -324,22 +415,26 @@ public static class MarkdownParser
                 continue;
             }
 
-            // A line of text.
+            // A line of text. With a kept layout it keeps its indentation past its block's own: a list item's lines are
+            // measured from the item's text, so a line indented to it adds nothing.
             if (pending.Kind != PendingKind.None && !afterBlank)
             {
-                pending.Append(trimmed, previousHardBreak || options.KeepLineBreaks);
+                int blockIndent = pending.Kind == PendingKind.ListItem || (pending.Kind == PendingKind.Paragraph && pending.Depth > 0)
+                    ? levels.Count > 0 ? levels[^1].ContentIndent : 0
+                    : 0;
+                pending.Append(keepLayout ? LaidOutLine(lines[i], indent, blockIndent) : trimmed, previousHardBreak || keepBreaks, keepBreakMark: keepLayout);
             }
             else if (afterBlank && levels.Count > 0 && indent >= levels[^1].ContentIndent)
             {
                 // A further paragraph of the list item above: drawn under that item's text.
                 Flush(blocks, pending);
-                pending.Start(PendingKind.Paragraph, trimmed, depth: levels.Count);
+                pending.Start(PendingKind.Paragraph, keepLayout ? LaidOutLine(lines[i], indent, levels[^1].ContentIndent) : trimmed, depth: levels.Count);
             }
             else
             {
                 Flush(blocks, pending);
                 levels.Clear();
-                pending.Start(PendingKind.Paragraph, trimmed);
+                pending.Start(PendingKind.Paragraph, keepLayout ? LaidOutLine(lines[i], indent, 0) : trimmed);
             }
 
             afterBlank = false;
@@ -399,10 +494,100 @@ public static class MarkdownParser
         blocks.Add(pending.Kind switch
         {
             PendingKind.ListItem => new MarkdownListItem(pending.Depth, pending.Marker, inlines),
-            PendingKind.Quote => new MarkdownParagraph(inlines, IsQuote: true),
             _ => new MarkdownParagraph(inlines, pending.Depth),
         });
         pending.Reset();
+    }
+
+    /// <summary>
+    /// Cuts a code block at the Markdown tables in its code: the code before a table, the table, the code after it. For a
+    /// code block that holds no code — Markdown or plain text, such as a transcript's tool output — whose tables read best
+    /// drawn; the caller decides which blocks those are (the text viewer: the ones it does not color as code).
+    /// </summary>
+    /// <param name="block">The code block.</param>
+    /// <returns>
+    /// The pieces in reading order: code blocks with <paramref name="block"/>'s indentation and info string, and tables
+    /// with its indentation. The block itself, alone, when its code holds no table.
+    /// </returns>
+    /// <exception cref="ArgumentNullException"><paramref name="block"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// A table is told as in a document: a line starting with a bar over a line of dashes between bars, and the rows go on
+    /// while lines start with a bar. Blank lines next to a cut are dropped, since a table has its own gap; a piece left
+    /// with nothing but blank lines is dropped whole. The work is linear in the code's length.
+    /// </remarks>
+    public static IReadOnlyList<MarkdownBlock> SplitTables(MarkdownCodeBlock block)
+    {
+        ArgumentNullException.ThrowIfNull(block);
+        var lines = block.Code.Split('\n');
+        List<MarkdownBlock>? pieces = null;
+        int codeStart = 0;
+        for (int i = 0; i + 1 < lines.Length; i++)
+        {
+            var trimmed = lines[i].Trim();
+            if (trimmed.Length == 0 || trimmed[0] != '|' || !IsTableSeparator(lines[i + 1].Trim()))
+            {
+                continue;
+            }
+
+            pieces ??= [];
+            AddCodePiece(pieces, block, lines, codeStart, i);
+            var rows = new List<MarkdownTableRow> { ReadTableRow(trimmed) };
+            int end = i + 2;
+            for (; end < lines.Length && lines[end].TrimStart().StartsWith('|'); end++)
+            {
+                rows.Add(ReadTableRow(lines[end].Trim()));
+            }
+
+            pieces.Add(new MarkdownTable(rows, block.Indent));
+            codeStart = end;
+
+            // The loop's own step moves to the first line after the table.
+            i = end - 1;
+        }
+
+        if (pieces is null)
+        {
+            return [block];
+        }
+
+        AddCodePiece(pieces, block, lines, codeStart, lines.Length);
+        return pieces;
+    }
+
+    /// <summary>
+    /// Adds the code lines from <paramref name="start"/> up to <paramref name="end"/> as a code block like
+    /// <paramref name="block"/>, without the blank lines next to a cut (a table's side); nothing when only blank lines are left.
+    /// </summary>
+    /// <param name="pieces">The pieces so far.</param>
+    /// <param name="block">The code block being cut.</param>
+    /// <param name="lines">Its code's lines.</param>
+    /// <param name="start">The first line of the piece; a cut when greater than 0 (a table ends there).</param>
+    /// <param name="end">The line after the piece; a cut when less than the line count (a table starts there).</param>
+    private static void AddCodePiece(List<MarkdownBlock> pieces, MarkdownCodeBlock block, string[] lines, int start, int end)
+    {
+        // Only the sides that touch a table lose their blank lines: the block's own first and last lines are the author's.
+        if (start > 0)
+        {
+            while (start < end && string.IsNullOrWhiteSpace(lines[start]))
+            {
+                start++;
+            }
+        }
+
+        if (end < lines.Length)
+        {
+            while (end > start && string.IsNullOrWhiteSpace(lines[end - 1]))
+            {
+                end--;
+            }
+        }
+
+        // Every piece has a cut on at least one side (it is called only once a table was found), and the trimming from that
+        // side stopped at a line with text, so a piece that is left holds text.
+        if (end > start)
+        {
+            pieces.Add(new MarkdownCodeBlock(string.Join('\n', lines, start, end - start), block.Indent, block.Info));
+        }
     }
 
     /// <summary>Replaces tabs by spaces up to the next multiple of four, as Markdown counts indentation.</summary>
@@ -446,6 +631,206 @@ public static class MarkdownParser
     }
 
     /// <summary>
+    /// A line of text as it was laid out (<see cref="MarkdownParseOptions.KeepLayout"/>): its indentation past its block's,
+    /// its own characters with their tabs, without the blanks that end it.
+    /// </summary>
+    /// <param name="raw">The source line, tabs not expanded.</param>
+    /// <param name="indent">Its indentation in columns, tabs expanded (<see cref="CountIndent"/>).</param>
+    /// <param name="blockIndent">
+    /// The column its block's text starts at: 0 for a top-level paragraph, a list item's text column for that item's lines.
+    /// </param>
+    /// <returns>The line's text.</returns>
+    private static string LaidOutLine(string raw, int indent, int blockIndent)
+    {
+        // A top-level line keeps its indentation exactly as typed, tabs too, so it lines up with the next lines as it did
+        // where it was copied from. Inside a list item, the item's own indentation is not the line's: only what lies right
+        // of the item's text is kept, as blanks, since tabs straddling that column cannot be split.
+        if (blockIndent <= 0)
+        {
+            return raw.TrimEnd();
+        }
+
+        var text = raw.Trim();
+        int extra = indent - blockIndent;
+        return extra > 0 ? new string(' ', extra) + text : text;
+    }
+
+    /// <summary>
+    /// Reads a block quote from its first line: each of its lines as the quote's own text (<see cref="StripQuoteMark"/>),
+    /// and the lazy lines that go on the text of its last paragraph without a mark of their own (CommonMark's lazy
+    /// continuation: "&gt; a long quote that" over "goes on here."). A blank line, a block start, or a line under a quoted
+    /// line that is not paragraph text ends it.
+    /// </summary>
+    /// <param name="lines">The source lines.</param>
+    /// <param name="first">The quote's first line: a quote mark at most three blanks right of <paramref name="quoteBase"/>.</param>
+    /// <param name="quoteBase">
+    /// The column the quote's marks are measured from: 0 at the margin, the open list item's text column for a quote inside
+    /// that item (a mark left of it is not this quote's).
+    /// </param>
+    /// <param name="quoted">Receives the quote's lines, as its own text, in order.</param>
+    /// <returns>The index of the quote's last line; the caller goes on after it.</returns>
+    private static int ReadQuote(string[] lines, int first, int quoteBase, List<string> quoted)
+    {
+        int last = first;
+
+        // Whether the quote's last line is text a lazy line may go on: a paragraph's or a list item's, not a heading, a rule,
+        // a table row, a blank, or a line of a fence (code needs its marks on every line).
+        bool textOpen = false;
+        bool inFence = false;
+        char fenceChar = '\0';
+        int fenceLength = 0;
+        for (int i = first; i < lines.Length; i++)
+        {
+            var line = ExpandTabs(lines[i]);
+            int indent = CountIndent(line);
+            var trimmed = line.Trim();
+            if (trimmed.Length > 0 && trimmed[0] == '>' && indent >= quoteBase && indent - quoteBase <= 3)
+            {
+                var content = StripQuoteMark(lines[i]);
+                var inner = ExpandTabs(content).Trim();
+                if (inFence)
+                {
+                    inFence = !IsClosingFence(inner, fenceChar, fenceLength);
+                    textOpen = false;
+                }
+                else if (inner.Length == 0)
+                {
+                    textOpen = false;
+                }
+                else if (TryReadFence(inner, out fenceChar, out fenceLength))
+                {
+                    inFence = true;
+                    textOpen = false;
+                }
+                else
+                {
+                    textOpen = inner[0] != '|' && !IsRule(inner) && !TryReadHeading(inner, out _, out _);
+                }
+
+                quoted.Add(content);
+                last = i;
+                continue;
+            }
+
+            if (textOpen && trimmed.Length > 0 && ContinuesParagraph(lines, i))
+            {
+                // A lazy line keeps what lies right of the quote's own column: its indentation past a list item's text,
+                // its tabs, its end (a hard break).
+                quoted.Add(DropColumns(lines[i], quoteBase));
+                last = i;
+                continue;
+            }
+
+            break;
+        }
+
+        return last;
+    }
+
+    /// <summary>
+    /// A quote's line as the quote's own text: without the blanks before its quote mark, the mark, and the one blank or tab
+    /// after the mark that belongs to it. What follows is kept as typed — further blanks and tabs (indentation that nests a
+    /// list, or that a kept layout shows), and the blanks that end the line (a hard break).
+    /// </summary>
+    /// <param name="raw">The source line, tabs not expanded: blanks or tabs, then a <c>&gt;</c>.</param>
+    /// <returns>The quoted text; empty for a line of just the mark.</returns>
+    private static string StripQuoteMark(string raw)
+    {
+        int start = 0;
+        while (start < raw.Length && raw[start] is ' ' or '\t')
+        {
+            start++;
+        }
+
+        // The caller saw the mark here; one blank or tab after it belongs to the mark.
+        start++;
+        if (start < raw.Length && raw[start] is ' ' or '\t')
+        {
+            start++;
+        }
+
+        return start >= raw.Length ? string.Empty : raw[start..];
+    }
+
+    /// <summary>
+    /// Removes up to <paramref name="columns"/> columns of leading blanks and tabs from a raw line, a tab counting to the
+    /// next multiple of four as <see cref="ExpandTabs"/> counts it; the rest of the line is kept as typed.
+    /// </summary>
+    /// <param name="raw">The source line, tabs not expanded.</param>
+    /// <param name="columns">How many columns to remove; 0 keeps the line whole.</param>
+    /// <returns>The line without them (a tab that straddles the last column goes whole).</returns>
+    private static string DropColumns(string raw, int columns)
+    {
+        int column = 0;
+        int index = 0;
+        while (index < raw.Length && column < columns && raw[index] is ' ' or '\t')
+        {
+            column = raw[index] == '\t' ? column + 4 - (column % 4) : column + 1;
+            index++;
+        }
+
+        return index == 0 ? raw : raw[index..];
+    }
+
+    /// <summary>
+    /// Whether a line goes on a paragraph above it rather than ending it: a line of plain text (<see cref="IsPlainTextLine"/>),
+    /// or a numbered item other than <c>1.</c>, which cannot interrupt a paragraph (CommonMark's rule: a wrapped line that
+    /// begins with "2026. " is prose).
+    /// </summary>
+    /// <param name="lines">The source lines.</param>
+    /// <param name="index">The line's index.</param>
+    /// <returns><see langword="true"/> when the line is the paragraph's text.</returns>
+    private static bool ContinuesParagraph(string[] lines, int index)
+    {
+        var trimmed = ExpandTabs(lines[index]).Trim();
+        if (trimmed.Length > 0 && char.IsAsciiDigit(trimmed[0]) && TryReadListItem(trimmed, out var marker, out _, out _))
+        {
+            return marker != "1.";
+        }
+
+        return IsPlainTextLine(lines, index);
+    }
+
+    /// <summary>
+    /// Whether a line of three or more <c>-</c>, <c>*</c> or <c>_</c> touches text, so that a kept layout reads it as a line of
+    /// that text instead of a rule (<see cref="MarkdownParseOptions.KeepLayout"/>): it continues the paragraph right above
+    /// it, or starts one with the line of plain text right below it. Under an open list item it is a rule, as CommonMark has
+    /// it: lines there belong to the item; the caller treats a line right under a block quote the same way.
+    /// </summary>
+    /// <param name="lines">The source lines.</param>
+    /// <param name="index">The rule-like line's index.</param>
+    /// <param name="pending">What the parser is collecting when it reaches the line.</param>
+    /// <returns><see langword="true"/> when the line is text.</returns>
+    private static bool RuleTouchesText(string[] lines, int index, PendingKind pending) => pending switch
+    {
+        PendingKind.Paragraph => true,
+        PendingKind.None => index + 1 < lines.Length && IsPlainTextLine(lines, index + 1),
+        _ => false,
+    };
+
+    /// <summary>
+    /// Whether a source line is a line of plain text, one that would continue or start a paragraph, rather than a blank
+    /// line or the start of a block of its own (a fence, a comment, a heading, a rule, a quote, a list item, a table).
+    /// </summary>
+    /// <param name="lines">The source lines.</param>
+    /// <param name="index">The line's index (a table is told by the line after it).</param>
+    /// <returns><see langword="true"/> for plain text.</returns>
+    private static bool IsPlainTextLine(string[] lines, int index)
+    {
+        var line = ExpandTabs(lines[index]);
+        var trimmed = line.Trim();
+        if (trimmed.Length == 0 || TryReadFence(trimmed, out _, out _) || trimmed.StartsWith("<!--", StringComparison.Ordinal) ||
+            TryReadListItem(trimmed, out _, out _, out _) ||
+            (trimmed[0] == '|' && index + 1 < lines.Length && IsTableSeparator(lines[index + 1].Trim())))
+        {
+            return false;
+        }
+
+        // Headings, rules and quotes start blocks only up to three blanks in, as the parser reads them.
+        return CountIndent(line) > 3 || !(TryReadHeading(trimmed, out _, out _) || IsRule(trimmed) || trimmed[0] == '>');
+    }
+
+    /// <summary>
     /// Whether a source line ends with a hard break: two or more spaces, or a backslash, before the line end.
     /// </summary>
     /// <param name="line">The untrimmed line.</param>
@@ -454,11 +839,16 @@ public static class MarkdownParser
         line.EndsWith("  ", StringComparison.Ordinal) || (line.EndsWith('\\') && !line.EndsWith(@"\\", StringComparison.Ordinal));
 
     /// <summary>Reads a code fence's opening line.</summary>
-    /// <param name="trimmed">The trimmed line.</param>
+    /// <remarks>
+    /// Internal, not private: the release notes' language blocks (<c>Updates/ReleaseNotesLanguages</c>) must see fences
+    /// exactly as this parser does, or a translation block would be found where the dialog draws code, or missed where it
+    /// hides a comment.
+    /// </remarks>
+    /// <param name="trimmed">The trimmed line; must not be empty.</param>
     /// <param name="fenceChar">The fence's character: a backtick or a tilde.</param>
     /// <param name="fenceLength">How many of them open it (at least three).</param>
     /// <returns><see langword="true"/> for an opening fence.</returns>
-    private static bool TryReadFence(string trimmed, out char fenceChar, out int fenceLength)
+    internal static bool TryReadFence(string trimmed, out char fenceChar, out int fenceLength)
     {
         fenceChar = trimmed[0];
         fenceLength = 0;
@@ -477,11 +867,12 @@ public static class MarkdownParser
     }
 
     /// <summary>Whether a line closes the open code fence: at least as many fence characters, and nothing else.</summary>
+    /// <remarks>Internal for the same reason as <see cref="TryReadFence"/>.</remarks>
     /// <param name="trimmed">The trimmed line.</param>
     /// <param name="fenceChar">The open fence's character.</param>
     /// <param name="fenceLength">The open fence's length.</param>
     /// <returns><see langword="true"/> for the closing fence.</returns>
-    private static bool IsClosingFence(string trimmed, char fenceChar, int fenceLength)
+    internal static bool IsClosingFence(string trimmed, char fenceChar, int fenceLength)
     {
         if (trimmed.Length < fenceLength)
         {
@@ -1197,7 +1588,10 @@ public static class MarkdownParser
         return false;
     }
 
-    /// <summary>What the block collector is collecting.</summary>
+    /// <summary>
+    /// What the block collector is collecting. A block quote is never collected line by line: it is read whole and parsed
+    /// as its own text (<see cref="ReadQuote"/>).
+    /// </summary>
     private enum PendingKind
     {
         /// <summary>Nothing.</summary>
@@ -1208,9 +1602,6 @@ public static class MarkdownParser
 
         /// <summary>A list item.</summary>
         ListItem,
-
-        /// <summary>A block quote.</summary>
-        Quote,
     }
 
     /// <summary>
@@ -1249,14 +1640,18 @@ public static class MarkdownParser
         }
 
         /// <summary>Adds a further source line: after a blank, or on a new line when the author asked for a hard break.</summary>
-        /// <param name="text">The line, trimmed.</param>
+        /// <param name="text">The line, trimmed (with a kept layout, its indentation kept).</param>
         /// <param name="hardBreak">Whether the line before ended with a hard break.</param>
-        public void Append(string text, bool hardBreak)
+        /// <param name="keepBreakMark">
+        /// Whether a backslash ending the line before stays: with a kept layout every break is kept anyway, and the backslash
+        /// is that line's own character (a path, ASCII art), not CommonMark's mark for a break.
+        /// </param>
+        public void Append(string text, bool hardBreak, bool keepBreakMark = false)
         {
             if (hardBreak)
             {
                 // The marks of the break itself (trailing blanks were trimmed; a backslash was not).
-                if (Text.Length > 0 && Text[^1] == '\\')
+                if (!keepBreakMark && Text.Length > 0 && Text[^1] == '\\')
                 {
                     Text.Length--;
                 }

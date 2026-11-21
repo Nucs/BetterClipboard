@@ -9,15 +9,15 @@ Legend: **[docs]** = Microsoft documentation read on 2026-11-12 · **[measured]*
 Windows 11 25H2 desktop (26200, Tiny11) with [`tools/probes/msix_lab`](../tools/probes/msix_lab) · **[policy]** =
 Microsoft Store Policies 7.20 (published 2026-09-15, effective 2026-10-22).
 
-**State (2026-11-15):** the Store edition and its package build are in the repository and were run end to end in test
-desktops. The owner registered as a developer. The name **BetterClipboard** is reserved (Store ID `9PHL574X9BF9`,
-publisher "Nucs"), and the product's first submission (1.2.11, the release 0.2.11) was **sent for certification** on
-2026-11-13; it failed on one search term ("Win+V", policy 10.1.3) and was fixed and **resubmitted** on 2026-11-15
-(§8). Since 2026-11-14 the edition keeps its history in `%LOCALAPPDATA%\BetterClipboard`, the folder every
-other kind of install uses (§4.4); that ships with the next release, whose submission needs the updated notes for
-certification. The release pipeline builds the Store packages, and it is **connected** to the Store since 2026-11-15:
-the three secrets are set, and *Microsoft Store › check* signed in on GitHub and read the app (§7). From the first
-published submission on, every release submits itself.
+**State (2026-11-20):** **BetterClipboard is in the Microsoft Store**: https://apps.microsoft.com/detail/9PHL574X9BF9
+(publisher "Nucs"). The first submission (1.2.11, the release 0.2.11) was sent for certification on 2026-11-13,
+failed on one search term ("Win+V", policy 10.1.3), and was fixed, resubmitted, certified and **published on
+2026-11-15 at 19:51 UTC** (§8). Since 2026-11-14 the edition keeps its history in `%LOCALAPPDATA%\BetterClipboard`,
+the folder every other kind of install uses (§4.4); that ships with the next release, 0.2.12. The release pipeline
+builds the Store packages and is **connected** to the Store since 2026-11-15 (§7). Since the app is published, every
+stable release submits itself. Since 2026-11-20 the notes for certification say the history stays: the product's own
+notes page, which the testers read, holds the kit's text (updated by hand), and every release sends the same text in
+its submission's own field (§7, §8).
 
 ## 1. Where: the Microsoft Store, as an MSIX package
 
@@ -282,8 +282,8 @@ as it does after every other kind of uninstall. A Store edition installed again 
 
 **For certification.** The notes for certification of the first submission (1.2.11) said the history is in the
 package's own folder and removed with the app, which is true for that version. The kit's notes
-(`docs/store-listing.md` §1, *Additional testing information*) now describe the shared folder; they are typed into
-the next submission by hand before it is committed (the pipeline carries the notes over unchanged, §9).
+(`docs/store-listing.md` §1, *Additional testing information*) now describe the shared folder: the product's notes
+page holds them since 2026-11-20, and the release pipeline sends them with every submission (§7).
 
 ## 5. The package
 
@@ -314,7 +314,7 @@ was reserved (2026-11-13). None of it is a secret:
 | Package/Identity/Publisher | `CN=B31AB4B1-B96C-4DB9-83AE-B799D5192208` |
 | Package/Properties/PublisherDisplayName | `Nucs` |
 | Package family name | `Nucs.BetterClipboard_mgez7y7xa0my4` |
-| Store ID | `9PHL574X9BF9` (`https://apps.microsoft.com/detail/9PHL574X9BF9` once it is published) |
+| Store ID | `9PHL574X9BF9` (https://apps.microsoft.com/detail/9PHL574X9BF9, published since 2026-11-15) |
 
 The build computes the family name from the name and the publisher (the publisher's SHA-256, its first eight bytes
 in Windows' base 32) and refuses to make a Store package when it differs from the file's `packageFamilyName`: a
@@ -404,7 +404,7 @@ data only. Each was deleted afterwards.
 | **The shared data folder, measured** (2026-11-14, `msix_lab`'s `shared` section, in another disposable desktop) | A folder made by cmd, then written by the package: subfolders, a journal made and deleted, a memory-mapped file and a file moved over another were all real and seen from outside; nothing landed in `LocalCache`. A private copy beside the real folder: the package read and wrote the private one, the outside saw only the real one. That copy moved to the real path by cmd: real from then on. After the package was uninstalled, the folder made by cmd stayed with its files |
 | **The shared data folder in the app** (2026-11-14, a Store package of 0.2.12 test-signed for the Store's publisher, in a disposable desktop on this PC) | 1.2.11 installed first, with BC-TEST copies and a pin in its own folder. 1.2.12 installed over it as an update: "Made the shared data folder", "written for real on this Windows build (10.0.26200.7171)", "Moved this edition's history …", "… settings into the shared data folder"; the same store and key ("new key: False"), no language picker, no welcome; *Settings › Data folder* named the shared folder with its note. The released 0.2.11, installed with `install.ps1`, warned that the two use the same history, ran on it and added a copy. The Store edition's setup offered the move with the shared wording and two check lines; *Move to this edition* uninstalled the installer copy ("Your history was kept"), and the Store edition went on with the same store |
 | Removing the package, and installing it again (the same desktop) | The package and its own folders were gone, the record included; `%LOCALAPPDATA%\BetterClipboard` stayed with its store, key, settings and logs. Installed again over that history with the welcome not accepted (an installer copy's settings): the proof ran again, no picker, no move, and the welcome said "Your history and settings from the BetterClipboard you used before are kept…". After *Start*: the same store, the panel with all four copies (the installer copy's among them), the pin. `bclip status` started the app by itself and listed the same four |
-| **The release pipeline's connection** (2026-11-15, on GitHub: *Microsoft Store › check* with the repository's three secrets) | Signed in to the Store's submission API as the application and read app `9PHL574X9BF9`: "nothing is published yet, and a submission is pending", then "The credentials and the product id work. Nothing was changed." The first run (43719040350) was red with an empty exit code: the script's Check mode ended with a `return` (§7). With `8939afe` the run (43719877269) was green. `test-submit-store.ps1`: 45 of 45; the unfixed script fails exactly its two new checks that run the script in the caller's PowerShell |
+| **The release pipeline's connection** (2026-11-15, on GitHub: *Microsoft Store › check* with the repository's three secrets) | Signed in to the Store's submission API as the application and read app `9PHL574X9BF9`: "nothing is published yet, and a submission is pending", then "The credentials and the product id work. Nothing was changed." The first run (43719040350) was red with an empty exit code: the script's Check mode ended with a `return` (§7). With `8939afe` the run (43719877269) was green, and so was the run from `main` after the push (43754741556). `test-submit-store.ps1`: 45 of 45; the unfixed script fails exactly its two new checks that run the script in the caller's PowerShell |
 
 The other editions share the changed start-up code, so the unpackaged build was run once more after the change, as
 an isolated instance on the owner's PC while nobody used it: it started in the tray and ended on `--exit` with 0
@@ -442,12 +442,25 @@ release is published ([`release.yml`](../.github/workflows/release.yml)):
 2. **Submission**: [`submit-store.ps1`](../tools/release/submit-store.ps1), the release's last step, with
    Microsoft's Store submission API **[docs]**. A new submission is made as a copy of the published one; its
    packages are replaced by the two new ones; "What's new" in the English listing gets the tag's notes, cut to the
-   Store's 1,500 characters (each lead-in with its first sentence, the fixes as a count), and is emptied in the
-   other languages; the packages go up in one archive; the submission is committed, and its status is followed
-   until the Store has taken it into certification. Listing texts, pictures, price and age rating are carried
-   over untouched from the published submission.
+   Store's 1,500 characters (each lead-in with its first sentence, the fixes as a count); since 0.2.12 each listing
+   whose language has a translation of the notes (`docs/release-notes/<version>/<tag>.md`, passed as
+   `-TranslatedNotesDirectory`) gets that translation, cut the same way with its own punctuation (the Chinese for
+   `zh-hans`: 602 characters for 0.2.12; `CLAUDE.md` §2.67), and the other languages are emptied; the notes for
+   certification become the kit's (`store-listing.md` §1, *Additional testing
+   information*; since 2026-11-20); the packages go up in one archive; the submission is committed, and its status
+   is followed until the Store has taken it into certification. Listing texts, pictures, price and age rating are
+   carried over untouched from the published submission.
+   - **Why the notes are set**: the copy holds the published submission's own field, which may describe an older
+     version. **That field is not what the testers read**: Partner Center keeps their notes on the product's
+     *Supplemental info › Additional Testing Information* page, outside every submission, and the API does not show
+     that page (for 1.2.11 the field read empty while the page held the notes, measured 2026-11-20). So the release
+     sends the kit's text into the field, and the page is kept the same text by hand (`store-listing.md` §1); since
+     0.2.12 that text says the history stays in the shared folder (§4.4, policy 10.2.7).
+     `-KeepCertificationNotes` keeps the published field as it is.
 3. **What the step refuses**, before it changes anything: packages whose identity is not the reserved one, signed
-   or missing packages, a pre-release version, a version that is not higher than the published one. A pending
+   or missing packages, a pre-release version, a version that is not higher than the published one, and a listing
+   kit without notes for certification or with notes over 2,000 characters (every line break counted as two: the
+   limit is not documented, developers who publish there report it). A pending
    submission in Partner Center is deleted first (the Store allows one), unless `-KeepPending` is given.
 
 **What it needs, and what happens without it.** Three repository secrets, `PARTNER_CENTER_TENANT_ID`,
@@ -458,7 +471,10 @@ that was published once, so the first submission is made in Partner Center (§8)
 red; the GitHub release is published by then.
 
 **By hand**: *Actions › Microsoft Store › Run workflow* ([`store.yml`](../.github/workflows/store.yml)). `check`
-signs in with the secrets and reads the app, changing nothing: run it after setting or renewing the secrets.
+signs in with the secrets and reads the app, changing nothing: run it after setting or renewing the secrets. It
+also says whether the published notes for certification are the kit's, by their lengths: a release then sends the
+kit's. When the published submission holds none (BetterClipboard's case: run 44729126650 and, after the page was
+updated, 44735367700), it says so and names the product page to keep by hand.
 `submit` builds a released version's packages from its tag and submits them, for a release whose own step was
 skipped or failed. `draft` does the same without the commit.
 
@@ -525,6 +541,8 @@ personal account, so a work account was made first. What was done **[measured]**
    ==> Updates through this script start once the first submission, made in Partner Center, is published.
    ```
 
+   After `main` was pushed (2026-11-15, `f6083ff..dbaddb7`), the check from `main` (43754741556) answered the same.
+
 For whoever repeats this in the owner's Chrome: the developer account signs in with a passkey, and Windows' passkey
 dialog appears only for the tab in front. A reload of the passkey step fails with AADSTS900561 ("The endpoint only
 accepts POST requests"); start again from Partner Center's address instead.
@@ -545,18 +563,20 @@ step fails, and the run is red. Renew it with the pipe of step 4, which replaces
 client ID cannot be read back from its secret; `az ad app list --display-name "BetterClipboard Store submission
 (GitHub Actions)" --query "[0].appId" -o tsv` gives it.
 
-The script's Check mode ran against the real service on 2026-11-15; submitting waits for the first published
-submission. It is tested against a stand-in that answers like the documented API and records every request
-([`test-submit-store.ps1`](../tools/release/test-submit-store.ps1), 45 checks, run by CI): the order of the calls,
+The script's Check mode ran against the real service on 2026-11-15, and again from `release/0.2.12` on 2026-11-20
+(the published submission and its notes, §8). Submitting meets the real service first with 0.2.12's release. It is
+tested against a stand-in that answers like the documented API and records every request
+([`test-submit-store.ps1`](../tools/release/test-submit-store.ps1), 58 checks, run by CI): the order of the calls,
 what is sent, the upload in blocks, every refusal, the retry of a failed block, that neither the secret, the token
-nor the upload address is ever printed, and, since `8939afe`, that every ending reaches a caller that runs the
-script in its own PowerShell, as the workflows do.
+nor the upload address is ever printed, since `8939afe` that every ending reaches a caller that runs the script in
+its own PowerShell, as the workflows do, and since 2026-11-20 the notes for certification from the kit.
 
 ## 8. Where the submission stands, and the owner's steps
 
-**Submitted for certification on 2026-11-13, about 22:53 local; failed on one search term; fixed and resubmitted
-on 2026-11-15, about 19:30 UTC** ("Product submission: In certification" again; "The certification step usually
-takes a few hours, but in some cases can take up to 3 business days"). What is submitted:
+**Published on 2026-11-15 at 19:51 UTC**: https://apps.microsoft.com/detail/9PHL574X9BF9. Submitted for
+certification on 2026-11-13, about 22:53 local; failed on one search term; fixed and resubmitted on 2026-11-15, about
+19:30 UTC, and certified within the hour ("The certification step usually takes a few hours, but in some cases can
+take up to 3 business days"). What was submitted:
 
 | Page | State | What is there |
 |---|---|---|
@@ -567,9 +587,21 @@ takes a few hours, but in some cases can take up to 3 business days"). What is s
 | Packages | Complete | `1.2.11.0` for x64 and ARM64: the v0.2.11 release's own (run 43478898156's artifact), validated |
 | Store listings | Complete | Five languages: texts, search terms, eight screenshots with captions, the tile icon. Checked against the kit after the last import (2026-11-15, `make-store-listing-csv.py --check --screenshots 8`): every text, every search term, every caption under its picture, every language in the kit's order |
 | Submission options | Complete | Publish when certified; the `runFullTrust` justification |
-| Additional testing information | Saved | The notes for certification |
+| Additional testing information | Saved | The notes for certification: a product page, outside every submission; the 0.2.12 kit's text since 2026-11-20 |
 
 [`store-listing.md`](store-listing.md) is what was entered, word for word.
+
+**The notes for certification are a product page** (read 2026-11-20). *Supplemental info › Additional Testing
+Information* sits in the product's left navigation next to *Product management*, at
+`/products/9PHL574X9BF9/suppinfo/additionaltestinginfo`: headed "Notes for Certification" ("Customers will not see
+this info"), one text box (`certificationNotesDescription`, at most 6,000 characters) and its own *Save description*
+link. It held exactly the v0.2.11 kit's notes (1,770 characters, "… which Windows removes with the app"). On the
+owner's word ("do it all in browser instead of me") it was given the 0.2.12 kit's text, saved, and read back after a
+reload: 1,966 characters, SHA-256 `e2af5006…b0b1ce`, the same as the kit. Saving started no submission: the overview
+still offered *Start update* and showed *Submission 1*, and the API's check found nothing pending. The API's
+`notesForCertification` of the published submission read empty before and after, so the page and that field are two
+places. The sign-in was the owner's personal account, picked from Microsoft's account list; its session was still
+valid, so no passkey was asked.
 
 **The first certification report** (review completed 2026-11-13, read 2026-11-15; status "Attention needed"). One
 finding, under the content policies:
@@ -622,13 +654,17 @@ Left:
 2. ~~Age ratings~~: ticked and saved, on the owner's word.
 3. ~~Decide the version rule~~: decided, (X+1).Y.Z.0 (above).
 4. ~~Release~~: v0.2.11; its two packages replaced the draft's.
-5. ~~Submit for certification~~: submitted 2026-11-13; failed on the search term "Win+V" (above); fixed and
-   resubmitted 2026-11-15. It takes "a few hours, but in some cases can take up to 3 business days". Another
-   failure comes with a report; fix and resubmit the same way.
-6. **Afterwards**: the Store link in the README and in the installer's Store-edition warning.
-7. ~~The pipeline's connection~~: made on 2026-11-14 and 15 (§7, "How it was set up"); *check* is green. From
-   the first published submission on, each release submits itself. The work account keeps its Global
-   Administrator role and has a second factor (the owner, 2026-11-15; §7).
+5. ~~Submit for certification~~: submitted 2026-11-13; failed on the search term "Win+V" (above); fixed,
+   resubmitted, certified and published 2026-11-15. Another failure comes with a report; fix and resubmit the same
+   way.
+6. ~~Afterwards: the Store link~~: in the README and its four translations since `release/0.2.12` (2026-11-16). Not
+   in the installer's Store-edition warning, which only shows to someone who has the Store edition installed.
+7. ~~The pipeline's connection~~: made on 2026-11-14 and 15 (§7, "How it was set up"); *check* is green. Since the
+   first submission is published, each release submits itself. The work account keeps its Global Administrator
+   role and has a second factor (the owner, 2026-11-15; §7).
+8. ~~The notes for certification of 0.2.12~~: done 2026-11-20. The product's notes page held 1.2.11's text (the
+   history leaves with the app) and holds the kit's now (above); the pipeline also sends the kit's text in each
+   submission's own field (§7). A later change of the kit's notes goes onto that page by hand before the next tag.
 
 **The name.** "Better Clipboard", in two words, is the title of other products: a Store app (PAST-E Clipboard,
 `9NR75C5JPVVX`) and a Mac app (betterclipboard.com). Partner Center reserved "BetterClipboard" without objection;
@@ -652,14 +688,19 @@ BetterClipboard", the name chosen for code signing (CLAUDE.md §3.3).
 - **The move needs Windows PowerShell and script files that run.** On a PC whose policy blocks scripts, the check
   says so, and the other copy has to be uninstalled in Windows' Installed apps.
 - **The package version differs from the release version** by one in its first number (§5.3).
-- **The release's Store step has not submitted anything yet** (§7). The secrets are set and its sign-in works
-  (*check*, 2026-11-15), but Microsoft's API only updates a published app: until the first submission is
-  published, the step warns (exit code 4) and the release goes out without the Store.
+- **The release's Store step has not submitted anything yet** (§7). The secrets are set, its sign-in works
+  (*check*, 2026-11-15), and the app is published, so 0.2.12's release run is its first real submission: the
+  stand-in service of `test-submit-store.ps1` is all it has met so far.
 - **The pipeline signs in with a stored key**, which runs out on 2027-11-15 (§7). A sign-in without one, with
   GitHub's OpenID Connect token and a federated credential on the application, would spare the renewal. Not built
   yet; now that the connection exists, it can be tried with *check*.
-- **The pipeline updates packages and "What's new", nothing else.** Listing texts and pictures change by hand: the
-  kit, then an import (`store-listing.md` §4).
+- **The pipeline updates packages, "What's new" and the submission's notes for certification, nothing else.**
+  Listing texts and pictures change by hand: the kit, then an import (`store-listing.md` §4). The product's notes
+  page, which the testers read, also changes by hand: the API does not reach it (§8).
+- **The notes' 2,000-character limit is not Microsoft's word**: developers report it, and the checks count every
+  line break as two to be safe. The product's notes page itself takes 6,000 (its text box's limit). If the Store
+  ever refuses the notes, the release's Store step fails (exit code 1) with the Store's words, and the submission it
+  created stays pending until the next run deletes it.
 - **The screenshots are English in all five listings**: the app in English, with demo data from the owner's own
   history (screened by hand; `tools/readme/demo-data.zip`). Localized pictures would be the same eight scenes once
   per language.

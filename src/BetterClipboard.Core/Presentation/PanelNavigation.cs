@@ -134,7 +134,9 @@ public enum GroupPickAction
 /// <para>
 /// <b>Where the keys start.</b> Every load of the list (a summon, a search, another tab or group) selects the newest copy:
 /// the top row, or — when the list puts its pinned rows first — the first row below them (<see cref="ArmedRow{T}"/>). Up from
-/// there reaches the pins, the lowest one first; only Up on the very top row walks into the groups column.
+/// there reaches the pins, the lowest one first; only Up on the very top row walks into the groups column. While the list
+/// shows the plain history, those pins are out of view when it loads, scrolled above the newest copy
+/// (<see cref="PinsOutOfView"/>, <see cref="RoomBelowRows"/>).
 /// </para>
 /// <para>
 /// <b>Held keys stop at an edge, a new press crosses it.</b> A key that repeats because it is held down never wraps from
@@ -307,7 +309,8 @@ public static class PanelNavigation
     /// <para>
     /// <b>The same for every load,</b> searches included: a search lists its pinned matches first too, and the selection
     /// stays on the first match that is not pinned while the user types, instead of jumping into the pins with the first
-    /// letter.
+    /// letter. Where the list stands around that row is another rule (<see cref="PinsOutOfView"/>): the plain history
+    /// opens with the row at its top and the pins out of view, a search or a group view at its top with the pins in view.
     /// </para>
     /// <para>
     /// <b>A list of nothing but pins</b> (the Pinned tab, a search that only pins match, a group of pins) starts on its top
@@ -366,6 +369,87 @@ public static class PanelNavigation
         // No copy at all — nothing but pins on this page — leaves nothing to skip to.
         return firstCopy < 0 ? 0 : firstCopy;
     }
+
+    /// <summary>
+    /// Whether a load of the list stands with its pinned rows out of view — the row it selects (<see cref="ArmedRow{T}"/>,
+    /// the newest copy) at the top of the view, the pins above it, where scrolling up or Up reaches them — rather than at
+    /// its top with the pins in view. Out of view exactly while the list shows the plain history: no search text and no
+    /// group.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The owner's request (2026-11-15):</b> "When Win+V is pressed … the scroll should be at the first item that is not
+    /// pinned. If user wants to see the pinned on open, he needs to scroll up with cursor or press up." Asked which other
+    /// loads should do the same, they chose Win+V and "if i move to a tab then also hide in the tab. not groups", searches
+    /// keeping the pins in view; and for a cleared search or a group view left behind, "below the pins again". So the rule
+    /// is the view's, not the way it was reached: a summon, any tab, a search cleared, a group view left, a copy arriving
+    /// while the panel shows — whenever the list is the plain history again, it stands as right after Win+V.
+    /// </para>
+    /// <para>
+    /// <b>A search keeps its pinned matches in view:</b> what the user types for may be a pinned item, and hiding it above
+    /// the first match that is not pinned would look like no match. <b>A group view too:</b> a group is a set the user
+    /// gathered, pins included. Both still select the first row below their pins (<see cref="ArmedRow{T}"/>), so Enter
+    /// pastes the same row either way.
+    /// </para>
+    /// <para>
+    /// Nothing to hide in a list that does not start with pins: its armed row is its top row, and the list stands at its
+    /// top whatever this says. Callers ask only when the armed row lies below pins.
+    /// </para>
+    /// </remarks>
+    /// <param name="searching">
+    /// Whether the search box holds text other than white space (the panel's own test for a search: white space alone
+    /// searches nothing).
+    /// </param>
+    /// <param name="groupsShown">Whether the list shows one or more groups instead of the whole history.</param>
+    /// <returns><see langword="true"/> to scroll the pins out of view; <see langword="false"/> to keep the list at its top.</returns>
+    public static bool PinsOutOfView(bool searching, bool groupsShown) => !searching && !groupsShown;
+
+    /// <summary>
+    /// The empty room a list needs below its last row so that the row whose top lies at <paramref name="rowTop"/> can be
+    /// scrolled to the top of the view: none while the rows from there down fill the view, otherwise what they lack —
+    /// rounded up to a whole unit, so a list that already has its room keeps it instead of changing it by fractions. A need
+    /// within a thousandth of a unit above a whole number counts as that number (the error of the sums, not a need).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why room.</b> A view scrolls at most until its last row meets its bottom edge. With few copies below the pins (a
+    /// new history, a small tab) the newest copy could not reach the top, and the lowest pins would stay in view although
+    /// <see cref="PinsOutOfView"/> asks for them to be scrolled away; the owner chose to always hide them (2026-11-15). The
+    /// room is the difference, added below the last row: it shows only when the list is scrolled to its very end, where a
+    /// short list shows empty space anyway.
+    /// </para>
+    /// <para>
+    /// <b>Measured with the room in place.</b> <paramref name="extent"/> includes the room the list has now
+    /// (<paramref name="room"/>), so the answer does not depend on it: asking again after applying the answer gives the
+    /// same answer, and a list that grew (a copy arrived) gives up room it no longer needs. Unlike a scroll range, an
+    /// extent is not clamped at 0, so a list shorter than its view still counts what it lacks.
+    /// </para>
+    /// </remarks>
+    /// <param name="rowTop">The row's top, from the top of the list's content: what a vertical scroll offset counts in.</param>
+    /// <param name="extent">The height of the list's content now, its present room included.</param>
+    /// <param name="viewport">The height of the view the list scrolls in.</param>
+    /// <param name="room">The room the list has now (part of <paramref name="extent"/>); 0 when it has none.</param>
+    /// <returns>The room the list should have: 0 or more, never fractional; 0 when an argument is not a finite number.</returns>
+    public static double RoomBelowRows(double rowTop, double extent, double viewport, double room)
+    {
+        // The content must reach a view's height below the row's top: rowTop + viewport. What it lacks of that, plus the
+        // room counted in extent, is the room it needs. NaN or infinity (a list not laid out yet) asks for none.
+        double needed = room + rowTop + viewport - extent;
+        if (!double.IsFinite(needed) || needed <= RoomTolerance)
+        {
+            return 0;
+        }
+
+        // Rounded up past the tolerance: a need of exactly 244 that the sums above put at 244.00000000000003 is 244, not
+        // 245 — or asking again with the room in place would not always give the room back.
+        return Math.Ceiling(needed - RoomTolerance);
+    }
+
+    /// <summary>
+    /// How far a need for room may lie above a whole number and still count as that number (<see cref="RoomBelowRows"/>):
+    /// a thousandth of a unit, far above the error of the sums it is computed with, far below anything a screen shows.
+    /// </summary>
+    private const double RoomTolerance = 0.001;
 
     /// <summary>
     /// Where the arrow keys land when they walk from the top of the list into the groups column, and how they treat the

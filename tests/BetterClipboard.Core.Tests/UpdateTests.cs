@@ -765,13 +765,24 @@ public sealed class UpdateSettingsTests
         Assert.Equal(string.Empty, (new AppSettings { SkippedUpdateVersion = null! }).Normalize().SkippedUpdateVersion);
     }
 
-    /// <summary>The panel's minimum width leaves room for the header's fifth button, and a narrower saved width is raised to it.</summary>
+    /// <summary>
+    /// The panel's minimum width follows the header's buttons (CLAUDE.md §2.55): 396 DIPs for the five buttons the header had
+    /// with the update button, 432 for all six with the pin, never below the floor of 360 (four buttons, the width before the
+    /// update button). A saved width is only raised to the floor: the panel opens at least as wide as its header needs anyway,
+    /// so a width saved while buttons were hidden comes back when they are hidden again.
+    /// </summary>
     [Fact]
-    public void Settings_MinimumWidthHoldsFiveHeaderButtons()
+    public void Settings_MinimumWidthFollowsTheHeaderButtons()
     {
-        Assert.Equal(396, AppSettings.MinFlyoutWidth);
+        Assert.Equal(360, AppSettings.MinFlyoutWidth);
+        Assert.Equal(396, AppSettings.MinFlyoutWidthFor(5));
+        Assert.Equal(432, AppSettings.MinFlyoutWidthFor(6));
+        Assert.Equal(360, AppSettings.MinFlyoutWidthFor(4));
+        Assert.Equal(360, AppSettings.MinFlyoutWidthFor(1));
+        Assert.Equal(360, AppSettings.MinFlyoutWidthFor(-3));
         Assert.True(AppSettings.DefaultFlyoutWidth >= AppSettings.MinFlyoutWidth);
-        Assert.Equal(AppSettings.MinFlyoutWidth, (new AppSettings { FlyoutWidth = 360 }).Normalize().FlyoutWidth);
+        Assert.Equal(AppSettings.MinFlyoutWidth, (new AppSettings { FlyoutWidth = 300 }).Normalize().FlyoutWidth);
+        Assert.Equal(380, (new AppSettings { FlyoutWidth = 380 }).Normalize().FlyoutWidth);
     }
 
     /// <summary>The command switches the check off and on in the settings file and says what it did.</summary>
@@ -1052,6 +1063,29 @@ public sealed class UpdateTextTests
         Assert.Equal("1.5 MB", UpdateText.Progress(1_572_864, 0, Culture));
         Assert.Equal("0.0 of 1.0 MB", UpdateText.Progress(-5, 1_048_576, Culture));
     }
+
+    /// <summary>
+    /// A release's heading words its date like every other date (the catalog's pattern, the interface language's month
+    /// names), and the progress without a known size takes the language's unit (2026-11-16: English's pattern in Windows'
+    /// culture, and "MB", in every language before).
+    /// </summary>
+    [Fact]
+    public void HeadingsAndProgress_FollowTheInterfaceLanguage()
+    {
+        string previous = Localization.UiText.Language;
+        try
+        {
+            Localization.UiText.Language = "zh-Hans";
+            Assert.Equal("0.2.7 · 2026年10月1日", UpdateText.ReleaseHeading(UpdateTestData.Release("0.2.7"), TimeZoneInfo.Utc, Culture));
+
+            Localization.UiText.Language = "ru";
+            Assert.Equal("1.5 МБ", UpdateText.Progress(1_572_864, 0, Culture));
+            string heading = UpdateText.ReleaseHeading(UpdateTestData.Release("0.2.7"), TimeZoneInfo.Utc, Culture);
+            Assert.StartsWith("0.2.7 · 1 ", heading, StringComparison.Ordinal);
+            Assert.DoesNotContain("Oct", heading, StringComparison.Ordinal);
+        }
+        finally { Localization.UiText.Language = previous; }
+    }
 }
 
 /// <summary>
@@ -1312,5 +1346,38 @@ public sealed class UpdateReminderTests
         Assert.Equal(new DateTimeOffset(2026, 10, 4, 9, 30, 0, TimeSpan.Zero), loaded.UpdateReminderShownUtc);
         Assert.True(UpdateReminder.IsDue(Offered(), loaded.UpdateReminderShownUtc, Now));
         Assert.False(UpdateReminder.IsDue(Offered(), loaded.UpdateReminderShownUtc, Now.AddDays(-2)));
+    }
+}
+
+/// <summary>
+/// Tests for <see cref="ElevatedUpdate"/> (CLAUDE.md §2.63): which offers may run their installer as administrator for a copy
+/// in a folder only administrators may change - only those whose installer then starts BetterClipboard with the user's normal
+/// rights and keeps its UI access.
+/// </summary>
+public sealed class ElevatedUpdateTests
+{
+    /// <summary>
+    /// From the development build that brought UI access on: every later build of 0.2.12 and every release from 0.2.12 on.
+    /// Before it: 0.2.11 and older (the way back from a development build), and the development builds of 0.2.12 before it.
+    /// </summary>
+    /// <param name="offered">The version offered.</param>
+    /// <param name="accepted">Whether its installer may run as administrator.</param>
+    [Theory]
+    [InlineData("0.2.12-dev.65", true)]
+    [InlineData("0.2.12-dev.65.gabc1234", true)]
+    [InlineData("0.2.12-dev.66.g0123abc", true)]
+    [InlineData("0.2.12-dev.100.gffff000", true)]
+    [InlineData("0.2.12", true)]
+    [InlineData("0.2.13-dev.1.gabc1234", true)]
+    [InlineData("1.0.0", true)]
+    [InlineData("0.2.12-dev.64.g0b11df8", false)]
+    [InlineData("0.2.12-dev.9.gabc1234", false)]
+    [InlineData("0.2.11", false)]
+    [InlineData("0.2.6", false)]
+    public void Accepts_OnlyInstallersThatStartTheAppWithNormalRights(string offered, bool accepted)
+    {
+        Assert.True(SemanticVersion.TryParse(offered, out var version));
+
+        Assert.Equal(accepted, ElevatedUpdate.Accepts(version));
     }
 }

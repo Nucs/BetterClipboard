@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using BetterClipboard.Core.Content;
+using BetterClipboard.Core.Editions;
 using BetterClipboard.Core.Localization;
 using BetterClipboard.Core.Model;
 using BetterClipboard.Core.Presentation;
@@ -121,12 +123,15 @@ public sealed class TranslationCoverageTests
 
     /// <summary>
     /// Core's lists of texts that are worded in English and translated when shown: update failures, the source names
-    /// BetterClipboard makes up, the group icons' names, and the third-party rows' uses and license names.
+    /// BetterClipboard makes up, the group icons' names, the third-party rows' uses and license names, and the reasons the
+    /// temporary pictures and the Microsoft Store edition's history move word themselves.
     /// </summary>
     [Fact]
     public void CoreTemplateLists_HaveEntries()
     {
         var texts = UpdateMessages.Templates
+            .Concat(TempImageFiles.MessageTemplates)
+            .Concat(EditionDataMigrator.MessageTemplates)
             .Concat(SourceNames.Templates)
             .Concat(GroupIconCatalog.All.Select(icon => icon.Name))
             .Concat(ThirdPartyCatalog.All.Select(project => project.Use))
@@ -186,6 +191,63 @@ public sealed class TranslationCoverageTests
         string ended = UpdateMessages.Format(UpdateMessages.DownloadEndedEarly, "BC-TEST.zip", 1234, 5678);
         Assert.Contains("BC-TEST.zip", UiText.TranslateFormatted(ended, UpdateMessages.Templates, chinese), StringComparison.Ordinal);
         Assert.Contains(1234.ToString("N0", CultureInfo.CurrentCulture), UiText.TranslateFormatted(ended, UpdateMessages.Templates, chinese), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The update failures the Windows installer words, the two reasons a portable update puts inside its sentences, and the
+    /// reasons the temporary pictures and the Store edition's history move word themselves read in Chinese (2026-11-21: they
+    /// were worded inline and showed in English in every language). A path and the system's own reason stay as they came.
+    /// </summary>
+    [Fact]
+    public void OwnFailureReasons_ReadInTheInterfaceLanguage()
+    {
+        Assert.True(UiText.TryFind("zh-Hans", out var chinese));
+
+        string missing = UpdateMessages.Format(UpdateMessages.PowerShellMissing, @"C:\BC-TEST\powershell.exe");
+        Assert.Equal(@"找不到 Windows PowerShell（C:\BC-TEST\powershell.exe），而安装程序需要它。已安装的版本未改变。", UiText.TranslateFormatted(missing, UpdateMessages.Templates, chinese));
+        string refused = UpdateMessages.Format(UpdateMessages.InstallerNotStarted, "Access is denied.");
+        Assert.Equal("无法启动安装程序（Access is denied.）。已安装的版本未改变。", UiText.TranslateFormatted(refused, UpdateMessages.Templates, chinese));
+        Assert.Equal("Windows 未启动安装程序。已安装的版本未改变。", UiText.TranslateFormatted(UpdateMessages.InstallerProcessMissing, UpdateMessages.Templates, chinese));
+
+        // A reason inside another template is translated only because it is itself in the list, like the release list.
+        string helper = UpdateMessages.Format(UpdateMessages.PortableHelperNotStarted, UpdateMessages.NoProcess);
+        Assert.Contains("没有进程", UiText.TranslateFormatted(helper, UpdateMessages.Templates, chinese), StringComparison.Ordinal);
+        string inTheWay = UpdateMessages.Format(UpdateMessages.PortableFileNotReplaced, "BC-TEST.dll", UpdateMessages.FolderInTheWay);
+        string inTheWayChinese = UiText.TranslateFormatted(inTheWay, UpdateMessages.Templates, chinese);
+        Assert.Contains("同名的文件夹占用了这个位置", inTheWayChinese, StringComparison.Ordinal);
+        Assert.Contains("BC-TEST.dll", inTheWayChinese, StringComparison.Ordinal);
+
+        string tooMany = string.Format(CultureInfo.CurrentCulture, TempImageFiles.TooManyCopies, 1000);
+        Assert.Equal("该文件夹已存有 1000 个与这张图片同名的副本。", UiText.TranslateFormatted(tooMany, TempImageFiles.MessageTemplates, chinese));
+        string differs = string.Format(CultureInfo.InvariantCulture, EditionDataMigrator.CopyDiffersFromSource, @"stores\BC-TEST\history.db");
+        Assert.Equal(@"“stores\BC-TEST\history.db”的副本与原文件不一致。", UiText.TranslateFormatted(differs, EditionDataMigrator.MessageTemplates, chinese));
+        Assert.Equal("目标文件夹中已有历史记录。", UiText.TranslateFormatted(EditionDataMigrator.TargetHoldsHistory, EditionDataMigrator.MessageTemplates, chinese));
+
+        // Windows' own reason has no template: it is shown as it came.
+        Assert.Equal("There is not enough space on the disk.", UiText.TranslateFormatted("There is not enough space on the disk.", TempImageFiles.MessageTemplates, chinese));
+    }
+
+    /// <summary>
+    /// Every update failure the code throws is worded from <see cref="UpdateMessages"/>. A message typed into the throw shows
+    /// in English in every language, as eight of the Windows installer's did until 2026-11-21, and no other test sees it: the
+    /// update dialog translates a failure only through <see cref="UpdateMessages.Templates"/>.
+    /// </summary>
+    [Fact]
+    public void UpdateFailures_AreWordedFromTheTemplates()
+    {
+        var inline = new List<string>();
+        foreach (string file in SourceFiles())
+        {
+            // Comments become spaces with their line breaks kept, so a line number below is the file's own.
+            string code = CSharpSourceScanner.StripComments(File.ReadAllText(file));
+            foreach (Match match in Regex.Matches(code, @"new\s+UpdateException\(\s*UpdateFailure\.\w+\s*,\s*[$@]*""", RegexOptions.None, TimeSpan.FromSeconds(5)))
+            {
+                int line = code.AsSpan(0, match.Index).Count('\n') + 1;
+                inline.Add($"{Path.GetFileName(file)}:{line}");
+            }
+        }
+
+        Assert.True(inline.Count == 0, "Update failures worded inline (use an UpdateMessages template):\n" + string.Join("\n", inline));
     }
 
     /// <summary>English, no match, an empty text and a template without placeholders all behave plainly.</summary>

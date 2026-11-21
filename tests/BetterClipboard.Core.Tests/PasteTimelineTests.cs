@@ -58,6 +58,46 @@ public sealed class PasteTimelineTests
         Assert.Equal(25, timeline.Total.TotalMilliseconds, precision: 3);
     }
 
+    /// <summary>
+    /// The hold after the V (CLAUDE.md §2.54) follows the stages in the log line: nothing before it is known, its time when the
+    /// window took the keys, a note when the cap released Ctrl first, and how many keys typed meanwhile were held back —
+    /// whatever the culture.
+    /// </summary>
+    [Fact]
+    public void DescribeHold_SaysHowLongCtrlStayedDown_AndWhetherTheWindowTookTheKeys()
+    {
+        var timeline = new PasteTimeline(1_000);
+        Assert.Equal(string.Empty, timeline.DescribeHold());
+
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ar-SA");
+            timeline.ControlHeld = TimeSpan.FromMilliseconds(26.6);
+            timeline.ControlHeldUntilTaken = true;
+            Assert.Equal("; Ctrl held 27 ms", timeline.DescribeHold());
+
+            timeline.ControlHeld = TimeSpan.FromMilliseconds(1000.4);
+            timeline.ControlHeldUntilTaken = false;
+            Assert.Equal("; Ctrl held 1000 ms (released before the window took the keys)", timeline.DescribeHold());
+
+            // Keys the user typed during the hold, held back and typed after it: counted, never named.
+            timeline.ControlHeldUntilTaken = true;
+            timeline.KeysHeldBack = 1;
+            Assert.Equal("; Ctrl held 1000 ms; 1 key event typed meanwhile went in after it", timeline.DescribeHold());
+            timeline.KeysHeldBack = 1234;
+            Assert.Equal("; Ctrl held 1000 ms; 1234 key events typed meanwhile went in after it", timeline.DescribeHold());
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+
+        // Not a stage: the total stays at the last mark, the moment the V went in.
+        timeline.Mark("sent", 1_000 + Ticks(45.5));
+        Assert.Equal(45.5, timeline.Total.TotalMilliseconds, precision: 3);
+    }
+
     /// <summary>The session's first paste is always logged; later ones only from the slow threshold on.</summary>
     [Fact]
     public void ShouldLog_FirstAlways_LaterOnlyWhenSlow()

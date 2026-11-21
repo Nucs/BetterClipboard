@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using BetterClipboard.Core.Content;
@@ -143,6 +144,11 @@ public sealed class CliCommandProcessor
     }
 
     /// <summary>Converts an entry into its wire form.</summary>
+    /// <remarks>
+    /// The preview is the short one (<see cref="ContentClassifier.ShortPreview"/>, at most 1,000 characters), as it was
+    /// before the stored preview grew for the panel's longer cards (CLAUDE.md §2.57): a script or agent listing a hundred
+    /// items reads every preview, and <c>bclip get</c> gives the whole text.
+    /// </remarks>
     /// <param name="entry">The entry.</param>
     /// <returns>The item (without full text or matches).</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entry"/> is <see langword="null"/>.</exception>
@@ -153,8 +159,9 @@ public sealed class CliCommandProcessor
         {
             Id = entry.Id,
             Kind = KindName(entry.Kind),
-            Preview = entry.Preview,
+            Preview = ContentClassifier.ShortPreview(entry.Preview),
             Pinned = entry.IsPinned,
+            Groups = entry.GroupIds.Count > 0 ? entry.GroupIds.Count : null,
             Source = string.IsNullOrWhiteSpace(entry.SourceAppName) ? null : entry.SourceAppName,
             SourcePath = entry.SourceAppPath,
             Origin = entry.Origin switch
@@ -253,6 +260,12 @@ public sealed class CliCommandProcessor
             return BadFilter(request.Filter);
         }
 
+        string sort = "recent";
+        if (request.Sort is not null && !CliArguments.TryParseSort(request.Sort, out sort))
+        {
+            return CliResponse.Fail(CliErrorCodes.BadRequest, $"Unknown sort '{request.Sort}' (use recent or size).");
+        }
+
         var entries = await history.QueryAsync(new ClipQuery
         {
             SearchText = search,
@@ -261,6 +274,9 @@ public sealed class CliCommandProcessor
             Offset = Math.Max(0, request.Offset ?? 0),
             // History order for machines: newest first, pins not hoisted (the panel's pin-first view is a UI choice).
             PinnedFirst = false,
+
+            // Largest first for an assistant freeing space when the size budget fills up (bclip list --sort size).
+            LargestFirst = sort == "size",
             UsedSince = request.Since,
         }, cancellationToken).ConfigureAwait(false);
 
@@ -457,7 +473,7 @@ public sealed class CliCommandProcessor
         }).ConfigureAwait(false);
 
         return stored is null
-            ? new CliResponse { Ok = true, Message = "Copied to the clipboard (not saved to history: capture is paused, the text exceeds the size limit, or it was forgotten forever)." }
+            ? new CliResponse { Ok = true, Message = "Copied to the clipboard (not saved to history: capture is paused, the text exceeds the size limit, it is only whitespace, or it was forgotten forever)." }
             : new CliResponse { Ok = true, Item = ToItem(stored), Message = $"Copied to the clipboard and saved as item {stored.Id}." };
     }
 
@@ -479,12 +495,19 @@ public sealed class CliCommandProcessor
         return new CliResponse { Ok = true, Item = ToItem(entry), Message = $"{(pinned ? "Pinned" : "Unpinned")} item {entry.Id}." };
     }
 
-    /// <summary><c>delete</c>: requires an explicit id or <c>--recent</c>, never defaults to the latest item.</summary>
+    /// <summary>
+    /// <c>delete</c>: requires an explicit id (or several), or <c>--recent</c>; never defaults to the latest item.
+    /// </summary>
     /// <param name="request">Request.</param>
     /// <param name="cancellationToken">Cancellation.</param>
     /// <returns>The response.</returns>
     private async Task<CliResponse> DeleteAsync(CliRequest request, CancellationToken cancellationToken)
     {
+        if (request.Ids is { Count: > 0 } ids)
+        {
+            return await DeleteManyAsync(ids).ConfigureAwait(false);
+        }
+
         var (entry, failure) = await ResolveAsync(request, allowLatest: false, cancellationToken).ConfigureAwait(false);
         if (entry is null)
         {
@@ -493,6 +516,57 @@ public sealed class CliCommandProcessor
 
         await history.DeleteAsync(entry.Id).ConfigureAwait(false);
         return new CliResponse { Ok = true, Item = ToItem(entry), Message = $"Deleted item {entry.Id}." };
+    }
+
+    /// <summary>
+    /// <c>delete</c> with several ids: looks each up (to report what went), deletes the existing ones in one transaction,
+    /// and says how much space that freed and which ids did not exist. Succeeds when at least one was deleted.
+    /// </summary>
+    /// <param name="ids">The ids as given (repeats and unknown ids are reported, never fatal).</param>
+    /// <returns>
+    /// The deleted items (as they were) and a message; <see cref="CliErrorCodes.NotFound"/> when none of the ids exists, and
+    /// <see cref="CliErrorCodes.BadRequest"/> for more than <see cref="CliArguments.MaxDeleteIds"/> of them.
+    /// </returns>
+    private async Task<CliResponse> DeleteManyAsync(IReadOnlyList<long> ids)
+    {
+        // The parser refuses more; a request built by hand (or another client) is held to the same bound.
+        if (ids.Count > CliArguments.MaxDeleteIds)
+        {
+            return CliResponse.Fail(CliErrorCodes.BadRequest, string.Create(CultureInfo.InvariantCulture, $"delete takes at most {CliArguments.MaxDeleteIds} ids at once (got {ids.Count})."));
+        }
+
+        var found = new List<ClipEntry>(ids.Count);
+        var missing = new List<long>();
+        foreach (long id in ids.Distinct())
+        {
+            if (await history.GetEntryAsync(id).ConfigureAwait(false) is { } entry)
+            {
+                found.Add(entry);
+            }
+            else
+            {
+                missing.Add(id);
+            }
+        }
+
+        if (found.Count == 0)
+        {
+            return CliResponse.Fail(CliErrorCodes.NotFound, $"None of these history items exists: {string.Join(", ", missing.Select(id => id.ToString(CultureInfo.InvariantCulture)))}.");
+        }
+
+        var deleted = (await history.DeleteManyAsync(found.Select(e => e.Id).ToArray()).ConfigureAwait(false)).ToHashSet();
+
+        // An item deleted by someone else between the lookup and the queued delete counts as not found.
+        var items = found.Where(e => deleted.Contains(e.Id)).Select(ToItem).ToList();
+        missing.AddRange(found.Where(e => !deleted.Contains(e.Id)).Select(e => e.Id));
+        long freed = items.Sum(item => item.SizeBytes);
+
+        // English and culture-free, like every bclip message: scripts and agents read it.
+        var message = string.Create(CultureInfo.InvariantCulture, $"Deleted {items.Count} item{(items.Count == 1 ? string.Empty : "s")} ({CliOutput.FormatBytes(freed)}).")
+            + (missing.Count > 0 ? $" Not found: {string.Join(", ", missing.Select(id => id.ToString(CultureInfo.InvariantCulture)))}." : string.Empty);
+        return items.Count == 0
+            ? CliResponse.Fail(CliErrorCodes.NotFound, $"None of these history items exists: {string.Join(", ", missing.Select(id => id.ToString(CultureInfo.InvariantCulture)))}.")
+            : new CliResponse { Ok = true, Items = items, Message = message };
     }
 
     /// <summary>
@@ -570,12 +644,14 @@ public sealed class CliCommandProcessor
         }
     }
 
-    /// <summary><c>status</c>.</summary>
+    /// <summary><c>status</c>: counts, capture statistics, and the retention limits with how full they are.</summary>
     /// <returns>The response.</returns>
     private async Task<CliResponse> StatusAsync()
     {
         var stats = await history.GetStatsAsync().ConfigureAwait(false);
         var prompts = await history.GetPromptStatsAsync(null).ConfigureAwait(false);
+        var retention = await history.GetRetentionStatsAsync().ConfigureAwait(false);
+        var current = settings();
         return new CliResponse
         {
             Ok = true,
@@ -586,10 +662,39 @@ public sealed class CliCommandProcessor
                 Pinned = stats.PinnedCount,
                 TotalBytes = stats.TotalBytes,
                 Forgotten = stats.ForgottenCount,
-                CapturePaused = settings().IsCapturePaused,
+                CapturePaused = current.IsCapturePaused,
                 Capture = captureStats(),
                 Prompts = prompts.Sends,
+                Budget = ToBudget(retention, current),
             },
+        };
+    }
+
+    /// <summary>
+    /// The retention limits and what they count now, in their wire form (<see cref="CliBudget"/>): limits that are off are
+    /// omitted, so an assistant reads "no budget" as a missing member rather than a 0 it might take for a full one.
+    /// </summary>
+    /// <param name="retention">What the limits count now.</param>
+    /// <param name="current">The settings with the limits.</param>
+    /// <returns>The wire form.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    public static CliBudget ToBudget(RetentionStats retention, AppSettings current)
+    {
+        ArgumentNullException.ThrowIfNull(retention);
+        ArgumentNullException.ThrowIfNull(current);
+        long? budget = current.MaxTotalSizeMB > 0 ? current.MaxTotalSizeMB * 1024L * 1024L : null;
+        return new CliBudget
+        {
+            UsedBytes = retention.CountedBytes,
+            BudgetBytes = budget,
+            PercentUsed = budget is { } bytes ? Math.Round(HistoryBudgetWarnings.PercentUsed(retention.CountedBytes, bytes), 1) : null,
+            CountedItems = retention.CountedItems,
+            MaxItems = current.MaxItems > 0 ? current.MaxItems : null,
+            ProtectedItems = retention.ProtectedItems,
+            ProtectedBytes = retention.ProtectedBytes,
+            KeepDays = current.RetentionDays > 0 ? current.RetentionDays : null,
+            LargestItemBytes = retention.LargestItemBytes,
+            DatabaseBytes = retention.DatabaseBytes,
         };
     }
 
@@ -654,6 +759,7 @@ public sealed class CliCommandProcessor
     }
 
     /// <summary>Converts an archive row into its wire form.</summary>
+    /// <remarks>The preview is the short one, as for history items (<see cref="ToItem"/>); <c>--full</c> adds the whole text.</remarks>
     /// <param name="prompt">The row.</param>
     /// <returns>The wire prompt.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="prompt"/> is <see langword="null"/>.</exception>
@@ -664,7 +770,7 @@ public sealed class CliCommandProcessor
         {
             Id = prompt.Id,
             Agent = PromptAgents.WireName(prompt.Agent),
-            Preview = prompt.Preview,
+            Preview = ContentClassifier.ShortPreview(prompt.Preview),
             Text = prompt.Text,
             LastSent = prompt.LastSentUtc,
             FirstSent = prompt.FirstSentUtc,

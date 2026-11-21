@@ -99,23 +99,48 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Takes the panel off the screen for a paste and does nothing else: its overlays closed, its window cloaked (DWM drops it
     /// at its next frame), and marked away, so its deactivation — the paste activates its target next — finds nothing more to
-    /// do. The caller hands the foreground to the target itself, sends Ctrl+V, and then calls <see cref="FinishPuttingAway"/>.
+    /// do; a pinned panel only loses its overlays and stays. The caller hands the foreground to the target itself, sends
+    /// Ctrl+V, and then calls <see cref="FinishPuttingAway"/>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Why the split: everything else that putting the panel away does — hiding and showing the window, resetting its view for
     /// the next summon with a layout pass of the list — took 40 to 75 ms on the UI thread in a warm process and up to 1.3 s
     /// once the app's memory had been trimmed and paged out, and it all came before the Ctrl+V (CLAUDE.md §2.52).
+    /// </para>
+    /// <para>
+    /// A panel that stays open after use (pinned, CLAUDE.md §2.55) only closes its overlays — a viewer would cover the window
+    /// the paste goes into — and stays on screen: the target's activation deactivates it, which leaves it up, and the rest of
+    /// the paste is the same. <see cref="FinishPuttingAway"/> then finds nothing pending.
+    /// </para>
     /// </remarks>
-    public void PutAwayForPaste()
+    /// <returns><see langword="true"/> when the panel went off the screen; <see langword="false"/> when it was not open or stays open.</returns>
+    public bool PutAwayForPaste()
     {
         if (!IsOpen)
         {
-            return;
+            return false;
         }
 
         CloseImageOverlays();
         CloseUpdateDialog();
+        if (StaysOpen)
+        {
+            // It must stay above the target the paste activates next (ClipboardFlyout.KeepOpen.cs).
+            KeepOnTop();
+
+            // Without the keyboard (ClipboardFlyout.Focusless.cs), the keys go back to the app after a pinned paste, as the
+            // keyboard does for a pinned panel that had it: the user types on there, and the shortcut brings the panel forward.
+            if (focusless)
+            {
+                LeaveKeysToApp();
+            }
+
+            return false;
+        }
+
         PutAway(handTo: 0, finishSoon: false);
+        return true;
     }
 
     /// <summary>
@@ -156,8 +181,19 @@ public sealed partial class ClipboardFlyout
         // (ClipboardFlyout.UpdateReminder.cs). Every way the panel goes away passes here, so this is the one place.
         CancelUpdateReminder();
 
+        // Nor the pin's tip, for the same reason; taken off the screen without spending it, so a pinned panel shows it
+        // again at its next summon until the user closes it (ClipboardFlyout.KeepOpenTip.cs).
+        CloseKeepOpenTip();
+
+        // Without the keyboard, the keys go back to the app at once (a key typed now must not be taken by a panel that is
+        // gone), and the hooks go once the keys the panel took are up (ClipboardFlyout.Focusless.cs).
+        EndFocusless();
+
         presented = false;
         finishPending = true;
+
+        // A pinned panel stops following the foreground window: the next summon captures its target from the shortcut.
+        UpdateForegroundTracking();
 
         // Off the screen at DWM's next frame, without any animation. Where DWM refuses to cloak, the window is hidden by
         // FinishPuttingAway instead, after the foreground went on.
@@ -203,6 +239,10 @@ public sealed partial class ClipboardFlyout
             // into it and the next summon finds a finished picture.
             AppWindow.Hide();
             AppWindow.Show(false);
+
+            // Always on top for the next summon, which may come while Start is open and Windows ignores the request
+            // (ClipboardFlyout.ShellSurface.cs).
+            KeepTopmostWhileConcealed();
         }
         else
         {
@@ -225,8 +265,9 @@ public sealed partial class ClipboardFlyout
     /// <summary>
     /// Sets the concealed panel to what the next summon shows — the regular view with an empty search, the tab the user
     /// last chose (<see cref="ResetViewForShow"/>), the tab strip showing that tab, the groups column as remembered, the
-    /// newest copy selected with the list at its top (<see cref="ResetListPosition"/>) — and reloads the list if it is not
-    /// current. <see cref="ShowAt"/> repeats the resets, which are then no-ops, so nothing changes on screen.
+    /// newest copy selected at the top of the list, the pins above it (<see cref="ResetListPosition"/>) — and reloads the
+    /// list if it is not current. <see cref="ShowAt"/> repeats the resets, which are then no-ops, so nothing changes on
+    /// screen.
     /// </summary>
     private void PrepareForNextSummon()
     {
@@ -285,7 +326,7 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Reloads the list while the panel is concealed, unless it is current already or a summon came first (which reloads by
-    /// itself), then selects the newest copy with the list at its top (<see cref="ResetListPosition"/>).
+    /// itself), then selects the newest copy at the top of the list, the pins above it (<see cref="ResetListPosition"/>).
     /// </summary>
     /// <returns>A task completing when the list is current; it never throws (<c>ReloadAsync</c> logs its own failures).</returns>
     private async Task RefreshConcealedListAsync()
@@ -308,12 +349,14 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Selects the armed card — the newest copy, below the pinned cards while they are listed first — and scrolls the list
-    /// to its top, without animation: the concealed list, for the next summon, and the summon itself once its list is in.
+    /// to where a summon starts, without animation: the concealed list, for the next summon, and the summon itself once its
+    /// list is in.
     /// </summary>
     /// <remarks>
-    /// Below pinned cards, <see cref="ArmCard"/> scrolls by itself: to the top, or just low enough to show the armed card
-    /// whole when the pins fill the top's view. A plain scroll to the top afterwards would undo the latter, so it follows only
-    /// when the armed card is the top card (or the list is empty).
+    /// Below pinned cards, <see cref="ArmCard"/> scrolls by itself: a summon shows the plain history (no search text, no
+    /// group), so the armed card goes to the top and the pins above it out of view (<see cref="ScrollPinsOutOfView"/>). A
+    /// plain scroll to the top afterwards would undo that, so it follows only when the armed card is the top card (or the
+    /// list is empty).
     /// </remarks>
     private void ResetListPosition()
     {
@@ -325,7 +368,8 @@ public sealed partial class ClipboardFlyout
 
     /// <summary>
     /// Puts the panel on screen at <paramref name="rect"/> and gives it the keyboard: moves the window (cloaked, so nobody
-    /// sees it move), activates it, uncloaks it.
+    /// sees it move), activates it, uncloaks it. Without the keyboard (ClipboardFlyout.Focusless.cs, decided by
+    /// <see cref="BeginSummonMode"/>) the window is never activated: shown and uncloaked only, the app keeps the focus.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -368,18 +412,46 @@ public sealed partial class ClipboardFlyout
         enterPending = false;
         enterSerial++;
         presented = true;
+
+        // The summon's mode, read once: a panel that takes the keyboard on the way (a hook that failed) activates itself.
+        bool takeKeyboard = !focusless;
+        if (!takeKeyboard)
+        {
+            // Activation brings a window to the front; without it the panel must be put there: on top of the topmost band,
+            // above the app the user types in. The always-on-top flag set at the window's start was found missing at the
+            // first summon in the live check (2026-11-20): the panel opened behind File Explorer. With the keyboard the
+            // activation hid that.
+            WindowInterop.MakeTopmost(hwnd);
+
+            // A window that lost the flag can refuse it for good; the presenter sets it again then
+            // (ClipboardFlyout.ShellSurface.cs). Beside Start or Search nothing can be raised, so the flag must hold.
+            if (!WindowInterop.IsTopmost(hwnd))
+            {
+                EnsureTopmost();
+            }
+        }
+
         if (!cloaking)
         {
-            AppWindow.Show(true);
-            Activate();
-            ForegroundHelper.Activate(hwnd);
-            timeline?.Mark("activated");
+            AppWindow.Show(takeKeyboard);
+            if (takeKeyboard)
+            {
+                Activate();
+                ForegroundHelper.Activate(hwnd);
+                timeline?.Mark("activated");
+            }
+
             return;
         }
 
-        Activate();
-        bool active = ForegroundHelper.Activate(hwnd);
-        timeline?.Mark("activated");
+        // Without the keyboard there is nothing to activate, and nothing to repeat below.
+        bool active = true;
+        if (takeKeyboard)
+        {
+            Activate();
+            active = ForegroundHelper.Activate(hwnd);
+            timeline?.Mark("activated");
+        }
         bool sizeChanged = sizeBefore.Width != rect.Width || sizeBefore.Height != rect.Height;
         if (!wasShown || sizeChanged)
         {
@@ -403,8 +475,8 @@ public sealed partial class ClipboardFlyout
             // Still cloaked by someone else: the shell cloaks a window that belongs to another virtual desktop. Hiding and
             // showing it once moves it to the current desktop (the way every summon worked before cloaking).
             AppWindow.Hide();
-            AppWindow.Show(true);
-            active = false;
+            AppWindow.Show(takeKeyboard);
+            active = !takeKeyboard;
         }
 
         if (!active)

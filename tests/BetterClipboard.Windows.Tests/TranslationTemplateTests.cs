@@ -1,9 +1,11 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using BetterClipboard.Core.Localization;
 using BetterClipboard.Windows.Input;
 using BetterClipboard.Windows.Integrations;
 using BetterClipboard.Windows.Shell;
+using BetterClipboard.Windows.Store;
 
 namespace BetterClipboard.Windows.Tests;
 
@@ -33,6 +35,7 @@ public sealed class TranslationTemplateTests
             ["ShareX " + nameof(ShareXLocator.DetectedByTemplates)] = ShareXLocator.DetectedByTemplates,
             [nameof(EverythingIntegration.ProblemTemplates)] = EverythingIntegration.ProblemTemplates,
             ["Notepad++ " + nameof(NotepadPlusPlusClient.ProblemTemplates)] = NotepadPlusPlusClient.ProblemTemplates,
+            ["Store " + nameof(EditionUninstaller.DetailTemplates)] = EditionUninstaller.DetailTemplates,
         };
 
         var missing = lists.SelectMany(list => list.Value.Where(text => !HasEntry(text)).Select(text => $"{list.Key}: {text}")).ToList();
@@ -178,6 +181,28 @@ public sealed class TranslationTemplateTests
         // Every template of the list translates into something else: none of them is English in the Chinese status line.
         var untranslated = NotepadPlusPlusClient.ProblemTemplates
             .Where(template => UiText.TranslateFormatted(template, NotepadPlusPlusClient.ProblemTemplates, chinese) == template)
+            .ToList();
+        Assert.True(untranslated.Count == 0, "Still English in Chinese:\n" + string.Join("\n", untranslated));
+    }
+
+    /// <summary>
+    /// The details the Microsoft Store edition's uninstaller words itself (CLAUDE.md §2.47) translate after the setup
+    /// window's sentence — an exit code carried over as it is — while outside text (Windows' message, the uninstaller's own
+    /// report) matches no template and stays as it came. Until 2026-11-16 all three showed in English in every language.
+    /// </summary>
+    [Fact]
+    public void StoreUninstallDetails_Translate()
+    {
+        var chinese = Chinese();
+        Assert.Equal("PowerShell 没有及时响应。", UiText.TranslateFormatted(EditionUninstaller.NoAnswerDetail, EditionUninstaller.DetailTemplates, chinese));
+        Assert.Equal("检查脚本以代码 7 结束。",
+            UiText.TranslateFormatted(string.Format(CultureInfo.InvariantCulture, EditionUninstaller.CheckEndedDetail, 7), EditionUninstaller.DetailTemplates, chinese));
+        Assert.Equal("卸载程序以代码 -1 结束。",
+            UiText.TranslateFormatted(string.Format(CultureInfo.InvariantCulture, EditionUninstaller.UninstallerEndedDetail, -1), EditionUninstaller.DetailTemplates, chinese));
+        Assert.Equal("Access is denied.", UiText.TranslateFormatted("Access is denied.", EditionUninstaller.DetailTemplates, chinese));
+
+        var untranslated = EditionUninstaller.DetailTemplates
+            .Where(template => UiText.TranslateFormatted(template, EditionUninstaller.DetailTemplates, chinese) == template)
             .ToList();
         Assert.True(untranslated.Count == 0, "Still English in Chinese:\n" + string.Join("\n", untranslated));
     }

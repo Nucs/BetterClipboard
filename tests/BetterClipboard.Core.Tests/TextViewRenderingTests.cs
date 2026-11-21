@@ -174,7 +174,7 @@ public sealed class TextViewRenderingTests
         Assert.Contains("•\tone", text, StringComparison.Ordinal);
         Assert.Contains("☑\tdone", text, StringComparison.Ordinal);
         Assert.Contains("<a>1</a>", text, StringComparison.Ordinal);
-        Assert.Contains("A  Bee\n─  ───\n1  2", text, StringComparison.Ordinal);
+        Assert.Contains("A\tBee\n─\t───\n1\t2", text, StringComparison.Ordinal);
         Assert.Contains(new string('─', 32), text, StringComparison.Ordinal);
         Assert.Contains("quoted", text, StringComparison.Ordinal);
 
@@ -182,6 +182,103 @@ public sealed class TextViewRenderingTests
         var code = view.Blocks.OfType<MarkdownCodeBlock>().Single();
         Assert.Equal("xml", code.Info);
         Assert.Contains(view.TokensOf(code), t => t.Kind == TokenKind.Tag);
+    }
+
+    /// <summary>
+    /// The owner's case (2026-11-20): a transcript quotes every message, tables included. A quoted table is drawn as the
+    /// aligned grid a table at the margin is, one level right (18 DIPs are 270 twips) and in the quote's secondary color;
+    /// a table in a quote in a quote two levels right; a quoted heading and list are drawn as such, no bar is left as text,
+    /// and a fence inside the quote is still colored as the language it names.
+    /// </summary>
+    [Fact]
+    public void Markdown_DrawsTablesAndBlocksInsideQuotes()
+    {
+        const string Transcript = "**● BC-TEST**\n> ## Fills\n> - one\n>\n> | A | Bee |\n> |---|---|\n> | 1 | 2 |\n>\n> > | X |\n> > |---|\n> > | 9 |\n>\n> ```xml\n> <a>1</a>\n> ```";
+        var token = TestContext.Current.CancellationToken;
+        var view = TextViewRendering.Create(TextViewSource.Create(Transcript, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+        var rtf = view.ToRtf(SyntaxPalette.Dark, Style, token);
+        var text = RtfText(rtf);
+        Assert.Equal("● BC-TEST\nFills\n•\tone\nA\tBee\n─\t───\n1\t2\nX\n─\n9\n<a>1</a>", text);
+
+        // The header row of each table, at its quote level, in the palette's secondary color like the rest of the quote. The
+        // second column's stop lies past the quote's 18 DIPs, the first column (1 character) and the gap (2), at 8 DIPs a
+        // character: (18 + 3 × 8) × 15 twips.
+        int secondary = Array.IndexOf(ColorTable(rtf), SyntaxPalette.Dark.Secondary) + 1;
+        Assert.True(secondary > 0, "The palette's secondary color is in the color table.");
+        Assert.Contains($@"\pard\li270\tx630\sa0\f1\fs20\cf{secondary}\b ", rtf, StringComparison.Ordinal);
+        Assert.Contains($@"\pard\li540\sa0\f1\fs20\cf{secondary}\b ", rtf, StringComparison.Ordinal);
+
+        var quote = Assert.IsType<MarkdownQuote>(view.Blocks[1]);
+        var code = quote.Blocks.OfType<MarkdownCodeBlock>().Single();
+        Assert.Contains(view.TokensOf(code), t => t.Kind == TokenKind.Tag);
+    }
+
+    /// <summary>
+    /// A code block that holds no code — a bare fence whose code reads as Markdown, or one its fence names text — has its
+    /// tables drawn and the rest of it stays code; a fence of code in a programming language keeps its table-shaped lines
+    /// as the code they are.
+    /// </summary>
+    [Fact]
+    public void Markdown_DrawsTablesInsideCodeBlocksWithoutCode()
+    {
+        var token = TestContext.Current.CancellationToken;
+        TextViewRendering Formatted(string markdown) =>
+            TextViewRendering.Create(TextViewSource.Create(markdown, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+
+        var output = Formatted("```\nBC-TEST report\n| A | Bee |\n|---|---|\n| 1 | 2 |\nend of report\n```");
+        Assert.Equal("BC-TEST report\nA\tBee\n─\t───\n1\t2\nend of report", RtfText(output.ToRtf(SyntaxPalette.Dark, Style, token)));
+        Assert.Equal(["CodeBlock", "Table", "CodeBlock"], output.Blocks.Select(block => block.GetType().Name.Replace("Markdown", string.Empty, StringComparison.Ordinal)));
+
+        var named = Formatted("> ```text\n> | A |\n> |---|\n> | 1 |\n> ```");
+        Assert.Equal("A\n─\n1", RtfText(named.ToRtf(SyntaxPalette.Dark, Style, token)));
+
+        const string Python = "TABLE = \"\"\"\n| A | Bee |\n|---|---|\n| 1 | 2 |\n\"\"\"";
+        var code = Formatted("```python\n" + Python + "\n```");
+        Assert.Equal(Python, RtfText(code.ToRtf(SyntaxPalette.Dark, Style, token)));
+        Assert.NotEmpty(code.TokensOf(Assert.IsType<MarkdownCodeBlock>(Assert.Single(code.Blocks))));
+    }
+
+    /// <summary>
+    /// A numbered item's marker column has room for its number and a character after it (the QA of 2026-11-20 found "1."
+    /// filling the 16-DIP column in the monospace font, its text touching it): "1." gets 3 characters of 0.6 em at 13 DIPs
+    /// (23.4 DIPs, 351 twips), "10." 4 (468 twips), and a bullet keeps 16 DIPs (240 twips).
+    /// </summary>
+    [Fact]
+    public void Markdown_NumberedMarkersKeepAGap()
+    {
+        var token = TestContext.Current.CancellationToken;
+        var view = TextViewRendering.Create(TextViewSource.Create("1. one\n10. ten\n\n- bullet", cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+        var rtf = view.ToRtf(SyntaxPalette.Dark, Style, token);
+        Assert.Contains(@"\pard\fi-351\li351\tx351", rtf, StringComparison.Ordinal);
+        Assert.Contains(@"\pard\fi-468\li468\tx468", rtf, StringComparison.Ordinal);
+        Assert.Contains(@"\pard\fi-240\li240\tx240", rtf, StringComparison.Ordinal);
+        Assert.Equal("1.\tone\n10.\tten\n•\tbullet", RtfText(rtf));
+    }
+
+    /// <summary>
+    /// Random text made of quote marks, table lines, fences, list markers and indentation draws without failing, nested as
+    /// deep as it goes (1,000 documents, a fixed seed), and every bar the viewer keeps is one of the source's.
+    /// </summary>
+    [Fact]
+    public void Markdown_RandomNestedMarkupDraws()
+    {
+        string[] pieces = ["> ", ">", "> > ", "| a ", "| b |", "|---|", "|---|---|", "```", "~~~", "- ", "1. ", "  ", "    ", "\t", "\n", "\n", "\n\n", "# ", "text", "**", "`", "BC"];
+        var random = new Random(20261120);
+        var token = TestContext.Current.CancellationToken;
+        for (int round = 0; round < 1000; round++)
+        {
+            var source = new StringBuilder();
+            int count = random.Next(1, 80);
+            for (int i = 0; i < count; i++)
+            {
+                source.Append(pieces[random.Next(pieces.Length)]);
+            }
+
+            var markdown = source.ToString();
+            var view = TextViewRendering.Create(TextViewSource.Create(markdown, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+            var text = RtfText(view.ToRtf(SyntaxPalette.Light, Style, token));
+            Assert.True(text.Count(c => c == '|') <= markdown.Count(c => c == '|'), markdown);
+        }
     }
 
     /// <summary>
@@ -435,9 +532,142 @@ public sealed class TextViewRenderingTests
     [Fact]
     public void Style_ScalesWithinBounds()
     {
-        Assert.Equal(28, Style.Scaled(2).ProseSize);
+        Assert.Equal(26, Style.Scaled(2).ProseSize);
+        Assert.Equal(26, Style.Scaled(2).CodeSize);
         Assert.Equal(Style.ProseSize * TextViewStyle.MaxScale, Style.Scaled(10).ProseSize);
         Assert.Equal(Style.ProseSize * TextViewStyle.MinScale, Style.Scaled(0.01).ProseSize);
         Assert.Equal(Style.ProseSize, Style.Scaled(double.NaN).ProseSize);
+    }
+
+    /// <summary>
+    /// A Markdown document is drawn in the code font at the code size, as copied's (the owner's request, 2026-11-16): the
+    /// default style's two fonts and sizes are one, its RTF names no other face but the task boxes' symbol font, and its
+    /// body text has the size of a code document's.
+    /// </summary>
+    [Fact]
+    public void Markdown_IsDrawnInTheCodeFont()
+    {
+        Assert.Equal(Style.CodeFont, Style.ProseFont);
+        Assert.Equal(Style.CodeSize, Style.ProseSize);
+        Assert.Equal(TextViewStyle.DefaultSize, Style.CodeSize);
+
+        var token = TestContext.Current.CancellationToken;
+        var source = TextViewSource.Create("# BC-TEST\n\nShip **Friday**.\n\n- one\n- [ ] two\n\n> quoted", cancellationToken: token);
+        var document = TextViewRendering.Create(source, TextLanguage.Markdown, formatted: true, token).ToRtf(SyntaxPalette.Dark, Style, token);
+        var asCopied = TextViewRendering.Create(source, TextLanguage.Markdown, formatted: false, token).ToRtf(SyntaxPalette.Dark, Style, token);
+        Assert.Equal(["Cascadia Mono", "Cascadia Mono", "Segoe UI Symbol"], FontTable(document));
+        Assert.Equal(["Cascadia Mono", "Cascadia Mono", "Segoe UI Symbol"], FontTable(asCopied));
+
+        // 13 DIPs are 19.5 half-points, written as 20: the paragraph's size and the plain source's.
+        Assert.Contains(@"\f0\fs20\cf", document, StringComparison.Ordinal);
+        Assert.Contains(@"\f1\fs20\cf", asCopied, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Tables as terminals and programs print them come out of the Formatted view exactly as copied, and as copied: their
+    /// indentation, tabs, dashed rules and borders, and box drawing (<see cref="MarkdownParseOptions.KeepLayout"/>). Each
+    /// is detected as Markdown, the fallback for text in no language, so Formatted is what opens.
+    /// </summary>
+    /// <param name="name">What printed the table (the case's name).</param>
+    /// <param name="table">The table, as copied.</param>
+    [Theory]
+    [MemberData(nameof(AsciiTables))]
+    public void Formatted_ShowsAsciiTablesAsCopied(string name, string table)
+    {
+        var token = TestContext.Current.CancellationToken;
+        var source = TextViewSource.Create(table, cancellationToken: token);
+        Assert.Equal(TextLanguage.Markdown, source.DetectedLanguage);
+        var formatted = TextViewRendering.Create(source, source.DetectedLanguage, formatted: true, token);
+        Assert.True(formatted.IsDocument, name);
+        Assert.Equal(table, RtfText(formatted.ToRtf(SyntaxPalette.Dark, Style, token)));
+        var asCopied = TextViewRendering.Create(source, source.DetectedLanguage, formatted: false, token);
+        Assert.Equal(table, RtfText(asCopied.ToRtf(SyntaxPalette.Dark, Style, token)));
+    }
+
+    /// <summary>
+    /// Random tables without Markdown in them — words, numbers, runs of blanks and tabs, bars, plus signs, box drawing,
+    /// and dashed lines under their text — come out of the Formatted view exactly as typed, but for the blanks that end a
+    /// line, which nothing draws (500 tables, a fixed seed).
+    /// </summary>
+    [Fact]
+    public void Formatted_ShowsRandomTablesAsTyped()
+    {
+        string[] starts = ["BC", "test", "42", "│", "=", "└──", "Ω"];
+        string[] pieces = ["BC", "test", "42", "7", " ", "  ", "    ", "\t", "|", "+", "-", "--", "──", "│", "┼", ":", "/", "%", "=", "Ω"];
+        string[] dashed = ["---", "----  ---", " ------    -----", "-----------------", "--- --- ---"];
+        var random = new Random(20261116);
+        for (int round = 0; round < 500; round++)
+        {
+            var lines = new List<string>();
+            int count = random.Next(1, 12);
+            for (int l = 0; l < count; l++)
+            {
+                // A dashed line only under a line of text, never two in a row: a dashed line is text where it touches text.
+                if (l > 0 && !dashed.Contains(lines[^1]) && random.Next(4) == 0)
+                {
+                    lines.Add(dashed[random.Next(dashed.Length)]);
+                    continue;
+                }
+
+                var line = new StringBuilder(new string(' ', random.Next(0, 6)));
+                line.Append(starts[random.Next(starts.Length)]);
+                int pieceCount = random.Next(0, 10);
+                for (int p = 0; p < pieceCount; p++)
+                {
+                    line.Append(pieces[random.Next(pieces.Length)]);
+                }
+
+                lines.Add(line.ToString());
+            }
+
+            var typed = string.Join('\n', lines);
+            var token = TestContext.Current.CancellationToken;
+            var view = TextViewRendering.Create(TextViewSource.Create(typed, cancellationToken: token), TextLanguage.Markdown, formatted: true, token);
+            Assert.True(view.IsDocument);
+            var expected = string.Join('\n', lines.Select(line => line.TrimEnd()));
+            Assert.Equal(expected, RtfText(view.ToRtf(SyntaxPalette.Light, Style, token)));
+        }
+    }
+
+    /// <summary>
+    /// What terminals and programs print as tables (BC-TEST data): the cases of <see cref="Formatted_ShowsAsciiTablesAsCopied"/>.
+    /// </summary>
+    public static TheoryData<string, string> AsciiTables => new()
+    {
+        { "psql", " id | name  | price\n----+-------+-------\n  1 | apple |  1.50\n  2 | pear  |  0.75\n(2 rows)" },
+        { "PowerShell Format-Table", "Name                           Value\n----                           -----\nPSVersion                      7.5.8\nPSEdition                      Core" },
+        { "PowerShell Get-Process", " NPM(K)    PM(M)      WS(M)     CPU(s)      Id  SI ProcessName\n ------    -----      -----     ------      --  -- -----------\n     29    12.34      45.67       1.23    1234   1 BC-TEST" },
+        { "box drawing", "┌────┬───────┐\n│ id │ name  │\n├────┼───────┤\n│ 1  │ apple │\n└────┴───────┘" },
+        { "MySQL", "+----+---------+\n| id | name    |\n+----+---------+\n|  1 | BC-TEST |\n+----+---------+" },
+        { "dashed border", "-----------------\n| id | name     |\n-----------------\n| 1  | BC-TEST  |\n-----------------" },
+        { "tab-separated", "Name\tAge\tCity\nBC-TEST\t30\tHaifa\nAlice\t24\tOslo" },
+        { "sqlite column mode", "id  name\n--  -------\n1   BC-TEST" },
+        { "pandas", "   id     name  price\n0   1  BC-TEST   1.50\n1   2     pear   0.75" },
+        { "kubectl", "NAME      READY   STATUS    RESTARTS   AGE\nweb-1     1/1     Running   0          5d" },
+        { "paths ending in a backslash", "Copied to:\nC:\\BC-TEST\\out\\\nD:\\BC-TEST\\backup\\" },
+    };
+
+    /// <summary>The colors of an RTF document's color table, in table order (the first is <c>\cf1</c>), as 0xRRGGBB.</summary>
+    /// <param name="rtf">The document.</param>
+    /// <returns>The colors.</returns>
+    private static uint[] ColorTable(string rtf)
+    {
+        int start = rtf.IndexOf(@"{\colortbl", StringComparison.Ordinal);
+        int end = rtf.IndexOf('}', start);
+        return System.Text.RegularExpressions.Regex.Matches(rtf[start..end], @"\\red(\d+)\\green(\d+)\\blue(\d+);")
+            .Select(match => (uint.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) << 16) |
+                             (uint.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture) << 8) |
+                             uint.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture))
+            .ToArray();
+    }
+
+    /// <summary>The faces of an RTF document's font table, in table order.</summary>
+    /// <param name="rtf">The document.</param>
+    /// <returns>The font names (<c>\f0</c> first).</returns>
+    private static string[] FontTable(string rtf)
+    {
+        int start = rtf.IndexOf(@"{\fonttbl", StringComparison.Ordinal);
+        int end = rtf.IndexOf(@"{\colortbl", start, StringComparison.Ordinal);
+        return System.Text.RegularExpressions.Regex.Matches(rtf[start..end], @"\\fcharset\d+ ([^;]*);").Select(match => match.Groups[1].Value).ToArray();
     }
 }
