@@ -526,8 +526,9 @@ public sealed partial class AppController
         // a collection gives back (AppController.Memory.cs).
         RequestMemoryReclaim("the start", StartupReclaimDelay);
 
-        // Settings › App › Keep the panel in memory: with a keep time, its timer counts from the start until the first use.
-        ApplyPanelMemorySetting();
+        // Settings › App › Keep the panel in memory: logged, and with a keep time its timer counts from the start until the
+        // first use (the start's reclaim above trims when the keep time is shorter).
+        ApplyPanelMemorySetting(atStart: true);
 
         // A start whose user never chose a language asks for it before any other window is built: a first start, and the
         // first start after an update from a version that never asked. The panel and Settings read their labels when they

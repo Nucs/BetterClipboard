@@ -116,21 +116,28 @@ public sealed partial class AppController
     }
 
     /// <summary>
-    /// Settings changed: when the keep time is another one, the timer is set for it (counted from the last use as before), and
-    /// a keep time that has already passed asks for its trim at once. Cheap and idempotent: an unchanged keep time does
+    /// Applies Settings › App › Keep the panel in memory: at the start, and after every settings change. A keep time other
+    /// than the one in force is logged and the timer is set for it (counted from the last use as before); after a change, a
+    /// keep time that has already passed asks for its trim at once. Cheap and idempotent: an unchanged keep time does
     /// nothing. UI thread only.
     /// </summary>
-    internal void ApplyPanelMemorySetting()
+    /// <param name="atStart">
+    /// The start's call: the setting is logged also when it is the default (a report like issue #14's then shows what was in
+    /// force), and no trim is asked for at once: the start's own reclaim, once its work is done (<see cref="StartupReclaimDelay"/>),
+    /// trims when the keep time is shorter than that, and the timer covers longer keep times. A trim in the middle of the
+    /// start would hand back pages the panel's warm-up is about to touch again.
+    /// </param>
+    internal void ApplyPanelMemorySetting(bool atStart = false)
     {
         var keep = KeepPanelInMemorySeconds;
-        if (keep == armedKeepSeconds)
+        if (!atStart && keep == armedKeepSeconds)
         {
             return;
         }
 
         AppLog.Info($"Keep the panel in memory: {PanelMemory.DescribeForLog(keep)}.");
         ArmKeepTimer();
-        if (PanelMemory.ShouldTrim(keep, lastPanelUseUtc, DateTimeOffset.UtcNow))
+        if (!atStart && PanelMemory.ShouldTrim(keep, lastPanelUseUtc, DateTimeOffset.UtcNow))
         {
             RequestMemoryReclaim("a shorter keep time for the panel's memory", TimeSpan.Zero);
         }
