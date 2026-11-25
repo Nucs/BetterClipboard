@@ -158,11 +158,34 @@ public sealed class PanelMemoryTests : IDisposable
         var usual = TimeSpan.FromSeconds(30);
         Assert.Equal(usual, PanelMemory.ReclaimDelayAfterUse(null, usual));
         Assert.Equal(usual, PanelMemory.ReclaimDelayAfterUse(-1, usual));
-        Assert.Equal(TimeSpan.Zero, PanelMemory.ReclaimDelayAfterUse(0, usual));
-        Assert.Equal(TimeSpan.FromSeconds(1), PanelMemory.ReclaimDelayAfterUse(1, usual));
         Assert.Equal(TimeSpan.FromSeconds(10), PanelMemory.ReclaimDelayAfterUse(10, usual));
         Assert.Equal(usual, PanelMemory.ReclaimDelayAfterUse(30, usual));
         Assert.Equal(usual, PanelMemory.ReclaimDelayAfterUse(600, usual));
+    }
+
+    /// <summary>
+    /// "Never keep in memory" and keep times under 5 seconds trim once the panel has settled (<see
+    /// cref="PanelMemory.SettleAfterUse"/>), never before: a trim during the put-away's own work saw 8 MB come right back
+    /// (the 2026-11-25 measurement); from 5 seconds up the keep time itself; and a usual delay shorter than the settle time
+    /// (none today) is never lengthened by it.
+    /// </summary>
+    [Fact]
+    public void ReclaimDelayAfterUse_WaitsForThePanelToSettle()
+    {
+        var usual = TimeSpan.FromSeconds(30);
+        Assert.Equal(TimeSpan.FromSeconds(5), PanelMemory.SettleAfterUse);
+        Assert.Equal(PanelMemory.SettleAfterUse, PanelMemory.ReclaimDelayAfterUse(0, usual));
+        Assert.Equal(PanelMemory.SettleAfterUse, PanelMemory.ReclaimDelayAfterUse(1, usual));
+        Assert.Equal(PanelMemory.SettleAfterUse, PanelMemory.ReclaimDelayAfterUse(2, usual));
+        Assert.Equal(TimeSpan.FromSeconds(5), PanelMemory.ReclaimDelayAfterUse(5, usual));
+        Assert.Equal(TimeSpan.FromSeconds(3), PanelMemory.ReclaimDelayAfterUse(0, TimeSpan.FromSeconds(3)));
+
+        // At that moment the rule trims every keep time the delay was shortened for.
+        var use = new DateTimeOffset(2026, 11, 25, 9, 0, 0, TimeSpan.Zero);
+        foreach (int keep in new[] { 0, 1, 2, 5, 10 })
+        {
+            Assert.True(PanelMemory.ShouldTrim(keep, use, use + PanelMemory.ReclaimDelayAfterUse(keep, usual)), $"keep {keep}");
+        }
     }
 
     /// <summary>The words under the slider in English: both ends, singular and plural of each unit, a value between stops.</summary>

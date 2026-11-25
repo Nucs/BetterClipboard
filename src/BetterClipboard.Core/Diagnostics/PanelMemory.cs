@@ -25,7 +25,9 @@ namespace BetterClipboard.Core.Diagnostics;
 /// CLAUDE.md §2.53), and a user saw "Memory" stay at 40 to 50 MB where 0.2.11 dropped to 4 to 6 MB. The owner chose a slider
 /// with both ends (2026-11-25): "Never keep in memory" (a keep time of 0: the pages go back at every reclaim after a use,
 /// 0.2.11's way), 1 second to 7 days (they go back once the panel went unused that long), and "Never release from memory"
-/// (no keep time, <see langword="null"/>, the default: they never go back, 0.2.12's way).
+/// (no keep time, <see langword="null"/>, the default: they never go back, 0.2.12's way). Keep times under 5 seconds, and
+/// "never keep", trim 5 seconds after the use (<see cref="SettleAfterUse"/>): sooner, the panel's own put-away work brings
+/// the pages straight back.
 /// </para>
 /// <para>
 /// <b>Stored as seconds, not as a slider position,</b> so the table of stops may change without changing what a saved value
@@ -141,16 +143,33 @@ public static class PanelMemory
         keepSeconds is { } seconds && seconds >= 0 ? lastUse + TimeSpan.FromSeconds(seconds) : null;
 
     /// <summary>
+    /// How long the panel goes on touching its memory after it was put away: the view's reset for the next summon, the hidden
+    /// window drawn again, a pasted item's list refresh. A trim before this hands back pages that come right back: measured in
+    /// a test desktop on the owner's history (2026-11-25), a trim 0.3 s after Esc took the private working set from 25.9 to
+    /// 4.2 MB, it was back at 11.8 MB 1.6 s later, and it stayed at 12.1 to 12.5 MB for the next 80 s.
+    /// </summary>
+    public static readonly TimeSpan SettleAfterUse = TimeSpan.FromSeconds(5);
+
+    /// <summary>
     /// How long after a use the reclaim that follows it waits: its usual quiet period (<paramref name="usual"/>), or the keep
-    /// time when that is shorter, so "Never keep in memory" and keep times of a few seconds hand the pages back that soon
-    /// instead of after the usual 30 seconds. A longer keep time leaves the usual delay: that reclaim then frees garbage only,
-    /// and the trim follows at <see cref="TrimDueAt"/>.
+    /// time when that is shorter, so keep times of a few seconds hand the pages back that soon instead of after the usual 30
+    /// seconds; never less than <see cref="SettleAfterUse"/>, so "Never keep in memory" and keep times under 5 seconds trim
+    /// once the panel has finished putting itself away. A longer keep time leaves the usual delay: that reclaim then frees
+    /// garbage only, and the trim follows at <see cref="TrimDueAt"/>.
     /// </summary>
     /// <param name="keepSeconds">The setting.</param>
     /// <param name="usual">The reclaim's own quiet period after a use.</param>
     /// <returns>The delay to ask the reclaim for.</returns>
-    public static TimeSpan ReclaimDelayAfterUse(int? keepSeconds, TimeSpan usual) =>
-        keepSeconds is { } seconds && seconds >= 0 && TimeSpan.FromSeconds(seconds) < usual ? TimeSpan.FromSeconds(seconds) : usual;
+    public static TimeSpan ReclaimDelayAfterUse(int? keepSeconds, TimeSpan usual)
+    {
+        if (keepSeconds is not { } seconds || seconds < 0 || TimeSpan.FromSeconds(seconds) >= usual)
+        {
+            return usual;
+        }
+
+        var keep = TimeSpan.FromSeconds(seconds);
+        return keep > SettleAfterUse ? keep : SettleAfterUse < usual ? SettleAfterUse : usual;
+    }
 
     /// <summary>
     /// The words for a keep time in the interface language, as the slider's label shows them: "Never keep in memory", "For 10

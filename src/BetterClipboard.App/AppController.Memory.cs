@@ -87,9 +87,9 @@ public sealed partial class AppController
     private DispatcherQueueTimer? keepTimer;
 
     /// <summary>
-    /// Whether this session logged a trim already: the first one says why the pages went back to Windows; later ones show
-    /// only in the reclaims' own lines ("memory 0.3 MB"), or the log would gain a line at every use with "Never keep in
-    /// memory". UI thread only.
+    /// Whether this session logged a trim already: the first one says why the pages went back to Windows; later ones are not
+    /// logged, or the log would gain a line at every use with "Never keep in memory" (a trim gives back no committed memory,
+    /// so the reclaim's own line, written from 8 MB of it on, does not show it either). UI thread only.
     /// </summary>
     private bool trimLogged;
 
@@ -314,7 +314,7 @@ public sealed partial class AppController
                 trimLogged = true;
                 AppLog.Info($"Gave the panel's memory back to Windows ({reasons}; Settings › App › Keep the panel in memory: " +
                     $"{PanelMemory.DescribeForLog(keep)}): {MemoryUsage.DescribeWorkingSetChange(before, after)}. Later trims " +
-                    "show only in the reclaims' own lines.");
+                    "are not logged.");
             }
         }
         catch (Exception ex)
