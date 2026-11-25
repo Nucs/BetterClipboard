@@ -1271,7 +1271,7 @@
                     </controls:SettingsCard.Footer>
                 </controls:SettingsCard>
 
-                <!--  App: the language, starting with Windows, the data folder and the version.  -->
+                <!--  App: the language, starting with Windows, how long the panel stays in memory, the data folder and the version.  -->
                 <TextBlock Style="{StaticResource SettingsSectionHeaderStyle}" Text="{loc:Tr Text='App'}" />
                 <controls:SettingsCard
                     Description="{loc:Tr Text='Restart BetterClipboard to apply the language. History and custom names are not translated.'}"
@@ -1338,6 +1338,39 @@
                             OffContent="{loc:Tr Text='Off'}"
                             IsEnabled="{x:Bind ViewModel.CanChangeLaunchAtStartup, Mode=OneWay}"
                             IsOn="{x:Bind ViewModel.LaunchAtStartup, Mode=TwoWay}" />
+                    </StackPanel>
+                </controls:SettingsCard>
+                <!--
+                  How long the panel's memory stays in BetterClipboard's working set after its last use
+                  (AppSettings.KeepPanelInMemorySeconds, PanelMemory, CLAUDE.md §2.69; issue #14): the left end "Never keep in
+                  memory" (the pages go back to Windows at the reclaim after every use: Task Manager's "Memory" reads a few
+                  megabytes), stops from 1 second to 7 days, and the right end "Never release from memory" (the default: every
+                  Win+V shows the panel at once). The words under the slider say the stop, and are its help text for screen
+                  readers; the thumb's own tooltip is off (it would show the bare position). Saved once the slider rests
+                  (SettingsViewModel.OnPanelMemoryPositionChanged). E964 = a memory module (checked by rendering).
+                -->
+                <controls:SettingsCard
+                    Description="{loc:Tr Text='How long BetterClipboard keeps the clipboard panel in memory after you last used it. In memory, Win+V shows it at once; handed back to Windows, Task Manager shows a few megabytes, and the next Win+V can take a moment while the memory comes back.'}"
+                    Glyph="&#xE964;"
+                    Header="{loc:Tr Text='Keep the panel in memory'}"
+                    Keywords="{loc:Tr Text='memory, RAM, Task Manager, idle, release, give back, ready, speed, performance'}">
+                    <StackPanel Width="260" Spacing="2">
+                        <Slider
+                            AutomationProperties.HelpText="{x:Bind ViewModel.PanelMemoryText, Mode=OneWay}"
+                            AutomationProperties.Name="{loc:Tr Text='Keep the panel in memory'}"
+                            IsThumbToolTipEnabled="False"
+                            LargeChange="3"
+                            Maximum="{x:Bind ViewModel.PanelMemoryLastPosition}"
+                            Minimum="0"
+                            SmallChange="1"
+                            StepFrequency="1"
+                            Value="{x:Bind ViewModel.PanelMemoryPosition, Mode=TwoWay}" />
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            AutomationProperties.LiveSetting="Polite"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="{x:Bind ViewModel.PanelMemoryText, Mode=OneWay}" />
                     </StackPanel>
                 </controls:SettingsCard>
                 <controls:SettingsCard

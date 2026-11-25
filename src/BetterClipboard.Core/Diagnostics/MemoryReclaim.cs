@@ -51,6 +51,23 @@ public sealed record MemoryUsage(long PrivateBytes, long WorkingSetBytes, long? 
     }
 
     /// <summary>
+    /// What a trim did to the memory Task Manager shows, for the log: "memory 45 → 0.3 MB" (the private working set before and
+    /// after), or "working set 120 → 0.5 MB" where Windows does not report the private part (before Windows 10 21H2).
+    /// </summary>
+    /// <param name="before">Measured before the reclaim that trimmed.</param>
+    /// <param name="after">Measured after it.</param>
+    /// <returns>The phrase.</returns>
+    /// <exception cref="ArgumentNullException">Either measurement is <see langword="null"/>.</exception>
+    public static string DescribeWorkingSetChange(MemoryUsage before, MemoryUsage after)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        ArgumentNullException.ThrowIfNull(after);
+        return before.PrivateWorkingSetBytes is { } privateBefore && after.PrivateWorkingSetBytes is { } privateAfter
+            ? string.Create(CultureInfo.InvariantCulture, $"memory {Megabytes(privateBefore)} → {Megabytes(privateAfter)} MB")
+            : string.Create(CultureInfo.InvariantCulture, $"working set {Megabytes(before.WorkingSetBytes)} → {Megabytes(after.WorkingSetBytes)} MB");
+    }
+
+    /// <summary>
     /// Megabytes for a log line: whole ones, rounded to the nearest, from 10 MB on; one decimal below that, where a whole
     /// number hides the difference that matters (a trimmed working set of 0.3 MB is not "0 MB").
     /// </summary>

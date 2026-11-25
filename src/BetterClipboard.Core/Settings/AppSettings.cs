@@ -923,6 +923,26 @@ public sealed record AppSettings
     public int BackgroundTransparency { get; init; } = Presentation.PanelBackdrop.DefaultLevel;
 
     /// <summary>
+    /// How long the clipboard panel's memory stays in BetterClipboard's working set after the panel was last used (Settings ›
+    /// App › Keep the panel in memory, CLAUDE.md §2.69): <see langword="null"/>, the default, never hands it back ("Never
+    /// release from memory": every Win+V shows the panel at once); 0 hands it back at the reclaim that follows every use
+    /// ("Never keep in memory": Task Manager's "Memory" then reads a few megabytes); 1 second to 7 days hands it back once
+    /// the panel went unused that long. Only the slider's stops are kept (<see cref="Diagnostics.PanelMemory.Normalize"/>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A trim frees nothing: committed memory is the same either way. It only moves the pages out of the working set, so the
+    /// next Win+V brings them back, in a few milliseconds while Windows still holds them in RAM, or from the page file
+    /// (hundreds of milliseconds on a busy PC) once Windows gave that RAM to another program (<see cref="Diagnostics.PanelMemory"/>).
+    /// </para>
+    /// <para>
+    /// Footgun: a version from before this member drops it when it saves the settings file, and the panel is then kept in
+    /// memory again (the default) until the slider is moved once more.
+    /// </para>
+    /// </remarks>
+    public int? KeepPanelInMemorySeconds { get; init; }
+
+    /// <summary>
     /// Serve the <c>bclip</c> command line (scripts, AI assistants): list, search, read, copy and add
     /// history items over a named pipe restricted to this Windows account.
     /// </summary>
@@ -1293,6 +1313,9 @@ public sealed record AppSettings
 
             // A hand-edited level outside 0..100 still gives a panel with glass.
             BackgroundTransparency = Presentation.PanelBackdrop.Normalize(BackgroundTransparency),
+
+            // One of the slider's stops, so Settings shows what applies; a hand-written -1 ("forever") is the default.
+            KeepPanelInMemorySeconds = Diagnostics.PanelMemory.Normalize(KeepPanelInMemorySeconds),
             MaxItems = Math.Clamp(maxItems, 0, 1_000_000),
             RetentionDays = Math.Clamp(RetentionDays, 0, 36_500),
             MaxItemSizeMB = Math.Clamp(MaxItemSizeMB, 1, 1024),

@@ -526,6 +526,9 @@ public sealed partial class AppController
         // a collection gives back (AppController.Memory.cs).
         RequestMemoryReclaim("the start", StartupReclaimDelay);
 
+        // Settings › App › Keep the panel in memory: with a keep time, its timer counts from the start until the first use.
+        ApplyPanelMemorySetting();
+
         // A start whose user never chose a language asks for it before any other window is built: a first start, and the
         // first start after an update from a version that never asked. The panel and Settings read their labels when they
         // are built, so waiting for the choice spares a restart. Capture, shortcuts and the tray already run meanwhile;
@@ -1674,6 +1677,13 @@ public sealed partial class AppController
             if (next.ShowEverythingTab != (everything is not null) && !exiting)
             {
                 SetEverything(next.ShowEverythingTab);
+            }
+
+            // Idempotent too: a new keep time for the panel's memory re-arms its timer, and one already past asks for its
+            // trim (AppController.Memory.cs).
+            if (!exiting)
+            {
+                ApplyPanelMemorySetting();
             }
 
             // Idempotent too: the header's buttons follow Settings › Buttons in the panel, the pin its state, and a pinned

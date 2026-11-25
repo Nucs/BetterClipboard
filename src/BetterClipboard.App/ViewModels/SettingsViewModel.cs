@@ -64,6 +64,19 @@ public sealed partial class SettingsViewModel : ObservableObject
     private Microsoft.UI.Dispatching.DispatcherQueueTimer? backgroundTransparencyTimer;
 
     /// <summary>
+    /// The Keep the panel in memory slider's position, not saved yet; <see langword="null"/> when saved. A position, not the
+    /// keep time it stands for: "Never release from memory" is a keep time of <see langword="null"/>, which would read as
+    /// "nothing pending" here.
+    /// </summary>
+    private int? pendingPanelMemoryPosition;
+
+    /// <summary>
+    /// Saves the Keep the panel in memory slider's position once it rested (the transparency slider's
+    /// <see cref="BackgroundTransparencySaveDelay"/>: a drag over twenty stops saves once); created at its first move.
+    /// </summary>
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? panelMemoryTimer;
+
+    /// <summary>
     /// Creates the view model and loads the current settings/status.
     /// </summary>
     /// <param name="controller">App controller.</param>
@@ -306,6 +319,26 @@ public sealed partial class SettingsViewModel : ObservableObject
     public partial double BackgroundTransparency { get; set; } = PanelBackdrop.DefaultLevel;
 
     /// <summary>
+    /// Settings › App › Keep the panel in memory's slider (<see cref="AppSettings.KeepPanelInMemorySeconds"/>, CLAUDE.md
+    /// §2.69): a <see cref="PanelMemory"/> position, from <see cref="PanelMemory.NeverKeepPosition"/> ("Never keep in
+    /// memory") through the stops of 1 second to 7 days to <see cref="PanelMemoryLastPosition"/> ("Never release from memory",
+    /// the default). Its words show under it at once (<see cref="PanelMemoryText"/>); it is saved once the slider rests
+    /// (<see cref="OnPanelMemoryPositionChanged(double)"/>).
+    /// </summary>
+    [ObservableProperty]
+    public partial double PanelMemoryPosition { get; set; } = PanelMemory.NeverReleasePosition;
+
+    /// <summary>
+    /// The slider's position in words, under it and as its help text for screen readers ("For 10 minutes", "Never release
+    /// from memory"); follows the thumb before the position is saved.
+    /// </summary>
+    [ObservableProperty]
+    public partial string PanelMemoryText { get; set; } = PanelMemory.Describe(null);
+
+    /// <summary>The Keep the panel in memory slider's last position, its maximum: "Never release from memory".</summary>
+    public double PanelMemoryLastPosition => PanelMemory.NeverReleasePosition;
+
+    /// <summary>
     /// Index into <see cref="LanguageOptions"/>: 0 is "Use Windows setting", then every offered language. A change is
     /// saved at once and applies with a restart (windows read their labels when they are built), which
     /// <see cref="IsLanguageRestartPending"/> offers.
@@ -500,6 +533,12 @@ public sealed partial class SettingsViewModel : ObservableObject
             if (pendingBackgroundTransparency is null)
             {
                 BackgroundTransparency = settings.BackgroundTransparency;
+            }
+
+            // The same for the memory slider: another setting saved while its thumb waits to be saved must not move it back.
+            if (pendingPanelMemoryPosition is null)
+            {
+                PanelMemoryPosition = PanelMemory.PositionOf(settings.KeepPanelInMemorySeconds);
             }
 
             // A saved tag this build does not ship (a newer version's language) shows as "Use Windows setting", which is
@@ -1497,9 +1536,66 @@ public sealed partial class SettingsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The window is closing: saves a slider level not saved yet (Settings closed within a moment of the last step), and lets
-    /// go of the timer: a handler on a timer that refers to this object would keep it, and the window with it, in memory
-    /// (CLAUDE.md §4, the timers of a closed window). Called from <c>SettingsWindow.OnClosed</c>.
+    /// The Keep the panel in memory slider moved (a drag's step, an arrow key, a click on the track): its words follow at once
+    /// (<see cref="PanelMemoryText"/>), and the keep time is saved once the slider rested, as the transparency slider's level
+    /// is (each save reloads Settings, which would stutter a drag). Loading sets the words and saves nothing.
+    /// </summary>
+    /// <param name="value">The slider's value; NaN is ignored, anything else is rounded and kept within the slider.</param>
+    partial void OnPanelMemoryPositionChanged(double value)
+    {
+        if (double.IsNaN(value))
+        {
+            return;
+        }
+
+        int position = Math.Clamp((int)Math.Round(value), PanelMemory.NeverKeepPosition, PanelMemory.NeverReleasePosition);
+        PanelMemoryText = PanelMemory.Describe(PanelMemory.KeepSecondsAt(position));
+        if (loading)
+        {
+            return;
+        }
+
+        pendingPanelMemoryPosition = position;
+        if (panelMemoryTimer is null)
+        {
+            panelMemoryTimer = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+            panelMemoryTimer.Interval = BackgroundTransparencySaveDelay;
+            panelMemoryTimer.IsRepeating = false;
+            panelMemoryTimer.Tick += PanelMemoryTimer_Tick;
+        }
+
+        panelMemoryTimer.Stop();
+        panelMemoryTimer.Start();
+    }
+
+    /// <summary>The memory slider rested: saves the keep time it shows.</summary>
+    /// <param name="sender">The timer.</param>
+    /// <param name="args">Unused.</param>
+    private void PanelMemoryTimer_Tick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args) => SavePanelMemory();
+
+    /// <summary>
+    /// Saves the keep time the memory slider shows when it has not been saved yet
+    /// (<see cref="AppSettings.KeepPanelInMemorySeconds"/>); the settings change then reaches the controller, which re-arms its
+    /// keep timer (<c>AppController.ApplyPanelMemorySetting</c>). Nothing to do otherwise.
+    /// </summary>
+    private void SavePanelMemory()
+    {
+        panelMemoryTimer?.Stop();
+        if (pendingPanelMemoryPosition is not { } position)
+        {
+            return;
+        }
+
+        pendingPanelMemoryPosition = null;
+        var keep = PanelMemory.KeepSecondsAt(position);
+        Update(s => s with { KeepPanelInMemorySeconds = keep });
+    }
+
+    /// <summary>
+    /// The window is closing: saves what a slider shows and has not saved yet (Settings closed within a moment of the last
+    /// step: the transparency level, the panel's keep time), and lets go of their timers: a handler on a timer that refers to
+    /// this object would keep it, and the window with it, in memory (CLAUDE.md §4, the timers of a closed window). Called from
+    /// <c>SettingsWindow.OnClosed</c>.
     /// </summary>
     public void Close()
     {
@@ -1508,6 +1604,14 @@ public sealed partial class SettingsViewModel : ObservableObject
         {
             backgroundTransparencyTimer.Tick -= BackgroundTransparencyTimer_Tick;
             backgroundTransparencyTimer = null;
+        }
+
+        // The memory slider's position too, and its timer let go for the same reason.
+        SavePanelMemory();
+        if (panelMemoryTimer is not null)
+        {
+            panelMemoryTimer.Tick -= PanelMemoryTimer_Tick;
+            panelMemoryTimer = null;
         }
     }
 
